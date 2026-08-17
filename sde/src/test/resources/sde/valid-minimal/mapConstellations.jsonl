@@ -1,0 +1,2 @@
+{"_key":20000001,"regionID":10000001,"name":{"en":"Fixture Constellation One"},"position":{"x":10.0,"y":20.0,"z":30.0},"solarSystemIDs":[30000001,30000002]}
+{"_key":20000002,"regionID":10000002,"name":{"en":"Fixture Constellation Two"},"position":{"x":40.0,"y":50.0,"z":60.0},"solarSystemIDs":[30000003]}

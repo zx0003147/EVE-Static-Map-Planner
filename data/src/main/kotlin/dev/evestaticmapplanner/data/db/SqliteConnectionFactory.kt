@@ -1,0 +1,18 @@
+package dev.evestaticmapplanner.data.db
+
+import java.nio.file.Path
+import java.sql.Connection
+import java.sql.DriverManager
+
+object SqliteConnectionFactory {
+    fun open(databasePath: Path, queryOnly: Boolean = false): Connection {
+        Class.forName("org.sqlite.JDBC")
+        val connection = DriverManager.getConnection("jdbc:sqlite:${databasePath.toAbsolutePath()}")
+        connection.createStatement().use { statement ->
+            statement.execute("PRAGMA foreign_keys = ON")
+            statement.execute("PRAGMA busy_timeout = 5000")
+            if (queryOnly) statement.execute("PRAGMA query_only = ON")
+        }
+        return connection
+    }
+}

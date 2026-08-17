@@ -1,0 +1,2 @@
+{"_key":50000001,"solarSystemID":30000001,"destination":{"solarSystemID":30000002,"stargateID":50000002},"typeID":16,"position":{"x":10000.0,"y":20000.0,"z":30000.0}}
+{"_key":50000002,"solarSystemID":30000002,"destination":{"solarSystemID":30000001,"stargateID":50000001},"typeID":16,"position":{"x":-10000.0,"y":-20000.0,"z":-30000.0}}

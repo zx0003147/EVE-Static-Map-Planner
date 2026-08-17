@@ -1,0 +1,2 @@
+{"_key":10000001,"constellationIDs":[20000001],"name":{"en":"Fixture Region One"},"position":{"x":1.0,"y":2.0,"z":3.0}}
+{"_key":10000002,"constellationIDs":[20000002],"name":{"en":"Fixture Region Two"},"position":{"x":4.0,"y":5.0,"z":6.0},"wormholeClassID":7}

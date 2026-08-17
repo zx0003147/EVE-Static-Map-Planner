@@ -12,3 +12,10 @@ Thumbs.db
 hs_err_pid*
 replay_pid*
 
+*.db
+*.db-shm
+*.db-wal
+*.db.tmp
+.sde-work/
+.toolchains/
+*.zip

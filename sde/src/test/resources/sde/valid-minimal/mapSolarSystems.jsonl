@@ -1,0 +1,3 @@
+{"_key":30000001,"constellationID":20000001,"regionID":10000001,"name":{"en":"Fixture Alpha"},"securityStatus":0.7,"securityClass":"B","position":{"x":100.0,"y":200.0,"z":300.0},"position2D":{"x":1000.0,"y":2000.0},"radius":1000000000.0,"stargateIDs":[50000001]}
+{"_key":30000002,"constellationID":20000001,"regionID":10000001,"name":{"en":"Fixture Beta"},"securityStatus":-0.5,"position":{"x":400.0,"y":500.0,"z":600.0},"position2D":{"x":3000.0,"y":4000.0},"radius":2000000000.0,"factionID":500001,"stargateIDs":[50000002]}
+{"_key":30000003,"constellationID":20000002,"regionID":10000002,"name":{"en":"Fixture Gamma"},"securityStatus":0.1,"position":{"x":700.0,"y":800.0,"z":900.0},"radius":3000000000.0}
