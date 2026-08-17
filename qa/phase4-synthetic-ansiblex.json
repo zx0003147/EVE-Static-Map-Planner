@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "connections": [
+    {
+      "from": { "system_id": 30004759, "system_name": "1DQ1-A" },
+      "to": { "system_id": 30004712, "system_name": "NOL-M9" },
+      "connection_name": "QA 1DQ-NOL",
+      "note": "Synthetic acceptance link - not a real alliance network",
+      "enabled": true,
+      "direction": "BIDIRECTIONAL"
+    },
+    {
+      "from": { "system_id": 30002904, "system_name": "VFK-IV" },
+      "to": { "system_id": 30004608, "system_name": "6VDT-H" },
+      "connection_name": "QA VFK-6VDT",
+      "note": "Synthetic replacement fixture - not a real alliance network",
+      "enabled": true,
+      "direction": "BIDIRECTIONAL"
+    }
+  ]
+}

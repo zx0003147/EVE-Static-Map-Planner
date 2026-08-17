@@ -5,6 +5,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
@@ -34,12 +35,18 @@ import androidx.compose.ui.zIndex
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
+import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
+import dev.evestaticmapplanner.core.route.RouteResult
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun StaticMapCanvas(
     state: MapUiState,
+    activeRoute: RouteResult?,
+    ansiblexConnections: List<AnsiblexConnection>,
+    showAnsiblexLayer: Boolean,
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
     onPan: (MapPoint) -> Unit,
@@ -48,6 +55,8 @@ fun StaticMapCanvas(
     onSelect: (MapPoint) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
     onContextSystemInfo: () -> Unit,
+    onContextRouteStart: (Int) -> Unit,
+    onContextRouteDestination: (Int) -> Unit,
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
@@ -57,6 +66,9 @@ fun StaticMapCanvas(
     val transform = remember(viewport, state.canvasSize) { MapTransform(viewport, state.canvasSize) }
     val textMeasurer = rememberTextMeasurer()
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
+    val routeOverlay = remember(scene, activeRoute) {
+        activeRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
+    }
     var pressedAt by remember { mutableStateOf<MapPoint?>(null) }
     var lastDragPosition by remember { mutableStateOf<MapPoint?>(null) }
     var isDragging by remember { mutableStateOf(false) }
@@ -127,6 +139,20 @@ fun StaticMapCanvas(
                 drawBase(scene, transform, textMeasurer, renderCache)
             }
         }
+        if (showAnsiblexLayer && ansiblexConnections.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) {
+                    drawAnsiblexLayer(scene, transform, ansiblexConnections)
+                }
+            }
+        }
+        routeOverlay?.let { overlay ->
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) {
+                    drawRoute(scene, transform, overlay)
+                }
+            }
+        }
         Canvas(Modifier.fillMaxSize()) {
             with(MapRenderer) {
                 drawInteraction(
@@ -157,14 +183,25 @@ fun StaticMapCanvas(
                             menu.screenPosition.y.toInt(),
                         )
                     }
-                    .width(170.dp)
-                    .onClick(onClick = onContextSystemInfo),
+                    .width(210.dp),
             ) {
-                Text(
-                    text = "System Info",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(12.dp),
-                )
+                androidx.compose.foundation.layout.Column(Modifier.padding(vertical = 4.dp)) {
+                    Text(
+                        text = "Set Route Start",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().onClick { onContextRouteStart(menu.systemId) }.padding(10.dp),
+                    )
+                    Text(
+                        text = "Set Route Destination",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().onClick { onContextRouteDestination(menu.systemId) }.padding(10.dp),
+                    )
+                    Text(
+                        text = "System Info",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().onClick(onClick = onContextSystemInfo).padding(10.dp),
+                    )
+                }
             }
         }
     }

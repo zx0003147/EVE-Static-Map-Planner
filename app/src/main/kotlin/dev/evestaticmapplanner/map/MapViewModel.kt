@@ -195,6 +195,10 @@ class MapViewModel(
         selectSystem(systemId)
     }
 
+    fun selectSystemById(systemId: Int) {
+        selectSystem(systemId)
+    }
+
     fun openContextMenuAt(screenPosition: MapPoint) {
         mutableState.update { current ->
             val systemId = hitTest(current, screenPosition, SELECT_RADIUS_PX)

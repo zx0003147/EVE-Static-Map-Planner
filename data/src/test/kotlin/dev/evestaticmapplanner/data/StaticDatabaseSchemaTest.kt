@@ -10,6 +10,7 @@ import dev.evestaticmapplanner.data.db.StaticDatabaseBuildSession
 import dev.evestaticmapplanner.data.db.StaticDatabaseSchema
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
+import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
 import java.nio.file.Files
 import java.sql.SQLException
 import kotlin.io.path.createTempDirectory
@@ -20,6 +21,43 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class StaticDatabaseSchemaTest {
+    @Test
+    fun `system search supports exact prefix numeric ID and limit`() = withTempDatabase { database ->
+        StaticDatabaseBuildSession.create(database).use { session ->
+            session.insert(Region(1, "Region", UniversePosition(0.0, 0.0, 0.0), null))
+            session.insert(Constellation(10, 1, "Constellation", UniversePosition(0.0, 0.0, 0.0), null))
+            listOf(
+                100 to "Alpha",
+                101 to "Alpine",
+                102 to "Alpheratz",
+                200 to "Beta",
+            ).forEach { (id, name) ->
+                session.insert(
+                    SolarSystem(
+                        id = id,
+                        constellationId = 10,
+                        regionId = 1,
+                        name = name,
+                        securityStatus = 0.0,
+                        securityClass = null,
+                        position = UniversePosition(id.toDouble(), 0.0, 0.0),
+                        schematicPosition = null,
+                        radius = 1.0,
+                        factionId = null,
+                        wormholeClassId = null,
+                    ),
+                )
+            }
+            session.commit()
+        }
+        val repository = SqliteSystemSearchRepository(database)
+
+        assertEquals(listOf("Alpha"), repository.searchSystems("alpha").take(1).map { it.name })
+        assertEquals(listOf("Alpha", "Alpheratz"), repository.searchSystems("Al", limit = 2).map { it.name })
+        assertEquals(listOf(200), repository.searchSystems("200").map { it.id })
+        assertEquals(emptyList(), repository.searchSystems("pha"))
+    }
+
     @Test
     fun `composite system parent is enforced by SQLite`() = withTempDatabase { database ->
         SqliteConnectionFactory.open(database).use { connection ->

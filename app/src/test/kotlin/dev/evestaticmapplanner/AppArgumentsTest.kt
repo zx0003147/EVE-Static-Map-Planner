@@ -10,10 +10,15 @@ class AppArgumentsTest {
     @Test
     fun `command line parses database and focus system`() {
         val arguments = AppArguments.parse(
-            arrayOf("--database", "C:\\data\\static.db", "--focus-system", "  Jita  "),
+            arrayOf(
+                "--database", "C:\\data\\static.db",
+                "--user-database", "C:\\data\\user.db",
+                "--focus-system", "  Jita  ",
+            ),
         )
 
         assertEquals(Path("C:\\data\\static.db"), arguments.databasePath)
+        assertEquals(Path("C:\\data\\user.db"), arguments.userDatabasePath)
         assertEquals("Jita", arguments.focusSystemName)
     }
 
@@ -61,5 +66,14 @@ class AppArgumentsTest {
         assertEquals(DatabasePathSource.APP_DATA, result.source)
         assertTrue(result.path.toString().endsWith("EVE Static Map Planner\\data\\static.db"))
         assertTrue(!result.path.toString().contains(".sde-work"))
+
+        val user = UserDatabasePathResolver.resolve(
+            arguments = AppArguments(),
+            systemProperties = emptyMap(),
+            environment = mapOf("LOCALAPPDATA" to "C:\\Local"),
+            osName = "Windows 11",
+            userHome = Path("C:\\Users\\test"),
+        )
+        assertTrue(user.path.toString().endsWith("EVE Static Map Planner\\data\\user.db"))
     }
 }

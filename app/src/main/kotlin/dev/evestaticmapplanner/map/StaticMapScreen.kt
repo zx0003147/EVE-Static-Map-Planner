@@ -18,23 +18,41 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.map.MapProjectionId
+import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
+import dev.evestaticmapplanner.ansiblex.AnsiblexManagerDialog
+import dev.evestaticmapplanner.route.RoutePlannerUiState
+import dev.evestaticmapplanner.route.RoutePlannerViewModel
+import dev.evestaticmapplanner.route.RouteToolsPanel
 import java.nio.file.Path
 import java.util.Locale
 
 @Composable
 fun StaticMapScreen(
     databasePath: Path,
+    userDatabasePath: Path,
     state: MapUiState,
+    routeState: RoutePlannerUiState,
     viewModel: MapViewModel,
+    routeViewModel: RoutePlannerViewModel,
 ) {
+    var showAnsiblexManager by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxSize().background(Color(0xFF101923))) {
-        FutureToolsPanel()
+        RouteToolsPanel(
+            state = routeState,
+            viewModel = routeViewModel,
+            onFocusSystem = { viewModel.selectSystemById(it.id) },
+            onOpenAnsiblexManager = { showAnsiblexManager = true },
+        )
         Column(Modifier.weight(1f).fillMaxHeight()) {
             ProjectionToolbar(state, viewModel)
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -43,6 +61,9 @@ fun StaticMapScreen(
                     state.error != null -> CenterMessage("Unable to load map\n${state.error}\n\nDatabase: $databasePath")
                     state.scene != null && state.viewport != null -> StaticMapCanvas(
                         state = state,
+                        activeRoute = routeState.activeRoute,
+                        ansiblexConnections = routeState.ansiblexConnections,
+                        showAnsiblexLayer = routeState.showAnsiblexLayer,
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
                         onZoom = viewModel::zoomAt,
                         onPan = viewModel::panBy,
@@ -51,6 +72,14 @@ fun StaticMapScreen(
                         onSelect = viewModel::selectAt,
                         onContextMenu = viewModel::openContextMenuAt,
                         onContextSystemInfo = viewModel::selectContextMenuSystem,
+                        onContextRouteStart = {
+                            routeViewModel.setRouteStart(it)
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextRouteDestination = {
+                            routeViewModel.setRouteDestination(it)
+                            viewModel.dismissContextMenu()
+                        },
                         onContextDismiss = viewModel::dismissContextMenu,
                         onFirstMapDisplayed = viewModel::onFirstMapDisplayed,
                     )
@@ -58,38 +87,35 @@ fun StaticMapScreen(
                 }
             }
             state.scene?.let { scene ->
+                val routeOverlay = routeState.activeRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
+                val routeWarning = routeOverlay?.takeIf { it.omittedSystemIds.isNotEmpty() }?.let {
+                    " · route: ${it.omittedSystemIds.size} systems / ${it.omittedLegCount} legs unavailable; use Real X-Z"
+                }.orEmpty()
                 Text(
                     text = "${scene.projectionId.displayName}: ${scene.nodes.size} systems · ${scene.edges.size} stargate connections" +
-                        if (scene.omittedSystemIds.isNotEmpty()) " · ${scene.omittedSystemIds.size} unavailable" else "",
+                        (if (scene.omittedSystemIds.isNotEmpty()) " · ${scene.omittedSystemIds.size} unavailable" else "") +
+                        routeWarning,
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFFAAB9C7),
                     modifier = Modifier.fillMaxWidth().background(Color(0xFF121D28)).padding(8.dp),
                 )
             }
         }
-        SystemInfoPanel(state)
+        SystemInfoPanel(state, routeState)
     }
-}
-
-@Composable
-private fun FutureToolsPanel() {
-    Surface(color = Color(0xFF15212D), modifier = Modifier.width(190.dp).fillMaxHeight()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Future Tools", style = MaterialTheme.typography.titleMedium)
-            HorizontalDivider(color = Color(0xFF314252))
-            Text("System Search", color = Color(0xFF738394))
-            Text("Normal Route", color = Color(0xFF738394))
-            Text("Capital Route", color = Color(0xFF738394))
-            Text("Jump Overlays", color = Color(0xFF738394))
-            Spacer(Modifier.weight(1f))
-            Text("Phase 3 · Static Map", style = MaterialTheme.typography.labelSmall, color = Color(0xFF728495))
-        }
+    if (showAnsiblexManager) {
+        AnsiblexManagerDialog(
+            userDatabasePath = userDatabasePath,
+            state = routeState,
+            viewModel = routeViewModel,
+            onDismiss = { showAnsiblexManager = false },
+        )
     }
 }
 
 @Composable
 private fun ProjectionToolbar(state: MapUiState, viewModel: MapViewModel) {
-    Surface(color = Color(0xFF121D28)) {
+    Surface(color = Color(0xFF121D28), contentColor = Color(0xFFD7E6F2)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -110,8 +136,12 @@ private fun ProjectionToolbar(state: MapUiState, viewModel: MapViewModel) {
 }
 
 @Composable
-private fun SystemInfoPanel(state: MapUiState) {
-    Surface(color = Color(0xFF15212D), modifier = Modifier.width(240.dp).fillMaxHeight()) {
+private fun SystemInfoPanel(state: MapUiState, routeState: RoutePlannerUiState) {
+    Surface(
+        color = Color(0xFF15212D),
+        contentColor = Color(0xFFD7E6F2),
+        modifier = Modifier.width(240.dp).fillMaxHeight(),
+    ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("System Info", style = MaterialTheme.typography.titleMedium)
             HorizontalDivider(color = Color(0xFF314252))
@@ -126,6 +156,14 @@ private fun SystemInfoPanel(state: MapUiState) {
                     InfoRow("Constellation", details.constellation.name)
                     InfoRow("Security", String.format(Locale.ROOT, "%.6f", details.system.securityStatus))
                     InfoRow("Stargate Count", details.stargateCount.toString())
+                    val ansiblex = routeState.ansiblexConnections.filter {
+                        it.firstSystemId == details.system.id || it.secondSystemId == details.system.id
+                    }
+                    InfoRow("Ansiblex Connections", ansiblex.size.toString())
+                    ansiblex.take(5).forEach {
+                        val other = if (it.firstSystemId == details.system.id) it.secondSystemId else it.firstSystemId
+                        Text("→ $other · ${it.direction.name}", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }

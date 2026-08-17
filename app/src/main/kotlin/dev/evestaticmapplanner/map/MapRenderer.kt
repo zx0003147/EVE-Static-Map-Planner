@@ -2,7 +2,9 @@ package dev.evestaticmapplanner.map
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -11,6 +13,9 @@ import androidx.compose.ui.unit.sp
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
+import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
+import dev.evestaticmapplanner.core.route.RouteEdgeType
 
 enum class MapDetailLevel {
     OVERVIEW,
@@ -102,6 +107,54 @@ object MapRenderer {
         }
     }
 
+    fun DrawScope.drawAnsiblexLayer(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        connections: List<AnsiblexConnection>,
+    ) {
+        connections.asSequence().filter(AnsiblexConnection::enabled).forEach { connection ->
+            val first = scene.nodesById[connection.firstSystemId]?.position ?: return@forEach
+            val second = scene.nodesById[connection.secondSystemId]?.position ?: return@forEach
+            drawLine(
+                color = ANSIBLEX_NETWORK_COLOR,
+                start = transform.worldToScreen(first).toOffset(),
+                end = transform.worldToScreen(second).toOffset(),
+                strokeWidth = 1.5f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f)),
+            )
+        }
+    }
+
+    fun DrawScope.drawRoute(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        overlay: ProjectedRouteOverlay,
+    ) {
+        overlay.legs.forEach { leg ->
+            drawLine(
+                color = if (leg.edge.type == RouteEdgeType.ANSIBLEX) ROUTE_ANSIBLEX_COLOR else ROUTE_STARGATE_COLOR,
+                start = transform.worldToScreen(leg.from).toOffset(),
+                end = transform.worldToScreen(leg.to).toOffset(),
+                strokeWidth = if (leg.edge.type == RouteEdgeType.ANSIBLEX) 4f else 3f,
+                pathEffect = if (leg.edge.type == RouteEdgeType.ANSIBLEX) {
+                    PathEffect.dashPathEffect(floatArrayOf(12f, 7f))
+                } else {
+                    null
+                },
+            )
+        }
+        scene.nodesById[overlay.route.startSystemId]?.let { node ->
+            val center = transform.worldToScreen(node.position).toOffset()
+            drawCircle(ROUTE_START_COLOR.copy(alpha = 0.25f), 12f, center)
+            drawCircle(ROUTE_START_COLOR, 8f, center, style = Stroke(3f))
+        }
+        scene.nodesById[overlay.route.destinationSystemId]?.let { node ->
+            val center = transform.worldToScreen(node.position).toOffset()
+            drawCircle(ROUTE_DESTINATION_COLOR.copy(alpha = 0.25f), 12f, center)
+            drawCircle(ROUTE_DESTINATION_COLOR, 8f, center, style = Stroke(3f))
+        }
+    }
+
     private fun DrawScope.drawHighlightedNode(
         scene: ProjectedMapScene,
         transform: MapTransform,
@@ -137,6 +190,11 @@ private val UNCONNECTED_NODE_COLOR = Color(0xFF596673)
 private val LABEL_COLOR = Color(0xFFD7E6F2)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
+private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
+private val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
+private val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
+private val ROUTE_START_COLOR = Color(0xFF57E389)
+private val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
 private const val CULL_MARGIN_PX = 80.0
 private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0

@@ -13,8 +13,12 @@ import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
+import dev.evestaticmapplanner.data.repository.SqliteAnsiblexRepository
+import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
+import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.map.StaticMapScreen
 import dev.evestaticmapplanner.map.MapViewModel
+import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,14 +28,15 @@ fun main(arguments: Array<String>) {
     val startup = runCatching {
         val parsed = AppArguments.parse(arguments)
         val database = DatabasePathResolver.resolve(parsed)
+        val userDatabase = UserDatabasePathResolver.resolve(parsed)
         require(Files.isRegularFile(database.path)) {
             "Static database does not exist or is not a regular file: ${database.path}"
         }
-        StartupConfiguration(database, parsed.focusSystemName)
+        StartupConfiguration(database, userDatabase, parsed.focusSystemName)
     }
 
     application {
-    val windowState = rememberWindowState(width = 820.dp, height = 500.dp)
+    val windowState = rememberWindowState(width = 1280.dp, height = 780.dp)
     Window(
         onCloseRequest = ::exitApplication,
         title = "EVE Static Map Planner",
@@ -48,11 +53,46 @@ fun main(arguments: Array<String>) {
                             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
                         )
                     }
-                    DisposableEffect(viewModel) {
-                        onDispose(viewModel::close)
+                    val routeViewModel = remember(configuration) {
+                        val staticRepository = SqliteStaticMapRepository(configuration.database.path)
+                        val universeRepository = SqliteUniverseRepository(configuration.database.path)
+                        val searchRepository = SqliteSystemSearchRepository(configuration.database.path)
+                        val userComponents = runCatching {
+                            val ansiblexRepository = SqliteAnsiblexRepository(configuration.userDatabase.path)
+                            val importService = AnsiblexImportService(
+                                userDatabasePath = configuration.userDatabase.path,
+                                universeRepository = universeRepository,
+                                searchRepository = searchRepository,
+                            )
+                            ansiblexRepository to importService
+                        }
+                        RoutePlannerViewModel(
+                            staticMapRepository = staticRepository,
+                            searchRepository = searchRepository,
+                            ansiblexRepository = userComponents.getOrNull()?.first,
+                            importService = userComponents.getOrNull()?.second,
+                            userDatabaseError = userComponents.exceptionOrNull()?.let {
+                                "Ansiblex disabled: ${it.message ?: it::class.simpleName}"
+                            },
+                            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+                        )
+                    }
+                    DisposableEffect(viewModel, routeViewModel) {
+                        onDispose {
+                            viewModel.close()
+                            routeViewModel.close()
+                        }
                     }
                     val state by viewModel.state.collectAsState()
-                    StaticMapScreen(configuration.database.path, state, viewModel)
+                    val routeState by routeViewModel.state.collectAsState()
+                    StaticMapScreen(
+                        databasePath = configuration.database.path,
+                        userDatabasePath = configuration.userDatabase.path,
+                        state = state,
+                        routeState = routeState,
+                        viewModel = viewModel,
+                        routeViewModel = routeViewModel,
+                    )
                 },
                 onFailure = { error ->
                     androidx.compose.material3.Text(
@@ -68,5 +108,6 @@ fun main(arguments: Array<String>) {
 
 private data class StartupConfiguration(
     val database: ResolvedDatabasePath,
+    val userDatabase: ResolvedDatabasePath,
     val focusSystemName: String?,
 )
