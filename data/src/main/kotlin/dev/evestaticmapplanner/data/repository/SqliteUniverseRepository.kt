@@ -91,7 +91,7 @@ private fun ResultSet.toConstellation(): Constellation = Constellation(
     wormholeClassId = nullableInt("wormhole_class_id"),
 )
 
-private fun ResultSet.toSolarSystem(): SolarSystem = SolarSystem(
+internal fun ResultSet.toSolarSystem(): SolarSystem = SolarSystem(
     id = getInt("system_id"),
     constellationId = getInt("constellation_id"),
     regionId = getInt("region_id"),

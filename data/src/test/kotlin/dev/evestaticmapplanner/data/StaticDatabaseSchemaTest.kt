@@ -3,11 +3,13 @@ package dev.evestaticmapplanner.data
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SolarSystem
+import dev.evestaticmapplanner.core.model.Stargate
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.data.db.SqliteConnectionFactory
 import dev.evestaticmapplanner.data.db.StaticDatabaseBuildSession
 import dev.evestaticmapplanner.data.db.StaticDatabaseSchema
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
+import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
 import java.nio.file.Files
 import java.sql.SQLException
 import kotlin.io.path.createTempDirectory
@@ -79,6 +81,51 @@ class StaticDatabaseSchemaTest {
         assertEquals("Region", details.region.name)
         assertEquals("Constellation", details.constellation.name)
         assertEquals(0, details.stargateCount)
+    }
+
+    @Test
+    fun `static map repository loads systems and deduplicates reciprocal stargates`() = withTempDatabase { database ->
+        StaticDatabaseBuildSession.create(database).use { session ->
+            session.insert(Region(1, "Region", UniversePosition(0.0, 0.0, 0.0), null))
+            session.insert(Constellation(10, 1, "Constellation", UniversePosition(0.0, 0.0, 0.0), null))
+            listOf(100, 200).forEach { id ->
+                session.insert(
+                    SolarSystem(
+                        id = id,
+                        constellationId = 10,
+                        regionId = 1,
+                        name = "System $id",
+                        securityStatus = 0.0,
+                        securityClass = null,
+                        position = UniversePosition(id.toDouble(), 0.0, id.toDouble()),
+                        schematicPosition = null,
+                        radius = 1.0,
+                        factionId = null,
+                        wormholeClassId = null,
+                    ),
+                )
+            }
+            session.insert(Stargate(1000, 100, 200, 2000, 1, UniversePosition(0.0, 0.0, 0.0)))
+            session.insert(Stargate(2000, 200, 100, 1000, 1, UniversePosition(0.0, 0.0, 0.0)))
+            session.commit()
+        }
+
+        val map = SqliteStaticMapRepository(database).load()
+
+        assertEquals(listOf(100, 200), map.systems.map { it.id })
+        assertEquals(1, map.connections.size)
+        assertEquals(100, map.connections.single().firstSystemId)
+        assertEquals(200, map.connections.single().secondSystemId)
+    }
+
+    @Test
+    fun `query-only connection does not create a missing database`() = withTempDatabase { database ->
+        val error = assertFailsWith<IllegalArgumentException> {
+            SqliteConnectionFactory.open(database, queryOnly = true)
+        }
+
+        assertTrue(error.message.orEmpty().contains(database.toAbsolutePath().toString()))
+        assertTrue(!Files.exists(database))
     }
 }
 
