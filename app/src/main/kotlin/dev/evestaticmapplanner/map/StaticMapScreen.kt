@@ -33,6 +33,12 @@ import dev.evestaticmapplanner.ansiblex.AnsiblexManagerDialog
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import dev.evestaticmapplanner.route.RouteToolsPanel
+import dev.evestaticmapplanner.capital.CapitalRouteUiState
+import dev.evestaticmapplanner.capital.CapitalRouteViewModel
+import dev.evestaticmapplanner.jump.JumpOverlayUiState
+import dev.evestaticmapplanner.jump.JumpOverlayViewModel
+import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlayBuilder
+import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlayBuilder
 import java.nio.file.Path
 import java.util.Locale
 
@@ -42,14 +48,22 @@ fun StaticMapScreen(
     userDatabasePath: Path,
     state: MapUiState,
     routeState: RoutePlannerUiState,
+    jumpState: JumpOverlayUiState,
+    capitalState: CapitalRouteUiState,
     viewModel: MapViewModel,
     routeViewModel: RoutePlannerViewModel,
+    jumpViewModel: JumpOverlayViewModel,
+    capitalViewModel: CapitalRouteViewModel,
 ) {
     var showAnsiblexManager by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxSize().background(Color(0xFF101923))) {
         RouteToolsPanel(
             state = routeState,
             viewModel = routeViewModel,
+            jumpState = jumpState,
+            jumpViewModel = jumpViewModel,
+            capitalState = capitalState,
+            capitalViewModel = capitalViewModel,
             onFocusSystem = { viewModel.selectSystemById(it.id) },
             onOpenAnsiblexManager = { showAnsiblexManager = true },
         )
@@ -62,6 +76,9 @@ fun StaticMapScreen(
                     state.scene != null && state.viewport != null -> StaticMapCanvas(
                         state = state,
                         activeRoute = routeState.activeRoute,
+                        capitalRoute = capitalState.activeRoute,
+                        jumpOverlays = jumpState.overlays,
+                        intersectionSystemIds = jumpState.intersectionSystemIds,
                         ansiblexConnections = routeState.ansiblexConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
@@ -80,6 +97,18 @@ fun StaticMapScreen(
                             routeViewModel.setRouteDestination(it)
                             viewModel.dismissContextMenu()
                         },
+                        onContextJumpOverlay = {
+                            jumpViewModel.addForSystem(it)
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextCapitalStart = {
+                            capitalViewModel.setRouteStart(it)
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextCapitalDestination = {
+                            capitalViewModel.setRouteDestination(it)
+                            viewModel.dismissContextMenu()
+                        },
                         onContextDismiss = viewModel::dismissContextMenu,
                         onFirstMapDisplayed = viewModel::onFirstMapDisplayed,
                     )
@@ -91,17 +120,25 @@ fun StaticMapScreen(
                 val routeWarning = routeOverlay?.takeIf { it.omittedSystemIds.isNotEmpty() }?.let {
                     " · route: ${it.omittedSystemIds.size} systems / ${it.omittedLegCount} legs unavailable; use Real X-Z"
                 }.orEmpty()
+                val jumpOmitted = jumpState.overlays.sumOf {
+                    ProjectedJumpRangeOverlayBuilder.build(it, scene).omittedSystemIds.size
+                }
+                val capitalOmitted = capitalState.activeRoute?.let {
+                    ProjectedCapitalRouteOverlayBuilder.build(it, scene).omittedLegCount
+                } ?: 0
                 Text(
                     text = "${scene.projectionId.displayName}: ${scene.nodes.size} systems · ${scene.edges.size} stargate connections" +
                         (if (scene.omittedSystemIds.isNotEmpty()) " · ${scene.omittedSystemIds.size} unavailable" else "") +
-                        routeWarning,
+                        routeWarning +
+                        (if (jumpOmitted > 0) " · jump overlay: $jumpOmitted unavailable" else "") +
+                        (if (capitalOmitted > 0) " · capital route: $capitalOmitted legs unavailable" else ""),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFFAAB9C7),
                     modifier = Modifier.fillMaxWidth().background(Color(0xFF121D28)).padding(8.dp),
                 )
             }
         }
-        SystemInfoPanel(state, routeState)
+        SystemInfoPanel(state, routeState, jumpState)
     }
     if (showAnsiblexManager) {
         AnsiblexManagerDialog(
@@ -136,7 +173,11 @@ private fun ProjectionToolbar(state: MapUiState, viewModel: MapViewModel) {
 }
 
 @Composable
-private fun SystemInfoPanel(state: MapUiState, routeState: RoutePlannerUiState) {
+private fun SystemInfoPanel(
+    state: MapUiState,
+    routeState: RoutePlannerUiState,
+    jumpState: JumpOverlayUiState,
+) {
     Surface(
         color = Color(0xFF15212D),
         contentColor = Color(0xFFD7E6F2),
@@ -145,6 +186,22 @@ private fun SystemInfoPanel(state: MapUiState, routeState: RoutePlannerUiState) 
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("System Info", style = MaterialTheme.typography.titleMedium)
             HorizontalDivider(color = Color(0xFF314252))
+            state.hoveredSystemId?.let { hoveredId ->
+                val hovered = state.scene?.nodesById?.get(hoveredId)?.system
+                val coveredBy = jumpState.coveringOverlays(hoveredId)
+                Text(
+                    "Hover · ${hovered?.name ?: hoveredId}",
+                    color = Color(0xFFF3D36A),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    if (coveredBy.isEmpty()) "No enabled jump overlay hits" else
+                        "${coveredBy.size} overlay hit(s): ${coveredBy.joinToString { it.label ?: it.id }}",
+                    color = Color(0xFFFFD166),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                HorizontalDivider(color = Color(0xFF314252))
+            }
             val details = state.selectedSystemDetails
             when {
                 state.selectedSystemId == null -> Text("Select a solar system on the map.", color = Color(0xFF91A2B2))
@@ -163,6 +220,14 @@ private fun SystemInfoPanel(state: MapUiState, routeState: RoutePlannerUiState) 
                     ansiblex.take(5).forEach {
                         val other = if (it.firstSystemId == details.system.id) it.secondSystemId else it.firstSystemId
                         Text("→ $other · ${it.direction.name}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    val coveredBy = jumpState.coveringOverlays(details.system.id)
+                    InfoRow("Jump Overlay Coverage", coveredBy.size.toString())
+                    coveredBy.forEach { overlay ->
+                        Text(overlay.label ?: overlay.id, style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFD166))
+                    }
+                    if (details.system.id in jumpState.intersectionSystemIds) {
+                        Text("In selected overlay intersection", color = Color(0xFFFFD166), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

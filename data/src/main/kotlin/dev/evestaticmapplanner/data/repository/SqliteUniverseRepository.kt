@@ -26,9 +26,9 @@ class SqliteUniverseRepository(
         SqliteConnectionFactory.open(databasePath, queryOnly = true).use { connection ->
             connection.prepareStatement(
                 """
-                SELECT * FROM systems
-                WHERE name_en = ? COLLATE NOCASE
-                ORDER BY system_id
+                $SYSTEM_SELECT
+                WHERE s.name_en = ? COLLATE NOCASE
+                ORDER BY s.system_id
                 LIMIT 2
                 """.trimIndent(),
             ).use { statement ->
@@ -69,7 +69,7 @@ class SqliteUniverseRepository(
 
     private fun querySystem(predicate: String, id: Int): SolarSystem? =
         SqliteConnectionFactory.open(databasePath, queryOnly = true).use { connection ->
-            connection.prepareStatement("SELECT * FROM systems WHERE $predicate").use { statement ->
+            connection.prepareStatement("$SYSTEM_SELECT WHERE s.$predicate").use { statement ->
                 statement.setInt(1, id)
                 statement.executeQuery().use { result -> if (result.next()) result.toSolarSystem() else null }
             }
@@ -105,7 +105,17 @@ internal fun ResultSet.toSolarSystem(): SolarSystem = SolarSystem(
     radius = getDouble("radius"),
     factionId = nullableInt("faction_id"),
     wormholeClassId = nullableInt("wormhole_class_id"),
+    effectiveWormholeClassId = nullableInt("effective_wormhole_class_id"),
 )
+
+internal const val SYSTEM_SELECT = """
+    SELECT s.*,
+           COALESCE(s.wormhole_class_id, c.wormhole_class_id, r.wormhole_class_id)
+               AS effective_wormhole_class_id
+    FROM systems s
+    JOIN constellations c ON c.constellation_id = s.constellation_id
+    JOIN regions r ON r.region_id = s.region_id
+"""
 
 private fun ResultSet.position(): UniversePosition = UniversePosition(
     x = getDouble("position_x"),

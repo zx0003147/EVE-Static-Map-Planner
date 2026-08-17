@@ -36,3 +36,15 @@ tasks.register<JavaExec>("phase4Acceptance") {
     }
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
+
+tasks.register<JavaExec>("phase5Acceptance") {
+    group = "verification"
+    description = "Runs Phase 5 jump-range and capital-route acceptance against an explicit static.db"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.evestaticmapplanner.data.qa.Phase5AcceptanceCliKt")
+    val acceptanceDatabase = providers.gradleProperty("phase5StaticDb")
+    doFirst {
+        args = listOf(acceptanceDatabase.orNull ?: error("Provide -Pphase5StaticDb=<static.db>"))
+    }
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}

@@ -19,6 +19,9 @@ import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.map.StaticMapScreen
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
+import dev.evestaticmapplanner.capital.CapitalRouteViewModel
+import dev.evestaticmapplanner.jump.JumpOverlayViewModel
+import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,18 +48,22 @@ fun main(arguments: Array<String>) {
         MaterialTheme(colorScheme = darkColorScheme()) {
             startup.fold(
                 onSuccess = { configuration ->
+                    val staticRepository = remember(configuration) {
+                        CachingStaticMapRepository(SqliteStaticMapRepository(configuration.database.path))
+                    }
+                    val searchRepository = remember(configuration) {
+                        SqliteSystemSearchRepository(configuration.database.path)
+                    }
                     val viewModel = remember(configuration) {
                         MapViewModel(
-                            staticMapRepository = SqliteStaticMapRepository(configuration.database.path),
+                            staticMapRepository = staticRepository,
                             universeRepository = SqliteUniverseRepository(configuration.database.path),
                             focusSystemName = configuration.focusSystemName,
                             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
                         )
                     }
                     val routeViewModel = remember(configuration) {
-                        val staticRepository = SqliteStaticMapRepository(configuration.database.path)
                         val universeRepository = SqliteUniverseRepository(configuration.database.path)
-                        val searchRepository = SqliteSystemSearchRepository(configuration.database.path)
                         val userComponents = runCatching {
                             val ansiblexRepository = SqliteAnsiblexRepository(configuration.userDatabase.path)
                             val importService = AnsiblexImportService(
@@ -77,21 +84,43 @@ fun main(arguments: Array<String>) {
                             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
                         )
                     }
-                    DisposableEffect(viewModel, routeViewModel) {
+                    val jumpViewModel = remember(configuration) {
+                        JumpOverlayViewModel(
+                            staticMapRepository = staticRepository,
+                            searchRepository = searchRepository,
+                            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+                        )
+                    }
+                    val capitalViewModel = remember(configuration) {
+                        CapitalRouteViewModel(
+                            staticMapRepository = staticRepository,
+                            searchRepository = searchRepository,
+                            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+                        )
+                    }
+                    DisposableEffect(viewModel, routeViewModel, jumpViewModel, capitalViewModel) {
                         onDispose {
                             viewModel.close()
                             routeViewModel.close()
+                            jumpViewModel.close()
+                            capitalViewModel.close()
                         }
                     }
                     val state by viewModel.state.collectAsState()
                     val routeState by routeViewModel.state.collectAsState()
+                    val jumpState by jumpViewModel.state.collectAsState()
+                    val capitalState by capitalViewModel.state.collectAsState()
                     StaticMapScreen(
                         databasePath = configuration.database.path,
                         userDatabasePath = configuration.userDatabase.path,
                         state = state,
                         routeState = routeState,
+                        jumpState = jumpState,
+                        capitalState = capitalState,
                         viewModel = viewModel,
                         routeViewModel = routeViewModel,
+                        jumpViewModel = jumpViewModel,
+                        capitalViewModel = capitalViewModel,
                     )
                 },
                 onFailure = { error ->

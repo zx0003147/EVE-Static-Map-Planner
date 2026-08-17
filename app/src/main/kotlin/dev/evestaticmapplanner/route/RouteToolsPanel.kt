@@ -24,11 +24,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
+import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
+import dev.evestaticmapplanner.capital.CapitalRouteUiState
+import dev.evestaticmapplanner.capital.CapitalRouteViewModel
+import dev.evestaticmapplanner.jump.JumpOverlayUiState
+import dev.evestaticmapplanner.jump.JumpOverlayViewModel
+import dev.evestaticmapplanner.search.SystemSearchField
 
 @Composable
 fun RouteToolsPanel(
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
+    capitalState: CapitalRouteUiState,
+    capitalViewModel: CapitalRouteViewModel,
+    jumpState: JumpOverlayUiState,
+    jumpViewModel: JumpOverlayViewModel,
     onFocusSystem: (SolarSystem) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
 ) {
@@ -42,7 +52,7 @@ fun RouteToolsPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("System Search", style = MaterialTheme.typography.titleMedium)
-            SearchField(
+            SystemSearchField(
                 value = state.systemQuery,
                 label = "Name or exact ID",
                 results = state.systemResults,
@@ -54,14 +64,14 @@ fun RouteToolsPanel(
             )
             HorizontalDivider(color = Color(0xFF314252))
             Text("Normal Route", style = MaterialTheme.typography.titleMedium)
-            SearchField(
+            SystemSearchField(
                 value = state.fromQuery,
                 label = "From",
                 results = state.fromResults,
                 onValueChange = viewModel::updateFromQuery,
                 onSelect = viewModel::selectFrom,
             )
-            SearchField(
+            SystemSearchField(
                 value = state.toQuery,
                 label = "To",
                 results = state.toResults,
@@ -101,33 +111,101 @@ fun RouteToolsPanel(
                 Text("Static map and Stargate-only routing remain available.", color = Color(0xFFAAB9C7), style = MaterialTheme.typography.bodySmall)
             }
             HorizontalDivider(color = Color(0xFF314252))
-            Text("Capital Route", color = Color(0xFF738394))
-            Text("Jump Overlays", color = Color(0xFF738394))
-            Text("Phase 4 · Normal Route + Manual Ansiblex", style = MaterialTheme.typography.labelSmall, color = Color(0xFF728495))
-        }
-    }
-}
-
-@Composable
-private fun SearchField(
-    value: String,
-    label: String,
-    results: List<SolarSystem>,
-    onValueChange: (String) -> Unit,
-    onSelect: (SolarSystem) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = { Text(label) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        results.take(6).forEach { system ->
-            TextButton(onClick = { onSelect(system) }, modifier = Modifier.fillMaxWidth()) {
-                Text("${system.name}  ·  ${system.id}", style = MaterialTheme.typography.bodySmall)
+            Text("Jump Range Overlays", style = MaterialTheme.typography.titleMedium)
+            SystemSearchField(
+                value = jumpState.originQuery,
+                label = "Overlay origin",
+                results = jumpState.originResults,
+                onValueChange = jumpViewModel::updateOriginQuery,
+                onSelect = jumpViewModel::selectOrigin,
+            )
+            OutlinedTextField(
+                value = jumpState.manualRangeText,
+                onValueChange = jumpViewModel::updateManualRange,
+                label = { Text("Effective maximum LY") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    onClick = jumpViewModel::addSelectedOrigin,
+                    enabled = jumpState.selectedOrigin != null && !jumpState.isLoading && !jumpState.isCalculating,
+                ) { Text("Add") }
+                TextButton(onClick = jumpViewModel::clear, enabled = jumpState.overlays.isNotEmpty()) { Text("Clear") }
             }
+            jumpState.overlays.forEach { overlay ->
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = overlay.enabled,
+                            onCheckedChange = { jumpViewModel.setEnabled(overlay.id, it) },
+                        )
+                        Text(overlay.label ?: overlay.id, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = overlay.id in jumpState.intersectionOverlayIds,
+                            onCheckedChange = { jumpViewModel.toggleIntersectionSelection(overlay.id, it) },
+                            enabled = overlay.enabled,
+                        )
+                        Text("Intersect", style = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { jumpViewModel.updateWithCurrentRange(overlay.id) }) { Text("Update") }
+                        TextButton(onClick = { jumpViewModel.remove(overlay.id) }) { Text("Remove") }
+                    }
+                }
+            }
+            if (jumpState.intersectionOverlayIds.isNotEmpty()) {
+                Text(
+                    "Intersection (${jumpState.intersectionOverlayIds.size} overlays): ${jumpState.intersectionSystemIds.size} systems",
+                    color = Color(0xFFFFD166),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            jumpState.error?.let { Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall) }
+            HorizontalDivider(color = Color(0xFF314252))
+            Text("Capital Route", style = MaterialTheme.typography.titleMedium)
+            SystemSearchField(
+                value = capitalState.fromQuery,
+                label = "Capital From",
+                results = capitalState.fromResults,
+                onValueChange = capitalViewModel::updateFromQuery,
+                onSelect = capitalViewModel::selectFrom,
+            )
+            SystemSearchField(
+                value = capitalState.toQuery,
+                label = "Capital To",
+                results = capitalState.toResults,
+                onValueChange = capitalViewModel::updateToQuery,
+                onSelect = capitalViewModel::selectTo,
+            )
+            OutlinedTextField(
+                value = capitalState.manualRangeText,
+                onValueChange = capitalViewModel::updateManualRange,
+                label = { Text("Effective maximum LY") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = capitalViewModel::calculate,
+                    enabled = capitalState.selectedFrom != null && capitalState.selectedTo != null &&
+                        !capitalState.isLoading && !capitalState.isCalculating,
+                ) { Text(if (capitalState.isCalculating) "Calculating…" else "Calculate") }
+                TextButton(onClick = capitalViewModel::clear, enabled = capitalState.outcome != null) { Text("Clear") }
+            }
+            CapitalRouteSummary(capitalState)
+            capitalState.error?.let { Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall) }
+            Text(
+                "Validates real XYZ geometry, manual max range, and implemented static eligibility only.",
+                color = Color(0xFFB8CAD8),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Does not verify live cyno/type, jammer, ACL, fuel, capacitor, fatigue, scram, or server state.",
+                color = Color(0xFFFFB86C),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text("Phase 5 · Jump Range Overlays + Capital Route V1", style = MaterialTheme.typography.labelSmall, color = Color(0xFF728495))
         }
     }
 }
@@ -147,5 +225,35 @@ private fun RouteSummary(state: RoutePlannerUiState) {
         is RouteCalculationOutcome.SameSystem -> Text("Start and destination are the same system · 0 jumps")
         is RouteCalculationOutcome.Unreachable -> Text("No route is reachable with the selected connection types.", color = Color(0xFFFFB86C))
         is RouteCalculationOutcome.InvalidEndpoint -> Text("One or both route endpoints are invalid.", color = Color(0xFFFF8A80))
+    }
+}
+
+@Composable
+private fun CapitalRouteSummary(state: CapitalRouteUiState) {
+    when (val outcome = state.outcome) {
+        null -> Unit
+        is CapitalRouteOutcome.Found -> {
+            Text(
+                "${outcome.route.totalJumps} capital jumps · " +
+                    String.format(java.util.Locale.ROOT, "%.3f LY total", outcome.route.totalDistanceLy),
+                color = Color(0xFFE3C5FF),
+            )
+            Text(state.routeSystemNames.joinToString(" → "), style = MaterialTheme.typography.bodySmall)
+            outcome.route.legs.forEach { leg ->
+                Text(
+                    "${leg.fromSystemId} → ${leg.toSystemId} · " +
+                        String.format(java.util.Locale.ROOT, "%.3f LY", leg.distanceLy),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+        is CapitalRouteOutcome.SameSystem -> Text("Start and destination are the same · 0 jumps")
+        is CapitalRouteOutcome.Unreachable -> Text("No statically eligible route within the manual range.", color = Color(0xFFFFB86C))
+        is CapitalRouteOutcome.InvalidEndpoint -> Text("One or both capital endpoints are invalid.", color = Color(0xFFFF8A80))
+        is CapitalRouteOutcome.IneligibleEndpoint -> Text(
+            "${outcome.endpoint}: ${outcome.verdict}",
+            color = Color(0xFFFFB86C),
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }

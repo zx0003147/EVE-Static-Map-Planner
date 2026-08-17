@@ -16,6 +16,8 @@ import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.route.RouteEdgeType
+import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
+import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
 
 enum class MapDetailLevel {
     OVERVIEW,
@@ -155,6 +157,63 @@ object MapRenderer {
         }
     }
 
+    fun DrawScope.drawJumpRangeOverlays(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        overlays: List<ProjectedJumpRangeOverlay>,
+        intersectionSystemIds: Set<Int>,
+    ) {
+        overlays.forEachIndexed { index, overlay ->
+            val color = JUMP_OVERLAY_COLORS[index % JUMP_OVERLAY_COLORS.size]
+            val radius = 5f + (index % 4) * 2.2f
+            overlay.reachableNodes.forEach { node ->
+                drawCircle(
+                    color = color.copy(alpha = 0.82f),
+                    radius = radius,
+                    center = transform.worldToScreen(node.position).toOffset(),
+                    style = Stroke(1.5f),
+                )
+            }
+            scene.nodesById[overlay.overlay.originSystemId]?.let { origin ->
+                val center = transform.worldToScreen(origin.position).toOffset()
+                drawCircle(color.copy(alpha = 0.2f), 11f, center)
+                drawCircle(color, 7f + (index % 3), center, style = Stroke(2f))
+            }
+        }
+        intersectionSystemIds.forEach { systemId ->
+            scene.nodesById[systemId]?.let { node ->
+                val center = transform.worldToScreen(node.position).toOffset()
+                drawCircle(INTERSECTION_COLOR.copy(alpha = 0.24f), 13f, center)
+                drawCircle(INTERSECTION_COLOR, 10f, center, style = Stroke(2.5f))
+            }
+        }
+    }
+
+    fun DrawScope.drawCapitalRoute(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        overlay: ProjectedCapitalRouteOverlay,
+    ) {
+        overlay.legs.forEach { leg ->
+            drawLine(
+                color = CAPITAL_ROUTE_COLOR,
+                start = transform.worldToScreen(leg.from).toOffset(),
+                end = transform.worldToScreen(leg.to).toOffset(),
+                strokeWidth = 4f,
+            )
+        }
+        scene.nodesById[overlay.route.startSystemId]?.let { node ->
+            val center = transform.worldToScreen(node.position).toOffset()
+            drawCircle(CAPITAL_START_COLOR.copy(alpha = 0.25f), 13f, center)
+            drawCircle(CAPITAL_START_COLOR, 9f, center, style = Stroke(3f))
+        }
+        scene.nodesById[overlay.route.destinationSystemId]?.let { node ->
+            val center = transform.worldToScreen(node.position).toOffset()
+            drawCircle(CAPITAL_DESTINATION_COLOR.copy(alpha = 0.25f), 13f, center)
+            drawCircle(CAPITAL_DESTINATION_COLOR, 9f, center, style = Stroke(3f))
+        }
+    }
+
     private fun DrawScope.drawHighlightedNode(
         scene: ProjectedMapScene,
         transform: MapTransform,
@@ -195,6 +254,18 @@ private val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
 private val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
 private val ROUTE_START_COLOR = Color(0xFF57E389)
 private val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
+private val CAPITAL_ROUTE_COLOR = Color(0xFFE28CFF)
+private val CAPITAL_START_COLOR = Color(0xFFA98BFF)
+private val CAPITAL_DESTINATION_COLOR = Color(0xFFFF7EB6)
+private val INTERSECTION_COLOR = Color(0xFFFFD166)
+private val JUMP_OVERLAY_COLORS = listOf(
+    Color(0xFF57E389),
+    Color(0xFF42D6F5),
+    Color(0xFFFF9F43),
+    Color(0xFFA98BFF),
+    Color(0xFFFF7EB6),
+    Color(0xFFB8E986),
+)
 private const val CULL_MARGIN_PX = 80.0
 private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0

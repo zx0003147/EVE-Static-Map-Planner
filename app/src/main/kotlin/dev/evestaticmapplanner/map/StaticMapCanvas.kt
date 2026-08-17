@@ -38,6 +38,10 @@ import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.route.RouteResult
+import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
+import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlayBuilder
+import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlayBuilder
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -45,6 +49,9 @@ import kotlin.math.hypot
 fun StaticMapCanvas(
     state: MapUiState,
     activeRoute: RouteResult?,
+    capitalRoute: CapitalRouteResult?,
+    jumpOverlays: List<JumpRangeOverlay>,
+    intersectionSystemIds: Set<Int>,
     ansiblexConnections: List<AnsiblexConnection>,
     showAnsiblexLayer: Boolean,
     onCanvasSizeChanged: (MapSize) -> Unit,
@@ -57,6 +64,9 @@ fun StaticMapCanvas(
     onContextSystemInfo: () -> Unit,
     onContextRouteStart: (Int) -> Unit,
     onContextRouteDestination: (Int) -> Unit,
+    onContextJumpOverlay: (Int) -> Unit,
+    onContextCapitalStart: (Int) -> Unit,
+    onContextCapitalDestination: (Int) -> Unit,
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
@@ -68,6 +78,12 @@ fun StaticMapCanvas(
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
     val routeOverlay = remember(scene, activeRoute) {
         activeRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
+    }
+    val projectedJumpOverlays = remember(scene, jumpOverlays) {
+        jumpOverlays.filter(JumpRangeOverlay::enabled).map { ProjectedJumpRangeOverlayBuilder.build(it, scene) }
+    }
+    val projectedCapitalRoute = remember(scene, capitalRoute) {
+        capitalRoute?.let { ProjectedCapitalRouteOverlayBuilder.build(it, scene) }
     }
     var pressedAt by remember { mutableStateOf<MapPoint?>(null) }
     var lastDragPosition by remember { mutableStateOf<MapPoint?>(null) }
@@ -146,11 +162,28 @@ fun StaticMapCanvas(
                 }
             }
         }
+        if (projectedJumpOverlays.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) {
+                    drawJumpRangeOverlays(
+                        scene = scene,
+                        transform = transform,
+                        overlays = projectedJumpOverlays,
+                        intersectionSystemIds = intersectionSystemIds,
+                    )
+                }
+            }
+        }
         routeOverlay?.let { overlay ->
             Canvas(Modifier.fillMaxSize()) {
                 with(MapRenderer) {
                     drawRoute(scene, transform, overlay)
                 }
+            }
+        }
+        projectedCapitalRoute?.let { overlay ->
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) { drawCapitalRoute(scene, transform, overlay) }
             }
         }
         Canvas(Modifier.fillMaxSize()) {
@@ -195,6 +228,21 @@ fun StaticMapCanvas(
                         text = "Set Route Destination",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.fillMaxWidth().onClick { onContextRouteDestination(menu.systemId) }.padding(10.dp),
+                    )
+                    Text(
+                        text = "Add Jump Range Overlay",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().onClick { onContextJumpOverlay(menu.systemId) }.padding(10.dp),
+                    )
+                    Text(
+                        text = "Set Capital Start",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().onClick { onContextCapitalStart(menu.systemId) }.padding(10.dp),
+                    )
+                    Text(
+                        text = "Set Capital Destination",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().onClick { onContextCapitalDestination(menu.systemId) }.padding(10.dp),
                     )
                     Text(
                         text = "System Info",

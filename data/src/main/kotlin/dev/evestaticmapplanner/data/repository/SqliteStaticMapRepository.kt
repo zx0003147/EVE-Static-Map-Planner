@@ -12,7 +12,7 @@ class SqliteStaticMapRepository(
     override fun load(): StaticMapData =
         SqliteConnectionFactory.open(databasePath, queryOnly = true).use { connection ->
             val systems = connection.prepareStatement(
-                "SELECT * FROM systems ORDER BY system_id",
+                "$SYSTEM_SELECT ORDER BY s.system_id",
             ).use { statement ->
                 statement.executeQuery().use { result ->
                     buildList { while (result.next()) add(result.toSolarSystem()) }

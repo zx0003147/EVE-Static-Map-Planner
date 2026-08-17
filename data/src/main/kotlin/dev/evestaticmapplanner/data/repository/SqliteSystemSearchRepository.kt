@@ -14,7 +14,7 @@ class SqliteSystemSearchRepository(
         if (normalized.isEmpty()) return emptyList()
         normalized.toIntOrNull()?.takeIf { it > 0 }?.let { id ->
             return SqliteConnectionFactory.open(databasePath, queryOnly = true).use { connection ->
-                connection.prepareStatement("SELECT * FROM systems WHERE system_id = ? LIMIT 1").use { statement ->
+                connection.prepareStatement("$SYSTEM_SELECT WHERE s.system_id = ? LIMIT 1").use { statement ->
                     statement.setInt(1, id)
                     statement.executeQuery().use { result -> if (result.next()) listOf(result.toSolarSystem()) else emptyList() }
                 }
@@ -27,11 +27,11 @@ class SqliteSystemSearchRepository(
         return SqliteConnectionFactory.open(databasePath, queryOnly = true).use { connection ->
             connection.prepareStatement(
                 """
-                SELECT * FROM systems
-                WHERE name_en LIKE ? ESCAPE '\' COLLATE NOCASE
-                ORDER BY CASE WHEN name_en = ? COLLATE NOCASE THEN 0 ELSE 1 END,
-                         name_en COLLATE NOCASE,
-                         system_id
+                $SYSTEM_SELECT
+                WHERE s.name_en LIKE ? ESCAPE '\' COLLATE NOCASE
+                ORDER BY CASE WHEN s.name_en = ? COLLATE NOCASE THEN 0 ELSE 1 END,
+                         s.name_en COLLATE NOCASE,
+                         s.system_id
                 LIMIT ?
                 """.trimIndent(),
             ).use { statement ->

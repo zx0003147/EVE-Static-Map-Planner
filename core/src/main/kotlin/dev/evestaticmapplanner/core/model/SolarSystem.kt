@@ -12,6 +12,7 @@ data class SolarSystem(
     val radius: Double,
     val factionId: Int?,
     val wormholeClassId: Int?,
+    val effectiveWormholeClassId: Int? = wormholeClassId,
 ) {
     init {
         require(id > 0) { "Solar system ID must be positive" }
