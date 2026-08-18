@@ -36,7 +36,10 @@ data class SdeImportReport(
 class SdeImporter(
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    fun import(request: SdeImportRequest): SdeImportReport {
+    fun import(
+        request: SdeImportRequest,
+        progressListener: SdeImportProgressListener = SdeImportProgressListener.NONE,
+    ): SdeImportReport {
         require(!Files.exists(request.outputDatabase)) {
             "Output database already exists: ${request.outputDatabase}"
         }
@@ -47,10 +50,13 @@ class SdeImporter(
         require(!Files.exists(tempDatabase)) { "Temporary database already exists: $tempDatabase" }
 
         try {
+            progressListener.onProgress(SdeImportStage.LOCATING_SOURCES)
             val files = SdeSourceLocator.locate(request.sourceDirectory)
-            val dataSet = SdeDataSet.load(files)
+            val dataSet = SdeDataSet.load(files, progressListener = progressListener)
+            progressListener.onProgress(SdeImportStage.VALIDATING_REFERENCES)
             val referenceReport = SdeReferenceValidator.validate(dataSet)
 
+            progressListener.onProgress(SdeImportStage.BUILDING_DATABASE)
             StaticDatabaseBuildSession.create(tempDatabase).use { database ->
                 dataSet.regions.values.sortedBy { it.id }.forEach { database.insert(it.toDomain()) }
                 dataSet.constellations.values.sortedBy { it.id }.forEach { database.insert(it.toDomain()) }
@@ -74,6 +80,7 @@ class SdeImporter(
                 database.commit()
             }
 
+            progressListener.onProgress(SdeImportStage.VALIDATING_DATABASE)
             val databaseReport = StaticDatabaseValidator.validate(tempDatabase)
             moveCompletedDatabase(tempDatabase, request.outputDatabase)
             return SdeImportReport(
@@ -86,6 +93,25 @@ class SdeImporter(
             Files.deleteIfExists(tempDatabase)
             throw error
         }
+    }
+}
+
+enum class SdeImportStage {
+    LOCATING_SOURCES,
+    READING_REGIONS,
+    READING_CONSTELLATIONS,
+    READING_SYSTEMS,
+    READING_STARGATES,
+    VALIDATING_REFERENCES,
+    BUILDING_DATABASE,
+    VALIDATING_DATABASE,
+}
+
+fun interface SdeImportProgressListener {
+    fun onProgress(stage: SdeImportStage)
+
+    companion object {
+        val NONE = SdeImportProgressListener { }
     }
 }
 

@@ -55,6 +55,20 @@ data class ResolvedDatabasePath(
     val source: DatabasePathSource,
 )
 
+enum class StaticDatabaseMode {
+    MANAGED,
+    EXTERNAL,
+}
+
+data class ResolvedStaticDatabasePath(
+    val path: Path,
+    val source: DatabasePathSource,
+    val mode: StaticDatabaseMode,
+) {
+    val managedRoot: Path?
+        get() = if (mode == StaticDatabaseMode.MANAGED) path.parent?.parent else null
+}
+
 object DatabasePathResolver {
     const val JVM_PROPERTY = "eve.static.database"
     const val ENVIRONMENT_VARIABLE = "EVE_STATIC_DB"
@@ -67,20 +81,33 @@ object DatabasePathResolver {
         environment: Map<String, String> = System.getenv(),
         osName: String = System.getProperty("os.name"),
         userHome: Path = Path(System.getProperty("user.home")),
-    ): ResolvedDatabasePath {
+    ): ResolvedStaticDatabasePath {
         arguments.databasePath?.let {
-            return ResolvedDatabasePath(it.toAbsolutePath().normalize(), DatabasePathSource.COMMAND_LINE)
+            return ResolvedStaticDatabasePath(
+                it.toAbsolutePath().normalize(),
+                DatabasePathSource.COMMAND_LINE,
+                StaticDatabaseMode.EXTERNAL,
+            )
         }
         systemProperties[JVM_PROPERTY]?.takeIf(String::isNotBlank)?.let {
-            return ResolvedDatabasePath(Path(it).toAbsolutePath().normalize(), DatabasePathSource.JVM_PROPERTY)
+            return ResolvedStaticDatabasePath(
+                Path(it).toAbsolutePath().normalize(),
+                DatabasePathSource.JVM_PROPERTY,
+                StaticDatabaseMode.EXTERNAL,
+            )
         }
         environment[ENVIRONMENT_VARIABLE]?.takeIf(String::isNotBlank)?.let {
-            return ResolvedDatabasePath(Path(it).toAbsolutePath().normalize(), DatabasePathSource.ENVIRONMENT)
+            return ResolvedStaticDatabasePath(
+                Path(it).toAbsolutePath().normalize(),
+                DatabasePathSource.ENVIRONMENT,
+                StaticDatabaseMode.EXTERNAL,
+            )
         }
         val appData = resolveAppDataDirectory(environment, osName, userHome)
-        return ResolvedDatabasePath(
+        return ResolvedStaticDatabasePath(
             appData.resolve("EVE Static Map Planner").resolve("data").resolve("static.db").toAbsolutePath().normalize(),
             DatabasePathSource.APP_DATA,
+            StaticDatabaseMode.MANAGED,
         )
     }
 }

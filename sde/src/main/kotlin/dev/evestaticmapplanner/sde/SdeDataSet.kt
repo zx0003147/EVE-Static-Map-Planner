@@ -16,10 +16,18 @@ data class SdeDataSet(
     val sourceFiles: List<SourceFileAudit>,
 ) {
     companion object {
-        fun load(files: SdeSourceFiles, reader: JsonlReader = JsonlReader()): SdeDataSet {
+        fun load(
+            files: SdeSourceFiles,
+            reader: JsonlReader = JsonlReader(),
+            progressListener: SdeImportProgressListener = SdeImportProgressListener.NONE,
+        ): SdeDataSet {
+            progressListener.onProgress(SdeImportStage.READING_REGIONS)
             val regions = reader.read<SdeRegionRecord>(files.regions)
+            progressListener.onProgress(SdeImportStage.READING_CONSTELLATIONS)
             val constellations = reader.read<SdeConstellationRecord>(files.constellations)
+            progressListener.onProgress(SdeImportStage.READING_SYSTEMS)
             val systems = reader.read<SdeSolarSystemRecord>(files.solarSystems)
+            progressListener.onProgress(SdeImportStage.READING_STARGATES)
             val stargates = reader.read<SdeStargateRecord>(files.stargates)
             return SdeDataSet(
                 regions = regions.records.associateUniqueBy("region", SdeRegionRecord::id),

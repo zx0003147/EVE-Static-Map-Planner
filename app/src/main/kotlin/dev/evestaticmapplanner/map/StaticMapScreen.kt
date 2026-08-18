@@ -54,6 +54,7 @@ fun StaticMapScreen(
     routeViewModel: RoutePlannerViewModel,
     jumpViewModel: JumpOverlayViewModel,
     capitalViewModel: CapitalRouteViewModel,
+    onOpenStaticDataManager: () -> Unit,
 ) {
     var showAnsiblexManager by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxSize().background(Color(0xFF101923))) {
@@ -68,7 +69,7 @@ fun StaticMapScreen(
             onOpenAnsiblexManager = { showAnsiblexManager = true },
         )
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            ProjectionToolbar(state, viewModel)
+            ProjectionToolbar(state, viewModel, onOpenStaticDataManager)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.isLoading -> CenterMessage("Loading static universe…")
@@ -151,7 +152,11 @@ fun StaticMapScreen(
 }
 
 @Composable
-private fun ProjectionToolbar(state: MapUiState, viewModel: MapViewModel) {
+private fun ProjectionToolbar(
+    state: MapUiState,
+    viewModel: MapViewModel,
+    onOpenStaticDataManager: () -> Unit,
+) {
     Surface(color = Color(0xFF121D28), contentColor = Color(0xFFD7E6F2)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -167,6 +172,7 @@ private fun ProjectionToolbar(state: MapUiState, viewModel: MapViewModel) {
                 }
             }
             Spacer(Modifier.weight(1f))
+            TextButton(onClick = onOpenStaticDataManager) { Text("Static Data") }
             TextButton(onClick = viewModel::fitMap, enabled = state.scene != null) { Text("Fit Map") }
         }
     }

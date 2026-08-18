@@ -49,8 +49,11 @@ class AppArgumentsTest {
         )
 
         assertEquals(DatabasePathSource.COMMAND_LINE, commandLine.source)
+        assertEquals(StaticDatabaseMode.EXTERNAL, commandLine.mode)
         assertEquals(DatabasePathSource.JVM_PROPERTY, property.source)
+        assertEquals(StaticDatabaseMode.EXTERNAL, property.mode)
         assertEquals(DatabasePathSource.ENVIRONMENT, environment.source)
+        assertEquals(StaticDatabaseMode.EXTERNAL, environment.mode)
     }
 
     @Test
@@ -66,6 +69,7 @@ class AppArgumentsTest {
         assertEquals(DatabasePathSource.APP_DATA, result.source)
         assertTrue(result.path.toString().endsWith("EVE Static Map Planner\\data\\static.db"))
         assertTrue(!result.path.toString().contains(".sde-work"))
+        assertEquals(StaticDatabaseMode.MANAGED, result.mode)
 
         val user = UserDatabasePathResolver.resolve(
             arguments = AppArguments(),
