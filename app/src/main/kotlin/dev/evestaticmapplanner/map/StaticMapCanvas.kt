@@ -25,6 +25,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.awtEventOrNull
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.onSizeChanged
@@ -54,6 +55,7 @@ fun StaticMapCanvas(
     intersectionSystemIds: Set<Int>,
     ansiblexConnections: List<AnsiblexConnection>,
     showAnsiblexLayer: Boolean,
+    compactSystemInfo: CompactSystemInfoPresentation?,
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
     onPan: (MapPoint) -> Unit,
@@ -76,6 +78,25 @@ fun StaticMapCanvas(
     val transform = remember(viewport, state.canvasSize) { MapTransform(viewport, state.canvasSize) }
     val textMeasurer = rememberTextMeasurer()
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
+    val mapDisplayPreferences = state.appPreferences.mapDisplay
+    val labelPresentation = remember(
+        scene,
+        transform,
+        state.semanticLabelMode,
+        mapDisplayPreferences,
+        textMeasurer,
+        renderCache,
+    ) {
+        MapLabelPresentationBuilder.build(
+            scene = scene,
+            transform = transform,
+            semanticMode = state.semanticLabelMode,
+            metricsProvider = MapLabelMetricsProvider { text, type ->
+                val size = renderCache.label(text, type, mapDisplayPreferences, textMeasurer).size
+                MapSize(size.width.toDouble(), size.height.toDouble())
+            },
+        )
+    }
     val routeOverlay = remember(scene, activeRoute) {
         activeRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
     }
@@ -88,6 +109,12 @@ fun StaticMapCanvas(
     var pressedAt by remember { mutableStateOf<MapPoint?>(null) }
     var lastDragPosition by remember { mutableStateOf<MapPoint?>(null) }
     var isDragging by remember { mutableStateOf(false) }
+    var isPointerGestureBlocked by remember { mutableStateOf(false) }
+    var compactCardBounds by remember { mutableStateOf<Rect?>(null) }
+
+    LaunchedEffect(compactSystemInfo) {
+        if (compactSystemInfo == null) compactCardBounds = null
+    }
 
     LaunchedEffect(scene, viewport, state.canvasSize) {
         withFrameNanos { }
@@ -102,6 +129,7 @@ fun StaticMapCanvas(
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 event.changes.firstOrNull()?.let { change ->
+                    if (change.isConsumed || compactCardBounds.containsPoint(change.position)) return@onPointerEvent
                     onZoom(change.position.toMapPoint(), change.scrollDelta.y.toDouble())
                 }
             }
@@ -109,6 +137,15 @@ fun StaticMapCanvas(
                 if (state.contextMenu != null) return@onPointerEvent
                 val awtEvent = event.awtEventOrNull
                 val point = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
+                if (compactCardBounds.containsPoint(point)) {
+                    isPointerGestureBlocked = true
+                    pressedAt = null
+                    lastDragPosition = null
+                    isDragging = false
+                    onHoverExit()
+                    return@onPointerEvent
+                }
+                isPointerGestureBlocked = false
                 if (awtEvent?.button == java.awt.event.MouseEvent.BUTTON1) {
                     pressedAt = point
                     lastDragPosition = point
@@ -118,6 +155,15 @@ fun StaticMapCanvas(
             .onPointerEvent(PointerEventType.Move) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 val point = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
+                if (isPointerGestureBlocked) return@onPointerEvent
+                if (compactCardBounds.containsPoint(point)) {
+                    if (pressedAt != null || isDragging) isPointerGestureBlocked = true
+                    pressedAt = null
+                    lastDragPosition = null
+                    isDragging = false
+                    onHoverExit()
+                    return@onPointerEvent
+                }
                 val start = pressedAt
                 val last = lastDragPosition
                 if (start != null && last != null) {
@@ -133,15 +179,26 @@ fun StaticMapCanvas(
                 }
             }
             .onPointerEvent(PointerEventType.Exit) {
+                isPointerGestureBlocked = false
+                pressedAt = null
+                lastDragPosition = null
+                isDragging = false
                 onHoverExit()
             }
             .onPointerEvent(PointerEventType.Release) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 val awtEvent = event.awtEventOrNull
                 val point = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
+                if (isPointerGestureBlocked || compactCardBounds.containsPoint(point)) {
+                    isPointerGestureBlocked = false
+                    pressedAt = null
+                    lastDragPosition = null
+                    isDragging = false
+                    return@onPointerEvent
+                }
                 when (awtEvent?.button) {
                     java.awt.event.MouseEvent.BUTTON1 -> {
-                        if (!isDragging) onSelect(point)
+                        if (pressedAt != null && !isDragging) onSelect(point)
                         pressedAt = null
                         lastDragPosition = null
                         isDragging = false
@@ -152,7 +209,14 @@ fun StaticMapCanvas(
     ) {
         Canvas(Modifier.fillMaxSize()) {
             with(MapRenderer) {
-                drawBase(scene, transform, textMeasurer, renderCache)
+                drawBase(
+                    scene,
+                    transform,
+                    textMeasurer,
+                    renderCache,
+                    labelPresentation,
+                    mapDisplayPreferences,
+                )
             }
         }
         if (showAnsiblexLayer && ansiblexConnections.isNotEmpty()) {
@@ -195,21 +259,32 @@ fun StaticMapCanvas(
                     selectedSystemId = state.selectedSystemId,
                     textMeasurer = textMeasurer,
                     cache = renderCache,
+                    preferences = mapDisplayPreferences,
                 )
             }
+        }
+        compactSystemInfo?.let { presentation ->
+            CompactSystemInfoCard(
+                presentation = presentation,
+                onBoundsChanged = { compactCardBounds = it },
+                modifier = Modifier
+                    .align(CompactSystemInfoCardDefaults.alignment)
+                    .padding(CompactSystemInfoCardDefaults.margin)
+                    .zIndex(CompactSystemInfoCardDefaults.zIndex),
+            )
         }
         state.contextMenu?.let { menu ->
             Spacer(
                 Modifier
                     .fillMaxSize()
-                    .zIndex(9f)
+                    .zIndex(CONTEXT_DISMISS_Z_INDEX)
                     .onClick(onClick = onContextDismiss),
             )
             Surface(
                 tonalElevation = 8.dp,
                 shadowElevation = 10.dp,
                 modifier = Modifier
-                    .zIndex(10f)
+                    .zIndex(CONTEXT_MENU_Z_INDEX)
                     .offset {
                         IntOffset(
                             menu.screenPosition.x.toInt(),
@@ -257,4 +332,12 @@ fun StaticMapCanvas(
 
 private fun Offset.toMapPoint() = MapPoint(x.toDouble(), y.toDouble())
 
+internal fun Rect?.containsPoint(point: MapPoint): Boolean =
+    this?.contains(Offset(point.x.toFloat(), point.y.toFloat())) == true
+
+internal fun Rect?.containsPoint(point: Offset): Boolean =
+    this?.contains(point) == true
+
 private const val DRAG_SLOP_PX = 4.0
+internal const val CONTEXT_DISMISS_Z_INDEX = 9f
+internal const val CONTEXT_MENU_Z_INDEX = 10f

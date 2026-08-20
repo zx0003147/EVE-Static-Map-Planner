@@ -76,14 +76,14 @@ class SqliteUniverseRepository(
         }
 }
 
-private fun ResultSet.toRegion(): Region = Region(
+internal fun ResultSet.toRegion(): Region = Region(
     id = getInt("region_id"),
     name = getString("name_en"),
     position = position(),
     wormholeClassId = nullableInt("wormhole_class_id"),
 )
 
-private fun ResultSet.toConstellation(): Constellation = Constellation(
+internal fun ResultSet.toConstellation(): Constellation = Constellation(
     id = getInt("constellation_id"),
     regionId = getInt("region_id"),
     name = getString("name_en"),

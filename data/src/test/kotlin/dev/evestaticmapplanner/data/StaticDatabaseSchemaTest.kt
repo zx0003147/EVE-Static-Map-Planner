@@ -151,9 +151,14 @@ class StaticDatabaseSchemaTest {
         val map = SqliteStaticMapRepository(database).load()
 
         assertEquals(listOf(100, 200), map.systems.map { it.id })
+        assertEquals(listOf(1), map.regions.map { it.id })
+        assertEquals(listOf(10), map.constellations.map { it.id })
+        assertEquals(1, map.constellations.single().regionId)
+        assertTrue(map.systems.all { it.regionId == 1 && it.constellationId == 10 })
         assertEquals(1, map.connections.size)
         assertEquals(100, map.connections.single().firstSystemId)
         assertEquals(200, map.connections.single().secondSystemId)
+        assertEquals(1, StaticDatabaseSchema.VERSION)
     }
 
     @Test

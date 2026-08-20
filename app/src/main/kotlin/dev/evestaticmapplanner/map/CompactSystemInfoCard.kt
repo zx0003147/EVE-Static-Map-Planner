@@ -1,0 +1,189 @@
+package dev.evestaticmapplanner.map
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import dev.evestaticmapplanner.jump.JumpOverlayUiState
+import dev.evestaticmapplanner.route.RoutePlannerUiState
+import java.util.Locale
+
+data class CompactInfoField(
+    val label: String,
+    val value: String,
+)
+
+data class CompactSystemInfoPresentation(
+    val selectedSystemId: Int,
+    val title: String,
+    val subtitle: String?,
+    val isLoading: Boolean,
+    val fields: List<CompactInfoField>,
+    val ansiblexConnections: List<String>,
+    val jumpOverlayLabels: List<String>,
+    val isInJumpIntersection: Boolean,
+)
+
+object CompactSystemInfoPresentationBuilder {
+    fun build(
+        state: MapUiState,
+        routeState: RoutePlannerUiState,
+        jumpState: JumpOverlayUiState,
+    ): CompactSystemInfoPresentation? {
+        val selectedSystemId = state.selectedSystemId ?: return null
+        val fallbackName = state.scene?.nodesById?.get(selectedSystemId)?.system?.name
+            ?: "System $selectedSystemId"
+        val details = state.selectedSystemDetails?.takeIf { it.system.id == selectedSystemId }
+            ?: return CompactSystemInfoPresentation(
+                selectedSystemId = selectedSystemId,
+                title = fallbackName,
+                subtitle = null,
+                isLoading = true,
+                fields = emptyList(),
+                ansiblexConnections = emptyList(),
+                jumpOverlayLabels = emptyList(),
+                isInJumpIntersection = false,
+            )
+
+        val ansiblex = routeState.ansiblexConnections.filter {
+            it.firstSystemId == selectedSystemId || it.secondSystemId == selectedSystemId
+        }
+        val coveringOverlays = jumpState.coveringOverlays(selectedSystemId)
+        return CompactSystemInfoPresentation(
+            selectedSystemId = selectedSystemId,
+            title = details.system.name,
+            subtitle = "${details.region.name} · ${details.constellation.name}",
+            isLoading = false,
+            fields = listOf(
+                CompactInfoField("System ID", details.system.id.toString()),
+                CompactInfoField("Security", String.format(Locale.ROOT, "%.6f", details.system.securityStatus)),
+                CompactInfoField("Stargates", details.stargateCount.toString()),
+                CompactInfoField("Ansiblex", ansiblex.size.toString()),
+                CompactInfoField("Jump Coverage", coveringOverlays.size.toString()),
+            ),
+            ansiblexConnections = ansiblex.take(MAX_ANSIBLEX_DETAILS).map { connection ->
+                val other = if (connection.firstSystemId == selectedSystemId) {
+                    connection.secondSystemId
+                } else {
+                    connection.firstSystemId
+                }
+                "→ $other · ${connection.direction.name}"
+            },
+            jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },
+            isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,
+        )
+    }
+}
+
+internal object CompactSystemInfoCardDefaults {
+    val alignment: Alignment = Alignment.BottomEnd
+    val margin = 16.dp
+    val maxWidth = 340.dp
+    val maxHeight = 420.dp
+    val contentPadding = 14.dp
+    const val zIndex = 5f
+}
+
+@Composable
+fun CompactSystemInfoCard(
+    presentation: CompactSystemInfoPresentation,
+    onBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = Color(0xF2182734),
+        contentColor = Color(0xFFD7E6F2),
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, Color(0xFF415466)),
+        modifier = modifier
+            .widthIn(max = CompactSystemInfoCardDefaults.maxWidth)
+            .fillMaxWidth()
+            .heightIn(max = CompactSystemInfoCardDefaults.maxHeight)
+            .onGloballyPositioned { onBoundsChanged(it.boundsInParent()) },
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(CompactSystemInfoCardDefaults.contentPadding),
+        ) {
+            Text(
+                presentation.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            presentation.subtitle?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFAFC1D1))
+            }
+            if (presentation.isLoading) {
+                Text("Loading system details…", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+                return@Column
+            }
+            presentation.fields.forEach { field -> CompactInfoRow(field) }
+            if (presentation.ansiblexConnections.isNotEmpty()) {
+                Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
+                presentation.ansiblexConnections.forEach {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (presentation.jumpOverlayLabels.isNotEmpty()) {
+                Text("Jump Overlays", style = MaterialTheme.typography.labelMedium, color = Color(0xFFFFD166))
+                presentation.jumpOverlayLabels.forEach {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFD166))
+                }
+            }
+            if (presentation.isInJumpIntersection) {
+                Text(
+                    "In selected overlay intersection",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFFFD166),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactInfoRow(field: CompactInfoField) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            field.label,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF91A2B2),
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            field.value,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+private const val MAX_ANSIBLEX_DETAILS = 5

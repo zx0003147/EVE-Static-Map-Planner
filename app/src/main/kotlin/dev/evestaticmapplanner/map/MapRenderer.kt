@@ -18,6 +18,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
+import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 
 enum class MapDetailLevel {
     OVERVIEW,
@@ -26,16 +27,32 @@ enum class MapDetailLevel {
 }
 
 class MapRenderCache {
-    private val labels = mutableMapOf<Int, TextLayoutResult>()
+    private val labels = mutableMapOf<LabelCacheKey, TextLayoutResult>()
 
-    fun label(systemId: Int, name: String, textMeasurer: TextMeasurer): TextLayoutResult =
-        labels.getOrPut(systemId) {
+    fun label(
+        text: String,
+        type: MapLabelType,
+        preferences: MapDisplayPreferences,
+        textMeasurer: TextMeasurer,
+    ): TextLayoutResult {
+        val style = MapLabelStyleResolver.resolve(type, preferences)
+        return labels.getOrPut(LabelCacheKey(text, type, style)) {
             textMeasurer.measure(
-                text = name,
-                style = TextStyle(color = LABEL_COLOR, fontSize = 11.sp),
+                text = text,
+                style = TextStyle(
+                    fontSize = style.fontSizeSp.sp,
+                    letterSpacing = style.letterSpacingSp.sp,
+                ),
                 softWrap = false,
             )
         }
+    }
+
+    private data class LabelCacheKey(
+        val text: String,
+        val type: MapLabelType,
+        val style: MapLabelStyle,
+    )
 }
 
 object MapRenderer {
@@ -50,9 +67,19 @@ object MapRenderer {
         transform: MapTransform,
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
+        presentation: MapLabelPresentation,
+        preferences: MapDisplayPreferences,
     ) {
         drawRect(MAP_BACKGROUND)
-        val visibleBounds = transform.visibleWorldBounds(CULL_MARGIN_PX)
+
+        drawPresentedLabels(
+            labels = presentation.regionLabels.filter { it.type == MapLabelType.REGION_BACKGROUND },
+            textMeasurer = textMeasurer,
+            cache = cache,
+            preferences = preferences,
+        )
+
+        val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
         scene.edges.forEach { edge ->
             if (!edge.bounds.intersects(visibleBounds)) return@forEach
             drawLine(
@@ -64,13 +91,12 @@ object MapRenderer {
         }
 
         val level = detailLevel(transform.viewport.zoom)
-        val visibleSystemIds = scene.spatialIndex.query(visibleBounds)
         val radius = when (level) {
             MapDetailLevel.OVERVIEW -> 1.4f
             MapDetailLevel.NORMAL -> 2.2f
             MapDetailLevel.DETAIL -> 3.0f
         }
-        visibleSystemIds.forEach { systemId ->
+        presentation.visibleSystemIds.forEach { systemId ->
             val node = scene.nodesById.getValue(systemId)
             val screen = transform.worldToScreen(node.position).toOffset()
             drawCircle(
@@ -80,16 +106,23 @@ object MapRenderer {
             )
         }
 
-        if (level == MapDetailLevel.DETAIL && visibleSystemIds.size <= MAX_VISIBLE_LABELS) {
-            visibleSystemIds.forEach { systemId ->
-                val node = scene.nodesById.getValue(systemId)
-                val label = cache.label(systemId, node.system.name, textMeasurer)
-                val screen = transform.worldToScreen(node.position)
-                drawText(
-                    textLayoutResult = label,
-                    topLeft = Offset(screen.x.toFloat() + 5f, screen.y.toFloat() - label.size.height / 2f),
-                )
-            }
+        drawPresentedLabels(
+            labels = presentation.regionLabels.filter { it.type == MapLabelType.REGION_PRIMARY },
+            textMeasurer = textMeasurer,
+            cache = cache,
+            preferences = preferences,
+        )
+        drawPresentedLabels(presentation.constellationLabels, textMeasurer, cache, preferences)
+
+        presentation.systemLabelSystemIds.forEach { systemId ->
+            val node = scene.nodesById.getValue(systemId)
+            val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
+            val screen = transform.worldToScreen(node.position)
+            drawText(
+                textLayoutResult = label,
+                color = labelColor(MapLabelType.SYSTEM, preferences),
+                topLeft = Offset(screen.x.toFloat() + 5f, screen.y.toFloat() - label.size.height / 2f),
+            )
         }
     }
 
@@ -100,12 +133,13 @@ object MapRenderer {
         selectedSystemId: Int?,
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
+        preferences: MapDisplayPreferences,
     ) {
         if (selectedSystemId != null) {
-            drawHighlightedNode(scene, transform, selectedSystemId, SELECTED_COLOR, 8f, textMeasurer, cache)
+            drawHighlightedNode(scene, transform, selectedSystemId, SELECTED_COLOR, 8f, textMeasurer, cache, preferences)
         }
         if (hoveredSystemId != null && hoveredSystemId != selectedSystemId) {
-            drawHighlightedNode(scene, transform, hoveredSystemId, HOVER_COLOR, 6f, textMeasurer, cache)
+            drawHighlightedNode(scene, transform, hoveredSystemId, HOVER_COLOR, 6f, textMeasurer, cache, preferences)
         }
     }
 
@@ -222,12 +256,13 @@ object MapRenderer {
         radius: Float,
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
+        preferences: MapDisplayPreferences,
     ) {
         val node = scene.nodesById[systemId] ?: return
         val screen = transform.worldToScreen(node.position).toOffset()
         drawCircle(color = color.copy(alpha = 0.2f), radius = radius + 4f, center = screen)
         drawCircle(color = color, radius = radius, center = screen, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
-        val label = cache.label(systemId, node.system.name, textMeasurer)
+        val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
         drawRect(
             color = MAP_BACKGROUND.copy(alpha = 0.88f),
             topLeft = Offset(screen.x + radius + 3f, screen.y - label.size.height / 2f - 2f),
@@ -235,8 +270,25 @@ object MapRenderer {
         )
         drawText(
             textLayoutResult = label,
+            color = labelColor(MapLabelType.SYSTEM, preferences),
             topLeft = Offset(screen.x + radius + 6f, screen.y - label.size.height / 2f),
         )
+    }
+
+    private fun DrawScope.drawPresentedLabels(
+        labels: List<PresentedMapLabel>,
+        textMeasurer: TextMeasurer,
+        cache: MapRenderCache,
+        preferences: MapDisplayPreferences,
+    ) {
+        labels.forEach { presented ->
+            val label = cache.label(presented.text, presented.type, preferences, textMeasurer)
+            drawText(
+                textLayoutResult = label,
+                color = labelColor(presented.type, preferences),
+                topLeft = presented.screenTopLeft.toOffset(),
+            )
+        }
     }
 }
 
@@ -247,6 +299,9 @@ private val EDGE_COLOR = Color(0x553F6685)
 private val CONNECTED_NODE_COLOR = Color(0xFF75B9E7)
 private val UNCONNECTED_NODE_COLOR = Color(0xFF596673)
 private val LABEL_COLOR = Color(0xFFD7E6F2)
+private val REGION_LABEL_BASE_COLOR = Color(0xFFE8F2FA)
+private val REGION_BACKGROUND_LABEL_BASE_COLOR = Color(0xFFD7E6F2)
+private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
 private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
@@ -266,7 +321,15 @@ private val JUMP_OVERLAY_COLORS = listOf(
     Color(0xFFFF7EB6),
     Color(0xFFB8E986),
 )
-private const val CULL_MARGIN_PX = 80.0
+internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {
+    MapLabelType.SYSTEM -> LABEL_COLOR
+    MapLabelType.REGION_PRIMARY -> REGION_LABEL_BASE_COLOR.copy(alpha = MapLabelStyleResolver.resolve(type, preferences).alpha)
+    MapLabelType.REGION_BACKGROUND -> REGION_BACKGROUND_LABEL_BASE_COLOR.copy(
+        alpha = MapLabelStyleResolver.resolve(type, preferences).alpha,
+    )
+    MapLabelType.CONSTELLATION -> CONSTELLATION_LABEL_BASE_COLOR.copy(alpha = MapLabelStyleResolver.resolve(type, preferences).alpha)
+}
+
+private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
 private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0
-private const val MAX_VISIBLE_LABELS = 700

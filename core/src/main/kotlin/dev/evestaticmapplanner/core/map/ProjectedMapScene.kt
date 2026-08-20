@@ -9,6 +9,23 @@ data class ProjectedSystemNode(
     val isStargateConnected: Boolean,
 )
 
+data class ProjectedRegion(
+    val id: Int,
+    val name: String,
+    val canonicalAnchor: MapPoint,
+    val bounds: MapBounds,
+    val projectedMemberCount: Int,
+)
+
+data class ProjectedConstellation(
+    val id: Int,
+    val regionId: Int,
+    val name: String,
+    val canonicalAnchor: MapPoint,
+    val bounds: MapBounds,
+    val projectedMemberCount: Int,
+)
+
 data class ProjectedStargateEdge(
     val firstSystemId: Int,
     val secondSystemId: Int,
@@ -26,8 +43,12 @@ class ProjectedMapScene internal constructor(
     val defaultFitBounds: MapBounds,
     val omittedSystemIds: Set<Int>,
     val spatialIndex: SystemSpatialIndex,
+    val regions: List<ProjectedRegion>,
+    val constellations: List<ProjectedConstellation>,
 ) {
     val nodesById: Map<Int, ProjectedSystemNode> = nodes.associateBy { it.system.id }
+    val regionsById: Map<Int, ProjectedRegion> = regions.associateBy(ProjectedRegion::id)
+    val constellationsById: Map<Int, ProjectedConstellation> = constellations.associateBy(ProjectedConstellation::id)
 }
 
 class MapSceneBuilder {
@@ -68,6 +89,39 @@ class MapSceneBuilder {
         } else {
             sceneBounds
         }
+        val positionsByRegionId = nodes.groupBy(
+            keySelector = { it.system.regionId },
+            valueTransform = ProjectedSystemNode::position,
+        )
+        val positionsByConstellationId = nodes.groupBy(
+            keySelector = { it.system.constellationId },
+            valueTransform = ProjectedSystemNode::position,
+        )
+        val regions = data.regions.sortedBy { it.id }.mapNotNull { region ->
+            val positions = positionsByRegionId[region.id].orEmpty()
+            positions.takeIf(List<MapPoint>::isNotEmpty)?.let {
+                ProjectedRegion(
+                    id = region.id,
+                    name = region.name,
+                    canonicalAnchor = GeometricMedian.calculate(it),
+                    bounds = MapBounds.fromPoints(it),
+                    projectedMemberCount = it.size,
+                )
+            }
+        }
+        val constellations = data.constellations.sortedBy { it.id }.mapNotNull { constellation ->
+            val positions = positionsByConstellationId[constellation.id].orEmpty()
+            positions.takeIf(List<MapPoint>::isNotEmpty)?.let {
+                ProjectedConstellation(
+                    id = constellation.id,
+                    regionId = constellation.regionId,
+                    name = constellation.name,
+                    canonicalAnchor = GeometricMedian.calculate(it),
+                    bounds = MapBounds.fromPoints(it),
+                    projectedMemberCount = it.size,
+                )
+            }
+        }
         return ProjectedMapScene(
             projectionId = projection.id,
             nodes = nodes,
@@ -76,6 +130,8 @@ class MapSceneBuilder {
             defaultFitBounds = defaultFitBounds,
             omittedSystemIds = omitted,
             spatialIndex = SystemSpatialIndex.build(projectedById),
+            regions = regions,
+            constellations = constellations,
         )
     }
 }

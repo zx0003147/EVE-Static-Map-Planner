@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
@@ -28,6 +30,8 @@ import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.StaticMapScreen
+import dev.evestaticmapplanner.preferences.PreferencesWindow
+import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import dev.evestaticmapplanner.sde.update.JdkSdeHttpTransport
 import dev.evestaticmapplanner.sde.update.LatestBuildCacheStore
@@ -113,7 +117,7 @@ private fun BootstrapApplication(configuration: StartupConfiguration, onInstalle
 }
 
 @Composable
-private fun ReadyApplication(configuration: StartupConfiguration) {
+private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguration) {
     configuration.notice?.let { AppDiagnostics.warning("Static data startup notice: $it") }
     val staticRepository = remember(configuration) {
         CachingStaticMapRepository(SqliteStaticMapRepository(configuration.database.path))
@@ -125,6 +129,9 @@ private fun ReadyApplication(configuration: StartupConfiguration) {
             universeRepository = SqliteUniverseRepository(configuration.database.path),
             focusSystemName = configuration.focusSystemName,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            preferencesStore = PropertiesPreferencesStore(
+                ApplicationDirectories.root().resolve("settings.properties"),
+            ),
         )
     }
     val routeViewModel = remember(configuration) {
@@ -197,6 +204,12 @@ private fun ReadyApplication(configuration: StartupConfiguration) {
     val capitalState by capitalViewModel.state.collectAsState()
     val staticDataState by staticDataViewModel.state.collectAsState()
     var showStaticData by remember { mutableStateOf(false) }
+    var showPreferences by remember { mutableStateOf(false) }
+    MenuBar {
+        Menu("Preferences") {
+            Item("Map Display…", onClick = { showPreferences = true })
+        }
+    }
     StaticMapScreen(
         databasePath = configuration.database.path,
         userDatabasePath = configuration.userDatabase.path,
@@ -212,6 +225,15 @@ private fun ReadyApplication(configuration: StartupConfiguration) {
     )
     if (showStaticData) {
         StaticDataManagerDialog(staticDataState, staticDataViewModel) { showStaticData = false }
+    }
+    if (showPreferences) {
+        PreferencesWindow(
+            currentZoom = mapState.viewport?.zoom,
+            preferences = mapState.appPreferences,
+            onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
+            onResetDefaults = mapViewModel::resetMapDisplayPreferences,
+            onDismiss = { showPreferences = false },
+        )
     }
 }
 

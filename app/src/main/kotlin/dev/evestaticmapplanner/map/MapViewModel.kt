@@ -10,11 +10,16 @@ import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
+import dev.evestaticmapplanner.preferences.AppPreferences
+import dev.evestaticmapplanner.preferences.DefaultPreferencesStore
+import dev.evestaticmapplanner.preferences.MapDisplayPreferences
+import dev.evestaticmapplanner.preferences.PreferencesStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,15 +36,18 @@ class MapViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val sceneDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val clockNanos: () -> Long = System::nanoTime,
+    private val preferencesStore: PreferencesStore = DefaultPreferencesStore,
 ) {
     private val startedAtNanos = clockNanos()
     private val mutableState = MutableStateFlow(MapUiState())
     val state: StateFlow<MapUiState> = mutableState.asStateFlow()
 
     private var sceneCache: MapSceneCache? = null
+    private var systemNamesById: Map<Int, String> = emptyMap()
     private val detailsCache = mutableMapOf<Int, SolarSystemDetails>()
     private var pendingFocusSystemId: Int? = null
     private var sceneBuildJob: Job? = null
+    private var settingsSaveJob: Job? = null
 
     init {
         load()
@@ -49,10 +57,13 @@ class MapViewModel(
         scope.launch {
             try {
                 val loadStarted = clockNanos()
-                val data = withContext(ioDispatcher) { staticMapRepository.load() }
+                val (data, appPreferences) = withContext(ioDispatcher) {
+                    staticMapRepository.load() to preferencesStore.load()
+                }
                 val loadMillis = elapsedMillis(loadStarted)
                 val cache = MapSceneCache(data)
                 sceneCache = cache
+                systemNamesById = data.systems.associate { it.id to it.name }
                 val (scene, buildMillis) = buildScene(cache, MapProjectionId.OFFICIAL_2D)
                 val focusId = focusSystemName?.let { requested ->
                     data.systems.singleOrNull { it.name.equals(requested, ignoreCase = true) }?.id
@@ -63,6 +74,7 @@ class MapViewModel(
                     it.copy(
                         isLoading = false,
                         scene = scene,
+                        appPreferences = appPreferences,
                         selectedSystemId = focusId,
                         performance = it.performance.copy(
                             dataLoadMillis = loadMillis,
@@ -92,21 +104,29 @@ class MapViewModel(
             val focusId = pendingFocusSystemId
             if (focusId != null) {
                 scene.nodesById[focusId]?.let { node ->
-                    viewport = viewport.copy(
-                        center = node.position,
-                        zoom = (viewport.zoom * FOCUS_ZOOM_MULTIPLIER).coerceAtMost(MAX_ZOOM),
-                    )
+                    viewport = focusedViewport(viewport, node.position, current.appPreferences.mapDisplay)
                 }
                 pendingFocusSystemId = null
             }
             current.copy(
                 canvasSize = size,
                 viewports = current.viewports + (current.projectionId to viewport),
+                semanticLabelModes = current.semanticLabelModes + (
+                    current.projectionId to nextSemanticMode(current, current.projectionId, viewport.zoom)
+                ),
             )
         }
     }
 
     fun switchProjection(projectionId: MapProjectionId) {
+        switchProjection(projectionId, focusSystemId = null, focusNotice = null)
+    }
+
+    private fun switchProjection(
+        projectionId: MapProjectionId,
+        focusSystemId: Int?,
+        focusNotice: String?,
+    ) {
         val current = mutableState.value
         if (projectionId == current.projectionId || sceneBuildJob?.isActive == true) return
         val cache = sceneCache ?: return
@@ -115,16 +135,33 @@ class MapViewModel(
                 val wasCached = projectionId in cache.cachedProjectionIds()
                 val (scene, buildMillis) = buildScene(cache, projectionId)
                 mutableState.update { state ->
-                    val viewport = state.viewports[projectionId]
+                    var viewport = state.viewports[projectionId]
                         ?: state.canvasSize.takeUnless(MapSize::isEmpty)?.let {
                             MapViewport.fit(scene.defaultFitBounds, it)
                         }
+                    if (viewport != null && focusSystemId != null) {
+                        scene.nodesById[focusSystemId]?.let { node ->
+                            viewport = focusedViewport(
+                                checkNotNull(viewport),
+                                node.position,
+                                state.appPreferences.mapDisplay,
+                            )
+                        }
+                    }
                     state.copy(
                         projectionId = projectionId,
                         scene = scene,
                         hoveredSystemId = null,
                         contextMenu = null,
+                        focusNotice = focusNotice,
                         viewports = if (viewport != null) state.viewports + (projectionId to viewport) else state.viewports,
+                        semanticLabelModes = if (viewport != null) {
+                            state.semanticLabelModes + (
+                                projectionId to nextSemanticMode(state, projectionId, viewport.zoom)
+                            )
+                        } else {
+                            state.semanticLabelModes
+                        },
                         performance = if (wasCached) {
                             state.performance
                         } else {
@@ -149,11 +186,44 @@ class MapViewModel(
         mutableState.update { current ->
             val scene = current.scene ?: return@update current
             if (current.canvasSize.isEmpty) return@update current
+            val viewport = MapViewport.fit(scene.defaultFitBounds, current.canvasSize)
             current.copy(
-                viewports = current.viewports + (
-                    current.projectionId to MapViewport.fit(scene.defaultFitBounds, current.canvasSize)
+                viewports = current.viewports + (current.projectionId to viewport),
+                semanticLabelModes = current.semanticLabelModes + (
+                    current.projectionId to SemanticZoomPolicy.initialMode(
+                        viewport.zoom,
+                        current.appPreferences.mapDisplay,
+                    )
                 ),
             )
+        }
+    }
+
+    fun updateMapDisplayPreferences(preferences: MapDisplayPreferences) {
+        mutableState.update { current ->
+            current.copy(
+                appPreferences = current.appPreferences.copy(mapDisplay = preferences),
+                semanticLabelModes = current.viewports.mapValues { (_, viewport) ->
+                    SemanticZoomPolicy.initialMode(viewport.zoom, preferences)
+                },
+            )
+        }
+        schedulePreferencesSave(mutableState.value.appPreferences)
+    }
+
+    fun resetMapDisplayPreferences() {
+        val defaults = AppPreferences.Defaults
+        mutableState.update { current ->
+            current.copy(
+                appPreferences = defaults,
+                semanticLabelModes = current.viewports.mapValues { (_, viewport) ->
+                    SemanticZoomPolicy.initialMode(viewport.zoom, defaults.mapDisplay)
+                },
+            )
+        }
+        settingsSaveJob?.cancel()
+        settingsSaveJob = scope.launch {
+            withContext(ioDispatcher) { runCatching { preferencesStore.resetToDefaults() } }
         }
     }
 
@@ -164,7 +234,13 @@ class MapViewModel(
             val transform = MapTransform(viewport, current.canvasSize)
             val factor = ZOOM_BASE.pow(-scrollDelta)
             val zoomed = transform.zoomAt(screenPosition, factor, MIN_ZOOM, MAX_ZOOM)
-            current.copy(viewports = current.viewports + (current.projectionId to zoomed), contextMenu = null)
+            current.copy(
+                viewports = current.viewports + (current.projectionId to zoomed),
+                semanticLabelModes = current.semanticLabelModes + (
+                    current.projectionId to nextSemanticMode(current, current.projectionId, zoomed.zoom)
+                ),
+                contextMenu = null,
+            )
         }
     }
 
@@ -199,6 +275,40 @@ class MapViewModel(
         selectSystem(systemId)
     }
 
+    fun selectAndFocusSystem(systemId: Int) {
+        sceneBuildJob?.cancel()
+        sceneBuildJob = null
+        selectSystem(systemId)
+        val current = mutableState.value
+        val scene = current.scene ?: return
+        val node = scene.nodesById[systemId]
+        if (node != null) {
+            mutableState.update { state ->
+                val activeNode = state.scene?.nodesById?.get(systemId) ?: return@update state
+                val viewport = state.viewport ?: return@update state
+                val focused = focusedViewport(viewport, activeNode.position, state.appPreferences.mapDisplay)
+                state.copy(
+                    viewports = state.viewports + (state.projectionId to focused),
+                    semanticLabelModes = state.semanticLabelModes + (
+                        state.projectionId to nextSemanticMode(state, state.projectionId, focused.zoom)
+                    ),
+                    hoveredSystemId = null,
+                    contextMenu = null,
+                    focusNotice = null,
+                )
+            }
+            return
+        }
+        if (current.projectionId == MapProjectionId.OFFICIAL_2D && systemId in scene.omittedSystemIds) {
+            val systemName = systemNamesById[systemId] ?: systemId.toString()
+            switchProjection(
+                projectionId = MapProjectionId.REAL_XZ,
+                focusSystemId = systemId,
+                focusNotice = "$systemName is unavailable in Official 2D; switched to Real X-Z.",
+            )
+        }
+    }
+
     fun openContextMenuAt(screenPosition: MapPoint) {
         mutableState.update { current ->
             val systemId = hitTest(current, screenPosition, SELECT_RADIUS_PX)
@@ -227,6 +337,8 @@ class MapViewModel(
     }
 
     fun close() {
+        settingsSaveJob?.cancel()
+        runCatching { preferencesStore.save(mutableState.value.appPreferences) }
         scope.cancel()
     }
 
@@ -286,9 +398,40 @@ class MapViewModel(
 
     private fun elapsedMillis(started: Long): Double = (clockNanos() - started) / 1_000_000.0
 
+    private fun nextSemanticMode(
+        state: MapUiState,
+        projectionId: MapProjectionId,
+        zoom: Double,
+    ): SemanticLabelMode = state.semanticLabelModes[projectionId]?.let { current ->
+        SemanticZoomPolicy.transition(current, zoom, state.appPreferences.mapDisplay)
+    } ?: SemanticZoomPolicy.initialMode(zoom, state.appPreferences.mapDisplay)
+
+    private fun schedulePreferencesSave(preferences: AppPreferences) {
+        settingsSaveJob?.cancel()
+        settingsSaveJob = scope.launch {
+            delay(SETTINGS_SAVE_DEBOUNCE_MILLIS)
+            withContext(ioDispatcher) {
+                runCatching { preferencesStore.save(preferences) }
+            }
+        }
+    }
+
     private fun formatMillis(value: Double): String = "%.3f".format(java.util.Locale.ROOT, value)
 
     private fun formatSecurity(value: Double): String = "%.6f".format(java.util.Locale.ROOT, value)
+
+    private fun focusedViewport(
+        viewport: MapViewport,
+        target: MapPoint,
+        preferences: MapDisplayPreferences,
+    ): MapViewport {
+        val zoom = if (viewport.zoom >= preferences.systemZoomThreshold) {
+            viewport.zoom
+        } else {
+            (preferences.systemZoomThreshold * SEARCH_FOCUS_ZOOM_MARGIN).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        }
+        return MapViewport(center = target, zoom = zoom)
+    }
 }
 
 private const val HOVER_RADIUS_PX = 10.0
@@ -296,4 +439,5 @@ private const val SELECT_RADIUS_PX = 12.0
 private const val ZOOM_BASE = 1.2
 private const val MIN_ZOOM = 0.01
 private const val MAX_ZOOM = 250.0
-private const val FOCUS_ZOOM_MULTIPLIER = 8.0
+private const val SEARCH_FOCUS_ZOOM_MARGIN = 1.05
+private const val SETTINGS_SAVE_DEBOUNCE_MILLIS = 150L

@@ -41,6 +41,25 @@ class SqliteStaticMapRepository(
                     }
                 }
             }
-            StaticMapData(systems, connections)
+            val regions = connection.prepareStatement(
+                "SELECT * FROM regions ORDER BY region_id",
+            ).use { statement ->
+                statement.executeQuery().use { result ->
+                    buildList { while (result.next()) add(result.toRegion()) }
+                }
+            }
+            val constellations = connection.prepareStatement(
+                "SELECT * FROM constellations ORDER BY constellation_id",
+            ).use { statement ->
+                statement.executeQuery().use { result ->
+                    buildList { while (result.next()) add(result.toConstellation()) }
+                }
+            }
+            StaticMapData(
+                systems = systems,
+                connections = connections,
+                regions = regions,
+                constellations = constellations,
+            )
         }
 }

@@ -15,6 +15,11 @@ import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
+import dev.evestaticmapplanner.jump.JumpOverlayUiState
+import dev.evestaticmapplanner.preferences.AppPreferences
+import dev.evestaticmapplanner.preferences.MapDisplayPreferences
+import dev.evestaticmapplanner.preferences.PreferencesStore
+import dev.evestaticmapplanner.route.RoutePlannerUiState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -24,6 +29,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -87,6 +93,31 @@ class MapViewModelTest {
     }
 
     @Test
+    fun `each projection retains its own semantic zoom mode`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        assertEquals(SemanticLabelMode.SYSTEM, viewModel.state.value.semanticLabelMode)
+
+        viewModel.zoomAt(MapSize(1000.0, 700.0).center, 100.0)
+        assertEquals(SemanticLabelMode.REGION_ONLY, viewModel.state.value.semanticLabelMode)
+
+        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        advanceUntilIdle()
+        assertEquals(SemanticLabelMode.SYSTEM, viewModel.state.value.semanticLabelMode)
+
+        viewModel.switchProjection(MapProjectionId.OFFICIAL_2D)
+        advanceUntilIdle()
+        assertEquals(SemanticLabelMode.REGION_ONLY, viewModel.state.value.semanticLabelMode)
+        assertEquals(
+            SemanticLabelMode.SYSTEM,
+            viewModel.state.value.semanticLabelModes.getValue(MapProjectionId.REAL_XZ),
+        )
+    }
+
+    @Test
     fun `hover uses spatial index without details query or scene rebuild`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -116,6 +147,7 @@ class MapViewModelTest {
         advanceUntilIdle()
         viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
         val state = viewModel.state.value
+        val scene = state.scene
         val node = state.scene!!.nodesById.getValue(1)
         val screen = MapTransform(state.viewport!!, state.canvasSize).worldToScreen(node.position)
 
@@ -128,6 +160,7 @@ class MapViewModelTest {
         assertEquals("One", viewModel.state.value.selectedSystemDetails?.system?.name)
         assertEquals(1, fixture.universe.detailsQueries)
         assertNull(viewModel.state.value.contextMenu)
+        assertTrue(scene === viewModel.state.value.scene)
 
         viewModel.selectAt(screen)
         advanceUntilIdle()
@@ -135,7 +168,7 @@ class MapViewModelTest {
     }
 
     @Test
-    fun `zoom and pan only replace viewport`() = runTest {
+    fun `zoom and pan preserve scene and hierarchy anchors`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = fixture.viewModel(this, dispatcher)
@@ -143,11 +176,17 @@ class MapViewModelTest {
         viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
         val before = viewModel.state.value
 
-        viewModel.zoomAt(MapPoint(300.0, 200.0), -1.0)
+        val regionAnchor = before.scene!!.regions.single()
+        val constellationAnchor = before.scene.constellations.single()
+
+        viewModel.zoomAt(MapPoint(300.0, 200.0), 100.0)
         viewModel.panBy(MapPoint(25.0, -10.0))
 
         val after = viewModel.state.value
         assertTrue(before.scene === after.scene)
+        assertTrue(regionAnchor === after.scene.regions.single())
+        assertTrue(constellationAnchor === after.scene.constellations.single())
+        assertEquals(SemanticLabelMode.REGION_ONLY, after.semanticLabelMode)
         assertNotEquals(before.viewport, after.viewport)
         assertEquals(before.performance.sceneBuildCount, after.performance.sceneBuildCount)
     }
@@ -158,6 +197,239 @@ class MapViewModelTest {
         assertEquals(MapDetailLevel.NORMAL, MapRenderer.detailLevel(2.0))
         assertEquals(MapDetailLevel.DETAIL, MapRenderer.detailLevel(5.0))
     }
+
+    @Test
+    fun `threshold changes immediately reclassify mode without rebuilding scene or anchors`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        val before = viewModel.state.value
+        val zoom = assertNotNull(before.viewport).zoom
+        val scene = assertNotNull(before.scene)
+        val regionAnchor = scene.regions.single()
+        val constellationAnchor = scene.constellations.single()
+
+        viewModel.updateMapDisplayPreferences(
+            before.appPreferences.mapDisplay.copy(
+                constellationZoomThreshold = zoom * 2.0,
+                systemZoomThreshold = zoom * 3.0,
+            ),
+        )
+
+        val afterRegion = viewModel.state.value
+        val afterScene = assertNotNull(afterRegion.scene)
+        assertEquals(SemanticLabelMode.REGION_ONLY, afterRegion.semanticLabelMode)
+        assertTrue(scene === afterScene)
+        assertTrue(regionAnchor === afterScene.regions.single())
+        assertTrue(constellationAnchor === afterScene.constellations.single())
+        assertEquals(before.performance.sceneBuildCount, afterRegion.performance.sceneBuildCount)
+
+        viewModel.updateMapDisplayPreferences(
+            afterRegion.appPreferences.mapDisplay.copy(
+                constellationZoomThreshold = zoom / 3.0,
+                systemZoomThreshold = zoom / 2.0,
+            ),
+        )
+        assertEquals(SemanticLabelMode.SYSTEM, viewModel.state.value.semanticLabelMode)
+        assertTrue(scene === viewModel.state.value.scene)
+    }
+
+    @Test
+    fun `projections share preferences while retaining modes for their own zoom`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        viewModel.zoomAt(MapSize(1000.0, 700.0).center, 100.0)
+        assertEquals(0.01, viewModel.state.value.viewport?.zoom)
+
+        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        advanceUntilIdle()
+        val shared = MapDisplayPreferences(
+            constellationZoomThreshold = 0.02,
+            systemZoomThreshold = 0.03,
+        )
+        viewModel.updateMapDisplayPreferences(shared)
+
+        assertEquals(shared, viewModel.state.value.appPreferences.mapDisplay)
+        assertEquals(SemanticLabelMode.SYSTEM, viewModel.state.value.semanticLabelMode)
+        assertEquals(
+            SemanticLabelMode.REGION_ONLY,
+            viewModel.state.value.semanticLabelModes.getValue(MapProjectionId.OFFICIAL_2D),
+        )
+
+        viewModel.switchProjection(MapProjectionId.OFFICIAL_2D)
+        advanceUntilIdle()
+        assertEquals(shared, viewModel.state.value.appPreferences.mapDisplay)
+        assertEquals(SemanticLabelMode.REGION_ONLY, viewModel.state.value.semanticLabelMode)
+    }
+
+    @Test
+    fun `preferences persist across view model restart and reset to defaults`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store = FakePreferencesStore()
+        val first = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        advanceUntilIdle()
+        val customized = MapDisplayPreferences.Defaults.copy(
+            constellationZoomThreshold = 3.0,
+            systemZoomThreshold = 9.0,
+            regionBackgroundAlpha = 0.14f,
+        )
+
+        first.updateMapDisplayPreferences(customized)
+        advanceUntilIdle()
+        assertEquals(AppPreferences(customized), store.stored)
+
+        val restarted = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        advanceUntilIdle()
+        assertEquals(customized, restarted.state.value.appPreferences.mapDisplay)
+
+        restarted.resetMapDisplayPreferences()
+        assertEquals(AppPreferences.Defaults, restarted.state.value.appPreferences)
+        advanceUntilIdle()
+        assertEquals(AppPreferences.Defaults, store.stored)
+    }
+
+    @Test
+    fun `search focus selects target centers it and supplies compact card details`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        val scene = assertNotNull(viewModel.state.value.scene)
+        val preferences = viewModel.state.value.appPreferences
+        val routeState = RoutePlannerUiState()
+        val jumpState = JumpOverlayUiState()
+
+        viewModel.selectAndFocusSystem(2)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        val target = scene.nodesById.getValue(2)
+        val targetOnScreen = MapTransform(assertNotNull(state.viewport), state.canvasSize)
+            .worldToScreen(target.position)
+        assertEquals(2, state.selectedSystemId)
+        assertEquals("Two", state.selectedSystemDetails?.system?.name)
+        assertEquals(state.canvasSize.center, targetOnScreen)
+        assertEquals("Two", CompactSystemInfoPresentationBuilder.build(state, routeState, jumpState)?.title)
+        assertSame(scene, state.scene)
+        assertSame(preferences, state.appPreferences)
+        assertEquals(RoutePlannerUiState(), routeState)
+        assertEquals(JumpOverlayUiState(), jumpState)
+    }
+
+    @Test
+    fun `search focus raises distant zoom from current custom system threshold`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        viewModel.zoomAt(MapSize(1000.0, 700.0).center, 20.0)
+        val firstPreferences = MapDisplayPreferences(
+            constellationZoomThreshold = 5.0,
+            systemZoomThreshold = 10.0,
+        )
+        viewModel.updateMapDisplayPreferences(firstPreferences)
+        assertTrue(assertNotNull(viewModel.state.value.viewport).zoom < firstPreferences.systemZoomThreshold)
+
+        viewModel.selectAndFocusSystem(2)
+        assertEquals(10.5, viewModel.state.value.viewport?.zoom)
+        assertEquals(SemanticLabelMode.SYSTEM, viewModel.state.value.semanticLabelMode)
+
+        viewModel.zoomAt(MapSize(1000.0, 700.0).center, 20.0)
+        val updatedPreferences = firstPreferences.copy(
+            constellationZoomThreshold = 8.0,
+            systemZoomThreshold = 20.0,
+        )
+        viewModel.updateMapDisplayPreferences(updatedPreferences)
+        viewModel.selectAndFocusSystem(1)
+
+        assertEquals(21.0, viewModel.state.value.viewport?.zoom)
+        assertEquals(updatedPreferences, viewModel.state.value.appPreferences.mapDisplay)
+    }
+
+    @Test
+    fun `search focus preserves an already readable zoom`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        viewModel.updateMapDisplayPreferences(
+            MapDisplayPreferences(
+                constellationZoomThreshold = 2.0,
+                systemZoomThreshold = 6.0,
+            ),
+        )
+        val beforeZoom = assertNotNull(viewModel.state.value.viewport).zoom
+        assertTrue(beforeZoom >= 6.0)
+
+        viewModel.selectAndFocusSystem(2)
+
+        assertEquals(beforeZoom, viewModel.state.value.viewport?.zoom)
+        assertEquals(viewModel.state.value.scene?.nodesById?.getValue(2)?.position, viewModel.state.value.viewport?.center)
+    }
+
+    @Test
+    fun `search focus works in real projection without rebuilding its scene`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        advanceUntilIdle()
+        val scene = assertNotNull(viewModel.state.value.scene)
+        val builds = viewModel.state.value.performance.sceneBuildCount
+
+        viewModel.selectAndFocusSystem(3)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
+        assertEquals(scene.nodesById.getValue(3).position, state.viewport?.center)
+        assertSame(scene, state.scene)
+        assertEquals(builds, state.performance.sceneBuildCount)
+        assertNull(state.focusNotice)
+    }
+
+    @Test
+    fun `official missing search target switches to cached real projection without fake coordinates`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        advanceUntilIdle()
+        val realScene = assertNotNull(viewModel.state.value.scene)
+        val realViewportBefore = assertNotNull(viewModel.state.value.viewport)
+        val builds = viewModel.state.value.performance.sceneBuildCount
+        viewModel.switchProjection(MapProjectionId.OFFICIAL_2D)
+        advanceUntilIdle()
+        assertTrue(3 in assertNotNull(viewModel.state.value.scene).omittedSystemIds)
+
+        viewModel.selectAndFocusSystem(3)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        val expectedPosition = realScene.nodesById.getValue(3).position
+        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
+        assertEquals(3, state.selectedSystemId)
+        assertEquals("Remote", state.selectedSystemDetails?.system?.name)
+        assertEquals(expectedPosition, state.viewport?.center)
+        assertNotEquals(MapPoint(0.0, 0.0), state.viewport?.center)
+        assertEquals(realViewportBefore.zoom, state.viewport?.zoom)
+        assertTrue(state.focusNotice?.contains("switched to Real X-Z") == true)
+        assertSame(realScene, state.scene)
+        assertEquals(builds, state.performance.sceneBuildCount)
+    }
 }
 
 private class Fixture {
@@ -165,13 +437,19 @@ private class Fixture {
     private val two = system(2, "Two", 10e15, 10e15, 10e15, 10e15)
     private val remote = system(3, "Remote", 8e18, -1e19, null, null)
     private val connection = StargateConnection.between(1, 2)
-    private val mapData = StaticMapData(listOf(one, two, remote), listOf(connection))
+    private val mapData = StaticMapData(
+        systems = listOf(one, two, remote),
+        connections = listOf(connection),
+        regions = listOf(Region(1, "Region", UniversePosition(0.0, 0.0, 0.0), null)),
+        constellations = listOf(Constellation(10, 1, "Constellation", UniversePosition(0.0, 0.0, 0.0), null)),
+    )
     val universe = FakeUniverseRepository(listOf(one, two, remote))
 
     fun viewModel(
         scope: kotlinx.coroutines.CoroutineScope,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher,
         focusSystemName: String? = null,
+        preferencesStore: PreferencesStore = FakePreferencesStore(),
     ) = MapViewModel(
         staticMapRepository = StaticMapRepository { mapData },
         universeRepository = universe,
@@ -179,7 +457,20 @@ private class Fixture {
         scope = scope,
         ioDispatcher = dispatcher,
         sceneDispatcher = dispatcher,
+        preferencesStore = preferencesStore,
     )
+}
+
+private class FakePreferencesStore(
+    initial: AppPreferences = AppPreferences.Defaults,
+) : PreferencesStore {
+    var stored: AppPreferences = initial
+
+    override fun load(): AppPreferences = stored
+
+    override fun save(preferences: AppPreferences) {
+        stored = preferences
+    }
 }
 
 private class FakeUniverseRepository(
