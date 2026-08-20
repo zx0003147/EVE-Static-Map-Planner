@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.staticdata
 
+import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.StaticDatabaseMode
 import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
 import dev.evestaticmapplanner.sde.update.SdeUpdateService
@@ -41,7 +42,16 @@ class StaticDataManagerViewModel(
     init {
         if (service != null) {
             scope.launch {
-                service.state.collect { mutableState.value = it.toUiState(mode, databasePath) }
+                var lastLoggedError: String? = null
+                service.state.collect {
+                    mutableState.value = it.toUiState(mode, databasePath)
+                    if (it.error != null && it.error != lastLoggedError) {
+                        AppDiagnostics.warning("Static-data updater ${it.phase}: ${it.error}")
+                        lastLoggedError = it.error
+                    } else if (it.error == null) {
+                        lastLoggedError = null
+                    }
+                }
             }
             if (autoCheck && service.state.value.pendingBuild == null) service.checkForUpdates()
         }

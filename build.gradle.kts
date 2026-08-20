@@ -6,8 +6,12 @@ plugins {
     alias(libs.plugins.compose) apply false
 }
 
-group = "dev.evestaticmapplanner"
-version = "0.1.0-SNAPSHOT"
+val appVersion = providers.gradleProperty("appVersion").get()
+
+allprojects {
+    group = "dev.evestaticmapplanner"
+    version = appVersion
+}
 
 tasks.named("build") {
     dependsOn(

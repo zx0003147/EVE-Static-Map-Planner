@@ -80,4 +80,22 @@ class AppArgumentsTest {
         )
         assertTrue(user.path.toString().endsWith("EVE Static Map Planner\\data\\user.db"))
     }
+
+    @Test
+    fun `application directories share one app data root`() {
+        val root = ApplicationDirectories.root(
+            environment = mapOf("LOCALAPPDATA" to "C:\\Isolated"),
+            osName = "Windows 11",
+            userHome = Path("C:\\Users\\test"),
+        )
+
+        assertTrue(root.toString().endsWith("EVE Static Map Planner"))
+        assertEquals(root.resolve("data/static.db"), DatabasePathResolver.resolve(
+            arguments = AppArguments(),
+            systemProperties = emptyMap(),
+            environment = mapOf("LOCALAPPDATA" to "C:\\Isolated"),
+            osName = "Windows 11",
+            userHome = Path("C:\\Users\\test"),
+        ).path)
+    }
 }

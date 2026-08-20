@@ -2,16 +2,16 @@
 
 A small Kotlin/JVM desktop application for offline EVE Online static-map and route-planning workflows.
 
-The project is currently in **Phase 4**. It imports the four static-universe JSONL files from an already downloaded official EVE SDE, renders the static universe, plans minimum-jump Stargate routes, and optionally includes user-maintained Ansiblex connections. Manual Ansiblex data supports CSV/JSON Preview and transactional MERGE/REPLACE Apply, enable/disable, manual add, delete, and guarded clear operations.
+The project has completed the static map, normal routing, manual Ansiblex, jump-range overlay, capital-routing, and managed SDE-update phases. Phase 8 adds a self-contained Windows x64 application image and an unsigned per-user MSI installer.
 
-Capital routes, jump ranges, SDE downloading, ESI, security-weighted routes, and dynamic Thera/Turnur/Zarzakh connections are not implemented.
+V1 intentionally excludes ESI, intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
 
 ## Modules
 
-- `app`: Compose Desktop application entry point and future UI.
+- `app`: Compose Desktop UI, startup coordination, diagnostics, and Windows native distribution configuration.
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
-- `sde`: Streaming JSONL parsing, cross-file reference validation, importer, and verification CLI. It does not download the SDE.
+- `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 
 ## Requirements
 
@@ -23,9 +23,9 @@ Capital routes, jump ranges, SDE downloading, ESI, security-weighted routes, and
 .\gradlew.bat build
 ```
 
-## Run on Windows
+## Run on Windows during development
 
-Supply an existing Phase 2 database explicitly during development:
+Supply an existing database explicitly during development:
 
 ```powershell
 .\gradlew.bat :app:run --args="--database C:\path\to\static.db"
@@ -37,9 +37,32 @@ For manual acceptance, an exact system name and isolated user database can be su
 .\gradlew.bat :app:run --args="--database C:\path\to\static.db --user-database C:\path\to\user.db --focus-system Jita"
 ```
 
-Database resolution order is `--database`, the `eve.static.database` JVM property, `EVE_STATIC_DB`, then the platform application-data path. A missing database is reported and is never created automatically.
+Database resolution order is `--database`, the `eve.static.database` JVM property, `EVE_STATIC_DB`, then the platform application-data path. Without an explicit override, a missing managed database opens Static Data Setup so the application can download and build the latest official SDE.
 
 The separate user database resolves through `--user-database`, `eve.user.database`, `EVE_USER_DB`, then `%LOCALAPPDATA%\EVE Static Map Planner\data\user.db` on Windows. A missing `user.db` is created with schema version 1. An existing damaged or newer database is never deleted or silently rebuilt; the application keeps the static map and Stargate-only routing available while disabling Ansiblex.
+
+## Windows x64 distribution
+
+The self-contained application image includes its own Java runtime:
+
+```powershell
+.\gradlew.bat :app:createDistributable
+.\gradlew.bat :app:runDistributable
+```
+
+Building the unsigned MSI additionally requires WiX Toolset 4.0.6 on the build machine:
+
+```powershell
+.\gradlew.bat :app:packageMsi
+```
+
+Generated native-distribution files remain under `app/build/compose/binaries`. The installer never packages or replaces `static.db`, `user.db`, or update state under `%LOCALAPPDATA%\EVE Static Map Planner` during installation or upgrade. Uninstall intentionally removes the application together with that local data root, including managed static data, user/Ansiblex data, updater state, and logs.
+
+See `docs/windows-distribution.md` for the stable installer identity, data boundary, build environment, and acceptance checklist.
+
+### Public distribution branding review
+
+`EVE Static Map Planner` is approved only as the current local Phase 8 QA name. Before any public release, review the product name, icon, description, CCP proprietary notice, and unofficial/not-endorsed wording against the then-current CCP developer agreement and trademark requirements. The placeholder icon is an original abstract node-and-route mark and does not use CCP/EVE, RIFT, or SMT artwork.
 
 ## Manual Ansiblex import
 

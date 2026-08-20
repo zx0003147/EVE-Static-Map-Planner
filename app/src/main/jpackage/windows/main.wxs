@@ -1,0 +1,116 @@
+<?xml version="1.0" ?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <?ifdef JpIsSystemWide ?>
+    <?define JpInstallScope="perMachine"?>
+  <?else ?>
+    <?define JpInstallScope="perUser"?>
+  <?endif ?>
+
+  <?define JpProductLanguage=1033 ?>
+  <?define JpInstallerVersion=200 ?>
+  <?define JpCompressedMsi=yes ?>
+
+  <?include $(var.JpConfigDir)/overrides.wxi ?>
+
+  <?ifdef JpAllowUpgrades ?>
+    <?define JpUpgradeVersionOnlyDetectUpgrade="no"?>
+  <?else ?>
+    <?define JpUpgradeVersionOnlyDetectUpgrade="yes"?>
+  <?endif ?>
+  <?ifdef JpAllowDowngrades ?>
+    <?define JpUpgradeVersionOnlyDetectDowngrade="no"?>
+  <?else ?>
+    <?define JpUpgradeVersionOnlyDetectDowngrade="yes"?>
+  <?endif ?>
+
+  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="$(var.JpProductCode)" Scope="$(var.JpInstallScope)">
+    <SummaryInformation Manufacturer="$(var.JpAppVendor)" Description="$(var.JpAppDescription)" />
+
+    <Media Id="1" Cabinet="Data.cab" EmbedCab="yes" />
+
+    <Upgrade Id="$(var.JpProductUpgradeCode)">
+      <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectUpgrade)" Property="JP_UPGRADABLE_FOUND" Maximum="$(var.JpAppVersion)" MigrateFeatures="yes" IncludeMaximum="$(var.JpUpgradeVersionOnlyDetectUpgrade)" />
+      <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectDowngrade)" Property="JP_DOWNGRADABLE_FOUND" Minimum="$(var.JpAppVersion)" MigrateFeatures="yes" IncludeMinimum="$(var.JpUpgradeVersionOnlyDetectDowngrade)" />
+    </Upgrade>
+
+    <?ifndef JpAllowUpgrades ?>
+    <CustomAction Id="JpDisallowUpgrade" Error="!(loc.DisallowUpgradeErrorMessage)" />
+    <?endif ?>
+    <?ifndef JpAllowDowngrades ?>
+    <CustomAction Id="JpDisallowDowngrade" Error="!(loc.DowngradeErrorMessage)" />
+    <?endif ?>
+
+    <Binary Id="JpCaDll" SourceFile="wixhelper.dll" />
+    <CustomAction Id="JpFindRelatedProducts" BinaryRef="JpCaDll" DllEntry="FindRelatedProductsEx" />
+
+    <Feature Id="DefaultFeature" Title="!(loc.MainFeatureTitle)" Level="1">
+      <ComponentGroupRef Id="Shortcuts" />
+      <ComponentGroupRef Id="Files" />
+      <ComponentGroupRef Id="FileAssociations" />
+      <ComponentGroupRef Id="FragmentOsCondition" />
+    </Feature>
+
+    <CustomAction Id="JpSetARPINSTALLLOCATION" Property="ARPINSTALLLOCATION" Value="[INSTALLDIR]" />
+    <CustomAction Id="JpSetARPCOMMENTS" Property="ARPCOMMENTS" Value="$(var.JpAppDescription)" />
+    <CustomAction Id="JpSetARPCONTACT" Property="ARPCONTACT" Value="$(var.JpAppVendor)" />
+    <CustomAction Id="JpSetARPSIZE" Property="ARPSIZE" Value="$(var.JpAppSizeKb)" />
+
+    <!--
+      JDK 25.0.4+7 jpackage gives its generated RemoveFolderEx this property.
+      Clear only that path during RemoveExistingProducts so a major upgrade cannot
+      schedule recursive removal of the co-located application data.
+    -->
+    <CustomAction Id="JpSuppressRemoveFolderExDuringUpgrade" Property="RM_RF48431AECBD69377EA800D62616352F20" Value="" />
+
+    <?ifdef JpHelpURL ?>
+      <CustomAction Id="JpSetARPHELPLINK" Property="ARPHELPLINK" Value="$(var.JpHelpURL)" />
+    <?endif ?>
+
+    <?ifdef JpAboutURL ?>
+      <CustomAction Id="JpSetARPURLINFOABOUT" Property="ARPURLINFOABOUT" Value="$(var.JpAboutURL)" />
+    <?endif ?>
+
+    <?ifdef JpUpdateURL ?>
+      <CustomAction Id="JpSetARPURLUPDATEINFO" Property="ARPURLUPDATEINFO" Value="$(var.JpUpdateURL)" />
+    <?endif ?>
+
+    <?ifdef JpIcon ?>
+    <Property Id="ARPPRODUCTICON" Value="JpARPPRODUCTICON" />
+    <Icon Id="JpARPPRODUCTICON" SourceFile="$(var.JpIcon)" />
+    <?endif ?>
+
+    <UIRef Id="JpUI" />
+
+    <InstallExecuteSequence>
+      <Custom Action="JpSetARPINSTALLLOCATION" After="CostFinalize" Condition="Not Installed" />
+      <Custom Action="JpSetARPCOMMENTS" After="CostFinalize" Condition="Not Installed" />
+      <Custom Action="JpSetARPCONTACT" After="CostFinalize" Condition="Not Installed" />
+      <Custom Action="JpSetARPSIZE" After="CostFinalize" Condition="Not Installed" />
+      <?ifdef JpHelpURL ?>
+        <Custom Action="JpSetARPHELPLINK" After="CostFinalize" Condition="Not Installed" />
+      <?endif ?>
+      <?ifdef JpAboutURL ?>
+        <Custom Action="JpSetARPURLINFOABOUT" After="CostFinalize" Condition="Not Installed" />
+      <?endif ?>
+      <?ifdef JpUpdateURL ?>
+        <Custom Action="JpSetARPURLUPDATEINFO" After="CostFinalize" Condition="Not Installed" />
+      <?endif ?>
+
+      <?ifndef JpAllowUpgrades ?>
+      <Custom Action="JpDisallowUpgrade" After="JpFindRelatedProducts" Condition="JP_UPGRADABLE_FOUND" />
+      <?endif ?>
+      <?ifndef JpAllowDowngrades ?>
+      <Custom Action="JpDisallowDowngrade" After="JpFindRelatedProducts" Condition="JP_DOWNGRADABLE_FOUND" />
+      <?endif ?>
+      <LaunchConditions Before="AppSearch" />
+      <Custom Action="JpSuppressRemoveFolderExDuringUpgrade" After="AppSearch" Condition="UPGRADINGPRODUCTCODE" />
+      <RemoveExistingProducts Before="CostInitialize" />
+      <Custom Action="JpFindRelatedProducts" After="FindRelatedProducts" />
+    </InstallExecuteSequence>
+
+    <InstallUISequence>
+      <Custom Action="JpFindRelatedProducts" After="FindRelatedProducts" />
+    </InstallUISequence>
+  </Package>
+</Wix>

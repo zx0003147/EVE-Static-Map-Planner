@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -46,17 +47,33 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 fun main(arguments: Array<String>) {
+    AppDiagnostics.initialize()
+    val buildInfo = ApplicationBuildInfo.current
+    AppDiagnostics.info(
+        "Application starting: version=${buildInfo.appVersion}, commit=${buildInfo.gitCommit.take(12)}, " +
+            "target=${buildInfo.targetOs}/${buildInfo.targetArch}",
+    )
+    Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+        AppDiagnostics.fatal("Uncaught fatal exception on thread ${thread.name}", error)
+    }
+    Runtime.getRuntime().addShutdownHook(Thread(AppDiagnostics::close, "application-log-shutdown"))
     val initial = runCatching {
         StartupCoordinator().resolve(AppArguments.parse(arguments))
-    }.getOrElse { StartupResolution.Fatal(it.message ?: "Unable to resolve startup configuration") }
+    }.getOrElse {
+        AppDiagnostics.fatal("Startup configuration resolution failed", it)
+        StartupResolution.Fatal(it.message ?: "Unable to resolve startup configuration")
+    }
+    logStartupResolution(initial)
 
     application {
         val windowState = rememberWindowState(width = 1280.dp, height = 780.dp)
         var startup by remember { mutableStateOf(initial) }
+        val windowIcon = painterResource("icons/app-icon.png")
         Window(
             onCloseRequest = ::exitApplication,
             title = "EVE Static Map Planner",
             state = windowState,
+            icon = windowIcon,
         ) {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 when (val resolution = startup) {
@@ -97,7 +114,7 @@ private fun BootstrapApplication(configuration: StartupConfiguration, onInstalle
 
 @Composable
 private fun ReadyApplication(configuration: StartupConfiguration) {
-    configuration.notice?.let { println("STATIC_DATA_NOTICE $it") }
+    configuration.notice?.let { AppDiagnostics.warning("Static data startup notice: $it") }
     val staticRepository = remember(configuration) {
         CachingStaticMapRepository(SqliteStaticMapRepository(configuration.database.path))
     }
@@ -121,6 +138,7 @@ private fun ReadyApplication(configuration: StartupConfiguration) {
             )
             ansiblexRepository to importService
         }
+        userComponents.exceptionOrNull()?.let { AppDiagnostics.warning("User database initialization failed", it) }
         RoutePlannerViewModel(
             staticMapRepository = staticRepository,
             searchRepository = searchRepository,
@@ -220,4 +238,17 @@ private fun createUpdateService(
 @Composable
 private fun StartupError(message: String) {
     Text(message, modifier = Modifier.padding(24.dp))
+}
+
+private fun logStartupResolution(resolution: StartupResolution) {
+    when (resolution) {
+        is StartupResolution.Ready -> AppDiagnostics.info(
+            "Startup ready: staticMode=${resolution.configuration.database.mode}, " +
+                "staticSource=${resolution.configuration.database.source}, " +
+                "userSource=${resolution.configuration.userDatabase.source}",
+        )
+        is StartupResolution.Bootstrap -> AppDiagnostics.info("Startup requires managed static-data bootstrap")
+        is StartupResolution.ExternalPathError -> AppDiagnostics.warning("External static database validation failed: ${resolution.message}")
+        is StartupResolution.Fatal -> AppDiagnostics.fatal("Fatal startup state: ${resolution.message}")
+    }
 }

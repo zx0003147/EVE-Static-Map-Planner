@@ -103,9 +103,9 @@ object DatabasePathResolver {
                 StaticDatabaseMode.EXTERNAL,
             )
         }
-        val appData = resolveAppDataDirectory(environment, osName, userHome)
+        val appData = ApplicationDirectories.root(environment, osName, userHome)
         return ResolvedStaticDatabasePath(
-            appData.resolve("EVE Static Map Planner").resolve("data").resolve("static.db").toAbsolutePath().normalize(),
+            appData.resolve("data").resolve("static.db").toAbsolutePath().normalize(),
             DatabasePathSource.APP_DATA,
             StaticDatabaseMode.MANAGED,
         )
@@ -135,8 +135,7 @@ object UserDatabasePathResolver {
             return ResolvedDatabasePath(Path(it).toAbsolutePath().normalize(), DatabasePathSource.ENVIRONMENT)
         }
         return ResolvedDatabasePath(
-            resolveAppDataDirectory(environment, osName, userHome)
-                .resolve("EVE Static Map Planner")
+            ApplicationDirectories.root(environment, osName, userHome)
                 .resolve("data")
                 .resolve("user.db")
                 .toAbsolutePath()
@@ -146,16 +145,23 @@ object UserDatabasePathResolver {
     }
 }
 
-private fun resolveAppDataDirectory(
-    environment: Map<String, String>,
-    osName: String,
-    userHome: Path,
-): Path = if (osName.startsWith("Windows", ignoreCase = true)) {
-    environment["LOCALAPPDATA"]?.takeIf(String::isNotBlank)?.let(::Path)
-        ?: userHome.resolve("AppData").resolve("Local")
-} else if (osName.startsWith("Mac", ignoreCase = true)) {
-    userHome.resolve("Library").resolve("Application Support")
-} else {
-    environment["XDG_DATA_HOME"]?.takeIf(String::isNotBlank)?.let(::Path)
-        ?: userHome.resolve(".local").resolve("share")
+object ApplicationDirectories {
+    const val APPLICATION_NAME = "EVE Static Map Planner"
+
+    fun root(
+        environment: Map<String, String> = System.getenv(),
+        osName: String = System.getProperty("os.name"),
+        userHome: Path = Path(System.getProperty("user.home")),
+    ): Path {
+        val platformDataDirectory = if (osName.startsWith("Windows", ignoreCase = true)) {
+            environment["LOCALAPPDATA"]?.takeIf(String::isNotBlank)?.let(::Path)
+                ?: userHome.resolve("AppData").resolve("Local")
+        } else if (osName.startsWith("Mac", ignoreCase = true)) {
+            userHome.resolve("Library").resolve("Application Support")
+        } else {
+            environment["XDG_DATA_HOME"]?.takeIf(String::isNotBlank)?.let(::Path)
+                ?: userHome.resolve(".local").resolve("share")
+        }
+        return platformDataDirectory.resolve(APPLICATION_NAME).toAbsolutePath().normalize()
+    }
 }
