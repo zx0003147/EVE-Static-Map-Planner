@@ -18,6 +18,7 @@ import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
+import dev.evestaticmapplanner.preferences.MarkerPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -140,7 +141,7 @@ class MapViewModelTest {
     }
 
     @Test
-    fun `selection queries details once and context menu targets hit system`() = runTest {
+    fun `left selection queries details once and context menu targets hit system`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = fixture.viewModel(this, dispatcher)
@@ -153,7 +154,8 @@ class MapViewModelTest {
 
         viewModel.openContextMenuAt(screen)
         assertEquals(1, viewModel.state.value.contextMenu?.systemId)
-        viewModel.selectContextMenuSystem()
+        viewModel.dismissContextMenu()
+        viewModel.selectAt(screen)
         advanceUntilIdle()
 
         assertEquals(1, viewModel.state.value.selectedSystemId)
@@ -292,6 +294,35 @@ class MapViewModelTest {
         assertEquals(AppPreferences.Defaults, restarted.state.value.appPreferences)
         advanceUntilIdle()
         assertEquals(AppPreferences.Defaults, store.stored)
+    }
+
+    @Test
+    fun `marker and map display resets are isolated and persisted`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store = FakePreferencesStore()
+        val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        advanceUntilIdle()
+        val mapDisplay = MapDisplayPreferences.Defaults.copy(regionPrimaryFontSizeSp = 24f)
+        val marker = MarkerPreferences(showMarkers = false, showMarkerNames = false)
+
+        viewModel.updateMapDisplayPreferences(mapDisplay)
+        viewModel.updateMarkerPreferences(marker)
+        advanceUntilIdle()
+        viewModel.resetMapDisplayPreferences()
+        advanceUntilIdle()
+
+        assertEquals(MapDisplayPreferences.Defaults, viewModel.state.value.appPreferences.mapDisplay)
+        assertEquals(marker, viewModel.state.value.appPreferences.marker)
+        assertEquals(marker, store.stored.marker)
+
+        viewModel.updateMapDisplayPreferences(mapDisplay)
+        viewModel.resetMarkerPreferences()
+        advanceUntilIdle()
+
+        assertEquals(mapDisplay, viewModel.state.value.appPreferences.mapDisplay)
+        assertEquals(MarkerPreferences.Defaults, viewModel.state.value.appPreferences.marker)
+        assertEquals(mapDisplay, store.stored.mapDisplay)
     }
 
     @Test

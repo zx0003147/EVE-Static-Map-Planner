@@ -3,7 +3,19 @@ package dev.evestaticmapplanner.data.db
 import java.sql.Connection
 
 object UserDatabaseSchema {
-    const val VERSION = 1
+    const val VERSION = 2
+
+    internal val savedMarkersCreateStatement =
+        """
+        CREATE TABLE saved_markers (
+            system_id INTEGER PRIMARY KEY CHECK(system_id > 0),
+            name TEXT CHECK(name IS NULL OR length(trim(name)) > 0),
+            notes TEXT CHECK(notes IS NULL OR length(trim(notes)) > 0),
+            color TEXT NOT NULL CHECK(color IN ('RED', 'ORANGE', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE', 'WHITE')),
+            created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
+            updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0)
+        ) STRICT
+        """.trimIndent()
 
     private val createStatements = listOf(
         """
@@ -45,6 +57,7 @@ object UserDatabaseSchema {
         """.trimIndent(),
         "CREATE INDEX idx_ansiblex_enabled ON ansiblex_connections(enabled)",
         "CREATE INDEX idx_ansiblex_source ON ansiblex_connections(source)",
+        savedMarkersCreateStatement,
     )
 
     fun create(connection: Connection) {
@@ -52,5 +65,9 @@ object UserDatabaseSchema {
             createStatements.forEach(statement::execute)
             statement.execute("PRAGMA user_version = $VERSION")
         }
+    }
+
+    internal fun addSavedMarkers(connection: Connection) {
+        connection.createStatement().use { it.execute(savedMarkersCreateStatement) }
     }
 }

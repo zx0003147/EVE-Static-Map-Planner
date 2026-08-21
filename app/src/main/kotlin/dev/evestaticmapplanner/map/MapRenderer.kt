@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.map
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextLayoutResult
@@ -10,6 +11,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
@@ -19,6 +21,7 @@ import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
+import dev.evestaticmapplanner.marker.markerColor
 
 enum class MapDetailLevel {
     OVERVIEW,
@@ -248,6 +251,43 @@ object MapRenderer {
         }
     }
 
+    fun DrawScope.drawMarkers(
+        markers: List<PresentedMapMarker>,
+        textMeasurer: TextMeasurer,
+        cache: MapRenderCache,
+        preferences: MapDisplayPreferences,
+    ) {
+        val halfSize = (MARKER_DIAMOND_SIZE_DP / 2f).dp.toPx()
+        markers.forEach { presented ->
+            val center = presented.screenCenter.toOffset()
+            val diamond = Path().apply {
+                moveTo(center.x, center.y - halfSize)
+                lineTo(center.x + halfSize, center.y)
+                lineTo(center.x, center.y + halfSize)
+                lineTo(center.x - halfSize, center.y)
+                close()
+            }
+            val color = markerColor(presented.marker.color)
+            if (presented.visualStyle == MarkerVisualStyle.SOLID_DIAMOND) {
+                drawPath(diamond, color)
+                drawPath(diamond, Color(0xFF18232D), style = Stroke(1.dp.toPx()))
+            } else {
+                drawPath(diamond, color, style = Stroke(2.dp.toPx()))
+            }
+            presented.visibleName?.let { name ->
+                val label = cache.label(name, MapLabelType.SYSTEM, preferences, textMeasurer)
+                drawText(
+                    textLayoutResult = label,
+                    color = color,
+                    topLeft = Offset(
+                        center.x + halfSize + 4.dp.toPx(),
+                        center.y - label.size.height / 2f,
+                    ),
+                )
+            }
+        }
+    }
+
     private fun DrawScope.drawHighlightedNode(
         scene: ProjectedMapScene,
         transform: MapTransform,
@@ -333,3 +373,4 @@ internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences):
 private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
 private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0
+private const val MARKER_DIAMOND_SIZE_DP = 10f

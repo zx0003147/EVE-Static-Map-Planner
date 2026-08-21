@@ -20,13 +20,16 @@ class PreferencesStoreTest {
         assertEquals(0.07f, MapDisplayPreferences.Defaults.regionBackgroundAlpha)
         assertEquals(13f, MapDisplayPreferences.Defaults.constellationFontSizeSp)
         assertEquals(11f, MapDisplayPreferences.Defaults.systemFontSizeSp)
+        assertEquals(MarkerPreferences.Defaults, AppPreferences.Defaults.marker)
+        assertTrue(MarkerPreferences.Defaults.showMarkers)
+        assertTrue(MarkerPreferences.Defaults.showMarkerNames)
     }
 
     @Test
     fun `save writes version one and a new store reloads all values`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val expected = AppPreferences(
-            MapDisplayPreferences(
+            mapDisplay = MapDisplayPreferences(
                 constellationZoomThreshold = 3.25,
                 systemZoomThreshold = 9.5,
                 regionPrimaryFontSizeSp = 17f,
@@ -35,11 +38,13 @@ class PreferencesStoreTest {
                 constellationFontSizeSp = 14f,
                 systemFontSizeSp = 12f,
             ),
+            marker = MarkerPreferences(showMarkers = false, showMarkerNames = false),
         )
 
         PropertiesPreferencesStore(path).save(expected)
 
         assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=1" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertEquals(expected, PropertiesPreferencesStore(path).load())
     }
 
@@ -105,6 +110,20 @@ class PreferencesStoreTest {
         assertEquals(2.0, loaded.constellationZoomThreshold)
         assertEquals(6.0, loaded.systemZoomThreshold)
         assertEquals(19f, loaded.regionPrimaryFontSizeSp)
+    }
+
+    @Test
+    fun `malformed marker booleans fall back independently under version one`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(
+            path,
+            "settings.version=1\nmarker.showMarkers=false\nmarker.showMarkerNames=not-a-boolean\n",
+        )
+
+        val loaded = PropertiesPreferencesStore(path).load().marker
+
+        assertFalse(loaded.showMarkers)
+        assertTrue(loaded.showMarkerNames)
     }
 
     @Test

@@ -17,7 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +43,14 @@ import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlayBuilder
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlayBuilder
+import dev.evestaticmapplanner.core.marker.MarkerDraft
+import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.marker.MarkerContextAction
+import dev.evestaticmapplanner.marker.MarkerEditorDialog
+import dev.evestaticmapplanner.marker.MarkerEditorMode
+import dev.evestaticmapplanner.marker.MarkerEditorRequest
+import dev.evestaticmapplanner.marker.MarkerUiState
+import dev.evestaticmapplanner.marker.MarkerViewModel
 import java.nio.file.Path
 
 @Composable
@@ -51,13 +61,39 @@ fun StaticMapScreen(
     routeState: RoutePlannerUiState,
     jumpState: JumpOverlayUiState,
     capitalState: CapitalRouteUiState,
+    markerState: MarkerUiState,
     viewModel: MapViewModel,
     routeViewModel: RoutePlannerViewModel,
     jumpViewModel: JumpOverlayViewModel,
     capitalViewModel: CapitalRouteViewModel,
+    markerViewModel: MarkerViewModel,
+    suppressMarkerOperationErrorDialog: Boolean = false,
     onOpenStaticDataManager: () -> Unit,
 ) {
     var showAnsiblexManager by remember { mutableStateOf(false) }
+    var markerEditor by remember { mutableStateOf<MarkerEditorRequest?>(null) }
+    var expectedMarkerDraft by remember { mutableStateOf<MarkerDraft?>(null) }
+    var markerPendingRemoval by remember { mutableStateOf<Int?>(null) }
+    var savedRemovalStarted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(markerState.markersBySystemId, markerState.busySystemIds, markerState.operationError) {
+        val editor = markerEditor
+        val expected = expectedMarkerDraft
+        val editorSystemId = editor?.systemId
+        if (editorSystemId != null && expected != null && editorSystemId !in markerState.busySystemIds &&
+            markerState.operationError == null && markerState.markersBySystemId[editorSystemId]?.toDraft() == expected
+        ) {
+            markerEditor = null
+            expectedMarkerDraft = null
+        }
+        val removalId = markerPendingRemoval
+        if (removalId != null && savedRemovalStarted && removalId !in markerState.busySystemIds &&
+            markerState.markersBySystemId[removalId] == null
+        ) {
+            markerPendingRemoval = null
+            savedRemovalStarted = false
+        }
+    }
     Row(Modifier.fillMaxSize().background(Color(0xFF101923))) {
         RouteToolsPanel(
             state = routeState,
@@ -88,7 +124,13 @@ fun StaticMapScreen(
                         intersectionSystemIds = jumpState.intersectionSystemIds,
                         ansiblexConnections = routeState.ansiblexConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
-                        compactSystemInfo = CompactSystemInfoPresentationBuilder.build(state, routeState, jumpState),
+                        markerState = markerState,
+                        compactSystemInfo = CompactSystemInfoPresentationBuilder.build(
+                            state,
+                            routeState,
+                            jumpState,
+                            state.selectedSystemId?.let(markerState.markersBySystemId::get),
+                        ),
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
                         onZoom = viewModel::zoomAt,
                         onPan = viewModel::panBy,
@@ -96,7 +138,6 @@ fun StaticMapScreen(
                         onHoverExit = viewModel::clearHover,
                         onSelect = viewModel::selectAt,
                         onContextMenu = viewModel::openContextMenuAt,
-                        onContextSystemInfo = viewModel::selectContextMenuSystem,
                         onContextRouteStart = {
                             routeViewModel.setRouteStart(it)
                             viewModel.dismissContextMenu()
@@ -115,6 +156,39 @@ fun StaticMapScreen(
                         },
                         onContextCapitalDestination = {
                             capitalViewModel.setRouteDestination(it)
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextMarkerAction = { systemId, action ->
+                            val systemName = state.scene?.nodesById?.get(systemId)?.system?.name ?: "System $systemId"
+                            val marker = markerState.markersBySystemId[systemId]
+                            when (action) {
+                                MarkerContextAction.ADD_TEMPORARY -> markerViewModel.addTemporary(systemId)
+                                MarkerContextAction.ADD_SAVED -> markerEditor = MarkerEditorRequest(
+                                    MarkerEditorMode.CREATE_SAVED,
+                                    systemId,
+                                    systemName,
+                                )
+                                MarkerContextAction.EDIT -> marker?.let {
+                                    markerEditor = MarkerEditorRequest(
+                                        if (it.persistence == MarkerPersistence.SAVED) {
+                                            MarkerEditorMode.EDIT_SAVED
+                                        } else {
+                                            MarkerEditorMode.EDIT_TEMPORARY
+                                        },
+                                        systemId,
+                                        systemName,
+                                        it,
+                                    )
+                                }
+                                MarkerContextAction.SAVE_PERMANENTLY -> markerViewModel.saveTemporaryPermanently(systemId)
+                                MarkerContextAction.REMOVE -> if (marker?.persistence == MarkerPersistence.SAVED) {
+                                    markerPendingRemoval = systemId
+                                    savedRemovalStarted = false
+                                } else {
+                                    markerViewModel.removeTemporary(systemId)
+                                }
+                                MarkerContextAction.UNAVAILABLE -> Unit
+                            }
                             viewModel.dismissContextMenu()
                         },
                         onContextDismiss = viewModel::dismissContextMenu,
@@ -154,6 +228,76 @@ fun StaticMapScreen(
             state = routeState,
             viewModel = routeViewModel,
             onDismiss = { showAnsiblexManager = false },
+        )
+    }
+    markerEditor?.let { request ->
+        MarkerEditorDialog(
+            request = request,
+            isBusy = request.systemId?.let { it in markerState.busySystemIds } == true,
+            error = markerState.operationError,
+            onSave = { systemId, draft ->
+                when (request.mode) {
+                    MarkerEditorMode.EDIT_TEMPORARY -> if (markerViewModel.updateTemporary(systemId, draft)) {
+                        markerEditor = null
+                        expectedMarkerDraft = null
+                    }
+                    MarkerEditorMode.CREATE_SAVED -> if (markerViewModel.createSaved(systemId, draft)) {
+                        expectedMarkerDraft = draft
+                    }
+                    MarkerEditorMode.EDIT_SAVED -> if (markerViewModel.updateSaved(systemId, draft)) {
+                        expectedMarkerDraft = draft
+                    }
+                }
+            },
+            onDismiss = {
+                markerEditor = null
+                expectedMarkerDraft = null
+                markerViewModel.clearOperationError()
+            },
+        )
+    }
+    markerPendingRemoval?.let { systemId ->
+        val name = state.scene?.nodesById?.get(systemId)?.system?.name ?: "System $systemId"
+        AlertDialog(
+            onDismissRequest = {
+                if (!savedRemovalStarted) {
+                    markerPendingRemoval = null
+                    markerViewModel.clearOperationError()
+                }
+            },
+            title = { Text("Remove saved marker?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Remove the saved marker from $name? This cannot be undone.")
+                    markerState.operationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = systemId !in markerState.busySystemIds,
+                    onClick = { savedRemovalStarted = markerViewModel.removeSaved(systemId) },
+                ) { Text(if (systemId in markerState.busySystemIds) "Removing…" else "Remove") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = systemId !in markerState.busySystemIds,
+                    onClick = {
+                        markerPendingRemoval = null
+                        savedRemovalStarted = false
+                        markerViewModel.clearOperationError()
+                    },
+                ) { Text("Cancel") }
+            },
+        )
+    }
+    if (!suppressMarkerOperationErrorDialog && markerState.operationError != null &&
+        markerEditor == null && markerPendingRemoval == null
+    ) {
+        AlertDialog(
+            onDismissRequest = markerViewModel::clearOperationError,
+            title = { Text("Marker operation failed") },
+            text = { Text(checkNotNull(markerState.operationError)) },
+            confirmButton = { TextButton(onClick = markerViewModel::clearOperationError) { Text("OK") } },
         )
     }
 }

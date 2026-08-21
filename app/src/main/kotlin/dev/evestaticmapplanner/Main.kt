@@ -3,6 +3,8 @@ package dev.evestaticmapplanner
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,10 +28,14 @@ import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
 import dev.evestaticmapplanner.data.repository.SqliteAnsiblexRepository
 import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
 import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
+import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.StaticMapScreen
+import dev.evestaticmapplanner.marker.MarkerViewModel
+import dev.evestaticmapplanner.marker.MarkerManagerWindow
+import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
@@ -134,25 +140,43 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
             ),
         )
     }
-    val routeViewModel = remember(configuration) {
-        val universeRepository = SqliteUniverseRepository(configuration.database.path)
-        val userComponents = runCatching {
+    val userComponents = remember(configuration) {
+        runCatching {
             val ansiblexRepository = SqliteAnsiblexRepository(configuration.userDatabase.path)
             val importService = AnsiblexImportService(
                 userDatabasePath = configuration.userDatabase.path,
-                universeRepository = universeRepository,
+                universeRepository = SqliteUniverseRepository(configuration.database.path),
                 searchRepository = searchRepository,
             )
-            ansiblexRepository to importService
+            UserComponents(
+                ansiblexRepository = ansiblexRepository,
+                importService = importService,
+                savedMarkerRepository = SqliteSavedMarkerRepository(
+                    databasePath = configuration.userDatabase.path,
+                    initializeDatabase = false,
+                ),
+            )
+        }.also { result ->
+            result.exceptionOrNull()?.let { AppDiagnostics.warning("User database initialization failed", it) }
         }
-        userComponents.exceptionOrNull()?.let { AppDiagnostics.warning("User database initialization failed", it) }
+    }
+    val routeViewModel = remember(configuration) {
         RoutePlannerViewModel(
             staticMapRepository = staticRepository,
             searchRepository = searchRepository,
-            ansiblexRepository = userComponents.getOrNull()?.first,
-            importService = userComponents.getOrNull()?.second,
+            ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
+            importService = userComponents.getOrNull()?.importService,
             userDatabaseError = userComponents.exceptionOrNull()?.let {
                 "Ansiblex disabled: ${it.message ?: it::class.simpleName}"
+            },
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        )
+    }
+    val markerViewModel = remember(configuration) {
+        MarkerViewModel(
+            savedMarkerRepository = userComponents.getOrNull()?.savedMarkerRepository,
+            userDatabaseError = userComponents.exceptionOrNull()?.let {
+                "Markers disabled: ${it.message ?: it::class.simpleName}"
             },
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
@@ -188,12 +212,13 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         )
     }
 
-    DisposableEffect(mapViewModel, routeViewModel, jumpViewModel, capitalViewModel, staticDataViewModel) {
+    DisposableEffect(mapViewModel, routeViewModel, jumpViewModel, capitalViewModel, markerViewModel, staticDataViewModel) {
         onDispose {
             mapViewModel.close()
             routeViewModel.close()
             jumpViewModel.close()
             capitalViewModel.close()
+            markerViewModel.close()
             staticDataViewModel.close()
         }
     }
@@ -202,12 +227,31 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
     val routeState by routeViewModel.state.collectAsState()
     val jumpState by jumpViewModel.state.collectAsState()
     val capitalState by capitalViewModel.state.collectAsState()
+    val markerState by markerViewModel.state.collectAsState()
     val staticDataState by staticDataViewModel.state.collectAsState()
     var showStaticData by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
+    var showMarkerManager by remember { mutableStateOf(false) }
+    var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
+    val temporaryMarkerCount = markerState.markersBySystemId.values.count {
+        it.persistence == MarkerPersistence.TEMPORARY
+    }
     MenuBar {
+        Menu("Marker") {
+            Item(
+                "Marker Manager…",
+                enabled = !showMarkerManager,
+                onClick = { showMarkerManager = true },
+            )
+            Separator()
+            Item(
+                "Clear All Temporary Markers…",
+                enabled = temporaryMarkerCount > 0,
+                onClick = { confirmClearTemporaryMarkers = true },
+            )
+        }
         Menu("Preferences") {
-            Item("Map Display…", onClick = { showPreferences = true })
+            Item("Preferences…", onClick = { showPreferences = true })
         }
     }
     StaticMapScreen(
@@ -217,10 +261,13 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         routeState = routeState,
         jumpState = jumpState,
         capitalState = capitalState,
+        markerState = markerState,
         viewModel = mapViewModel,
         routeViewModel = routeViewModel,
         jumpViewModel = jumpViewModel,
         capitalViewModel = capitalViewModel,
+        markerViewModel = markerViewModel,
+        suppressMarkerOperationErrorDialog = showMarkerManager,
         onOpenStaticDataManager = { showStaticData = true },
     )
     if (showStaticData) {
@@ -231,11 +278,44 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
             currentZoom = mapState.viewport?.zoom,
             preferences = mapState.appPreferences,
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
-            onResetDefaults = mapViewModel::resetMapDisplayPreferences,
+            onMarkerChange = mapViewModel::updateMarkerPreferences,
+            onResetMapDisplay = mapViewModel::resetMapDisplayPreferences,
+            onResetMarker = mapViewModel::resetMarkerPreferences,
             onDismiss = { showPreferences = false },
         )
     }
+    if (showMarkerManager) {
+        MarkerManagerWindow(
+            markerState = markerState,
+            markerViewModel = markerViewModel,
+            searchRepository = searchRepository,
+            onShowOnMap = mapViewModel::selectAndFocusSystem,
+            onDismiss = { showMarkerManager = false },
+        )
+    }
+    if (confirmClearTemporaryMarkers) {
+        AlertDialog(
+            onDismissRequest = { confirmClearTemporaryMarkers = false },
+            title = { Text("Clear temporary markers?") },
+            text = { Text("Remove all $temporaryMarkerCount temporary markers? Saved markers will not be changed.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    markerViewModel.clearTemporaryMarkers()
+                    confirmClearTemporaryMarkers = false
+                }) { Text("Clear") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearTemporaryMarkers = false }) { Text("Cancel") }
+            },
+        )
+    }
 }
+
+private data class UserComponents(
+    val ansiblexRepository: SqliteAnsiblexRepository,
+    val importService: AnsiblexImportService,
+    val savedMarkerRepository: SqliteSavedMarkerRepository,
+)
 
 private fun createUpdateService(
     paths: ManagedStaticDataPaths,

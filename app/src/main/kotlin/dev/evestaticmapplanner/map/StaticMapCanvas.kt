@@ -32,6 +32,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
@@ -43,6 +44,10 @@ import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlayBuilder
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlayBuilder
+import dev.evestaticmapplanner.marker.MarkerContextAction
+import dev.evestaticmapplanner.marker.MarkerUiState
+import dev.evestaticmapplanner.marker.SystemContextAction
+import dev.evestaticmapplanner.marker.SystemContextMenuPresentationBuilder
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -55,6 +60,7 @@ fun StaticMapCanvas(
     intersectionSystemIds: Set<Int>,
     ansiblexConnections: List<AnsiblexConnection>,
     showAnsiblexLayer: Boolean,
+    markerState: MarkerUiState,
     compactSystemInfo: CompactSystemInfoPresentation?,
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
@@ -63,12 +69,12 @@ fun StaticMapCanvas(
     onHoverExit: () -> Unit,
     onSelect: (MapPoint) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
-    onContextSystemInfo: () -> Unit,
     onContextRouteStart: (Int) -> Unit,
     onContextRouteDestination: (Int) -> Unit,
     onContextJumpOverlay: (Int) -> Unit,
     onContextCapitalStart: (Int) -> Unit,
     onContextCapitalDestination: (Int) -> Unit,
+    onContextMarkerAction: (Int, MarkerContextAction) -> Unit,
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
@@ -78,6 +84,7 @@ fun StaticMapCanvas(
     val transform = remember(viewport, state.canvasSize) { MapTransform(viewport, state.canvasSize) }
     val textMeasurer = rememberTextMeasurer()
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
+    val density = LocalDensity.current
     val mapDisplayPreferences = state.appPreferences.mapDisplay
     val labelPresentation = remember(
         scene,
@@ -105,6 +112,26 @@ fun StaticMapCanvas(
     }
     val projectedCapitalRoute = remember(scene, capitalRoute) {
         capitalRoute?.let { ProjectedCapitalRouteOverlayBuilder.build(it, scene) }
+    }
+    val markerOffsetPx = with(density) { 10.dp.toPx().toDouble() }
+    val presentedMarkers = remember(
+        scene,
+        transform,
+        labelPresentation.visibleSystemIds,
+        markerState.markersBySystemId,
+        state.appPreferences.marker,
+        state.semanticLabelMode,
+        markerOffsetPx,
+    ) {
+        MarkerMapPresentationBuilder.build(
+            scene = scene,
+            transform = transform,
+            visibleSystemIds = labelPresentation.visibleSystemIds,
+            markersBySystemId = markerState.markersBySystemId,
+            preferences = state.appPreferences.marker,
+            semanticMode = state.semanticLabelMode,
+            offsetPx = markerOffsetPx,
+        )
     }
     var pressedAt by remember { mutableStateOf<MapPoint?>(null) }
     var lastDragPosition by remember { mutableStateOf<MapPoint?>(null) }
@@ -250,6 +277,13 @@ fun StaticMapCanvas(
                 with(MapRenderer) { drawCapitalRoute(scene, transform, overlay) }
             }
         }
+        if (presentedMarkers.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) {
+                    drawMarkers(presentedMarkers, textMeasurer, renderCache, mapDisplayPreferences)
+                }
+            }
+        }
         Canvas(Modifier.fillMaxSize()) {
             with(MapRenderer) {
                 drawInteraction(
@@ -294,36 +328,58 @@ fun StaticMapCanvas(
                     .width(210.dp),
             ) {
                 androidx.compose.foundation.layout.Column(Modifier.padding(vertical = 4.dp)) {
-                    Text(
-                        text = "Set Route Start",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().onClick { onContextRouteStart(menu.systemId) }.padding(10.dp),
-                    )
-                    Text(
-                        text = "Set Route Destination",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().onClick { onContextRouteDestination(menu.systemId) }.padding(10.dp),
-                    )
-                    Text(
-                        text = "Add Jump Range Overlay",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().onClick { onContextJumpOverlay(menu.systemId) }.padding(10.dp),
-                    )
-                    Text(
-                        text = "Set Capital Start",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().onClick { onContextCapitalStart(menu.systemId) }.padding(10.dp),
-                    )
-                    Text(
-                        text = "Set Capital Destination",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().onClick { onContextCapitalDestination(menu.systemId) }.padding(10.dp),
-                    )
-                    Text(
-                        text = "System Info",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().onClick(onClick = onContextSystemInfo).padding(10.dp),
-                    )
+                    SystemContextMenuPresentationBuilder.build(
+                        markerState.markersBySystemId[menu.systemId],
+                        markerState,
+                    ).forEach { item ->
+                        Text(
+                            text = item.action.label,
+                            color = if (item.enabled) androidx.compose.ui.graphics.Color.Unspecified else {
+                                androidx.compose.ui.graphics.Color(0xFF71808D)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth().onClick(enabled = item.enabled) {
+                                when (item.action) {
+                                    SystemContextAction.ADD_TEMPORARY_MARKER -> onContextMarkerAction(
+                                        menu.systemId,
+                                        MarkerContextAction.ADD_TEMPORARY,
+                                    )
+                                    SystemContextAction.ADD_SAVED_MARKER -> onContextMarkerAction(
+                                        menu.systemId,
+                                        MarkerContextAction.ADD_SAVED,
+                                    )
+                                    SystemContextAction.EDIT_MARKER -> onContextMarkerAction(
+                                        menu.systemId,
+                                        MarkerContextAction.EDIT,
+                                    )
+                                    SystemContextAction.SAVE_MARKER_PERMANENTLY -> onContextMarkerAction(
+                                        menu.systemId,
+                                        MarkerContextAction.SAVE_PERMANENTLY,
+                                    )
+                                    SystemContextAction.REMOVE_MARKER -> onContextMarkerAction(
+                                        menu.systemId,
+                                        MarkerContextAction.REMOVE,
+                                    )
+                                    SystemContextAction.MARKERS_UNAVAILABLE -> Unit
+                                    SystemContextAction.ADD_JUMP_RANGE_OVERLAY -> onContextJumpOverlay(menu.systemId)
+                                    SystemContextAction.SET_ROUTE_START -> onContextRouteStart(menu.systemId)
+                                    SystemContextAction.SET_ROUTE_DESTINATION -> onContextRouteDestination(menu.systemId)
+                                    SystemContextAction.SET_CAPITAL_START -> onContextCapitalStart(menu.systemId)
+                                    SystemContextAction.SET_CAPITAL_DESTINATION -> onContextCapitalDestination(menu.systemId)
+                                }
+                            }.padding(10.dp),
+                        )
+                        if (item.action == SystemContextAction.MARKERS_UNAVAILABLE) {
+                            markerState.databaseError?.let { error ->
+                                Text(
+                                    text = error,
+                                    color = androidx.compose.ui.graphics.Color(0xFFFF9F9F),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

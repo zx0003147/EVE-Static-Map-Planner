@@ -25,6 +25,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.route.RoutePlannerUiState
+import dev.evestaticmapplanner.core.marker.Marker
+import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.marker.markerColor
 import java.util.Locale
 
 data class CompactInfoField(
@@ -41,6 +45,15 @@ data class CompactSystemInfoPresentation(
     val ansiblexConnections: List<String>,
     val jumpOverlayLabels: List<String>,
     val isInJumpIntersection: Boolean,
+    val marker: CompactMarkerPresentation?,
+)
+
+data class CompactMarkerPresentation(
+    val glyph: String,
+    val persistenceLabel: String,
+    val name: String?,
+    val notes: String?,
+    val color: MarkerColor,
 )
 
 object CompactSystemInfoPresentationBuilder {
@@ -48,6 +61,7 @@ object CompactSystemInfoPresentationBuilder {
         state: MapUiState,
         routeState: RoutePlannerUiState,
         jumpState: JumpOverlayUiState,
+        marker: Marker? = null,
     ): CompactSystemInfoPresentation? {
         val selectedSystemId = state.selectedSystemId ?: return null
         val fallbackName = state.scene?.nodesById?.get(selectedSystemId)?.system?.name
@@ -62,6 +76,7 @@ object CompactSystemInfoPresentationBuilder {
                 ansiblexConnections = emptyList(),
                 jumpOverlayLabels = emptyList(),
                 isInJumpIntersection = false,
+                marker = marker?.toCompactPresentation(),
             )
 
         val ansiblex = routeState.ansiblexConnections.filter {
@@ -90,6 +105,7 @@ object CompactSystemInfoPresentationBuilder {
             },
             jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },
             isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,
+            marker = marker?.toCompactPresentation(),
         )
     }
 }
@@ -138,9 +154,11 @@ fun CompactSystemInfoCard(
             }
             if (presentation.isLoading) {
                 Text("Loading system details…", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
-                return@Column
+            } else {
+                presentation.fields.forEach { field -> CompactInfoRow(field) }
             }
-            presentation.fields.forEach { field -> CompactInfoRow(field) }
+            presentation.marker?.let { marker -> CompactMarkerSection(marker) }
+            if (presentation.isLoading) return@Column
             if (presentation.ansiblexConnections.isNotEmpty()) {
                 Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
                 presentation.ansiblexConnections.forEach {
@@ -160,6 +178,21 @@ fun CompactSystemInfoCard(
                     color = Color(0xFFFFD166),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CompactMarkerSection(marker: CompactMarkerPresentation) {
+    Text("Marker", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+        Text(marker.glyph, color = markerColor(marker.color), style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(marker.name ?: marker.persistenceLabel, style = MaterialTheme.typography.bodyMedium)
+            if (marker.name != null) {
+                Text(marker.persistenceLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+            }
+            marker.notes?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }
@@ -187,3 +220,11 @@ private fun CompactInfoRow(field: CompactInfoField) {
 }
 
 private const val MAX_ANSIBLEX_DETAILS = 5
+
+private fun Marker.toCompactPresentation() = CompactMarkerPresentation(
+    glyph = if (persistence == MarkerPersistence.SAVED) "◆" else "◇",
+    persistenceLabel = if (persistence == MarkerPersistence.SAVED) "Saved" else "Temporary",
+    name = name,
+    notes = notes,
+    color = color,
+)

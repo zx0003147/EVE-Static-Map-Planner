@@ -18,6 +18,9 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
+import dev.evestaticmapplanner.core.marker.Marker
+import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.route.RoutePlannerUiState
@@ -101,6 +104,57 @@ class CompactSystemInfoCardTest {
         assertEquals("1DQ1-A", first?.title)
         assertEquals("T5ZI-S", second?.title)
         assertEquals(9, second?.selectedSystemId)
+    }
+
+    @Test
+    fun `selected marker is shown in compact card even while details load`() {
+        val marker = Marker.temporary(
+            2,
+            MarkerDraft.create(name = "Staging", notes = "Form here before moving.", color = MarkerColor.PURPLE),
+        )
+        val loadingState = MapUiState(selectedSystemId = 2)
+
+        val presentation = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                loadingState,
+                RoutePlannerUiState(),
+                JumpOverlayUiState(),
+                marker,
+            ),
+        )
+
+        assertTrue(presentation.isLoading)
+        assertEquals("◇", presentation.marker?.glyph)
+        assertEquals("Temporary", presentation.marker?.persistenceLabel)
+        assertEquals("Staging", presentation.marker?.name)
+        assertEquals("Form here before moving.", presentation.marker?.notes)
+        assertEquals(MarkerColor.PURPLE, presentation.marker?.color)
+    }
+
+    @Test
+    fun `compact marker presentation distinguishes named and unnamed temporary and saved markers`() {
+        val draft = MarkerDraft.create(name = "Staging", notes = "Line one\nLine two", color = MarkerColor.GREEN)
+        val markers = listOf(
+            Marker.temporary(2) to ("◇" to "Temporary"),
+            Marker.temporary(2, draft) to ("◇" to "Temporary"),
+            Marker.saved(2, MarkerDraft.create(), Instant.EPOCH, Instant.EPOCH) to ("◆" to "Saved"),
+            Marker.saved(2, draft, Instant.EPOCH, Instant.EPOCH) to ("◆" to "Saved"),
+        )
+
+        markers.forEach { (marker, expected) ->
+            val presentation = assertNotNull(
+                CompactSystemInfoPresentationBuilder.build(
+                    selectedState(system(2, "1DQ1-A")),
+                    RoutePlannerUiState(),
+                    JumpOverlayUiState(),
+                    marker,
+                )?.marker,
+            )
+            assertEquals(expected.first, presentation.glyph)
+            assertEquals(expected.second, presentation.persistenceLabel)
+            assertEquals(marker.name, presentation.name)
+            assertEquals(marker.notes, presentation.notes)
+        }
     }
 
     @Test

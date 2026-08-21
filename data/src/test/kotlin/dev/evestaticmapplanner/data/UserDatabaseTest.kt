@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 
 class UserDatabaseTest {
     @Test
-    fun `missing user database is created with schema version one`() {
+    fun `missing user database is created with current schema version`() {
         val path = createTempDirectory("user-db-create").resolve("nested").resolve("user.db")
 
         UserDatabase.initialize(path)

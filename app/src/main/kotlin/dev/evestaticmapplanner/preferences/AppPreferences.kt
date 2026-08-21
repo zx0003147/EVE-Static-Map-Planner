@@ -8,9 +8,19 @@ import java.util.Properties
 
 data class AppPreferences(
     val mapDisplay: MapDisplayPreferences = MapDisplayPreferences.Defaults,
+    val marker: MarkerPreferences = MarkerPreferences.Defaults,
 ) {
     companion object {
         val Defaults = AppPreferences()
+    }
+}
+
+data class MarkerPreferences(
+    val showMarkers: Boolean = true,
+    val showMarkerNames: Boolean = true,
+) {
+    companion object {
+        val Defaults = MarkerPreferences()
     }
 }
 
@@ -111,6 +121,13 @@ class PropertiesPreferencesStore(
                     defaults.systemFontSizeSp,
                 ) { it in 1f..MAX_FONT_SIZE_SP },
             ),
+            marker = MarkerPreferences(
+                showMarkers = properties.validBoolean(KEY_SHOW_MARKERS, MarkerPreferences.Defaults.showMarkers),
+                showMarkerNames = properties.validBoolean(
+                    KEY_SHOW_MARKER_NAMES,
+                    MarkerPreferences.Defaults.showMarkerNames,
+                ),
+            ),
         )
     }
 
@@ -123,6 +140,7 @@ class PropertiesPreferencesStore(
         val temporary = Files.createTempFile(parent, "settings-", ".tmp")
         try {
             val mapDisplay = preferences.mapDisplay
+            val marker = preferences.marker
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_CONSTELLATION_THRESHOLD, mapDisplay.constellationZoomThreshold.toString())
@@ -132,6 +150,8 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_REGION_BACKGROUND_ALPHA, mapDisplay.regionBackgroundAlpha.toString())
                 setProperty(KEY_CONSTELLATION_FONT_SIZE, mapDisplay.constellationFontSizeSp.toString())
                 setProperty(KEY_SYSTEM_FONT_SIZE, mapDisplay.systemFontSizeSp.toString())
+                setProperty(KEY_SHOW_MARKERS, marker.showMarkers.toString())
+                setProperty(KEY_SHOW_MARKER_NAMES, marker.showMarkerNames.toString())
             }
             Files.newOutputStream(temporary).use {
                 properties.store(it, "EVE Static Map Planner preferences")
@@ -158,6 +178,12 @@ private fun Properties.validDouble(key: String, default: Double, predicate: (Dou
 private fun Properties.validFloat(key: String, default: Float, predicate: (Float) -> Boolean): Float =
     getProperty(key)?.toFloatOrNull()?.takeIf { it.isFinite() && predicate(it) } ?: default
 
+private fun Properties.validBoolean(key: String, default: Boolean): Boolean = when (getProperty(key)) {
+    "true" -> true
+    "false" -> false
+    else -> default
+}
+
 const val SETTINGS_VERSION = "1"
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
@@ -177,3 +203,5 @@ private const val KEY_REGION_BACKGROUND_FONT_SIZE = "mapDisplay.regionBackground
 private const val KEY_REGION_BACKGROUND_ALPHA = "mapDisplay.regionBackgroundAlpha"
 private const val KEY_CONSTELLATION_FONT_SIZE = "mapDisplay.constellationFontSizeSp"
 private const val KEY_SYSTEM_FONT_SIZE = "mapDisplay.systemFontSizeSp"
+private const val KEY_SHOW_MARKERS = "marker.showMarkers"
+private const val KEY_SHOW_MARKER_NAMES = "marker.showMarkerNames"

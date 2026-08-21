@@ -13,6 +13,7 @@ import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.preferences.DefaultPreferencesStore
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
+import dev.evestaticmapplanner.preferences.MarkerPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -212,19 +213,30 @@ class MapViewModel(
     }
 
     fun resetMapDisplayPreferences() {
-        val defaults = AppPreferences.Defaults
+        val defaults = MapDisplayPreferences.Defaults
         mutableState.update { current ->
             current.copy(
-                appPreferences = defaults,
+                appPreferences = current.appPreferences.copy(mapDisplay = defaults),
                 semanticLabelModes = current.viewports.mapValues { (_, viewport) ->
-                    SemanticZoomPolicy.initialMode(viewport.zoom, defaults.mapDisplay)
+                    SemanticZoomPolicy.initialMode(viewport.zoom, defaults)
                 },
             )
         }
-        settingsSaveJob?.cancel()
-        settingsSaveJob = scope.launch {
-            withContext(ioDispatcher) { runCatching { preferencesStore.resetToDefaults() } }
+        schedulePreferencesSave(mutableState.value.appPreferences)
+    }
+
+    fun updateMarkerPreferences(preferences: MarkerPreferences) {
+        mutableState.update { current ->
+            current.copy(appPreferences = current.appPreferences.copy(marker = preferences))
         }
+        schedulePreferencesSave(mutableState.value.appPreferences)
+    }
+
+    fun resetMarkerPreferences() {
+        mutableState.update { current ->
+            current.copy(appPreferences = current.appPreferences.copy(marker = MarkerPreferences.Defaults))
+        }
+        schedulePreferencesSave(mutableState.value.appPreferences)
     }
 
     fun zoomAt(screenPosition: MapPoint, scrollDelta: Double) {
@@ -316,11 +328,6 @@ class MapViewModel(
                 contextMenu = systemId?.let { MapContextMenuState(it, screenPosition) },
             )
         }
-    }
-
-    fun selectContextMenuSystem() {
-        val systemId = mutableState.value.contextMenu?.systemId ?: return
-        selectSystem(systemId)
     }
 
     fun dismissContextMenu() {
