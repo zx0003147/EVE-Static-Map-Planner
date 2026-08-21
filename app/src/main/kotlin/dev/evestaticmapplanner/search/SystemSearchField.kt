@@ -17,7 +17,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import dev.evestaticmapplanner.core.model.SolarSystem
 
 enum class SearchSuggestionsPresentation {
@@ -77,18 +83,27 @@ private fun DropdownSystemSearchField(
     modifier: Modifier,
 ) {
     var dismissed by remember(value) { mutableStateOf(false) }
+    val expanded = results.isNotEmpty() && !dismissed
     Box(modifier) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             label = { Text(label) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+                if (expanded && event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                    dismissed = true
+                    true
+                } else {
+                    false
+                }
+            },
         )
         DropdownMenu(
-            expanded = results.isNotEmpty() && !dismissed,
+            expanded = expanded,
             onDismissRequest = { dismissed = true },
             modifier = Modifier.widthIn(min = SEARCH_DROPDOWN_MIN_WIDTH, max = SEARCH_DROPDOWN_MAX_WIDTH),
+            properties = SYSTEM_SEARCH_POPUP_PROPERTIES,
         ) {
             results.take(6).forEach { system ->
                 DropdownMenuItem(
@@ -102,3 +117,4 @@ private fun DropdownSystemSearchField(
 
 internal val SEARCH_DROPDOWN_MIN_WIDTH = 260.dp
 internal val SEARCH_DROPDOWN_MAX_WIDTH = 360.dp
+internal val SYSTEM_SEARCH_POPUP_PROPERTIES = PopupProperties(focusable = false)

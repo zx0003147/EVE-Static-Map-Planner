@@ -90,6 +90,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
 
     testImplementation(kotlin("test"))
+    testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
