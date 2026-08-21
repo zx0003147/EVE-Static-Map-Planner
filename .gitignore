@@ -19,3 +19,4 @@ replay_pid*
 .sde-work/
 .toolchains/
 *.zip
+*.msi
