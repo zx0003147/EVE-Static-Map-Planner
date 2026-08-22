@@ -17,6 +17,7 @@ tasks.named("build") {
     dependsOn(
         ":app:build",
         ":control:build",
+        ":control-transport:build",
         ":core:build",
         ":data:build",
         ":sde:build",

@@ -21,6 +21,7 @@ rootProject.name = "EVE-Static-Map-Planner"
 include(
     ":app",
     ":control",
+    ":control-transport",
     ":core",
     ":data",
     ":sde",
