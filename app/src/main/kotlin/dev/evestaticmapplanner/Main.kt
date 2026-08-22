@@ -22,6 +22,11 @@ import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
+import dev.evestaticmapplanner.control.AppMapControlCoordinator
+import dev.evestaticmapplanner.control.ExistingPlanningPorts
+import dev.evestaticmapplanner.control.MapViewportControlAdapter
+import dev.evestaticmapplanner.control.MissionMapStateStore
+import dev.evestaticmapplanner.control.RepositorySystemReadPort
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
@@ -55,6 +60,7 @@ import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 fun main(arguments: Array<String>) {
     AppDiagnostics.initialize()
@@ -195,6 +201,25 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
             CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
+    val missionMapStateStore = remember(configuration) { MissionMapStateStore() }
+    val controlScope = remember(configuration) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
+    val mapControlCoordinator = remember(configuration) {
+        val planningPorts = ExistingPlanningPorts(
+            staticMapRepository = staticRepository,
+            ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
+        )
+        AppMapControlCoordinator(
+            systemReadPort = RepositorySystemReadPort(
+                searchRepository,
+                SqliteUniverseRepository(configuration.database.path),
+            ),
+            routePlanningPort = planningPorts,
+            jumpPlanningPort = planningPorts,
+            viewportControlPort = MapViewportControlAdapter(mapViewModel),
+            missionRenderStatePort = missionMapStateStore,
+            scope = controlScope,
+        )
+    }
 
     val updaterScope = remember(configuration) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     val updaterService = remember(configuration) {
@@ -212,8 +237,18 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         )
     }
 
-    DisposableEffect(mapViewModel, routeViewModel, jumpViewModel, capitalViewModel, markerViewModel, staticDataViewModel) {
+    DisposableEffect(
+        mapViewModel,
+        routeViewModel,
+        jumpViewModel,
+        capitalViewModel,
+        markerViewModel,
+        staticDataViewModel,
+        mapControlCoordinator,
+    ) {
         onDispose {
+            mapControlCoordinator.close()
+            controlScope.cancel()
             mapViewModel.close()
             routeViewModel.close()
             jumpViewModel.close()
@@ -228,6 +263,7 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
     val jumpState by jumpViewModel.state.collectAsState()
     val capitalState by capitalViewModel.state.collectAsState()
     val markerState by markerViewModel.state.collectAsState()
+    val missionState by missionMapStateStore.state.collectAsState()
     val staticDataState by staticDataViewModel.state.collectAsState()
     var showStaticData by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
@@ -262,6 +298,7 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         jumpState = jumpState,
         capitalState = capitalState,
         markerState = markerState,
+        missionState = missionState,
         viewModel = mapViewModel,
         routeViewModel = routeViewModel,
         jumpViewModel = jumpViewModel,

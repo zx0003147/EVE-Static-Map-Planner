@@ -16,6 +16,7 @@ allprojects {
 tasks.named("build") {
     dependsOn(
         ":app:build",
+        ":control:build",
         ":core:build",
         ":data:build",
         ":sde:build",

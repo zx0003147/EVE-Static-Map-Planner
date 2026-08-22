@@ -82,6 +82,7 @@ tasks.processResources {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":control"))
     implementation(project(":data"))
     implementation(project(":sde"))
     implementation(compose.desktop.currentOs)

@@ -22,6 +22,7 @@ import dev.evestaticmapplanner.preferences.MarkerPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -460,6 +461,51 @@ class MapViewModelTest {
         assertTrue(state.focusNotice?.contains("switched to Real X-Z") == true)
         assertSame(realScene, state.scene)
         assertEquals(builds, state.performance.sceneBuildCount)
+    }
+
+    @Test
+    fun `control focus is completion-aware across official projection fallback`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+
+        val completion = async { viewModel.focusSystemForControl(3) }
+        advanceUntilIdle()
+
+        assertTrue(completion.await())
+        val state = viewModel.state.value
+        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
+        assertEquals(3, state.selectedSystemId)
+        assertEquals(state.scene?.nodesById?.getValue(3)?.position, state.viewport?.center)
+    }
+
+    @Test
+    fun `control visual fit includes generated coverage and falls back without rebuilding cached scene`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        advanceUntilIdle()
+        val realScene = assertNotNull(viewModel.state.value.scene)
+        val buildCount = viewModel.state.value.performance.sceneBuildCount
+        viewModel.switchProjection(MapProjectionId.OFFICIAL_2D)
+        advanceUntilIdle()
+
+        val completion = async { viewModel.fitSystemsForControl(setOf(1, 3)) }
+        advanceUntilIdle()
+
+        assertTrue(completion.await())
+        val state = viewModel.state.value
+        val first = realScene.nodesById.getValue(1).position
+        val third = realScene.nodesById.getValue(3).position
+        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
+        assertEquals(MapPoint((first.x + third.x) / 2.0, (first.y + third.y) / 2.0), state.viewport?.center)
+        assertSame(realScene, state.scene)
+        assertEquals(buildCount, state.performance.sceneBuildCount)
     }
 }
 

@@ -22,6 +22,7 @@ import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.marker.markerColor
+import dev.evestaticmapplanner.control.mission.MissionMarker
 
 enum class MapDetailLevel {
     OVERVIEW,
@@ -251,6 +252,83 @@ object MapRenderer {
         }
     }
 
+    fun DrawScope.drawMissionRoute(transform: MapTransform, overlay: ProjectedRouteOverlay, index: Int) {
+        val color = MISSION_ROUTE_COLORS[index % MISSION_ROUTE_COLORS.size]
+        overlay.legs.forEach { leg ->
+            drawLine(
+                color = color,
+                start = transform.worldToScreen(leg.from).toOffset(),
+                end = transform.worldToScreen(leg.to).toOffset(),
+                strokeWidth = 5f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 5f)),
+            )
+        }
+    }
+
+    fun DrawScope.drawMissionCapitalRoute(transform: MapTransform, overlay: ProjectedCapitalRouteOverlay, index: Int) {
+        val color = MISSION_CAPITAL_COLORS[index % MISSION_CAPITAL_COLORS.size]
+        overlay.legs.forEach { leg ->
+            drawLine(
+                color = color,
+                start = transform.worldToScreen(leg.from).toOffset(),
+                end = transform.worldToScreen(leg.to).toOffset(),
+                strokeWidth = 5f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)),
+            )
+        }
+    }
+
+    fun DrawScope.drawMissionJumpRangeOverlays(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        overlays: List<ProjectedJumpRangeOverlay>,
+    ) {
+        overlays.forEachIndexed { index, overlay ->
+            val color = MISSION_JUMP_COLORS[index % MISSION_JUMP_COLORS.size]
+            overlay.reachableNodes.forEach { node ->
+                drawCircle(
+                    color = color.copy(alpha = 0.9f),
+                    radius = 8f + (index % 3) * 2f,
+                    center = transform.worldToScreen(node.position).toOffset(),
+                    style = Stroke(2f),
+                )
+            }
+            scene.nodesById[overlay.overlay.originSystemId]?.let { origin ->
+                val center = transform.worldToScreen(origin.position).toOffset()
+                drawCircle(color.copy(alpha = 0.28f), 14f, center)
+                drawCircle(color, 10f, center, style = Stroke(3f))
+            }
+        }
+    }
+
+    fun DrawScope.drawMissionMarkers(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        markers: List<MissionMarker>,
+        textMeasurer: TextMeasurer,
+        cache: MapRenderCache,
+        preferences: MapDisplayPreferences,
+    ) {
+        markers.forEachIndexed { index, marker ->
+            val node = scene.nodesById[marker.systemId] ?: return@forEachIndexed
+            val base = transform.worldToScreen(node.position).toOffset()
+            val center = Offset(base.x + 11f + (index % 3) * 3f, base.y - 11f - (index % 3) * 3f)
+            val color = markerColor(marker.color)
+            drawCircle(color.copy(alpha = 0.25f), 9f, center)
+            drawCircle(color, 6f, center, style = Stroke(2.5f))
+            drawLine(color, Offset(center.x - 8f, center.y), Offset(center.x + 8f, center.y), 1.5f)
+            drawLine(color, Offset(center.x, center.y - 8f), Offset(center.x, center.y + 8f), 1.5f)
+            marker.label?.let { labelText ->
+                val label = cache.label(labelText, MapLabelType.SYSTEM, preferences, textMeasurer)
+                drawText(
+                    textLayoutResult = label,
+                    color = color,
+                    topLeft = Offset(center.x + 11f, center.y - label.size.height / 2f),
+                )
+            }
+        }
+    }
+
     fun DrawScope.drawMarkers(
         markers: List<PresentedMapMarker>,
         textMeasurer: TextMeasurer,
@@ -361,6 +439,9 @@ private val JUMP_OVERLAY_COLORS = listOf(
     Color(0xFFFF7EB6),
     Color(0xFFB8E986),
 )
+private val MISSION_ROUTE_COLORS = listOf(Color(0xFFF4E06D), Color(0xFF7AE7C7), Color(0xFFFFA9E7), Color(0xFF9CCBFF))
+private val MISSION_CAPITAL_COLORS = listOf(Color(0xFFFFD166), Color(0xFFFF8FA3), Color(0xFFC7A6FF), Color(0xFF80ED99))
+private val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {
     MapLabelType.SYSTEM -> LABEL_COLOR
     MapLabelType.REGION_PRIMARY -> REGION_LABEL_BASE_COLOR.copy(alpha = MapLabelStyleResolver.resolve(type, preferences).alpha)

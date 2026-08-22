@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.map
 
 import dev.evestaticmapplanner.core.map.MapPoint
+import dev.evestaticmapplanner.core.map.MapBounds
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.MapSceneCache
 import dev.evestaticmapplanner.core.map.MapSize
@@ -319,6 +320,47 @@ class MapViewModel(
                 focusNotice = "$systemName is unavailable in Official 2D; switched to Real X-Z.",
             )
         }
+    }
+
+    /** Completion-aware control adapter entry; the existing search-focus behavior remains unchanged. */
+    suspend fun focusSystemForControl(systemId: Int): Boolean {
+        if (systemId !in systemNamesById || mutableState.value.scene == null || mutableState.value.canvasSize.isEmpty) {
+            return false
+        }
+        selectAndFocusSystem(systemId)
+        sceneBuildJob?.join()
+        val current = mutableState.value
+        val node = current.scene?.nodesById?.get(systemId) ?: return false
+        return current.selectedSystemId == systemId && current.viewport?.center == node.position
+    }
+
+    /** Fits caller-provided Mission visual systems and falls back from Official 2D when necessary. */
+    suspend fun fitSystemsForControl(systemIds: Set<Int>): Boolean {
+        if (systemIds.isEmpty() || !systemNamesById.keys.containsAll(systemIds)) return false
+        var current = mutableState.value
+        if (current.scene == null || current.canvasSize.isEmpty) return false
+        if (current.projectionId == MapProjectionId.OFFICIAL_2D && systemIds.any { it in current.scene.omittedSystemIds }) {
+            sceneBuildJob?.cancel()
+            sceneBuildJob = null
+            switchProjection(MapProjectionId.REAL_XZ, focusSystemId = null, focusNotice = null)
+            sceneBuildJob?.join()
+            current = mutableState.value
+        }
+        val scene = current.scene ?: return false
+        val points = systemIds.map { scene.nodesById[it]?.position ?: return false }
+        val viewport = MapViewport.fit(MapBounds.fromPoints(points), current.canvasSize)
+        mutableState.update { state ->
+            state.copy(
+                viewports = state.viewports + (state.projectionId to viewport),
+                semanticLabelModes = state.semanticLabelModes + (
+                    state.projectionId to SemanticZoomPolicy.initialMode(viewport.zoom, state.appPreferences.mapDisplay)
+                ),
+                hoveredSystemId = null,
+                contextMenu = null,
+                focusNotice = null,
+            )
+        }
+        return true
     }
 
     fun openContextMenuAt(screenPosition: MapPoint) {

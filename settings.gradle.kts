@@ -20,6 +20,7 @@ rootProject.name = "EVE-Static-Map-Planner"
 
 include(
     ":app",
+    ":control",
     ":core",
     ":data",
     ":sde",

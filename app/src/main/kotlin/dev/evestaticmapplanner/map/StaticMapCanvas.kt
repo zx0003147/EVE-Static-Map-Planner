@@ -48,6 +48,7 @@ import dev.evestaticmapplanner.marker.MarkerContextAction
 import dev.evestaticmapplanner.marker.MarkerUiState
 import dev.evestaticmapplanner.marker.SystemContextAction
 import dev.evestaticmapplanner.marker.SystemContextMenuPresentationBuilder
+import dev.evestaticmapplanner.control.MissionMapUiState
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -61,6 +62,7 @@ fun StaticMapCanvas(
     ansiblexConnections: List<AnsiblexConnection>,
     showAnsiblexLayer: Boolean,
     markerState: MarkerUiState,
+    missionState: MissionMapUiState,
     compactSystemInfo: CompactSystemInfoPresentation?,
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
@@ -112,6 +114,26 @@ fun StaticMapCanvas(
     }
     val projectedCapitalRoute = remember(scene, capitalRoute) {
         capitalRoute?.let { ProjectedCapitalRouteOverlayBuilder.build(it, scene) }
+    }
+    val projectedMissionNormalRoutes = remember(scene, missionState.normalRoutes) {
+        missionState.normalRoutes.map { ProjectedRouteOverlayBuilder.build(it.route, scene) }
+    }
+    val projectedMissionCapitalRoutes = remember(scene, missionState.capitalRoutes) {
+        missionState.capitalRoutes.map { ProjectedCapitalRouteOverlayBuilder.build(it.route, scene) }
+    }
+    val projectedMissionJumpRanges = remember(scene, missionState.jumpRanges) {
+        missionState.jumpRanges.map { range ->
+            ProjectedJumpRangeOverlayBuilder.build(
+                JumpRangeOverlay(
+                    id = "mission:${range.jumpRangeId.value}",
+                    originSystemId = range.originSystemId,
+                    profile = range.profile,
+                    reachableSystemIds = range.reachableSystemIds,
+                    label = range.label,
+                ),
+                scene,
+            )
+        }
     }
     val markerOffsetPx = with(density) { 10.dp.toPx().toDouble() }
     val presentedMarkers = remember(
@@ -265,6 +287,11 @@ fun StaticMapCanvas(
                 }
             }
         }
+        if (projectedMissionJumpRanges.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) { drawMissionJumpRangeOverlays(scene, transform, projectedMissionJumpRanges) }
+            }
+        }
         routeOverlay?.let { overlay ->
             Canvas(Modifier.fillMaxSize()) {
                 with(MapRenderer) {
@@ -277,10 +304,34 @@ fun StaticMapCanvas(
                 with(MapRenderer) { drawCapitalRoute(scene, transform, overlay) }
             }
         }
+        projectedMissionNormalRoutes.forEachIndexed { index, overlay ->
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) { drawMissionRoute(transform, overlay, index) }
+            }
+        }
+        projectedMissionCapitalRoutes.forEachIndexed { index, overlay ->
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) { drawMissionCapitalRoute(transform, overlay, index) }
+            }
+        }
         if (presentedMarkers.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize()) {
                 with(MapRenderer) {
                     drawMarkers(presentedMarkers, textMeasurer, renderCache, mapDisplayPreferences)
+                }
+            }
+        }
+        if (missionState.markers.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) {
+                    drawMissionMarkers(
+                        scene,
+                        transform,
+                        missionState.markers,
+                        textMeasurer,
+                        renderCache,
+                        mapDisplayPreferences,
+                    )
                 }
             }
         }
