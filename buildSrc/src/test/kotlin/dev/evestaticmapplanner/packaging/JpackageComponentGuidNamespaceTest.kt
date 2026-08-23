@@ -120,7 +120,7 @@ class JpackageComponentGuidNamespaceTest {
             shortcutProbe,
             output,
             PLANNER_NAMESPACE,
-            excludedShortcutLauncherName = "EVE Map MCP Bridge",
+            excludedShortcutLauncherNames = setOf("EVE Map MCP Bridge"),
         )
 
         assertEquals(setOf("mcpMenu", "mcpDesktop"), result.removedShortcutComponentIds)
@@ -130,7 +130,7 @@ class JpackageComponentGuidNamespaceTest {
         JpackageComponentGuidNamespace.assertOnlyExpectedChanges(
             source,
             output,
-            excludedShortcutLauncherName = "EVE Map MCP Bridge",
+            excludedShortcutLauncherNames = setOf("EVE Map MCP Bridge"),
         )
     }
 

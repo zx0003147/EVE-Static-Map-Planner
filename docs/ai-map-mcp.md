@@ -3,7 +3,7 @@
 The `mcp` module is a local STDIO-only bridge between Codex and a running EVE Static Map Planner instance:
 
 ```text
-Codex -> MCP STDIO -> EVE Map MCP Bridge
+Codex -> Plugin bundled MCP -> eve-map-mcp.exe
       -> secure per-session discovery -> authenticated 127.0.0.1 HTTP
       -> Map Control API -> temporary Mission state
 ```
@@ -26,25 +26,28 @@ mcp/build/launcher/EVE Map MCP Bridge/EVE Map MCP Bridge.exe
 
 The development image contains a bundled Java runtime. Starting the `.exe` does not require Gradle, a system JDK, a shell wrapper, or command-line arguments. It is a console launcher so stdin/stdout pipes remain available to the MCP client.
 
-## Windows 0.2.0 distribution
+## Windows 0.2.1 distribution
 
 The Windows MSI installs the bridge as a second native jpackage launcher in the same product image as the desktop app:
 
 ```text
 <actual install root>\
 ├─ EVE Static Map Planner.exe
-├─ EVE Map MCP Bridge.exe
+├─ EVE Map MCP Bridge.exe       # 0.2.0 compatibility entry
+├─ eve-map-mcp.exe              # stable Plugin command
 ├─ app\
 └─ runtime\
 ```
 
-Both launchers use the one installed jlink runtime. The GUI launcher keeps its Compose classpath and Windows GUI subsystem. `EVE Map MCP Bridge.exe` uses the console subsystem, starts `dev.evestaticmapplanner.mcp.MainKt`, and has a production-only classpath under `app\mcp`. It receives no Start Menu or desktop shortcut and creates no second Installed Apps entry.
+All three launchers use the one installed jlink runtime. The GUI launcher keeps its Compose classpath and Windows GUI subsystem. Both MCP launchers use the console subsystem, start `dev.evestaticmapplanner.mcp.MainKt`, and have identical production-only classpaths under `app\mcp`. Neither MCP launcher receives a Start Menu or desktop shortcut or creates another Installed Apps entry.
+
+The per-user MSI appends the product install directory to the user's `PATH` through the Windows Installer `Environment` table. Install and repair are idempotent, and uninstall removes only the product-owned entry. A newly started Codex process can therefore resolve `eve-map-mcp.exe` without an absolute path or shell. Already-running processes retain their inherited environment and must be restarted after install or upgrade.
 
 The MSI contains no control discovery descriptor, session key, lock, database, preferences, or other user state. `active-instance.json`, `session.key`, and `active.lock` are created only beneath `%LOCALAPPDATA%\EVE Static Map Planner\control` after the running app enables AI Control. The bridge remains STDIO-only and its installed classpath excludes Ktor HTTP/SSE/WebSocket server runtimes.
 
-## Development registration
+## Development-only registration
 
-Use the official Codex CLI with the launcher's absolute path:
+An unpackaged developer may temporarily register the standalone build with the official Codex CLI:
 
 ```powershell
 codex mcp add eve-static-map -- "C:\absolute\path\to\EVE Map MCP Bridge.exe"
@@ -59,17 +62,15 @@ To remove only this development registration:
 codex mcp remove eve-static-map
 ```
 
-## Migrate registration after installing 0.2.0
+## Migrate from the 0.2.0 Gate B registration
 
-Do not migrate a working development registration until the 0.2.0 MSI has been installed and the actual install path has been confirmed. Then replace only the launcher command, using the real path reported by Windows rather than a project or build path:
+After upgrading the map to 0.2.1 and the EVE Map Assistant Plugin to 0.2.0, remove only the legacy global registration once:
 
 ```powershell
 codex mcp remove eve-static-map
-codex mcp add eve-static-map -- "<actual install root>\EVE Map MCP Bridge.exe"
-codex mcp get eve-static-map
 ```
 
-Open a new Codex task after registration. With the map closed, initialization and `tools/list` should still succeed while a map tool returns `APP_DISCONNECTED`. With the map running and AI Control enabled, perform a light end-to-end check such as search, focus, begin mission, show route, add marker, show jump range, and clear mission.
+Do not add it again: Plugin 0.2.0 bundles `eve-static-map` with command `eve-map-mcp.exe`. Fully restart Codex so it inherits the updated PATH and loads the Plugin MCP. With the map closed, initialization and `tools/list` should still succeed while a map tool returns `APP_DISCONNECTED`. With the map running and AI Control enabled, perform a light end-to-end check such as search, focus, begin mission, show route, add marker, show jump range, and clear mission.
 
 ## Fixed tool surface
 

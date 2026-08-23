@@ -1,80 +1,65 @@
 # EVE Map Assistant Integration
 
-EVE Map Assistant is a separately distributed Codex Plugin and Skill for EVE Static Map Planner. This repository provides the map application and `eve-static-map` MCP bridge; it no longer contains the Plugin implementation or Plugin-specific QA.
+EVE Map Assistant is a separately distributed Codex Plugin and Skill for EVE Static Map Planner. Its source, marketplace metadata, Skill instructions, bundled MCP definition, and Plugin-specific QA live in the sibling `EVE-Map-Assistant-Plugin` repository.
 
-The current standalone source repository is a sibling local repository named `EVE-Map-Assistant-Plugin`.
+Repository: [zx0003147/EVE-Map-Assistant-Plugin](https://github.com/zx0003147/EVE-Map-Assistant-Plugin)
 
-Repository URL: pending publication.
+## Gate A prerequisites
 
-## Prerequisites
+- EVE Static Map Planner 0.2.1 or later is installed.
+- The MSI has registered its install directory on the per-user PATH.
+- Start the map and enable **Preferences > AI Control** before map operations.
+- EVE Map Assistant Plugin 0.2.0 or later is installed.
+- Fully restart Codex after installing or upgrading the map so the new process inherits PATH.
 
-- EVE Static Map Planner 0.2.0 is installed.
-- The installed bridge is at `%LOCALAPPDATA%\EVE Static Map Planner\EVE Map MCP Bridge.exe`.
-- Start the map and enable **Preferences > AI Control** before performing map operations.
-- The `eve-static-map` MCP server is registered and enabled in Codex.
-- **EVE Map Assistant** is installed from the standalone repository's `personal` marketplace.
-- Use a Codex client that supports local plugins and local STDIO MCP servers.
-
-## Gate B: why MCP registration is separate
-
-The current official plugin format can bundle a local STDIO MCP command, but it does not document expansion of `%LOCALAPPDATA%` inside that command. Under Gate B, the plugin itself does not embed or launch an MCP executable path, does not contain `.mcp.json`, and does not hard-code a Windows username. Register the installed bridge once with the official Codex CLI using its actual absolute path:
+Plugin 0.2.0 bundles an `eve-static-map` local STDIO definition whose command is `eve-map-mcp.exe`. The command resolves through Windows PATH and starts `dev.evestaticmapplanner.mcp.MainKt` directly. It does not use a shell, absolute path, Windows username, control port, or credential. Normal installation no longer uses `codex mcp add`.
 
 ```text
-codex mcp add eve-static-map -- "<actual install root>\EVE Map MCP Bridge.exe"
-codex mcp get eve-static-map
+Map MSI -> stable eve-map-mcp.exe + per-user PATH
+Plugin  -> bundled eve-static-map definition + Skill
+Codex   -> direct STDIO process
 ```
 
-The executable path is one argument even though it contains spaces. Start the bridge directly; do not place a command interpreter or script wrapper in front of it. The registration contains no control port or credential.
+## Install the standalone Plugin
 
-To remove this MCP registration:
+1. Install or upgrade the map to 0.2.1 or later.
+2. Open the standalone Plugin repository.
+3. Run `codex plugin marketplace add "."`, then install with `codex plugin add eve-map-assistant@personal` or the Plugins Directory.
+4. Fully restart Codex and open a new task.
+5. Use `@EVE Map Assistant`.
+
+## Legacy Gate B migration
+
+Codex 0.149.0 gives a same-named global MCP configuration precedence over a discovered Plugin MCP. This does not create a fatal conflict, but the old registration masks the bundled command. After the 0.2.1 Map and 0.2.0 Plugin are ready, remove only the old global registration:
 
 ```text
 codex mcp remove eve-static-map
 ```
 
-## Standalone Plugin repository
-
-Plugin source, marketplace metadata, Skill instructions, and Plugin-specific contract validation are maintained only in `EVE-Map-Assistant-Plugin`. The Plugin remains independently versioned and distributed from the map application.
-
-1. Open the standalone Plugin repository, not this map repository.
-2. Run `codex plugin marketplace add "."` from the standalone repository root, then confirm it with `codex plugin marketplace list`.
-3. Open the Plugins Directory and install **EVE Map Assistant**, or run `codex plugin add eve-map-assistant@personal`.
-4. Start a new Codex task so the installed plugin copy, bundled skill, and MCP dependency are loaded.
-
-To remove it, use the plugin's menu in the Plugins Directory, or use the official CLI after confirming the marketplace name:
-
-```text
-codex plugin remove eve-map-assistant@personal
-```
-
-If you explicitly added the standalone repository as the `personal` marketplace and no longer need that source, remove it after uninstalling the Plugin with `codex plugin marketplace remove personal`.
+Do not run another `codex mcp add`. Neither the Map installer nor Plugin changes Codex configuration automatically.
 
 ## Quick checks
 
-Query-only check:
+Query only:
 
 ```text
 Calculate the normal route from Jita to Amarr and tell me the jump count. Do not display it on the map.
 ```
 
-Visual check:
+Mission display:
 
 ```text
 Create a temporary map mission named Delve Move, show the requested normal route, add RALLY and DESTINATION markers, show a 5 LY jump range, and fit the mission.
 ```
 
-The first prompt must not create a Mission or display a route. The second should use only Mission-owned temporary objects. Capital requests must use the capital tools and require an explicit effective jump range.
+The first prompt must not create a Mission or display a route. The second must use only Mission-owned temporary objects. Capital requests require an explicit effective jump range.
 
 ## Disconnected and safety behavior
 
-`APP_DISCONNECTED` means the plugin and MCP bridge can be available while no map AI Control session is active. Start EVE Static Map Planner and enable AI Control; the skill must not use another path to modify the map.
+If the Plugin is installed but `eve-map-mcp.exe` cannot start, install EVE Static Map Planner 0.2.1 or later and fully restart Codex. Do not search for a development launcher or fall back to a shell.
 
-The assistant can control only temporary Mission state. It cannot alter user routes, saved markers, Ansiblex connections, preferences, databases, or other user-owned state. Session credentials and local discovery details remain internal to the bridge.
+`APP_DISCONNECTED` is different: the MCP server is running, but the map is closed or AI Control is disabled. Start the map and enable AI Control. The assistant may control only temporary Mission state; it cannot alter user routes, saved markers, Ansiblex connections, preferences, databases, or other user-owned state.
 
-## Responsibility boundary
-
-This map repository continues to validate the application, Control API, MCP bridge, and fixed 20-tool server contract through its own Kotlin tests. Run Plugin Creator validation, Skill lint, and `qa/validate-eve-map-assistant.py` from the standalone Plugin repository.
-
-The standalone Plugin does not contain route algorithms, Control API implementations, databases, or the MCP server implementation. It declares only the existing `eve-static-map` dependency and teaches Codex how to use that fixed tool contract safely.
+The map repository continues to validate the application, Control API, launcher, MSI, and fixed 20-tool server contract. The Plugin repository validates the manifest, Skill, bundled `.mcp.json`, marketplace, and safe behavior contract.
 
 Official references: [Package your plugin](https://developers.openai.com/plugins/build/plugins), [Build skills](https://developers.openai.com/plugins/build/skills), and [Model Context Protocol](https://learn.chatgpt.com/docs/extend/mcp).

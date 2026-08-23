@@ -9,8 +9,9 @@ This document records the Phase 8 V1 packaging contract. It does not define an a
 - Vendor: `Static Map Planner Project`
 - Description: `Unofficial static map and route planning tool for EVE Online.`
 - Main class: `dev.evestaticmapplanner.MainKt`
-- Additional stdio launcher: `EVE Map MCP Bridge.exe`
-- Additional launcher main class: `dev.evestaticmapplanner.mcp.MainKt`
+- Compatibility stdio launcher: `EVE Map MCP Bridge.exe`
+- Stable Plugin stdio launcher: `eve-map-mcp.exe`
+- Both MCP launcher main classes: `dev.evestaticmapplanner.mcp.MainKt`
 - Upgrade UUID: `502B9850-A5B0-4922-BB20-AC7FEBA590DC`
 
 The upgrade UUID identifies one installer product family. It must not change with the application version, Git commit, SDE build, build machine, or release artifact.
@@ -61,7 +62,9 @@ WiX and the JDK are build-machine dependencies only. The installed application c
 
 ## Installation and data boundary
 
-The MSI is a per-user install with Start Menu and desktop shortcuts for the GUI app. The main launcher does not open a console window. The console MCP launcher is installed as a product component but receives no shortcut or second Installed Apps entry. Both launchers share one bundled runtime; the installer otherwise manages only application JARs, legal notice, icon, and immutable packaged resources.
+The MSI is a per-user install with Start Menu and desktop shortcuts for the GUI app. The main launcher does not open a console window. Both console MCP launchers are installed as product components but receive no shortcut or additional Installed Apps entry. All three launchers share one bundled runtime; the installer otherwise manages only application JARs, legal notice, icon, and immutable packaged resources.
+
+For Plugin Gate A, WiX authors one per-user `Environment` table row that appends `[INSTALLDIR]` to the user's `PATH`. Windows Installer owns that entry: fresh install and repair do not duplicate it, explicit uninstall removes it, and a major upgrade removes the old product entry before installing the same logical entry for the new product. Other PATH entries are not replaced, reordered, or truncated. Already-running Codex processes must be fully restarted to inherit the updated environment.
 
 Writable state remains outside the installation image:
 
@@ -129,10 +132,13 @@ The UUIDv5 namespace is the fixed UpgradeCode
 `502B9850-A5B0-4922-BB20-AC7FEBA590DC`. The name contract is the literal prefix
 `jpackage-component-guid-v1:` followed by the canonical effective probe GUID.
 This keeps Components stable across versions of this application while a
-different application namespace remains isolated. The Phase 8 audited JDK
-contract contains 231 Components: 230 generated explicit GUIDs and one WiX
-auto-GUID RemoveFolderEx Component. The final MSI is accepted only when all
-231 effective GUIDs match the deterministic mapping.
+different application namespace remains isolated. The 0.2.1 audited JDK
+contract contains 257 generated Components: 256 generated explicit GUIDs and
+one WiX auto-GUID RemoveFolderEx Component. One additional Planner-owned
+Component registers the stable per-user PATH entry with fixed UUIDv5 GUID
+`{44EBD78B-F3BB-5167-85E4-BD330EB5F4DF}`. The final MSI is accepted only when
+all 257 generated effective GUIDs match the deterministic mapping and the PATH
+Component retains that separate identity.
 
 The probe MSI is diagnostic build output and is never published. Both the probe
 MSI and transformed `bundle.wxf` remain below ignored build directories; the
@@ -193,7 +199,7 @@ Gradle generates `build-info.properties` under `app/build/generated`. It is pack
 4. Run the packaged image from an unrelated working directory without `JAVA_HOME`, `EVE_STATIC_DB`, or `EVE_USER_DB`.
 5. Verify map, search, routes, Ansiblex, jump overlays, capital routing, SQLite, Static Data Manager, HTTP latest check, and an isolated first-run bootstrap.
 6. Build the unsigned MSI and record size, SHA-256, Git commit, JDK, WiX, Compose, Kotlin, and Gradle versions.
-7. Verify per-user install, UAC behavior, both shortcuts, one Add/Remove Programs entry, and installed launcher startup.
+7. Verify per-user install, UAC behavior, both GUI shortcuts, one Add/Remove Programs entry, all three launchers, and `eve-map-mcp.exe` resolution from a new terminal outside the install directory.
 8. Verify uninstall removes the installer-managed application and the complete `%LOCALAPPDATA%\EVE Static Map Planner` tree, including isolated `static.db`, `user.db`, updater state, and logs. Reinstall must return to the Phase 7 first-run bootstrap.
 9. Build 0.1.1 with `-PappVersion=0.1.1` and verify an in-place upgrade with the same upgrade UUID preserves the existing application data.
 10. Complete final no-Java acceptance on a clean Windows x64 VM or another Windows x64 computer without Java.

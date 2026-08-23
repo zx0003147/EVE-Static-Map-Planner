@@ -163,6 +163,16 @@ val installedImageTest by tasks.registering(Test::class) {
         "eve.mcp.launcher.path",
         integratedApplicationImage.resolve("EVE Map MCP Bridge.exe").absolutePath,
     )
+    systemProperty(
+        "eve.mcp.stable.launcher.path",
+        integratedApplicationImage.resolve("eve-map-mcp.exe").absolutePath,
+    )
+    val pathEnvironmentKey = System.getenv().keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "Path"
+    environment(
+        pathEnvironmentKey,
+        integratedApplicationImage.absolutePath + ";" + System.getenv(pathEnvironmentKey).orEmpty(),
+    )
     inputs.file(integratedApplicationImage.resolve("EVE Map MCP Bridge.exe"))
+    inputs.file(integratedApplicationImage.resolve("eve-map-mcp.exe"))
     outputs.upToDateWhen { false }
 }

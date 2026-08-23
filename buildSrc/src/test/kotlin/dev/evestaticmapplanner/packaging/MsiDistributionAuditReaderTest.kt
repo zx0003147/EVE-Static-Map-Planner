@@ -12,6 +12,7 @@ class MsiDistributionAuditReaderTest {
                 SUMMARY_TEMPLATE	x64;1033
                 TABLE	Property
                 TABLE	File
+                TABLE	Environment
                 PROPERTY	ProductName	EVE Static Map Planner
                 PROPERTY	ProductVersion	0.2.0
                 PROPERTY	ProductCode	{PRODUCT}
@@ -27,6 +28,7 @@ class MsiDistributionAuditReaderTest {
                 CUSTOM_ACTION	JpSuppressRemoveFolderExDuringUpgrade	51	RM_RF${'\t'}
                 REMOVE_FOLDER_EX	remove1	component1	RM_RF	3${'\t'}
                 DIRECTORY	INSTALLDIR	LocalAppDataFolder	EVE Static Map Planner
+                ENVIRONMENT	JpEveMapMcpPathEnvironment	=-PATH	[~];[INSTALLDIR]	JpEveMapMcpPath
             """.trimIndent(),
         )
 
@@ -38,6 +40,10 @@ class MsiDistributionAuditReaderTest {
         assertEquals(listOf("DefaultFeature", "", "Main"), audit.features.single())
         assertEquals("EVE Map MCP Bridge.exe", audit.files.single()[2])
         assertEquals("INSTALLDIR", audit.components.single()[2])
-        assertTrue(audit.tables.containsAll(setOf("Property", "File")))
+        assertEquals(
+            listOf(listOf("JpEveMapMcpPathEnvironment", "=-PATH", "[~];[INSTALLDIR]", "JpEveMapMcpPath")),
+            audit.environment,
+        )
+        assertTrue(audit.tables.containsAll(setOf("Property", "File", "Environment")))
     }
 }

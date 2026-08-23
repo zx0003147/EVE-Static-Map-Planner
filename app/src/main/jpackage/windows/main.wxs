@@ -49,6 +49,7 @@
       <ComponentGroupRef Id="Files" />
       <ComponentGroupRef Id="FileAssociations" />
       <ComponentGroupRef Id="FragmentOsCondition" />
+      <ComponentRef Id="JpEveMapMcpPath" />
     </Feature>
 
     <CustomAction Id="JpSetARPINSTALLLOCATION" Property="ARPINSTALLLOCATION" Value="[INSTALLDIR]" />
@@ -113,4 +114,15 @@
       <Custom Action="JpFindRelatedProducts" After="FindRelatedProducts" />
     </InstallUISequence>
   </Package>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="JpEveMapMcpPath" Guid="{44EBD78B-F3BB-5167-85E4-BD330EB5F4DF}" Bitness="always64">
+        <RegistryKey Root="HKCU" Key="Software\Static Map Planner Project\EVE Static Map Planner">
+          <RegistryValue Name="McpPathRegistration" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+        </RegistryKey>
+        <Environment Id="JpEveMapMcpPathEnvironment" Name="PATH" Value="[INSTALLDIR]" Action="set" Part="last" System="no" Permanent="no" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
 </Wix>

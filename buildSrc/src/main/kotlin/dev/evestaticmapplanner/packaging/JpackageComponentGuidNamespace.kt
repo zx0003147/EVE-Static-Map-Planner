@@ -76,15 +76,14 @@ object JpackageComponentGuidNamespace {
         probeComponents: Map<String, String>,
         outputBundle: Path,
         namespace: UUID,
-        excludedShortcutLauncherName: String? = null,
+        excludedShortcutLauncherNames: Set<String> = emptySet(),
     ): ComponentGuidTransformResult {
         require(Files.isRegularFile(sourceBundle)) { "Missing source bundle.wxf: $sourceBundle" }
         val document = readDocument(sourceBundle)
         validateRoot(document)
         val legacyPackageCleanupComponentId = authorLegacyPackageCleanup(document)
-        val removedShortcutComponentIds = excludedShortcutLauncherName
-            ?.let { removeGeneratedLauncherShortcuts(document, it) }
-            .orEmpty()
+        val removedShortcutComponentIds = excludedShortcutLauncherNames
+            .flatMapTo(linkedSetOf()) { removeGeneratedLauncherShortcuts(document, it) }
         val expectedFingerprint = semanticFingerprint(document)
         val components = componentElements(document)
         require(components.isNotEmpty()) { "bundle.wxf contains no WiX Component elements" }
@@ -193,14 +192,14 @@ object JpackageComponentGuidNamespace {
     fun assertOnlyExpectedChanges(
         original: Path,
         transformed: Path,
-        excludedShortcutLauncherName: String? = null,
+        excludedShortcutLauncherNames: Set<String> = emptySet(),
     ) {
         val originalDocument = readDocument(original)
         val transformedDocument = readDocument(transformed)
         validateRoot(originalDocument)
         validateRoot(transformedDocument)
         authorLegacyPackageCleanup(originalDocument)
-        excludedShortcutLauncherName?.let { removeGeneratedLauncherShortcuts(originalDocument, it) }
+        excludedShortcutLauncherNames.forEach { removeGeneratedLauncherShortcuts(originalDocument, it) }
         require(semanticFingerprint(originalDocument) == semanticFingerprint(transformedDocument)) {
             "bundle.wxf files differ outside the exact legacy .package cleanup, launcher shortcut exclusion, " +
                 "and Component/@Guid"

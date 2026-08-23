@@ -38,6 +38,7 @@ val historicalProductCodes = setOf(
     "{A7D6C309-9A9F-3079-A87B-1616BAD49516}", // 0.1.0
     "{1984FBD7-03D9-38DD-8ECD-F58783036C95}", // 0.1.1
     "{8E5104B6-B3CA-36C7-BC65-B3401F15F421}", // 0.1.2
+    "{A9BA3E5C-BEAA-336C-830D-5663D6477EEA}", // 0.2.0
 )
 val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
 val nativeComposeOutputBase = nativeOutputDir
@@ -130,6 +131,16 @@ val verifyWindowsInstallerResources by tasks.registering {
         check(windowsUpgradeUuid == "502B9850-A5B0-4922-BB20-AC7FEBA590DC") {
             "The Windows installer UpgradeCode changed unexpectedly."
         }
+        check(mainWxs.contains("Id=\"${WindowsAppImageIntegration.PATH_COMPONENT_ID}\"")) {
+            "The stable MCP PATH Component is missing from the custom main.wxs."
+        }
+        check(mainWxs.contains("Guid=\"${WindowsAppImageIntegration.PATH_COMPONENT_GUID}\"")) {
+            "The stable MCP PATH Component GUID drifted."
+        }
+        check(mainWxs.contains(
+            "<Environment Id=\"${WindowsAppImageIntegration.PATH_ENVIRONMENT_ID}\" Name=\"PATH\" " +
+                "Value=\"[INSTALLDIR]\" Action=\"set\" Part=\"last\" System=\"no\" Permanent=\"no\" />",
+        )) { "The per-user MSI PATH authoring drifted." }
     }
 }
 
@@ -293,6 +304,7 @@ val createIntegratedDistributable by tasks.registering {
             "--icon", project.file("src/main/resources/icons/app-icon.ico").absolutePath,
             "--java-options", "--enable-native-access=ALL-UNNAMED",
             "--add-launcher", "${WindowsAppImageIntegration.MCP_LAUNCHER}=${additionalLauncherProperties.absolutePath}",
+            "--add-launcher", "${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}=${additionalLauncherProperties.absolutePath}",
         )
         val stdoutFile = integrationWorkRoot.resolve("jpackage-out.log")
         val stderrFile = integrationWorkRoot.resolve("jpackage-err.log")
@@ -315,14 +327,20 @@ val createIntegratedDistributable by tasks.registering {
             generatedAppDirectory.resolve("${WindowsAppImageIntegration.MAIN_LAUNCHER}.cfg"),
             overwrite = true,
         )
-        generatedAppDirectory.resolve("${WindowsAppImageIntegration.MCP_LAUNCHER}.cfg").writeText(
-            WindowsAppImageIntegration.mcpLauncherConfig(appVersion, mcpJars.map(File::getName)),
-            Charsets.UTF_8,
-        )
+        val mcpLauncherConfig = WindowsAppImageIntegration.mcpLauncherConfig(appVersion, mcpJars.map(File::getName))
+        setOf(
+            WindowsAppImageIntegration.MCP_LAUNCHER,
+            WindowsAppImageIntegration.STABLE_MCP_LAUNCHER,
+        ).forEach { launcher ->
+            generatedAppDirectory.resolve("$launcher.cfg").writeText(mcpLauncherConfig, Charsets.UTF_8)
+        }
         val jpackageState = generatedAppDirectory.resolve(".jpackage.xml").readText(Charsets.UTF_8)
         check(jpackageState.contains("<add-launcher name=\"${WindowsAppImageIntegration.MCP_LAUNCHER}\" service=\"false\"")) {
             "Integrated app-image metadata does not identify the MCP add-launcher"
         }
+        check(jpackageState.contains(
+            "<add-launcher name=\"${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}\" service=\"false\"",
+        )) { "Integrated app-image metadata does not identify the stable MCP add-launcher" }
 
         resetBuildOutput(integratedImageBuildRoot, nativeComposeOutputBase.resolve("main"))
         generatedImage.copyRecursively(integratedApplicationImage, overwrite = true)
@@ -461,14 +479,22 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         }
 
         val probeComponents = MsiComponentTableReader.read(probeMsi.toPath())
+        val generatedProbeComponents = probeComponents - WindowsAppImageIntegration.PATH_COMPONENT_ID
+        check(probeComponents[WindowsAppImageIntegration.PATH_COMPONENT_ID]
+            ?.equals(WindowsAppImageIntegration.PATH_COMPONENT_GUID, ignoreCase = true) == true) {
+            "Probe MSI stable MCP PATH Component is missing or has an unexpected GUID"
+        }
         resetBuildOutput(generatedWindowsResources)
         windowsInstallerResources.asFile.copyRecursively(generatedWindowsResources, overwrite = true)
         val transformResult = JpackageComponentGuidNamespace.transform(
             sourceBundle = probeBundle.toPath(),
-            probeComponents = probeComponents,
+            probeComponents = generatedProbeComponents,
             outputBundle = generatedBundle.toPath(),
             namespace = windowsComponentNamespace,
-            excludedShortcutLauncherName = WindowsAppImageIntegration.MCP_LAUNCHER,
+            excludedShortcutLauncherNames = setOf(
+                WindowsAppImageIntegration.MCP_LAUNCHER,
+                WindowsAppImageIntegration.STABLE_MCP_LAUNCHER,
+            ),
         )
         componentMappingCsv.writeText(buildString {
             appendLine("componentId,effectiveOriginalGuid,namespacedGuid")
@@ -477,7 +503,7 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
             }
         })
         check(
-            transformResult.componentCount + transformResult.removedShortcutComponentIds.size ==
+            transformResult.componentCount + transformResult.removedShortcutComponentIds.size + 1 ==
                 probeComponents.size,
         ) {
             "Transformed Component count plus excluded MCP shortcut Components does not match probe MSI"
@@ -497,7 +523,14 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
             "Final verbose log does not prove custom bundle.wxf adoption"
         }
         val finalComponents = MsiComponentTableReader.read(generatedMsi.toPath())
-        JpackageComponentGuidNamespace.verifyFinalComponents(finalComponents, transformResult)
+        check(finalComponents[WindowsAppImageIntegration.PATH_COMPONENT_ID]
+            ?.equals(WindowsAppImageIntegration.PATH_COMPONENT_GUID, ignoreCase = true) == true) {
+            "Final MSI stable MCP PATH Component is missing or has an unexpected GUID"
+        }
+        JpackageComponentGuidNamespace.verifyFinalComponents(
+            finalComponents - WindowsAppImageIntegration.PATH_COMPONENT_ID,
+            transformResult,
+        )
         val legacyCleanup = MsiLegacyPackageCleanupReader.verify(
             generatedMsi.toPath(),
             transformResult.legacyPackageCleanupComponentId,
@@ -514,6 +547,7 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
             "InstallExecuteSequence",
             "CustomAction",
             "Wix4RemoveFolderEx",
+            "Environment",
         )
         check(distributionAudit.tables.containsAll(requiredTables)) {
             "Final MSI is missing required audit tables: ${requiredTables - distributionAudit.tables}"
@@ -523,7 +557,7 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(distributionAudit.manufacturer == "Static Map Planner Project")
         check(distributionAudit.upgradeCode.equals("{$windowsUpgradeUuid}", ignoreCase = true))
         check(distributionAudit.productCode !in historicalProductCodes) {
-            "The 0.2.0 ProductCode reuses a historical product identity: ${distributionAudit.productCode}"
+            "The $appVersion ProductCode reuses a historical product identity: ${distributionAudit.productCode}"
         }
         check(distributionAudit.summaryTemplate.startsWith("x64;")) {
             "Final MSI is not Windows x64: ${distributionAudit.summaryTemplate}"
@@ -541,10 +575,22 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(filesByLongName.containsKey("${WindowsAppImageIntegration.MCP_LAUNCHER}.cfg")) {
             "Final MSI does not contain the MCP launcher config"
         }
+        val stableMcpLauncherFile = filesByLongName["${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}.exe"]
+            ?: error("Final MSI does not contain the stable MCP launcher")
+        check(filesByLongName.containsKey("${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}.cfg")) {
+            "Final MSI does not contain the stable MCP launcher config"
+        }
         val mcpLauncherComponent = distributionAudit.components.single { it[0] == mcpLauncherFile[1] }
         val mcpLauncherDirectory = distributionAudit.directories.single { it[0] == mcpLauncherComponent[2] }
         check(longMsiName(mcpLauncherDirectory[2]) == WindowsAppImageIntegration.MAIN_LAUNCHER) {
             "MCP launcher is not installed at the product install root: $mcpLauncherDirectory"
+        }
+        val stableMcpLauncherComponent = distributionAudit.components.single { it[0] == stableMcpLauncherFile[1] }
+        val stableMcpLauncherDirectory = distributionAudit.directories.single {
+            it[0] == stableMcpLauncherComponent[2]
+        }
+        check(longMsiName(stableMcpLauncherDirectory[2]) == WindowsAppImageIntegration.MAIN_LAUNCHER) {
+            "Stable MCP launcher is not installed at the product install root: $stableMcpLauncherDirectory"
         }
         val forbiddenFileRows = distributionAudit.files.filter {
             longMsiName(it[2]).lowercase() in WindowsAppImageIntegration.forbiddenPackagedFileNames
@@ -557,6 +603,18 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(shortcutNames.isNotEmpty() && shortcutNames.all {
             it == WindowsAppImageIntegration.MAIN_LAUNCHER
         }) { "Only the desktop application may receive shortcuts: $shortcutNames" }
+        check(distributionAudit.environment == listOf(listOf(
+            WindowsAppImageIntegration.PATH_ENVIRONMENT_ID,
+            "=-PATH",
+            "[~];[INSTALLDIR]",
+            WindowsAppImageIntegration.PATH_COMPONENT_ID,
+        ))) { "Per-user PATH Environment row drifted: ${distributionAudit.environment}" }
+        check(distributionAudit.installExecuteSequence.count { it[0] == "WriteEnvironmentStrings" } == 1) {
+            "MSI must schedule WriteEnvironmentStrings exactly once"
+        }
+        check(distributionAudit.installExecuteSequence.count { it[0] == "RemoveEnvironmentStrings" } == 1) {
+            "MSI must schedule RemoveEnvironmentStrings exactly once"
+        }
         check(distributionAudit.upgrades.isNotEmpty() && distributionAudit.upgrades.all {
             it[0].equals("{$windowsUpgradeUuid}", ignoreCase = true)
         }) { "Final MSI contains an unexpected UpgradeCode row: ${distributionAudit.upgrades}" }
@@ -573,7 +631,10 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         JpackageComponentGuidNamespace.assertOnlyExpectedChanges(
             probeBundle.toPath(),
             generatedBundle.toPath(),
-            excludedShortcutLauncherName = WindowsAppImageIntegration.MCP_LAUNCHER,
+            excludedShortcutLauncherNames = setOf(
+                WindowsAppImageIntegration.MCP_LAUNCHER,
+                WindowsAppImageIntegration.STABLE_MCP_LAUNCHER,
+            ),
         )
         componentGuidBuildRoot.resolve("msi-audit.txt").writeText(buildString {
             appendLine("productName=${distributionAudit.productName}")
@@ -588,6 +649,8 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
             appendLine("fileCount=${distributionAudit.files.size}")
             appendLine("shortcutCount=${distributionAudit.shortcuts.size}")
             appendLine("mcpLauncherDirectory=${mcpLauncherComponent[2]}")
+            appendLine("stableMcpLauncherDirectory=${stableMcpLauncherComponent[2]}")
+            appendLine("pathEnvironmentRows=${distributionAudit.environment.size}")
             appendLine("runtimeCount=1")
         })
         logger.lifecycle(

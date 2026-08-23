@@ -44,6 +44,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class McpProcessTest {
     @Test
@@ -126,6 +127,53 @@ class McpProcessTest {
         }
 
         assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Packaged MCP launcher did not exit after stdin EOF")
+        assertEquals(0, process.exitValue())
+        assertProtocolOnly(stdout)
+        assertFalse(stderr.utf8().contains(secretSentinel))
+        assertFalse(process.isAlive)
+    }
+
+    @Test
+    fun `stable launcher resolves from PATH outside install directory`() = runBlocking {
+        assumeTrue(
+            System.getProperty("eve.mcp.stable.launcher.path") != null,
+            "Runs only against the final integrated app-image",
+        )
+        KotlinLoggingConfiguration.logStartupMessage = false
+        val installedLauncher = stablePackagedLauncherPath()
+        val workingDirectory = createTempDirectory("mcp-path-working-directory-")
+        assertFalse(workingDirectory.startsWith(installedLauncher.parent))
+        val localAppData = createTempDirectory("mcp-path-disconnected-")
+        val secretSentinel = "path-launcher-secret-must-not-leak"
+        val process = launcherProcess(
+            launcher = Path.of("eve-map-mcp.exe"),
+            localAppData = localAppData,
+            secretSentinel = secretSentinel,
+            workingDirectory = workingDirectory,
+        )
+        val stdout = RecordingInputStream(process.inputStream)
+        val stderr = RecordingInputStream(process.errorStream)
+        val transport = StdioClientTransport(
+            stdout.asSource().buffered(),
+            process.outputStream.asSink().buffered(),
+            stderr.asSource().buffered(),
+        )
+        val client = Client(Implementation("step-4d-path-launcher-test", "1.0"))
+        try {
+            client.connect(transport)
+            assertEquals(20, client.listTools().tools.size)
+            val disconnected = client.callTool("search_system", mapOf("query" to "Jita"))
+            assertTrue(disconnected.isError == true)
+            assertEquals(
+                "APP_DISCONNECTED",
+                disconnected.structuredContent?.get("error")?.jsonObject?.get("code")?.jsonPrimitive?.content,
+            )
+        } finally {
+            runCatching { client.close() }
+            runCatching { process.outputStream.close() }
+        }
+
+        assertTrue(process.waitFor(10, TimeUnit.SECONDS), "PATH-resolved MCP launcher did not exit after stdin EOF")
         assertEquals(0, process.exitValue())
         assertProtocolOnly(stdout)
         assertFalse(stderr.utf8().contains(secretSentinel))
@@ -287,9 +335,27 @@ private fun packagedLauncherPath(): Path = Path.of(
     check(Files.isRegularFile(launcher)) { "Packaged MCP launcher is missing: $launcher" }
 }
 
-private fun launcherProcess(launcher: Path, localAppData: Path, secretSentinel: String): Process =
+private fun stablePackagedLauncherPath(): Path = Path.of(
+    requireNotNull(System.getProperty("eve.mcp.stable.launcher.path")) {
+        "Missing stable packaged MCP launcher test path"
+    },
+).toAbsolutePath().normalize().also { launcher ->
+    check(Files.isRegularFile(launcher)) { "Stable packaged MCP launcher is missing: $launcher" }
+    val pathValue = System.getenv().entries.single { it.key.equals("PATH", ignoreCase = true) }.value
+    check(pathValue.split(';').any {
+        runCatching { Path.of(it).toAbsolutePath().normalize() == launcher.parent }.getOrDefault(false)
+    }) { "Stable packaged MCP launcher directory is missing from the test process PATH" }
+}
+
+private fun launcherProcess(
+    launcher: Path,
+    localAppData: Path,
+    secretSentinel: String,
+    workingDirectory: Path? = null,
+): Process =
     ProcessBuilder(launcher.toString())
         .apply {
+            workingDirectory?.let { directory(it.toFile()) }
             environment()["LOCALAPPDATA"] = localAppData.toString()
             environment()["MCP_TEST_SECRET_SENTINEL"] = secretSentinel
             environment().remove("JAVA_HOME")

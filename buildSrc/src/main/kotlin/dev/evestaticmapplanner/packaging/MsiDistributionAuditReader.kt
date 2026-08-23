@@ -20,6 +20,7 @@ data class MsiDistributionAudit(
     val customActions: List<List<String>>,
     val removeFolderEx: List<List<String>>,
     val directories: List<List<String>>,
+    val environment: List<List<String>>,
 ) {
     val productCode: String get() = properties.getValue("ProductCode")
     val productName: String get() = properties.getValue("ProductName")
@@ -104,6 +105,7 @@ object MsiDistributionAuditReader {
             customActions = records("CUSTOM_ACTION", 4),
             removeFolderEx = records("REMOVE_FOLDER_EX", 5),
             directories = records("DIRECTORY", 3),
+            environment = records("ENVIRONMENT", 4),
         )
     }
 
@@ -198,6 +200,13 @@ object MsiDistributionAuditReader {
             ${'$'}view.Execute()
             while (${'$'}null -ne (${'$'}record = ${'$'}view.Fetch())) {
                 [Console]::Out.WriteLine("DIRECTORY`t${'$'}(${'$'}record.StringData(1))`t${'$'}(${'$'}record.StringData(2))`t${'$'}(${'$'}record.StringData(3))")
+            }
+            ${'$'}view.Close()
+
+            ${'$'}view = ${'$'}database.OpenView('SELECT `Environment`,`Name`,`Value`,`Component_` FROM `Environment`')
+            ${'$'}view.Execute()
+            while (${'$'}null -ne (${'$'}record = ${'$'}view.Fetch())) {
+                [Console]::Out.WriteLine("ENVIRONMENT`t${'$'}(${'$'}record.StringData(1))`t${'$'}(${'$'}record.StringData(2))`t${'$'}(${'$'}record.StringData(3))`t${'$'}(${'$'}record.StringData(4))")
             }
             ${'$'}view.Close()
         } finally {

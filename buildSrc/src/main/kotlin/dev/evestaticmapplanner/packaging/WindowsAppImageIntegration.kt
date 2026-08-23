@@ -18,7 +18,11 @@ object WindowsAppImageIntegration {
     const val MAIN_LAUNCHER = "EVE Static Map Planner"
     const val MAIN_CLASS = "dev.evestaticmapplanner.MainKt"
     const val MCP_LAUNCHER = "EVE Map MCP Bridge"
+    const val STABLE_MCP_LAUNCHER = "eve-map-mcp"
     const val MCP_MAIN_CLASS = "dev.evestaticmapplanner.mcp.MainKt"
+    const val PATH_COMPONENT_ID = "JpEveMapMcpPath"
+    const val PATH_ENVIRONMENT_ID = "JpEveMapMcpPathEnvironment"
+    const val PATH_COMPONENT_GUID = "{44EBD78B-F3BB-5167-85E4-BD330EB5F4DF}"
     const val WINDOWS_GUI_SUBSYSTEM = 2
     const val WINDOWS_CONSOLE_SUBSYSTEM = 3
 
@@ -110,23 +114,32 @@ object WindowsAppImageIntegration {
         require(Files.isDirectory(image)) { "Missing integrated application image: $image" }
         val mainExe = image.resolve("$MAIN_LAUNCHER.exe")
         val mcpExe = image.resolve("$MCP_LAUNCHER.exe")
+        val stableMcpExe = image.resolve("$STABLE_MCP_LAUNCHER.exe")
         val topLevelLaunchers = Files.list(image).use { paths ->
             paths.filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".exe", ignoreCase = true) }
                 .map { it.fileName.toString().removeSuffix(".exe") }
                 .toList()
                 .toSet()
         }
-        require(topLevelLaunchers == setOf(MAIN_LAUNCHER, MCP_LAUNCHER)) {
+        require(topLevelLaunchers == setOf(MAIN_LAUNCHER, MCP_LAUNCHER, STABLE_MCP_LAUNCHER)) {
             "Integrated image launcher drift: $topLevelLaunchers"
         }
         require(peSubsystem(mainExe) == WINDOWS_GUI_SUBSYSTEM) { "Main launcher is not a Windows GUI launcher" }
         require(peSubsystem(mcpExe) == WINDOWS_CONSOLE_SUBSYSTEM) { "MCP launcher is not a Windows console launcher" }
+        require(peSubsystem(stableMcpExe) == WINDOWS_CONSOLE_SUBSYSTEM) {
+            "Stable MCP launcher is not a Windows console launcher"
+        }
 
         val appDirectory = image.resolve("app")
         val mainConfig = Files.readString(appDirectory.resolve("$MAIN_LAUNCHER.cfg"), StandardCharsets.UTF_8)
         val mcpConfig = Files.readString(appDirectory.resolve("$MCP_LAUNCHER.cfg"), StandardCharsets.UTF_8)
+        val stableMcpConfig = Files.readString(
+            appDirectory.resolve("$STABLE_MCP_LAUNCHER.cfg"),
+            StandardCharsets.UTF_8,
+        )
         require(launcherMainClass(mainConfig) == MAIN_CLASS) { "Main launcher class changed" }
         require(launcherMainClass(mcpConfig) == MCP_MAIN_CLASS) { "MCP launcher class changed" }
+        require(stableMcpConfig == mcpConfig) { "Stable and compatibility MCP launcher configs differ" }
         require(launcherClasspath(mainConfig).none { it.contains("\\mcp\\", ignoreCase = true) }) {
             "Main launcher classpath unexpectedly contains MCP production jars"
         }
