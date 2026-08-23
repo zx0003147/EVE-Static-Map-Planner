@@ -41,6 +41,16 @@ class LocalControlSessionCredentials internal constructor(secret: ByteArray) {
     internal companion object {
         const val SECRET_SIZE_BYTES = 32
         private val BEARER_PATTERN = Regex("^Bearer ([A-Za-z0-9_-]+)$", RegexOption.IGNORE_CASE)
+        private val ENCODED_SECRET_PATTERN = Regex("^[A-Za-z0-9_-]{43}$")
+
+        fun parseEncoded(encoded: ByteArray): LocalControlSessionCredentials {
+            val canonical = encoded.toString(Charsets.US_ASCII)
+            require(ENCODED_SECRET_PATTERN.matches(canonical)) { "Invalid local control credential" }
+            val secret = runCatching { Base64.getUrlDecoder().decode(canonical) }
+                .getOrElse { throw IllegalArgumentException("Invalid local control credential") }
+            require(secret.size == SECRET_SIZE_BYTES) { "Invalid local control credential" }
+            return LocalControlSessionCredentials(secret).also { secret.fill(0) }
+        }
 
         fun generate(random: SecureRandom): LocalControlSessionCredentials {
             val secret = ByteArray(SECRET_SIZE_BYTES)

@@ -6,6 +6,9 @@ kotlinx-serialization = "1.10.0"
 sqlite-jdbc = "3.53.1.0"
 kotlinx-coroutines = "1.10.2"
 commons-csv = "1.14.1"
+mcp-kotlin = "0.14.0"
+kotlin-logging = "8.0.4"
+slf4j = "2.0.17"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -22,3 +25,8 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 commons-csv = { module = "org.apache.commons:commons-csv", version.ref = "commons-csv" }
+mcp-kotlin-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin" }
+mcp-kotlin-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp-kotlin" }
+mcp-kotlin-testing = { module = "io.modelcontextprotocol:kotlin-sdk-testing", version.ref = "mcp-kotlin" }
+kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlin-logging" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }

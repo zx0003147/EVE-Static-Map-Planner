@@ -297,6 +297,7 @@ class DiscoverySecurityException(message: String, cause: Throwable? = null) : Il
 internal interface DiscoveryAclSecurity {
     fun secureDirectory(path: Path)
     fun secureFile(path: Path)
+    fun verifyDirectory(path: Path)
     fun verifyFile(path: Path)
 }
 
@@ -308,6 +309,7 @@ internal class WindowsAccountOnlyAclSecurity(
 ) : DiscoveryAclSecurity {
     override fun secureDirectory(path: Path) = secure(path, directory = true)
     override fun secureFile(path: Path) = secure(path, directory = false)
+    override fun verifyDirectory(path: Path) = verify(path, directory = true)
     override fun verifyFile(path: Path) = verify(path, directory = false)
 
     private fun secure(path: Path, directory: Boolean) {
@@ -363,7 +365,7 @@ private fun currentWindowsAccount(path: Path): UserPrincipal {
     }
 }
 
-private fun requireDirectory(path: Path) {
+internal fun requireDirectory(path: Path) {
     val attributes = readAttributesNoFollow(path)
     if (Files.isSymbolicLink(path) || attributes.isOther || !attributes.isDirectory) {
         throw DiscoverySecurityException("Control discovery directory has an unexpected file type")
@@ -375,7 +377,7 @@ private fun requireRegularFileOrMissing(path: Path, maxBytes: Long?) {
     requireRegularFile(path, maxBytes)
 }
 
-private fun requireRegularFile(path: Path, maxBytes: Long?) {
+internal fun requireRegularFile(path: Path, maxBytes: Long?) {
     val attributes = readAttributesNoFollow(path)
     if (Files.isSymbolicLink(path) || attributes.isOther || !attributes.isRegularFile) {
         throw DiscoverySecurityException("Control discovery file has an unexpected file type")
