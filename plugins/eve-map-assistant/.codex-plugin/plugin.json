@@ -1,0 +1,22 @@
+{
+  "name": "eve-map-assistant",
+  "version": "0.1.0",
+  "description": "Plan and visualize EVE Online routes, jump ranges, markers, and temporary map missions in EVE Static Map Planner.",
+  "author": {
+    "name": "EVE Static Map Planner"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "EVE Map Assistant",
+    "shortDescription": "Plan and control temporary EVE map missions",
+    "longDescription": "Plan and visualize EVE Online normal routes, capital routes, jump ranges, markers, and temporary map missions in EVE Static Map Planner.",
+    "developerName": "EVE Static Map Planner",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Calculate an EVE route without displaying it.",
+      "Create and fit a temporary EVE map mission.",
+      "Show a capital route with mission markers."
+    ]
+  }
+}

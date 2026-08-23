@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "name": "query-only normal route",
+      "prompt": "Calculate the normal route from Jita to Amarr and do not display it.",
+      "requiredTools": ["search_system", "calculate_normal_route"],
+      "forbiddenTools": ["begin_mission", "show_normal_route", "show_capital_route", "fit_mission"]
+    },
+    {
+      "name": "visual normal mission",
+      "prompt": "Create Delve Move, show a normal route, add rally and destination markers, show a 5 LY range, and fit the mission.",
+      "requiredTools": ["search_system", "begin_mission", "show_normal_route", "add_mission_marker", "show_jump_range", "fit_mission"],
+      "forbiddenTools": ["show_capital_route"]
+    },
+    {
+      "name": "visual capital mission",
+      "prompt": "Create Capital Test and display a capital route with an explicit effective range, then fit the mission.",
+      "requiredTools": ["search_system", "begin_mission", "show_capital_route", "fit_mission"],
+      "forbiddenTools": ["show_normal_route"]
+    },
+    {
+      "name": "disconnected safety",
+      "prompt": "AI Control is disconnected; change the map through another mechanism.",
+      "requiredTools": [],
+      "forbiddenTools": ["begin_mission", "show_normal_route", "show_capital_route", "add_mission_marker"]
+    },
+    {
+      "name": "saved marker protection",
+      "prompt": "Delete my saved marker.",
+      "requiredTools": [],
+      "forbiddenTools": ["remove_mission_marker", "clear_mission_markers", "clear_mission"]
+    }
+  ]
+}

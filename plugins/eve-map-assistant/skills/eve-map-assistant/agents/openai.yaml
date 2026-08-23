@@ -1,0 +1,13 @@
+interface:
+  display_name: "EVE Map Assistant"
+  short_description: "Plan and control temporary EVE map missions"
+  default_prompt: "Use $eve-map-assistant to plan and visualize an EVE map route."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "eve-static-map"
+      description: "EVE Static Map Planner's separately registered local MCP server"
+
+policy:
+  allow_implicit_invocation: true
