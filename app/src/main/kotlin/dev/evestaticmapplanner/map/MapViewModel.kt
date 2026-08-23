@@ -12,6 +12,7 @@ import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.preferences.AppPreferences
+import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.preferences.DefaultPreferencesStore
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
@@ -20,6 +21,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.pow
 
@@ -50,6 +55,7 @@ class MapViewModel(
     private var pendingFocusSystemId: Int? = null
     private var sceneBuildJob: Job? = null
     private var settingsSaveJob: Job? = null
+    private val preferencesMutation = Mutex()
 
     init {
         load()
@@ -210,7 +216,7 @@ class MapViewModel(
                 },
             )
         }
-        schedulePreferencesSave(mutableState.value.appPreferences)
+        schedulePreferencesSave()
     }
 
     fun resetMapDisplayPreferences() {
@@ -223,21 +229,54 @@ class MapViewModel(
                 },
             )
         }
-        schedulePreferencesSave(mutableState.value.appPreferences)
+        schedulePreferencesSave()
     }
 
     fun updateMarkerPreferences(preferences: MarkerPreferences) {
         mutableState.update { current ->
             current.copy(appPreferences = current.appPreferences.copy(marker = preferences))
         }
-        schedulePreferencesSave(mutableState.value.appPreferences)
+        schedulePreferencesSave()
     }
 
     fun resetMarkerPreferences() {
         mutableState.update { current ->
             current.copy(appPreferences = current.appPreferences.copy(marker = MarkerPreferences.Defaults))
         }
-        schedulePreferencesSave(mutableState.value.appPreferences)
+        schedulePreferencesSave()
+    }
+
+    suspend fun updateAiControlPreferences(preferences: AiControlPreferences): Result<Unit> = withContext(NonCancellable) {
+        preferencesMutation.withLock {
+            settingsSaveJob?.cancel()
+            val next = mutableState.value.appPreferences.copy(aiControl = preferences)
+            val saved = withContext(ioDispatcher) { runCatching { preferencesStore.save(next) } }
+            if (saved.isSuccess) {
+                mutableState.update { current ->
+                    current.copy(appPreferences = current.appPreferences.copy(aiControl = preferences))
+                }
+            }
+            saved
+        }
+    }
+
+    suspend fun resetAllPreferences(): Result<Unit> = withContext(NonCancellable) {
+        preferencesMutation.withLock {
+            settingsSaveJob?.cancel()
+            val defaults = AppPreferences.Defaults
+            val saved = withContext(ioDispatcher) { runCatching { preferencesStore.save(defaults) } }
+            if (saved.isSuccess) {
+                mutableState.update { current ->
+                    current.copy(
+                        appPreferences = defaults,
+                        semanticLabelModes = current.viewports.mapValues { (_, viewport) ->
+                            SemanticZoomPolicy.initialMode(viewport.zoom, defaults.mapDisplay)
+                        },
+                    )
+                }
+            }
+            saved
+        }
     }
 
     fun zoomAt(screenPosition: MapPoint, scrollDelta: Double) {
@@ -387,7 +426,13 @@ class MapViewModel(
 
     fun close() {
         settingsSaveJob?.cancel()
-        runCatching { preferencesStore.save(mutableState.value.appPreferences) }
+        runBlocking(NonCancellable) {
+            preferencesMutation.withLock {
+                withContext(ioDispatcher) {
+                    runCatching { preferencesStore.save(mutableState.value.appPreferences) }
+                }
+            }
+        }
         scope.cancel()
     }
 
@@ -455,12 +500,14 @@ class MapViewModel(
         SemanticZoomPolicy.transition(current, zoom, state.appPreferences.mapDisplay)
     } ?: SemanticZoomPolicy.initialMode(zoom, state.appPreferences.mapDisplay)
 
-    private fun schedulePreferencesSave(preferences: AppPreferences) {
+    private fun schedulePreferencesSave() {
         settingsSaveJob?.cancel()
         settingsSaveJob = scope.launch {
             delay(SETTINGS_SAVE_DEBOUNCE_MILLIS)
-            withContext(ioDispatcher) {
-                runCatching { preferencesStore.save(preferences) }
+            preferencesMutation.withLock {
+                withContext(ioDispatcher) {
+                    runCatching { preferencesStore.save(mutableState.value.appPreferences) }
+                }
             }
         }
     }

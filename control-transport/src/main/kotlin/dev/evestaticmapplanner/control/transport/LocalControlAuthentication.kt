@@ -26,10 +26,17 @@ class LocalControlSessionCredentials internal constructor(secret: ByteArray) {
         return MessageDigest.isEqual(secretBytes, candidate)
     }
 
+    internal fun encodedSecretBytes(): ByteArray {
+        check(active) { "Local control session credentials are no longer active" }
+        return Base64.getUrlEncoder().withoutPadding().encode(secretBytes)
+    }
+
     internal fun invalidate() {
         active = false
         secretBytes.fill(0)
     }
+
+    override fun toString(): String = "LocalControlSessionCredentials(<redacted>)"
 
     internal companion object {
         const val SECRET_SIZE_BYTES = 32

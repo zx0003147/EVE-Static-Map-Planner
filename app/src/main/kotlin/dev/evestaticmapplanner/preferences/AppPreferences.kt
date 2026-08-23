@@ -9,9 +9,18 @@ import java.util.Properties
 data class AppPreferences(
     val mapDisplay: MapDisplayPreferences = MapDisplayPreferences.Defaults,
     val marker: MarkerPreferences = MarkerPreferences.Defaults,
+    val aiControl: AiControlPreferences = AiControlPreferences.Defaults,
 ) {
     companion object {
         val Defaults = AppPreferences()
+    }
+}
+
+data class AiControlPreferences(
+    val enabled: Boolean = false,
+) {
+    companion object {
+        val Defaults = AiControlPreferences()
     }
 }
 
@@ -74,12 +83,16 @@ object DefaultPreferencesStore : PreferencesStore {
 
 class PropertiesPreferencesStore(
     val path: Path,
+    private val warningSink: (String) -> Unit = {},
 ) : PreferencesStore {
     override fun load(): AppPreferences {
         if (!Files.isRegularFile(path)) return AppPreferences.Defaults
         val properties = runCatching {
             Properties().also { values -> Files.newInputStream(path).use(values::load) }
-        }.getOrElse { return AppPreferences.Defaults }
+        }.getOrElse {
+            warningSink("Preferences could not be read; AI Control remains disabled")
+            return AppPreferences.Defaults
+        }
         if (properties.getProperty(KEY_SETTINGS_VERSION) != SETTINGS_VERSION) return AppPreferences.Defaults
 
         val defaults = MapDisplayPreferences.Defaults
@@ -128,6 +141,9 @@ class PropertiesPreferencesStore(
                     MarkerPreferences.Defaults.showMarkerNames,
                 ),
             ),
+            aiControl = AiControlPreferences(
+                enabled = properties.safeAiControlEnabled(warningSink),
+            ),
         )
     }
 
@@ -141,6 +157,7 @@ class PropertiesPreferencesStore(
         try {
             val mapDisplay = preferences.mapDisplay
             val marker = preferences.marker
+            val aiControl = preferences.aiControl
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_CONSTELLATION_THRESHOLD, mapDisplay.constellationZoomThreshold.toString())
@@ -152,6 +169,7 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_SYSTEM_FONT_SIZE, mapDisplay.systemFontSizeSp.toString())
                 setProperty(KEY_SHOW_MARKERS, marker.showMarkers.toString())
                 setProperty(KEY_SHOW_MARKER_NAMES, marker.showMarkerNames.toString())
+                setProperty(KEY_AI_CONTROL_ENABLED, aiControl.enabled.toString())
             }
             Files.newOutputStream(temporary).use {
                 properties.store(it, "EVE Static Map Planner preferences")
@@ -184,6 +202,15 @@ private fun Properties.validBoolean(key: String, default: Boolean): Boolean = wh
     else -> default
 }
 
+private fun Properties.safeAiControlEnabled(warningSink: (String) -> Unit): Boolean = when (getProperty(KEY_AI_CONTROL_ENABLED)) {
+    null, "false" -> false
+    "true" -> true
+    else -> {
+        warningSink("AI Control preference is invalid and was disabled")
+        false
+    }
+}
+
 const val SETTINGS_VERSION = "1"
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
@@ -205,3 +232,4 @@ private const val KEY_CONSTELLATION_FONT_SIZE = "mapDisplay.constellationFontSiz
 private const val KEY_SYSTEM_FONT_SIZE = "mapDisplay.systemFontSizeSp"
 private const val KEY_SHOW_MARKERS = "marker.showMarkers"
 private const val KEY_SHOW_MARKER_NAMES = "marker.showMarkerNames"
+private const val KEY_AI_CONTROL_ENABLED = "aiControl.enabled"

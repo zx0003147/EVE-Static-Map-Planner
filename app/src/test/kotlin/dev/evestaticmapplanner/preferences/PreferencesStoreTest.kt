@@ -23,6 +23,7 @@ class PreferencesStoreTest {
         assertEquals(MarkerPreferences.Defaults, AppPreferences.Defaults.marker)
         assertTrue(MarkerPreferences.Defaults.showMarkers)
         assertTrue(MarkerPreferences.Defaults.showMarkerNames)
+        assertFalse(AppPreferences.Defaults.aiControl.enabled)
     }
 
     @Test
@@ -39,13 +40,18 @@ class PreferencesStoreTest {
                 systemFontSizeSp = 12f,
             ),
             marker = MarkerPreferences(showMarkers = false, showMarkerNames = false),
+            aiControl = AiControlPreferences(enabled = true),
         )
 
         PropertiesPreferencesStore(path).save(expected)
 
         assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=1" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.enabled=true" })
         assertEquals(expected, PropertiesPreferencesStore(path).load())
+
+        PropertiesPreferencesStore(path).save(expected.copy(aiControl = AiControlPreferences(enabled = false)))
+        assertFalse(PropertiesPreferencesStore(path).load().aiControl.enabled)
     }
 
     @Test
@@ -127,6 +133,20 @@ class PreferencesStoreTest {
     }
 
     @Test
+    fun `missing and invalid AI Control preference fail safely to disabled`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(path, "settings.version=1\nmarker.showMarkers=true\n")
+        assertFalse(PropertiesPreferencesStore(path).load().aiControl.enabled)
+
+        val warnings = mutableListOf<String>()
+        Files.writeString(path, "settings.version=1\naiControl.enabled=TRUE\n")
+        val loaded = PropertiesPreferencesStore(path, warnings::add).load()
+
+        assertFalse(loaded.aiControl.enabled)
+        assertEquals(listOf("AI Control preference is invalid and was disabled"), warnings)
+    }
+
+    @Test
     fun `unsupported or missing settings version safely uses defaults`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         Files.writeString(path, "settings.version=2\nmapDisplay.systemZoomThreshold=12\n")
@@ -144,6 +164,7 @@ class PreferencesStoreTest {
 
         assertEquals(AppPreferences.Defaults, store.resetToDefaults())
         assertEquals(AppPreferences.Defaults, PropertiesPreferencesStore(path).load())
+        assertFalse(PropertiesPreferencesStore(path).load().aiControl.enabled)
     }
 
     @Test

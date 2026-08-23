@@ -83,6 +83,7 @@ tasks.processResources {
 dependencies {
     implementation(project(":core"))
     implementation(project(":control"))
+    implementation(project(":control-transport"))
     implementation(project(":data"))
     implementation(project(":sde"))
     implementation(compose.desktop.currentOs)
@@ -138,6 +139,7 @@ compose.desktop {
                 "java.logging",
                 "java.net.http",
                 "java.sql",
+                "jdk.httpserver",
                 "jdk.unsupported",
             )
             windows {

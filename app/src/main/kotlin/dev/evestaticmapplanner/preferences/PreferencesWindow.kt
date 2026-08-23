@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
+import dev.evestaticmapplanner.control.AiControlStatus
 import java.util.Locale
 
 @Composable
@@ -40,8 +41,13 @@ fun PreferencesWindow(
     preferences: AppPreferences,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     onMarkerChange: (MarkerPreferences) -> Unit,
+    aiControlStatus: AiControlStatus,
+    aiControlError: String?,
+    onAiControlChange: (Boolean) -> Unit,
     onResetMapDisplay: () -> Unit,
     onResetMarker: () -> Unit,
+    onResetAiControl: () -> Unit,
+    onResetAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var category by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
@@ -85,11 +91,19 @@ fun PreferencesWindow(
                                 onMarkerChange,
                                 onResetMarker,
                             )
+                            PreferencesCategory.AI_CONTROL -> AiControlPreferencesContent(
+                                preferences.aiControl,
+                                aiControlStatus,
+                                aiControlError,
+                                onAiControlChange,
+                                onResetAiControl,
+                            )
                         }
                     }
                 }
                 HorizontalDivider(color = Color(0xFF314252))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = onResetAll) { Text("Reset All Preferences") }
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
             }
@@ -100,6 +114,7 @@ fun PreferencesWindow(
 private enum class PreferencesCategory(val label: String) {
     MAP_DISPLAY("Map Display"),
     MARKER("Marker"),
+    AI_CONTROL("AI Control"),
 }
 
 @Composable
@@ -174,6 +189,37 @@ private fun MarkerPreferencesContent(
         onChange(preferences.copy(showMarkerNames = it))
     }
     TextButton(onClick = onReset) { Text("Reset Marker") }
+}
+
+@Composable
+private fun AiControlPreferencesContent(
+    preferences: AiControlPreferences,
+    status: AiControlStatus,
+    preferenceError: String?,
+    onChange: (Boolean) -> Unit,
+    onReset: () -> Unit,
+) {
+    Text("AI Map Control", style = MaterialTheme.typography.titleMedium)
+    PreferenceCheckbox("Enable AI Map Control", preferences.enabled, onCheckedChange = onChange)
+    Text(
+        when (status) {
+            AiControlStatus.Disabled -> "Disabled"
+            AiControlStatus.Starting -> "Starting…"
+            AiControlStatus.Listening -> "Listening on localhost"
+            AiControlStatus.AlreadyActive -> "Already Active in another app instance"
+            is AiControlStatus.Error -> status.message
+        },
+        color = when (status) {
+            is AiControlStatus.Error, AiControlStatus.AlreadyActive -> Color(0xFFFFB4AB)
+            else -> Color(0xFFAAB9C7)
+        },
+    )
+    if (preferenceError != null) Text(preferenceError, color = Color(0xFFFFB4AB))
+    Text(
+        "When enabled, a new authenticated local-only control session starts after the map is ready.",
+        color = Color(0xFFAAB9C7),
+    )
+    TextButton(onClick = onReset) { Text("Reset AI Control") }
 }
 
 @Composable

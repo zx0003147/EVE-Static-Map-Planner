@@ -17,6 +17,7 @@ import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.preferences.AppPreferences
+import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
@@ -28,6 +29,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -327,6 +329,43 @@ class MapViewModelTest {
     }
 
     @Test
+    fun `AI Control category reset and Reset All persist disabled`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store = FakePreferencesStore()
+        val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.updateAiControlPreferences(AiControlPreferences(enabled = true)).isSuccess)
+        assertTrue(viewModel.state.value.appPreferences.aiControl.enabled)
+        assertTrue(store.stored.aiControl.enabled)
+
+        assertTrue(viewModel.updateAiControlPreferences(AiControlPreferences.Defaults).isSuccess)
+        assertFalse(viewModel.state.value.appPreferences.aiControl.enabled)
+        assertFalse(store.stored.aiControl.enabled)
+
+        assertTrue(viewModel.updateAiControlPreferences(AiControlPreferences(enabled = true)).isSuccess)
+        assertTrue(viewModel.resetAllPreferences().isSuccess)
+        assertEquals(AppPreferences.Defaults, viewModel.state.value.appPreferences)
+        assertEquals(AppPreferences.Defaults, store.stored)
+    }
+
+    @Test
+    fun `AI Control preference save failure leaves session preference disabled`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store = FakePreferencesStore().apply { failSaves = true }
+        val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        advanceUntilIdle()
+
+        val result = viewModel.updateAiControlPreferences(AiControlPreferences(enabled = true))
+
+        assertTrue(result.isFailure)
+        assertFalse(viewModel.state.value.appPreferences.aiControl.enabled)
+        assertFalse(store.stored.aiControl.enabled)
+    }
+
+    @Test
     fun `search focus selects target centers it and supplies compact card details`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -542,10 +581,12 @@ private class FakePreferencesStore(
     initial: AppPreferences = AppPreferences.Defaults,
 ) : PreferencesStore {
     var stored: AppPreferences = initial
+    var failSaves: Boolean = false
 
     override fun load(): AppPreferences = stored
 
     override fun save(preferences: AppPreferences) {
+        if (failSaves) error("simulated settings failure")
         stored = preferences
     }
 }

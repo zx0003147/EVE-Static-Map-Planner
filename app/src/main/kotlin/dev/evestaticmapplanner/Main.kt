@@ -8,10 +8,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -23,10 +25,14 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
+import dev.evestaticmapplanner.control.AiMapControlLifecycleController
+import dev.evestaticmapplanner.control.AppAiControlSession
+import dev.evestaticmapplanner.control.AppLocalControlAuditSink
 import dev.evestaticmapplanner.control.ExistingPlanningPorts
 import dev.evestaticmapplanner.control.MapViewportControlAdapter
 import dev.evestaticmapplanner.control.MissionMapStateStore
 import dev.evestaticmapplanner.control.RepositorySystemReadPort
+import dev.evestaticmapplanner.control.transport.LocalControlServer
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
@@ -61,6 +67,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 fun main(arguments: Array<String>) {
     AppDiagnostics.initialize()
@@ -135,15 +143,19 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         CachingStaticMapRepository(SqliteStaticMapRepository(configuration.database.path))
     }
     val searchRepository = remember(configuration) { SqliteSystemSearchRepository(configuration.database.path) }
+    val preferencesStore = remember(configuration) {
+        PropertiesPreferencesStore(
+            ApplicationDirectories.root().resolve("settings.properties"),
+            warningSink = AppDiagnostics::warning,
+        )
+    }
     val mapViewModel = remember(configuration) {
         MapViewModel(
             staticMapRepository = staticRepository,
             universeRepository = SqliteUniverseRepository(configuration.database.path),
             focusSystemName = configuration.focusSystemName,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-            preferencesStore = PropertiesPreferencesStore(
-                ApplicationDirectories.root().resolve("settings.properties"),
-            ),
+            preferencesStore = preferencesStore,
         )
     }
     val userComponents = remember(configuration) {
@@ -202,22 +214,40 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         )
     }
     val missionMapStateStore = remember(configuration) { MissionMapStateStore() }
-    val controlScope = remember(configuration) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
-    val mapControlCoordinator = remember(configuration) {
+    val controlLifecycle = remember(configuration) {
         val planningPorts = ExistingPlanningPorts(
             staticMapRepository = staticRepository,
             ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
         )
-        AppMapControlCoordinator(
-            systemReadPort = RepositorySystemReadPort(
-                searchRepository,
-                SqliteUniverseRepository(configuration.database.path),
-            ),
-            routePlanningPort = planningPorts,
-            jumpPlanningPort = planningPorts,
-            viewportControlPort = MapViewportControlAdapter(mapViewModel),
-            missionRenderStatePort = missionMapStateStore,
-            scope = controlScope,
+        val systemReadPort = RepositorySystemReadPort(
+            searchRepository,
+            SqliteUniverseRepository(configuration.database.path),
+        )
+        AiMapControlLifecycleController(
+            discoveryRoot = ApplicationDirectories.root().resolve("control"),
+            sessionFactory = {
+                val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+                val coordinator = AppMapControlCoordinator(
+                    systemReadPort = systemReadPort,
+                    routePlanningPort = planningPorts,
+                    jumpPlanningPort = planningPorts,
+                    viewportControlPort = MapViewportControlAdapter(mapViewModel),
+                    missionRenderStatePort = missionMapStateStore,
+                    scope = sessionScope,
+                )
+                AppAiControlSession(
+                    server = LocalControlServer(
+                        service = coordinator,
+                        appVersion = ApplicationBuildInfo.current.appVersion,
+                        auditSink = AppLocalControlAuditSink,
+                    ),
+                    clearMissionState = { missionMapStateStore.publish(emptyList()) },
+                    closeControlSession = {
+                        coordinator.close()
+                        sessionScope.cancel()
+                    },
+                )
+            },
         )
     }
 
@@ -244,11 +274,10 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         capitalViewModel,
         markerViewModel,
         staticDataViewModel,
-        mapControlCoordinator,
+        controlLifecycle,
     ) {
         onDispose {
-            mapControlCoordinator.close()
-            controlScope.cancel()
+            runBlocking { controlLifecycle.shutdown() }
             mapViewModel.close()
             routeViewModel.close()
             jumpViewModel.close()
@@ -265,10 +294,19 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
     val markerState by markerViewModel.state.collectAsState()
     val missionState by missionMapStateStore.state.collectAsState()
     val staticDataState by staticDataViewModel.state.collectAsState()
+    val aiControlStatus by controlLifecycle.status.collectAsState()
+    val uiScope = rememberCoroutineScope()
     var showStaticData by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
     var showMarkerManager by remember { mutableStateOf(false) }
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
+    var aiPreferenceError by remember { mutableStateOf<String?>(null) }
+    val aiControlReady = !mapState.isLoading && mapState.scene != null && !mapState.canvasSize.isEmpty
+    LaunchedEffect(aiControlReady, mapState.appPreferences.aiControl.enabled) {
+        if (aiControlReady) {
+            controlLifecycle.setEnabled(mapState.appPreferences.aiControl.enabled)
+        }
+    }
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {
         it.persistence == MarkerPersistence.TEMPORARY
     }
@@ -316,8 +354,52 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
             preferences = mapState.appPreferences,
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
             onMarkerChange = mapViewModel::updateMarkerPreferences,
+            aiControlStatus = aiControlStatus,
+            aiControlError = aiPreferenceError,
+            onAiControlChange = { enabled ->
+                uiScope.launch {
+                    aiPreferenceError = null
+                    mapViewModel.updateAiControlPreferences(
+                        mapState.appPreferences.aiControl.copy(enabled = enabled),
+                    ).fold(
+                        onSuccess = {
+                            if (!enabled || aiControlReady) controlLifecycle.setEnabled(enabled)
+                        },
+                        onFailure = {
+                            aiPreferenceError = "The setting could not be saved; AI Map Control was not changed."
+                            AppDiagnostics.warning("AI Control preference save failed", it)
+                        },
+                    )
+                }
+            },
             onResetMapDisplay = mapViewModel::resetMapDisplayPreferences,
             onResetMarker = mapViewModel::resetMarkerPreferences,
+            onResetAiControl = {
+                uiScope.launch {
+                    aiPreferenceError = null
+                    mapViewModel.updateAiControlPreferences(
+                        dev.evestaticmapplanner.preferences.AiControlPreferences.Defaults,
+                    ).fold(
+                        onSuccess = { controlLifecycle.setEnabled(false) },
+                        onFailure = {
+                            aiPreferenceError = "The setting could not be reset; AI Map Control was not changed."
+                            AppDiagnostics.warning("AI Control preference reset failed", it)
+                        },
+                    )
+                }
+            },
+            onResetAll = {
+                uiScope.launch {
+                    aiPreferenceError = null
+                    mapViewModel.resetAllPreferences().fold(
+                        onSuccess = { controlLifecycle.setEnabled(false) },
+                        onFailure = {
+                            aiPreferenceError = "Preferences could not be reset."
+                            AppDiagnostics.warning("Preferences reset failed", it)
+                        },
+                    )
+                }
+            },
             onDismiss = { showPreferences = false },
         )
     }
