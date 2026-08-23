@@ -1,6 +1,10 @@
-# EVE Map Assistant Plugin
+# EVE Map Assistant Integration
 
-EVE Map Assistant is a repo-local Codex plugin for EVE Static Map Planner. Its bundled skill teaches Codex how to select and sequence the existing 20 map-control tools. It does not implement route algorithms or add map-control capabilities.
+EVE Map Assistant is a separately distributed Codex Plugin and Skill for EVE Static Map Planner. This repository provides the map application and `eve-static-map` MCP bridge; it no longer contains the Plugin implementation or Plugin-specific QA.
+
+The current standalone source repository is a sibling local repository named `EVE-Map-Assistant-Plugin`.
+
+Repository URL: pending publication.
 
 ## Prerequisites
 
@@ -8,7 +12,7 @@ EVE Map Assistant is a repo-local Codex plugin for EVE Static Map Planner. Its b
 - The installed bridge is at `%LOCALAPPDATA%\EVE Static Map Planner\EVE Map MCP Bridge.exe`.
 - Start the map and enable **Preferences > AI Control** before performing map operations.
 - The `eve-static-map` MCP server is registered and enabled in Codex.
-- **EVE Map Assistant** is installed from this repository's `personal` marketplace.
+- **EVE Map Assistant** is installed from the standalone repository's `personal` marketplace.
 - Use a Codex client that supports local plugins and local STDIO MCP servers.
 
 ## Gate B: why MCP registration is separate
@@ -28,12 +32,12 @@ To remove this MCP registration:
 codex mcp remove eve-static-map
 ```
 
-## Install the development plugin
+## Standalone Plugin repository
 
-The repository marketplace is `.agents/plugins/marketplace.json`, and the plugin source is `plugins/eve-map-assistant`.
+Plugin source, marketplace metadata, Skill instructions, and Plugin-specific contract validation are maintained only in `EVE-Map-Assistant-Plugin`. The Plugin remains independently versioned and distributed from the map application.
 
-1. Restart the ChatGPT desktop app with this repository open so it can discover the repo marketplace.
-2. If the **Personal** local source does not appear, run `codex plugin marketplace add "."` from the repository root, then confirm it with `codex plugin marketplace list`.
+1. Open the standalone Plugin repository, not this map repository.
+2. Run `codex plugin marketplace add "."` from the standalone repository root, then confirm it with `codex plugin marketplace list`.
 3. Open the Plugins Directory and install **EVE Map Assistant**, or run `codex plugin add eve-map-assistant@personal`.
 4. Start a new Codex task so the installed plugin copy, bundled skill, and MCP dependency are loaded.
 
@@ -43,7 +47,7 @@ To remove it, use the plugin's menu in the Plugins Directory, or use the officia
 codex plugin remove eve-map-assistant@personal
 ```
 
-If you explicitly added this repository as the `personal` marketplace and no longer need that source, remove it after uninstalling the plugin with `codex plugin marketplace remove personal`.
+If you explicitly added the standalone repository as the `personal` marketplace and no longer need that source, remove it after uninstalling the Plugin with `codex plugin marketplace remove personal`.
 
 ## Quick checks
 
@@ -67,14 +71,10 @@ The first prompt must not create a Mission or display a route. The second should
 
 The assistant can control only temporary Mission state. It cannot alter user routes, saved markers, Ansiblex connections, preferences, databases, or other user-owned state. Session credentials and local discovery details remain internal to the bridge.
 
-## Validation
+## Responsibility boundary
 
-From the repository root, run the Plugin Creator validator, Skill Creator validator, and the project contract check:
+This map repository continues to validate the application, Control API, MCP bridge, and fixed 20-tool server contract through its own Kotlin tests. Run Plugin Creator validation, Skill lint, and `qa/validate-eve-map-assistant.py` from the standalone Plugin repository.
 
-```text
-<python> <plugin-creator>/scripts/validate_plugin.py plugins/eve-map-assistant
-<python> <skill-creator>/scripts/quick_validate.py plugins/eve-map-assistant/skills/eve-map-assistant
-<python> qa/validate-eve-map-assistant.py
-```
+The standalone Plugin does not contain route algorithms, Control API implementations, databases, or the MCP server implementation. It declares only the existing `eve-static-map` dependency and teaches Codex how to use that fixed tool contract safely.
 
 Official references: [Package your plugin](https://developers.openai.com/plugins/build/plugins), [Build skills](https://developers.openai.com/plugins/build/skills), and [Model Context Protocol](https://learn.chatgpt.com/docs/extend/mcp).
