@@ -106,6 +106,35 @@ class JpackageComponentGuidNamespaceTest {
     }
 
     @Test
+    fun `removes only additional launcher shortcuts from the generated bundle`() {
+        val source = temporaryDirectory.resolve("shortcuts-source.wxf")
+        Files.writeString(source, SHORTCUT_FIXTURE)
+        val output = temporaryDirectory.resolve("shortcuts-output.wxf")
+        val shortcutProbe = PROBE_COMPONENTS + mapOf(
+            "mcpMenu" to "{11111111-1111-3111-8111-111111111111}",
+            "mcpDesktop" to "{22222222-2222-3222-8222-222222222222}",
+        )
+
+        val result = JpackageComponentGuidNamespace.transform(
+            source,
+            shortcutProbe,
+            output,
+            PLANNER_NAMESPACE,
+            excludedShortcutLauncherName = "EVE Map MCP Bridge",
+        )
+
+        assertEquals(setOf("mcpMenu", "mcpDesktop"), result.removedShortcutComponentIds)
+        assertEquals(PROBE_COMPONENTS.keys, result.mappings.keys)
+        assertTrue(!output.readText().contains("EVE Map MCP Bridge"))
+        assertTrue(output.readText().contains("EVE Static Map Planner"))
+        JpackageComponentGuidNamespace.assertOnlyExpectedChanges(
+            source,
+            output,
+            excludedShortcutLauncherName = "EVE Map MCP Bridge",
+        )
+    }
+
+    @Test
     fun `fails closed on missing unknown duplicate and many-to-one mappings`() {
         val source = writeFixture("source.wxf")
         assertFailsWith<IllegalArgumentException> {
@@ -247,5 +276,31 @@ class JpackageComponentGuidNamespaceTest {
               </Fragment>
             </Wix>
         """.trimIndent()
+
+        val SHORTCUT_FIXTURE = FIXTURE.replace(
+            """<ComponentGroup Id="Files">""",
+            """
+                <DirectoryRef Id="ProgramMenuPlanner">
+                  <Component Bitness="always64" Guid="{11111111-1111-3111-8111-111111111111}" Id="mcpMenu" Condition="JP_INSTALL_STARTMENU_SHORTCUT">
+                    <RegistryKey Root="HKCU" Key="Software\Planner\0.2.0"><RegistryValue Type="string" KeyPath="yes" Name="ProductCode" Value="[ProductCode]"/></RegistryKey>
+                    <RemoveFolder Id="mcpMenuFolder" On="uninstall"/>
+                    <Shortcut Id="mcpMenuShortcut" Name="EVE Map MCP Bridge" Target="[#mcpExe]"/>
+                  </Component>
+                </DirectoryRef>
+                <StandardDirectory Id="DesktopFolder">
+                  <Component Bitness="always64" Guid="{22222222-2222-3222-8222-222222222222}" Id="mcpDesktop" Condition="JP_INSTALL_DESKTOP_SHORTCUT">
+                    <RegistryKey Root="HKCU" Key="Software\Planner\0.2.0"><RegistryValue Type="string" KeyPath="yes" Name="ProductCode" Value="[ProductCode]"/></RegistryKey>
+                    <Shortcut Id="mcpDesktopShortcut" Name="EVE Map MCP Bridge" Target="[#mcpExe]"/>
+                  </Component>
+                </StandardDirectory>
+                <ComponentGroup Id="Shortcuts">
+                  <ComponentRef Id="mainMenu"/>
+                  <ComponentRef Id="mainDesktop"/>
+                  <ComponentRef Id="mcpMenu"/>
+                  <ComponentRef Id="mcpDesktop"/>
+                </ComponentGroup>
+                <Shortcut Name="EVE Static Map Planner"/>
+                <ComponentGroup Id="Files">""".trimIndent(),
+        )
     }
 }

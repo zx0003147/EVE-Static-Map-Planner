@@ -9,6 +9,8 @@ This document records the Phase 8 V1 packaging contract. It does not define an a
 - Vendor: `Static Map Planner Project`
 - Description: `Unofficial static map and route planning tool for EVE Online.`
 - Main class: `dev.evestaticmapplanner.MainKt`
+- Additional stdio launcher: `EVE Map MCP Bridge.exe`
+- Additional launcher main class: `dev.evestaticmapplanner.mcp.MainKt`
 - Upgrade UUID: `502B9850-A5B0-4922-BB20-AC7FEBA590DC`
 
 The upgrade UUID identifies one installer product family. It must not change with the application version, Git commit, SDE build, build machine, or release artifact.
@@ -59,7 +61,7 @@ WiX and the JDK are build-machine dependencies only. The installed application c
 
 ## Installation and data boundary
 
-The MSI is a per-user install with Start Menu and desktop shortcuts. The launcher does not open a console window. The installer manages only the launcher, application JARs, bundled runtime, legal notice, icon, and other immutable packaged resources.
+The MSI is a per-user install with Start Menu and desktop shortcuts for the GUI app. The main launcher does not open a console window. The console MCP launcher is installed as a product component but receives no shortcut or second Installed Apps entry. Both launchers share one bundled runtime; the installer otherwise manages only application JARs, legal notice, icon, and immutable packaged resources.
 
 Writable state remains outside the installation image:
 
@@ -69,8 +71,11 @@ Writable state remains outside the installation image:
 ├─ data\user.db
 ├─ logs\
 ├─ updates\
+├─ control\                 # ephemeral only while AI Control is active
 └─ audit data beneath updates\
 ```
+
+The package must not contain `active-instance.json`, `session.key`, `active.lock`, `settings.properties`, `static.db`, or `user.db`. Control discovery files are runtime session artifacts and are never migrated as installer data.
 
 The installer contains no SDE database or SDE archive. First run without managed static data uses the Phase 7 Static Data Setup flow.
 
@@ -163,12 +168,15 @@ java.instrument
 java.logging
 java.net.http
 java.sql
+jdk.httpserver
 jdk.unsupported
 ```
 
 `java.instrument`, `java.net.http`, `java.sql`, and `jdk.unsupported` were reported
 by `suggestModules`. `java.desktop` is required by Compose, and `java.logging`
-is required by the rotating diagnostic log. `suggestModules` is advisory. Final
+is required by the rotating diagnostic log. `jdk.httpserver` serves the authenticated
+loopback AI Control endpoint. The MCP launcher also uses `java.net.http`; its
+production classpath is audited separately with `jdeps`. `suggestModules` is advisory. Final
 correctness is established by `runDistributable` and installed-application
 acceptance, including Compose/Skiko, SQLite native extraction, HTTP, ZIP, SDE
 build, and database validation.

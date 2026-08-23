@@ -423,11 +423,11 @@ private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
 private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
-private val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
-private val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
+internal val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
+internal val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
 private val ROUTE_START_COLOR = Color(0xFF57E389)
 private val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
-private val CAPITAL_ROUTE_COLOR = Color(0xFFE28CFF)
+internal val CAPITAL_ROUTE_COLOR = Color(0xFFB388FF)
 private val CAPITAL_START_COLOR = Color(0xFFA98BFF)
 private val CAPITAL_DESTINATION_COLOR = Color(0xFFFF7EB6)
 private val INTERSECTION_COLOR = Color(0xFFFFD166)
@@ -439,8 +439,14 @@ private val JUMP_OVERLAY_COLORS = listOf(
     Color(0xFFFF7EB6),
     Color(0xFFB8E986),
 )
-private val MISSION_ROUTE_COLORS = listOf(Color(0xFFF4E06D), Color(0xFF7AE7C7), Color(0xFFFFA9E7), Color(0xFF9CCBFF))
-private val MISSION_CAPITAL_COLORS = listOf(Color(0xFFFFD166), Color(0xFFFF8FA3), Color(0xFFC7A6FF), Color(0xFF80ED99))
+internal val MISSION_ROUTE_COLORS = listOf(Color(0xFFF4E06D))
+internal val MISSION_CAPITAL_ROUTE_COLOR = Color(0xFFFF5C57)
+internal val MISSION_CAPITAL_COLORS = listOf(
+    MISSION_CAPITAL_ROUTE_COLOR,
+    Color(0xE6FF5C57),
+    Color(0xCCFF5C57),
+    Color(0xB3FF5C57),
+)
 private val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {
     MapLabelType.SYSTEM -> LABEL_COLOR

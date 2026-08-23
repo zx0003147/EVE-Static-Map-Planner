@@ -1,6 +1,8 @@
 import dev.evestaticmapplanner.packaging.JpackageComponentGuidNamespace
 import dev.evestaticmapplanner.packaging.MsiComponentTableReader
+import dev.evestaticmapplanner.packaging.MsiDistributionAuditReader
 import dev.evestaticmapplanner.packaging.MsiLegacyPackageCleanupReader
+import dev.evestaticmapplanner.packaging.WindowsAppImageIntegration
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import java.io.File
@@ -32,7 +34,20 @@ val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
 val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 val windowsUpgradeUuid = "502B9850-A5B0-4922-BB20-AC7FEBA590DC"
 val windowsComponentNamespace = UUID.fromString(windowsUpgradeUuid)
+val historicalProductCodes = setOf(
+    "{A7D6C309-9A9F-3079-A87B-1616BAD49516}", // 0.1.0
+    "{1984FBD7-03D9-38DD-8ECD-F58783036C95}", // 0.1.1
+    "{8E5104B6-B3CA-36C7-BC65-B3401F15F421}", // 0.1.2
+)
 val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
+val nativeComposeOutputBase = nativeOutputDir
+    ?.let(::file)
+    ?.resolve("compose")
+    ?: layout.buildDirectory.dir("compose/binaries").get().asFile
+val composeApplicationImage = nativeComposeOutputBase.resolve("main/app/EVE Static Map Planner")
+val integratedImageBuildRoot = nativeComposeOutputBase.resolve("main/integrated-app")
+val integratedApplicationImage = integratedImageBuildRoot.resolve("EVE Static Map Planner")
+val mcpInstalledLibraries = project(":mcp").layout.buildDirectory.dir("install/mcp/lib")
 
 nativeOutputDir?.let { layout.buildDirectory.set(file(it).resolve("app-build")) }
 
@@ -173,6 +188,165 @@ tasks.matching { it.name == "createDistributable" }.configureEach {
     dependsOn(prepareUnusedComposeWixDirectory)
 }
 
+val createIntegratedDistributable by tasks.registering {
+    group = "distribution"
+    description = "Creates the Windows app-image with GUI and stdio MCP launchers sharing one runtime."
+    dependsOn("createDistributable", ":mcp:installDist")
+    inputs.dir(composeApplicationImage)
+    inputs.dir(mcpInstalledLibraries)
+    inputs.property("applicationVersion", appVersion)
+    inputs.property("mcpMainClass", WindowsAppImageIntegration.MCP_MAIN_CLASS)
+    outputs.dir(integratedApplicationImage)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        check(System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+            "The integrated application image can only be created on Windows."
+        }
+        check(System.getProperty("java.runtime.version").startsWith("25.0.4+7")) {
+            "The integrated launcher contract was audited for JDK 25.0.4+7 only; " +
+                "found ${System.getProperty("java.runtime.version")}."
+        }
+        check(composeApplicationImage.isDirectory) { "Missing Compose application image: $composeApplicationImage" }
+        val composeAppDirectory = composeApplicationImage.resolve("app")
+        val composeMainConfig = composeAppDirectory.resolve("EVE Static Map Planner.cfg")
+        check(composeMainConfig.isFile) { "Missing Compose main launcher config: $composeMainConfig" }
+        val originalMainConfig = composeMainConfig.readText(Charsets.UTF_8)
+        check(WindowsAppImageIntegration.launcherMainClass(originalMainConfig) == WindowsAppImageIntegration.MAIN_CLASS) {
+            "Compose main launcher class changed unexpectedly"
+        }
+        val mainJar = WindowsAppImageIntegration.mainJarFromComposeConfig(originalMainConfig)
+
+        val mcpLibraryDirectory = mcpInstalledLibraries.get().asFile
+        check(mcpLibraryDirectory.isDirectory) { "Missing MCP production libraries: $mcpLibraryDirectory" }
+        val mcpJars = mcpLibraryDirectory.listFiles()
+            ?.filter { it.isFile && it.extension.equals("jar", ignoreCase = true) }
+            ?.sortedBy { it.name }
+            .orEmpty()
+        check(mcpJars.isNotEmpty()) { "MCP production library directory contains no jars" }
+        check(mcpJars.none { it.name.contains("ktor", ignoreCase = true) }) {
+            "Ktor runtime must not enter the stdio MCP production image: ${mcpJars.map(File::getName)}"
+        }
+        check(mcpJars.singleOrNull { it.name == "mcp-$appVersion.jar" } != null) {
+            "Expected exactly one MCP main jar named mcp-$appVersion.jar"
+        }
+
+        val buildRoot = layout.buildDirectory.get().asFile.canonicalFile
+        val integrationWorkRoot = layout.buildDirectory.dir("jpackage/integrated-app").get().asFile
+        fun resetBuildOutput(directory: File, allowedRoot: File) {
+            val target = directory.canonicalFile
+            val root = allowedRoot.canonicalFile
+            check(target != root && target.toPath().startsWith(root.toPath())) {
+                "Refusing to reset integrated packaging output outside its build root: $target"
+            }
+            project.delete(target)
+            check(target.mkdirs()) { "Could not create integrated packaging output: $target" }
+        }
+
+        resetBuildOutput(integrationWorkRoot, buildRoot)
+        val inputDirectory = integrationWorkRoot.resolve("input")
+        val configDirectory = integrationWorkRoot.resolve("config")
+        check(inputDirectory.mkdirs() && configDirectory.mkdirs()) {
+            "Could not create integrated jpackage staging directories"
+        }
+        composeAppDirectory.listFiles().orEmpty()
+            .filterNot { it.name == ".jpackage.xml" || it.name == "EVE Static Map Planner.cfg" }
+            .forEach { source ->
+                val target = inputDirectory.resolve(source.name)
+                if (source.isDirectory) source.copyRecursively(target, overwrite = true) else source.copyTo(target)
+            }
+        check(inputDirectory.resolve(mainJar).isFile) { "Compose main jar was not staged: $mainJar" }
+        val stagedMcpDirectory = inputDirectory.resolve("mcp")
+        check(stagedMcpDirectory.mkdirs()) { "Could not create the MCP production classpath directory" }
+        mcpJars.forEach { it.copyTo(stagedMcpDirectory.resolve(it.name)) }
+
+        val additionalLauncherProperties = configDirectory.resolve("mcp-launcher.properties")
+        additionalLauncherProperties.writeText(
+            listOf(
+                "main-jar=mcp/mcp-$appVersion.jar",
+                "main-class=${WindowsAppImageIntegration.MCP_MAIN_CLASS}",
+                "description=Secure stdio bridge for EVE Static Map Planner AI Map Control.",
+                "app-version=$appVersion",
+                "win-console=true",
+                "win-shortcut=false",
+                "win-menu=false",
+            ).joinToString(System.lineSeparator(), postfix = System.lineSeparator()),
+            Charsets.ISO_8859_1,
+        )
+
+        val integratedDestination = integrationWorkRoot.resolve("out")
+        check(integratedDestination.mkdirs()) { "Could not create integrated image destination" }
+        val jpackage = File(System.getProperty("java.home"), "bin/jpackage.exe")
+        check(jpackage.isFile) { "jpackage.exe is unavailable in the Gradle JDK: $jpackage" }
+        val arguments = listOf(
+            jpackage.absolutePath,
+            "--type", "app-image",
+            "--input", inputDirectory.absolutePath,
+            "--dest", integratedDestination.absolutePath,
+            "--name", WindowsAppImageIntegration.MAIN_LAUNCHER,
+            "--main-jar", mainJar,
+            "--main-class", WindowsAppImageIntegration.MAIN_CLASS,
+            "--app-version", appVersion,
+            "--description", "Unofficial static map and route planning tool for EVE Online.",
+            "--vendor", "Static Map Planner Project",
+            "--runtime-image", composeApplicationImage.resolve("runtime").absolutePath,
+            "--icon", project.file("src/main/resources/icons/app-icon.ico").absolutePath,
+            "--java-options", "--enable-native-access=ALL-UNNAMED",
+            "--add-launcher", "${WindowsAppImageIntegration.MCP_LAUNCHER}=${additionalLauncherProperties.absolutePath}",
+        )
+        val stdoutFile = integrationWorkRoot.resolve("jpackage-out.log")
+        val stderrFile = integrationWorkRoot.resolve("jpackage-err.log")
+        val process = ProcessBuilder(arguments)
+            .directory(project.projectDir)
+            .redirectOutput(stdoutFile)
+            .redirectError(stderrFile)
+            .start()
+        val exitCode = process.waitFor()
+        val stdout = stdoutFile.readText(Charset.forName(System.getProperty("native.encoding", "UTF-8")))
+        val stderr = stderrFile.readText(Charset.forName(System.getProperty("native.encoding", "UTF-8")))
+        stdout.lineSequence().filter(String::isNotBlank).forEach(logger::lifecycle)
+        stderr.lineSequence().filter(String::isNotBlank).forEach(logger::error)
+        check(exitCode == 0) { "Integrated app-image jpackage invocation failed with exit code $exitCode" }
+
+        val generatedImage = integratedDestination.resolve(WindowsAppImageIntegration.MAIN_LAUNCHER)
+        check(generatedImage.isDirectory) { "jpackage did not create the integrated app-image: $generatedImage" }
+        val generatedAppDirectory = generatedImage.resolve("app")
+        composeMainConfig.copyTo(
+            generatedAppDirectory.resolve("${WindowsAppImageIntegration.MAIN_LAUNCHER}.cfg"),
+            overwrite = true,
+        )
+        generatedAppDirectory.resolve("${WindowsAppImageIntegration.MCP_LAUNCHER}.cfg").writeText(
+            WindowsAppImageIntegration.mcpLauncherConfig(appVersion, mcpJars.map(File::getName)),
+            Charsets.UTF_8,
+        )
+        val jpackageState = generatedAppDirectory.resolve(".jpackage.xml").readText(Charsets.UTF_8)
+        check(jpackageState.contains("<add-launcher name=\"${WindowsAppImageIntegration.MCP_LAUNCHER}\" service=\"false\"")) {
+            "Integrated app-image metadata does not identify the MCP add-launcher"
+        }
+
+        resetBuildOutput(integratedImageBuildRoot, nativeComposeOutputBase.resolve("main"))
+        generatedImage.copyRecursively(integratedApplicationImage, overwrite = true)
+        val jimage = File(System.getProperty("java.home"), "bin/jimage.exe")
+        val audit = WindowsAppImageIntegration.audit(
+            integratedApplicationImage.toPath(),
+            mcpJars.map(File::getName).toSet(),
+            jimage.toPath(),
+        )
+        integrationWorkRoot.resolve("audit.txt").writeText(buildString {
+            appendLine("launchers=${audit.launcherNames.sorted().joinToString(",")}")
+            appendLine("runtimeDirectories=${audit.runtimeDirectories.size}")
+            appendLine("runtimeModuleFiles=${audit.runtimeModuleFiles.size}")
+            appendLine("runtimeModules=${audit.runtimeModules.joinToString(",")}")
+            appendLine("mcpClasspathEntries=${audit.mcpClasspath.size}")
+        })
+        logger.lifecycle(
+            "Integrated Windows app-image verified: launchers=${audit.launcherNames.size}, " +
+                "runtimes=${audit.runtimeDirectories.size}, modules=${audit.runtimeModules.joinToString(",")}, " +
+                "mcpClasspathEntries=${audit.mcpClasspath.size}",
+        )
+    }
+}
+
 // Compose 1.10.0 always appends its private --resource-dir after freeArgs. Keep
 // its public packageMsi task and app-image prerequisites, but replace the final
 // invocation with a two-pass jpackage pipeline. Pass 1 is a non-release probe;
@@ -180,16 +354,17 @@ tasks.matching { it.name == "createDistributable" }.configureEach {
 // deterministically namespaced by the fixed UpgradeCode.
 tasks.matching { it.name == "packageMsi" }.configureEach {
     setActions(emptyList())
-    dependsOn("createDistributable", verifyWindowsInstallerResources)
+    dependsOn(
+        createIntegratedDistributable,
+        verifyWindowsInstallerResources,
+        ":mcp:analyzeProductionRuntimeModules",
+        ":mcp:installedImageTest",
+    )
     inputs.dir(windowsInstallerResources)
     inputs.property("windowsComponentNamespace", windowsComponentNamespace.toString())
     inputs.property("jpackageComponentGuidContract", JpackageComponentGuidNamespace.NAME_PREFIX)
-    val outputBase = nativeOutputDir
-        ?.let(::file)
-        ?.resolve("compose")
-        ?: layout.buildDirectory.dir("compose/binaries").get().asFile
-    val applicationImage = outputBase.resolve("main/app/EVE Static Map Planner")
-    val generatedMsi = outputBase.resolve("main/msi/EVE Static Map Planner-$appVersion.msi")
+    val applicationImage = integratedApplicationImage
+    val generatedMsi = nativeComposeOutputBase.resolve("main/msi/EVE Static Map Planner-$appVersion.msi")
     val componentGuidBuildRoot = layout.buildDirectory.dir("jpackage/component-guid").get().asFile
     val probeRoot = componentGuidBuildRoot.resolve("probe")
     val probeTemp = probeRoot.resolve("temp")
@@ -293,6 +468,7 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
             probeComponents = probeComponents,
             outputBundle = generatedBundle.toPath(),
             namespace = windowsComponentNamespace,
+            excludedShortcutLauncherName = WindowsAppImageIntegration.MCP_LAUNCHER,
         )
         componentMappingCsv.writeText(buildString {
             appendLine("componentId,effectiveOriginalGuid,namespacedGuid")
@@ -300,8 +476,11 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
                 appendLine("${mapping.componentId},${mapping.effectiveOriginalGuid},${mapping.namespacedGuid}")
             }
         })
-        check(transformResult.componentCount == probeComponents.size) {
-            "Transformed Component count does not match probe MSI"
+        check(
+            transformResult.componentCount + transformResult.removedShortcutComponentIds.size ==
+                probeComponents.size,
+        ) {
+            "Transformed Component count plus excluded MCP shortcut Components does not match probe MSI"
         }
 
         generatedMsi.parentFile.mkdirs()
@@ -323,15 +502,101 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
             generatedMsi.toPath(),
             transformResult.legacyPackageCleanupComponentId,
         )
+        val distributionAudit = MsiDistributionAuditReader.read(generatedMsi.toPath())
+        val requiredTables = setOf(
+            "Property",
+            "File",
+            "Component",
+            "Feature",
+            "Shortcut",
+            "RemoveFile",
+            "Upgrade",
+            "InstallExecuteSequence",
+            "CustomAction",
+            "Wix4RemoveFolderEx",
+        )
+        check(distributionAudit.tables.containsAll(requiredTables)) {
+            "Final MSI is missing required audit tables: ${requiredTables - distributionAudit.tables}"
+        }
+        check(distributionAudit.productName == WindowsAppImageIntegration.MAIN_LAUNCHER)
+        check(distributionAudit.productVersion == appVersion)
+        check(distributionAudit.manufacturer == "Static Map Planner Project")
+        check(distributionAudit.upgradeCode.equals("{$windowsUpgradeUuid}", ignoreCase = true))
+        check(distributionAudit.productCode !in historicalProductCodes) {
+            "The 0.2.0 ProductCode reuses a historical product identity: ${distributionAudit.productCode}"
+        }
+        check(distributionAudit.summaryTemplate.startsWith("x64;")) {
+            "Final MSI is not Windows x64: ${distributionAudit.summaryTemplate}"
+        }
+        check(distributionAudit.features.size == 1) {
+            "Final MSI must contain one product Feature, found ${distributionAudit.features.size}"
+        }
+        fun longMsiName(name: String): String = name.substringAfter('|', name)
+        val filesByLongName = distributionAudit.files.associateBy { longMsiName(it[2]) }
+        check(filesByLongName.containsKey("${WindowsAppImageIntegration.MAIN_LAUNCHER}.exe")) {
+            "Final MSI does not contain the main launcher"
+        }
+        val mcpLauncherFile = filesByLongName["${WindowsAppImageIntegration.MCP_LAUNCHER}.exe"]
+            ?: error("Final MSI does not contain the MCP launcher")
+        check(filesByLongName.containsKey("${WindowsAppImageIntegration.MCP_LAUNCHER}.cfg")) {
+            "Final MSI does not contain the MCP launcher config"
+        }
+        val mcpLauncherComponent = distributionAudit.components.single { it[0] == mcpLauncherFile[1] }
+        val mcpLauncherDirectory = distributionAudit.directories.single { it[0] == mcpLauncherComponent[2] }
+        check(longMsiName(mcpLauncherDirectory[2]) == WindowsAppImageIntegration.MAIN_LAUNCHER) {
+            "MCP launcher is not installed at the product install root: $mcpLauncherDirectory"
+        }
+        val forbiddenFileRows = distributionAudit.files.filter {
+            longMsiName(it[2]).lowercase() in WindowsAppImageIntegration.forbiddenPackagedFileNames
+        }
+        check(forbiddenFileRows.isEmpty()) { "Final MSI contains runtime/user data: $forbiddenFileRows" }
+        check(distributionAudit.files.none { longMsiName(it[2]).contains("ktor", ignoreCase = true) }) {
+            "Final MSI contains a Ktor runtime"
+        }
+        val shortcutNames = distributionAudit.shortcuts.map { longMsiName(it[2]) }
+        check(shortcutNames.isNotEmpty() && shortcutNames.all {
+            it == WindowsAppImageIntegration.MAIN_LAUNCHER
+        }) { "Only the desktop application may receive shortcuts: $shortcutNames" }
+        check(distributionAudit.upgrades.isNotEmpty() && distributionAudit.upgrades.all {
+            it[0].equals("{$windowsUpgradeUuid}", ignoreCase = true)
+        }) { "Final MSI contains an unexpected UpgradeCode row: ${distributionAudit.upgrades}" }
+        check(distributionAudit.customActions.count {
+            it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[2] == "RM_RF48431AECBD69377EA800D62616352F20"
+        } == 1) { "Major-upgrade AppData cleanup suppression CustomAction drifted" }
+        check(distributionAudit.installExecuteSequence.count {
+            it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[1] == "UPGRADINGPRODUCTCODE"
+        } == 1) { "Major-upgrade AppData preservation sequence drifted" }
+        check(distributionAudit.removeFolderEx.size == 1 &&
+            distributionAudit.removeFolderEx.single()[2] == "RM_RF48431AECBD69377EA800D62616352F20") {
+            "Normal uninstall recursive AppData cleanup drifted: ${distributionAudit.removeFolderEx}"
+        }
         JpackageComponentGuidNamespace.assertOnlyExpectedChanges(
             probeBundle.toPath(),
             generatedBundle.toPath(),
+            excludedShortcutLauncherName = WindowsAppImageIntegration.MCP_LAUNCHER,
         )
+        componentGuidBuildRoot.resolve("msi-audit.txt").writeText(buildString {
+            appendLine("productName=${distributionAudit.productName}")
+            appendLine("productVersion=${distributionAudit.productVersion}")
+            appendLine("productCode=${distributionAudit.productCode}")
+            appendLine("upgradeCode=${distributionAudit.upgradeCode}")
+            appendLine("manufacturer=${distributionAudit.manufacturer}")
+            appendLine("architecture=${distributionAudit.summaryTemplate}")
+            appendLine("installScope=perUser")
+            appendLine("featureCount=${distributionAudit.features.size}")
+            appendLine("componentCount=${finalComponents.size}")
+            appendLine("fileCount=${distributionAudit.files.size}")
+            appendLine("shortcutCount=${distributionAudit.shortcuts.size}")
+            appendLine("mcpLauncherDirectory=${mcpLauncherComponent[2]}")
+            appendLine("runtimeCount=1")
+        })
         logger.lifecycle(
             "Namespaced MSI verified: components=${transformResult.componentCount}, " +
                 "explicit=${transformResult.explicitGuidCount}, added=${transformResult.addedGuidCount}, " +
+                "excludedMcpShortcutComponents=${transformResult.removedShortcutComponentIds.size}, " +
                 "legacyPackageCleanup=${legacyCleanup.componentId}@${legacyCleanup.directoryId}, " +
-                "namespace=$windowsUpgradeUuid",
+                "namespace=$windowsUpgradeUuid, productCode=${distributionAudit.productCode}, " +
+                "files=${distributionAudit.files.size}, shortcuts=${distributionAudit.shortcuts.size}",
         )
     }
 }

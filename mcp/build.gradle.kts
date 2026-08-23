@@ -1,5 +1,7 @@
 import org.gradle.api.tasks.Sync
+import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.tasks.Jar
+import java.nio.charset.StandardCharsets
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -52,6 +54,13 @@ val mainJarName = tasks.named<Jar>("jar").flatMap { it.archiveFileName }
 val launcherJdk = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(25))
 }
+val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
+val integratedApplicationImage = nativeOutputDir
+    ?.let(rootProject::file)
+    ?.resolve("compose/main/integrated-app/EVE Static Map Planner")
+    ?: project(":app").layout.buildDirectory.dir(
+        "compose/binaries/main/integrated-app/EVE Static Map Planner",
+    ).get().asFile
 
 val createLauncher by tasks.registering(Exec::class) {
     group = "distribution"
@@ -102,4 +111,58 @@ tasks.test {
         "eve.mcp.launcher.path",
         launcherImageDirectory.map { it.file("$launcherName.exe").asFile.absolutePath }.get(),
     )
+}
+
+val analyzeProductionRuntimeModules by tasks.registering {
+    group = "verification"
+    description = "Runs jdeps against the production-only MCP bridge classpath."
+    dependsOn(tasks.named<Sync>("installDist"))
+    inputs.dir(installedLibraries)
+    val report = layout.buildDirectory.file("reports/step3c/mcp-jdeps-modules.txt")
+    outputs.file(report)
+    outputs.upToDateWhen { false }
+    doLast {
+        val libraries = installedLibraries.get().asFile.listFiles()
+            ?.filter { it.isFile && it.extension.equals("jar", ignoreCase = true) }
+            ?.sortedBy { it.name }
+            .orEmpty()
+        val mainJar = libraries.singleOrNull { it.name == "mcp-${project.version}.jar" }
+            ?: error("Expected exactly one versioned MCP main jar")
+        val dependencyClasspath = libraries.filterNot { it == mainJar }.joinToString(File.pathSeparator)
+        val jdeps = launcherJdk.get().metadata.installationPath.file("bin/jdeps.exe").asFile
+        check(jdeps.isFile) { "jdeps.exe is unavailable in the JDK 25 toolchain: $jdeps" }
+        val process = ProcessBuilder(
+            jdeps.absolutePath,
+            "--ignore-missing-deps",
+            "--multi-release", "25",
+            "--print-module-deps",
+            "--class-path", dependencyClasspath,
+            mainJar.absolutePath,
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }.trim()
+        check(process.waitFor() == 0) { "jdeps failed for the MCP production classpath: $output" }
+        val modules = output.split(',').map(String::trim).filter(String::isNotBlank).toSortedSet()
+        val required = setOf("java.base", "java.instrument", "java.logging", "java.net.http", "jdk.unsupported")
+        check(modules.containsAll(required)) { "MCP jdeps result is missing expected modules: ${required - modules}" }
+        val outputFile = report.get().asFile
+        outputFile.parentFile.mkdirs()
+        outputFile.writeText(modules.joinToString(",") + System.lineSeparator(), Charsets.UTF_8)
+        logger.lifecycle("MCP production jdeps modules: ${modules.joinToString(",")}")
+    }
+}
+
+val installedImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs MCP process tests against the final shared-runtime Windows app-image launcher."
+    dependsOn(":app:createIntegratedDistributable")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.mcp.McpProcessTest")
+    systemProperty(
+        "eve.mcp.launcher.path",
+        integratedApplicationImage.resolve("EVE Map MCP Bridge.exe").absolutePath,
+    )
+    inputs.file(integratedApplicationImage.resolve("EVE Map MCP Bridge.exe"))
+    outputs.upToDateWhen { false }
 }

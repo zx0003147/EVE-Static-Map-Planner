@@ -29,6 +29,7 @@ data class ComponentGuidTransformResult(
     val explicitGuidCount: Int,
     val addedGuidCount: Int,
     val legacyPackageCleanupComponentId: String,
+    val removedShortcutComponentIds: Set<String>,
     val mappings: Map<String, ComponentGuidMapping>,
 )
 
@@ -75,20 +76,25 @@ object JpackageComponentGuidNamespace {
         probeComponents: Map<String, String>,
         outputBundle: Path,
         namespace: UUID,
+        excludedShortcutLauncherName: String? = null,
     ): ComponentGuidTransformResult {
         require(Files.isRegularFile(sourceBundle)) { "Missing source bundle.wxf: $sourceBundle" }
         val document = readDocument(sourceBundle)
         validateRoot(document)
         val legacyPackageCleanupComponentId = authorLegacyPackageCleanup(document)
+        val removedShortcutComponentIds = excludedShortcutLauncherName
+            ?.let { removeGeneratedLauncherShortcuts(document, it) }
+            .orEmpty()
         val expectedFingerprint = semanticFingerprint(document)
         val components = componentElements(document)
         require(components.isNotEmpty()) { "bundle.wxf contains no WiX Component elements" }
 
         val sourceIds = components.map { componentId(it) }
         require(sourceIds.toSet().size == sourceIds.size) { "bundle.wxf contains duplicate Component Id values" }
-        require(probeComponents.keys == sourceIds.toSet()) {
-            val missing = sourceIds.toSet() - probeComponents.keys
-            val unknown = probeComponents.keys - sourceIds.toSet()
+        val expectedProbeIds = sourceIds.toSet() + removedShortcutComponentIds
+        require(probeComponents.keys == expectedProbeIds) {
+            val missing = expectedProbeIds - probeComponents.keys
+            val unknown = probeComponents.keys - expectedProbeIds
             "bundle/probe Component mismatch: source=${sourceIds.size}, probe=${probeComponents.size}, " +
                 "missing=$missing, unknown=$unknown"
         }
@@ -161,6 +167,7 @@ object JpackageComponentGuidNamespace {
             explicitGuidCount = explicitCount,
             addedGuidCount = addedGuidIds.size,
             legacyPackageCleanupComponentId = legacyPackageCleanupComponentId,
+            removedShortcutComponentIds = removedShortcutComponentIds,
             mappings = mappings,
         )
     }
@@ -183,15 +190,75 @@ object JpackageComponentGuidNamespace {
         }
     }
 
-    fun assertOnlyExpectedChanges(original: Path, transformed: Path) {
+    fun assertOnlyExpectedChanges(
+        original: Path,
+        transformed: Path,
+        excludedShortcutLauncherName: String? = null,
+    ) {
         val originalDocument = readDocument(original)
         val transformedDocument = readDocument(transformed)
         validateRoot(originalDocument)
         validateRoot(transformedDocument)
         authorLegacyPackageCleanup(originalDocument)
+        excludedShortcutLauncherName?.let { removeGeneratedLauncherShortcuts(originalDocument, it) }
         require(semanticFingerprint(originalDocument) == semanticFingerprint(transformedDocument)) {
-            "bundle.wxf files differ outside the exact legacy .package cleanup and Component/@Guid"
+            "bundle.wxf files differ outside the exact legacy .package cleanup, launcher shortcut exclusion, " +
+                "and Component/@Guid"
         }
+    }
+
+    private fun removeGeneratedLauncherShortcuts(document: Document, launcherName: String): Set<String> {
+        require(launcherName.isNotBlank())
+        val shortcutElements = document.getElementsByTagNameNS(WIX4_NAMESPACE, "Shortcut")
+        val matchingShortcuts = (0 until shortcutElements.length)
+            .map { shortcutElements.item(it) as Element }
+            .filter { it.getAttribute("Name") == launcherName }
+        require(matchingShortcuts.size == 2) {
+            "JDK 25.0.4 contract drift: expected exactly two generated shortcuts for $launcherName, " +
+                "found ${matchingShortcuts.size}"
+        }
+        val components = matchingShortcuts.map { shortcut ->
+            val component = shortcut.parentNode as? Element
+                ?: error("Generated shortcut for $launcherName has no Component parent")
+            require(component.localName == "Component" && component.namespaceURI == WIX4_NAMESPACE) {
+                "Generated shortcut for $launcherName is not a direct Component child"
+            }
+            require(component.getElementsByTagNameNS(WIX4_NAMESPACE, "Shortcut").length == 1 &&
+                component.getElementsByTagNameNS(WIX4_NAMESPACE, "File").length == 0) {
+                "Refusing to remove a shortcut Component that owns other shortcuts or files: ${componentId(component)}"
+            }
+            component
+        }
+        val componentIds = components.mapTo(linkedSetOf(), ::componentId)
+        require(componentIds.size == 2) { "Generated shortcuts for $launcherName share a Component" }
+        val conditions = components.map { it.getAttribute("Condition") }.toSet()
+        require(conditions == setOf("JP_INSTALL_STARTMENU_SHORTCUT", "JP_INSTALL_DESKTOP_SHORTCUT")) {
+            "Generated shortcut conditions drifted for $launcherName: $conditions"
+        }
+
+        val componentGroups = document.getElementsByTagNameNS(WIX4_NAMESPACE, "ComponentGroup")
+        val shortcutsGroup = (0 until componentGroups.length)
+            .map { componentGroups.item(it) as Element }
+            .singleOrNull { it.getAttribute("Id") == "Shortcuts" }
+            ?: error("bundle.wxf has no Shortcuts ComponentGroup")
+        val refs = shortcutsGroup.getElementsByTagNameNS(WIX4_NAMESPACE, "ComponentRef")
+        val matchingRefs = (0 until refs.length)
+            .map { refs.item(it) as Element }
+            .filter { it.getAttribute("Id") in componentIds }
+        require(matchingRefs.map { it.getAttribute("Id") }.toSet() == componentIds) {
+            "Generated shortcut Components are not referenced exactly by the Shortcuts group: $componentIds"
+        }
+        matchingRefs.forEach(shortcutsGroup::removeChild)
+
+        for (component in components) {
+            val container = component.parentNode
+            container.removeChild(component)
+            val hasElementChildren = (0 until container.childNodes.length).any {
+                container.childNodes.item(it) is Element
+            }
+            if (!hasElementChildren) container.parentNode.removeChild(container)
+        }
+        return componentIds
     }
 
     private fun authorLegacyPackageCleanup(document: Document): String {

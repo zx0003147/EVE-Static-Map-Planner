@@ -86,6 +86,30 @@ class AiMapControlLifecycleControllerTest {
             assertEquals(AiControlStatus.Disabled, controller.status.value)
             assertEquals(LocalControlServerState.STOPPED, second.server.state)
             assertTrue(second.closed)
+
+            val replacementHarness = SessionHarness(RecordingMissionStore())
+            val replacement = controller(root, replacementHarness)
+            replacement.setEnabled(true)
+            assertEquals(AiControlStatus.Listening, replacement.status.value)
+            replacement.shutdown()
+            assertEquals(LocalControlServerState.STOPPED, replacementHarness.sessions.single().server.state)
+            assertNoPublishedSession(root)
+        }
+    }
+
+    @Test
+    fun `App Exit while disabled prevents late enable and creates no lifecycle resources`() = withLifecycleRoot { root ->
+        runBlocking {
+            val harness = SessionHarness(RecordingMissionStore())
+            val controller = controller(root, harness)
+
+            controller.shutdown()
+            controller.shutdown()
+            controller.setEnabled(true)
+
+            assertEquals(AiControlStatus.Disabled, controller.status.value)
+            assertTrue(harness.sessions.isEmpty())
+            assertNoPublishedSession(root)
         }
     }
 

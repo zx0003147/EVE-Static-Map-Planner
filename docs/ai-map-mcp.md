@@ -1,4 +1,4 @@
-# AI Map MCP development launcher
+# AI Map MCP launcher
 
 The `mcp` module is a local STDIO-only bridge between Codex and a running EVE Static Map Planner instance:
 
@@ -24,7 +24,23 @@ The development app-image is generated below the ignored `mcp/build/launcher` di
 mcp/build/launcher/EVE Map MCP Bridge/EVE Map MCP Bridge.exe
 ```
 
-The image contains a bundled Java runtime. Starting the `.exe` does not require Gradle, a system JDK, a shell wrapper, or command-line arguments. It is a console launcher so stdin/stdout pipes remain available to the MCP client. A future MSI should add this as a second jpackage launcher beside the desktop launcher so both executables can share one installed runtime.
+The development image contains a bundled Java runtime. Starting the `.exe` does not require Gradle, a system JDK, a shell wrapper, or command-line arguments. It is a console launcher so stdin/stdout pipes remain available to the MCP client.
+
+## Windows 0.2.0 distribution
+
+The Windows MSI installs the bridge as a second native jpackage launcher in the same product image as the desktop app:
+
+```text
+<actual install root>\
+├─ EVE Static Map Planner.exe
+├─ EVE Map MCP Bridge.exe
+├─ app\
+└─ runtime\
+```
+
+Both launchers use the one installed jlink runtime. The GUI launcher keeps its Compose classpath and Windows GUI subsystem. `EVE Map MCP Bridge.exe` uses the console subsystem, starts `dev.evestaticmapplanner.mcp.MainKt`, and has a production-only classpath under `app\mcp`. It receives no Start Menu or desktop shortcut and creates no second Installed Apps entry.
+
+The MSI contains no control discovery descriptor, session key, lock, database, preferences, or other user state. `active-instance.json`, `session.key`, and `active.lock` are created only beneath `%LOCALAPPDATA%\EVE Static Map Planner\control` after the running app enables AI Control. The bridge remains STDIO-only and its installed classpath excludes Ktor HTTP/SSE/WebSocket server runtimes.
 
 ## Development registration
 
@@ -42,6 +58,18 @@ To remove only this development registration:
 ```powershell
 codex mcp remove eve-static-map
 ```
+
+## Migrate registration after installing 0.2.0
+
+Do not migrate a working development registration until the 0.2.0 MSI has been installed and the actual install path has been confirmed. Then replace only the launcher command, using the real path reported by Windows rather than a project or build path:
+
+```powershell
+codex mcp remove eve-static-map
+codex mcp add eve-static-map -- "<actual install root>\EVE Map MCP Bridge.exe"
+codex mcp get eve-static-map
+```
+
+Open a new Codex task after registration. With the map closed, initialization and `tools/list` should still succeed while a map tool returns `APP_DISCONNECTED`. With the map running and AI Control enabled, perform a light end-to-end check such as search, focus, begin mission, show route, add marker, show jump range, and clear mission.
 
 ## Fixed tool surface
 

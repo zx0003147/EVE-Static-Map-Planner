@@ -68,7 +68,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 fun main(arguments: Array<String>) {
     AppDiagnostics.initialize()
@@ -92,16 +91,23 @@ fun main(arguments: Array<String>) {
     application {
         val windowState = rememberWindowState(width = 1280.dp, height = 780.dp)
         var startup by remember { mutableStateOf(initial) }
+        var exitRequested by remember { mutableStateOf(false) }
         val windowIcon = painterResource("icons/app-icon.png")
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = {
+                if (startup is StartupResolution.Ready) exitRequested = true else exitApplication()
+            },
             title = "EVE Static Map Planner",
             state = windowState,
             icon = windowIcon,
         ) {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 when (val resolution = startup) {
-                    is StartupResolution.Ready -> ReadyApplication(resolution.configuration)
+                    is StartupResolution.Ready -> ReadyApplication(
+                        resolution.configuration,
+                        exitRequested,
+                        ::exitApplication,
+                    )
                     is StartupResolution.Bootstrap -> BootstrapApplication(
                         resolution.configuration,
                         onInstalled = { startup = StartupResolution.Ready(resolution.configuration) },
@@ -137,7 +143,11 @@ private fun BootstrapApplication(configuration: StartupConfiguration, onInstalle
 }
 
 @Composable
-private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguration) {
+private fun FrameWindowScope.ReadyApplication(
+    configuration: StartupConfiguration,
+    exitRequested: Boolean,
+    onExitApplication: () -> Unit,
+) {
     configuration.notice?.let { AppDiagnostics.warning("Static data startup notice: $it") }
     val staticRepository = remember(configuration) {
         CachingStaticMapRepository(SqliteStaticMapRepository(configuration.database.path))
@@ -267,23 +277,38 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
         )
     }
 
-    DisposableEffect(
+    val shutdownCoordinator = remember(
+        controlLifecycle,
         mapViewModel,
         routeViewModel,
         jumpViewModel,
         capitalViewModel,
         markerViewModel,
         staticDataViewModel,
-        controlLifecycle,
     ) {
-        onDispose {
-            runBlocking { controlLifecycle.shutdown() }
-            mapViewModel.close()
-            routeViewModel.close()
-            jumpViewModel.close()
-            capitalViewModel.close()
-            markerViewModel.close()
-            staticDataViewModel.close()
+        ApplicationShutdownCoordinator(
+            shutdownAiControl = controlLifecycle::shutdown,
+            resourceClosers = listOf(
+                mapViewModel::close,
+                routeViewModel::close,
+                jumpViewModel::close,
+                capitalViewModel::close,
+                markerViewModel::close,
+                staticDataViewModel::close,
+            ),
+            closeDiagnostics = AppDiagnostics::close,
+            exitApplication = onExitApplication,
+            warningSink = AppDiagnostics::warning,
+        )
+    }
+
+    DisposableEffect(shutdownCoordinator) {
+        onDispose(shutdownCoordinator::closeOwnedResources)
+    }
+    LaunchedEffect(exitRequested, shutdownCoordinator) {
+        if (exitRequested) {
+            AppDiagnostics.info("Application shutdown requested from the main window")
+            shutdownCoordinator.shutdown()
         }
     }
 
@@ -302,8 +327,8 @@ private fun FrameWindowScope.ReadyApplication(configuration: StartupConfiguratio
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
     var aiPreferenceError by remember { mutableStateOf<String?>(null) }
     val aiControlReady = !mapState.isLoading && mapState.scene != null && !mapState.canvasSize.isEmpty
-    LaunchedEffect(aiControlReady, mapState.appPreferences.aiControl.enabled) {
-        if (aiControlReady) {
+    LaunchedEffect(aiControlReady, mapState.appPreferences.aiControl.enabled, exitRequested) {
+        if (!exitRequested && aiControlReady) {
             controlLifecycle.setEnabled(mapState.appPreferences.aiControl.enabled)
         }
     }
