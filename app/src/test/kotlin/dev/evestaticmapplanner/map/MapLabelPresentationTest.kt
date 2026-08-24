@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
+import dev.evestaticmapplanner.core.map.RealXzProjection
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SchematicPosition
@@ -174,11 +175,62 @@ class MapLabelPresentationTest {
         assertTrue(presentation.systemLabelSystemIds.isEmpty())
     }
 
+    @Test
+    fun `emphasized route labels remain available outside system LOD without enabling every label`() {
+        val scene = sceneOf(
+            SystemSpec(1, -30.0, 0.0, regionId = 1, constellationId = 10),
+            SystemSpec(2, 0.0, 0.0, regionId = 1, constellationId = 10),
+            SystemSpec(3, 30.0, 0.0, regionId = 1, constellationId = 10),
+        )
+
+        val presentation = present(
+            scene = scene,
+            transform = transform(centerX = 0.0, zoom = 1.0),
+            mode = SemanticLabelMode.REGION_ONLY,
+            emphasizedSystemIds = linkedSetOf(1, 3),
+        )
+
+        assertTrue(presentation.systemLabelSystemIds.isEmpty())
+        assertEquals(listOf(1, 3), presentation.emphasizedSystemLabelIds)
+    }
+
+    @Test
+    fun `emphasized route labels follow the shared presentation path in both projections`() {
+        val visibleInBoth = testSystem(SystemSpec(1, 0.0, 0.0, 1, 10))
+        val realOnly = testSystem(SystemSpec(2, 30.0, 0.0, 1, 10), hasOfficialPosition = false)
+        val officialIndexExtent = testSystem(SystemSpec(3, 60.0, 0.0, 1, 10))
+        val data = StaticMapData(
+            systems = listOf(visibleInBoth, realOnly, officialIndexExtent),
+            connections = emptyList(),
+            regions = listOf(region(1)),
+            constellations = listOf(constellation(10, 1)),
+        )
+        val official = MapSceneBuilder().build(data, OfficialPosition2DProjection)
+        val real = MapSceneBuilder().build(data, RealXzProjection)
+
+        val officialPresentation = present(
+            official,
+            transform(centerX = 15.0, zoom = 2.0),
+            SemanticLabelMode.CONSTELLATION,
+            linkedSetOf(1, 2),
+        )
+        val realPresentation = present(
+            real,
+            transform(centerX = 15.0, zoom = 2.0),
+            SemanticLabelMode.CONSTELLATION,
+            linkedSetOf(1, 2),
+        )
+
+        assertEquals(listOf(1), officialPresentation.emphasizedSystemLabelIds)
+        assertEquals(listOf(1, 2), realPresentation.emphasizedSystemLabelIds)
+    }
+
     private fun present(
         scene: dev.evestaticmapplanner.core.map.ProjectedMapScene,
         transform: MapTransform,
         mode: SemanticLabelMode,
-    ) = MapLabelPresentationBuilder.build(scene, transform, mode, FIXED_METRICS)
+        emphasizedSystemIds: Set<Int> = emptySet(),
+    ) = MapLabelPresentationBuilder.build(scene, transform, mode, FIXED_METRICS, emphasizedSystemIds)
 
     private fun sceneOf(vararg specs: SystemSpec): dev.evestaticmapplanner.core.map.ProjectedMapScene {
         val systems = specs.map { testSystem(it) }

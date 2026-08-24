@@ -73,6 +73,7 @@ object MapRenderer {
         cache: MapRenderCache,
         presentation: MapLabelPresentation,
         preferences: MapDisplayPreferences,
+        emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
     ) {
         drawRect(MAP_BACKGROUND)
 
@@ -81,13 +82,14 @@ object MapRenderer {
             textMeasurer = textMeasurer,
             cache = cache,
             preferences = preferences,
+            alphaMultiplier = emphasis.hierarchyLabelAlphaMultiplier,
         )
 
         val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
         scene.edges.forEach { edge ->
             if (!edge.bounds.intersects(visibleBounds)) return@forEach
             drawLine(
-                color = EDGE_COLOR,
+                color = EDGE_COLOR.multiplyAlpha(emphasis.backgroundConnectionAlphaMultiplier),
                 start = transform.worldToScreen(edge.first).toOffset(),
                 end = transform.worldToScreen(edge.second).toOffset(),
                 strokeWidth = 1f,
@@ -95,16 +97,13 @@ object MapRenderer {
         }
 
         val level = detailLevel(transform.viewport.zoom)
-        val radius = when (level) {
-            MapDetailLevel.OVERVIEW -> 1.4f
-            MapDetailLevel.NORMAL -> 2.2f
-            MapDetailLevel.DETAIL -> 3.0f
-        }
+        val radius = systemNodeRadius(level)
         presentation.visibleSystemIds.forEach { systemId ->
             val node = scene.nodesById.getValue(systemId)
             val screen = transform.worldToScreen(node.position).toOffset()
             drawCircle(
-                color = if (node.isStargateConnected) CONNECTED_NODE_COLOR else UNCONNECTED_NODE_COLOR,
+                color = (if (node.isStargateConnected) CONNECTED_NODE_COLOR else UNCONNECTED_NODE_COLOR)
+                    .multiplyAlpha(emphasis.systemAlphaMultiplier(systemId)),
                 radius = radius,
                 center = screen,
             )
@@ -115,10 +114,50 @@ object MapRenderer {
             textMeasurer = textMeasurer,
             cache = cache,
             preferences = preferences,
+            alphaMultiplier = emphasis.hierarchyLabelAlphaMultiplier,
         )
-        drawPresentedLabels(presentation.constellationLabels, textMeasurer, cache, preferences)
+        drawPresentedLabels(
+            presentation.constellationLabels,
+            textMeasurer,
+            cache,
+            preferences,
+            emphasis.hierarchyLabelAlphaMultiplier,
+        )
 
         presentation.systemLabelSystemIds.forEach { systemId ->
+            val node = scene.nodesById.getValue(systemId)
+            val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
+            val screen = transform.worldToScreen(node.position)
+            drawText(
+                textLayoutResult = label,
+                color = labelColor(MapLabelType.SYSTEM, preferences)
+                    .multiplyAlpha(emphasis.systemLabelAlphaMultiplier(systemId)),
+                topLeft = Offset(screen.x.toFloat() + 5f, screen.y.toFloat() - label.size.height / 2f),
+            )
+        }
+    }
+
+    fun DrawScope.drawEmphasizedSystems(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        presentation: MapLabelPresentation,
+        emphasis: MapVisualEmphasis,
+        textMeasurer: TextMeasurer,
+        cache: MapRenderCache,
+        preferences: MapDisplayPreferences,
+    ) {
+        if (!emphasis.isActive) return
+        val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
+        val radius = systemNodeRadius(detailLevel(transform.viewport.zoom)) + EMPHASIZED_NODE_RADIUS_INCREASE_PX
+        emphasis.focusedSystemIds.forEach { systemId ->
+            val node = scene.nodesById[systemId]?.takeIf { visibleBounds.contains(it.position) } ?: return@forEach
+            drawCircle(
+                color = if (node.isStargateConnected) CONNECTED_NODE_COLOR else UNCONNECTED_NODE_COLOR,
+                radius = radius,
+                center = transform.worldToScreen(node.position).toOffset(),
+            )
+        }
+        presentation.emphasizedSystemLabelIds.forEach { systemId ->
             val node = scene.nodesById.getValue(systemId)
             val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
             val screen = transform.worldToScreen(node.position)
@@ -151,12 +190,13 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         connections: List<AnsiblexConnection>,
+        emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
     ) {
         connections.asSequence().filter(AnsiblexConnection::enabled).forEach { connection ->
             val first = scene.nodesById[connection.firstSystemId]?.position ?: return@forEach
             val second = scene.nodesById[connection.secondSystemId]?.position ?: return@forEach
             drawLine(
-                color = ANSIBLEX_NETWORK_COLOR,
+                color = ANSIBLEX_NETWORK_COLOR.multiplyAlpha(emphasis.backgroundConnectionAlphaMultiplier),
                 start = transform.worldToScreen(first).toOffset(),
                 end = transform.worldToScreen(second).toOffset(),
                 strokeWidth = 1.5f,
@@ -398,16 +438,25 @@ object MapRenderer {
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
+        alphaMultiplier: Float = 1f,
     ) {
         labels.forEach { presented ->
             val label = cache.label(presented.text, presented.type, preferences, textMeasurer)
             drawText(
                 textLayoutResult = label,
-                color = labelColor(presented.type, preferences),
+                color = labelColor(presented.type, preferences).multiplyAlpha(alphaMultiplier),
                 topLeft = presented.screenTopLeft.toOffset(),
             )
         }
     }
+}
+
+private fun Color.multiplyAlpha(multiplier: Float): Color = copy(alpha = alpha * multiplier)
+
+private fun systemNodeRadius(level: MapDetailLevel): Float = when (level) {
+    MapDetailLevel.OVERVIEW -> 1.4f
+    MapDetailLevel.NORMAL -> 2.2f
+    MapDetailLevel.DETAIL -> 3.0f
 }
 
 private fun MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())
@@ -461,3 +510,4 @@ private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
 private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0
 private const val MARKER_DIAMOND_SIZE_DP = 10f
+private const val EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f

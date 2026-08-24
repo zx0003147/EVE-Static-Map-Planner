@@ -47,6 +47,7 @@ data class MapLabelPresentation(
     val regionLabels: List<PresentedMapLabel>,
     val constellationLabels: List<PresentedMapLabel>,
     val systemLabelSystemIds: List<Int>,
+    val emphasizedSystemLabelIds: List<Int>,
 )
 
 fun interface MapLabelMetricsProvider {
@@ -59,6 +60,7 @@ object MapLabelPresentationBuilder {
         transform: MapTransform,
         semanticMode: SemanticLabelMode,
         metricsProvider: MapLabelMetricsProvider,
+        emphasizedSystemIds: Set<Int> = emptySet(),
     ): MapLabelPresentation {
         val viewportBounds = transform.visibleWorldBounds()
         val contentBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
@@ -75,21 +77,60 @@ object MapLabelPresentationBuilder {
         } else {
             emptyList()
         }
-        val systemLabels = if (
+        val regularSystemLabels = if (
             semanticMode == SemanticLabelMode.SYSTEM && visibleSystemIds.size <= MAX_VISIBLE_SYSTEM_LABELS
         ) {
             visibleSystemIds
         } else {
             emptyList()
         }
+        val emphasizedSystemLabels = emphasizedSystemLabels(
+            scene = scene,
+            transform = transform,
+            visibleSystemIds = visibleSystemIds.toHashSet(),
+            emphasizedSystemIds = emphasizedSystemIds,
+            metricsProvider = metricsProvider,
+        )
         return MapLabelPresentation(
             semanticMode = semanticMode,
             regionLabelRole = semanticMode.regionLabelRole,
             visibleSystemIds = visibleSystemIds,
             regionLabels = regionLabels,
             constellationLabels = constellationLabels,
-            systemLabelSystemIds = systemLabels,
+            systemLabelSystemIds = regularSystemLabels.filterNot(emphasizedSystemLabels.toHashSet()::contains),
+            emphasizedSystemLabelIds = emphasizedSystemLabels,
         )
+    }
+
+    private fun emphasizedSystemLabels(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        visibleSystemIds: Set<Int>,
+        emphasizedSystemIds: Set<Int>,
+        metricsProvider: MapLabelMetricsProvider,
+    ): List<Int> {
+        if (emphasizedSystemIds.isEmpty()) return emptyList()
+        val acceptedIds = ArrayList<Int>(minOf(emphasizedSystemIds.size, MAX_EMPHASIZED_SYSTEM_LABELS))
+        val acceptedBounds = ArrayList<ScreenBounds>(acceptedIds.size)
+        val canvasBounds = ScreenBounds(0.0, 0.0, transform.canvasSize.width, transform.canvasSize.height)
+        emphasizedSystemIds.asSequence()
+            .filter(visibleSystemIds::contains)
+            .takeWhile { acceptedIds.size < MAX_EMPHASIZED_SYSTEM_LABELS }
+            .forEach { systemId ->
+                val node = scene.nodesById[systemId] ?: return@forEach
+                val size = metricsProvider.measure(node.system.name, MapLabelType.SYSTEM)
+                val screen = transform.worldToScreen(node.position)
+                val topLeft = MapPoint(screen.x + SYSTEM_LABEL_OFFSET_PX, screen.y - size.height / 2.0)
+                val bounds = ScreenBounds(topLeft.x, topLeft.y, topLeft.x + size.width, topLeft.y + size.height)
+                if (bounds.intersects(canvasBounds) && acceptedBounds.none {
+                        it.intersects(bounds, EMPHASIZED_SYSTEM_LABEL_COLLISION_PADDING_PX)
+                    }
+                ) {
+                    acceptedIds += systemId
+                    acceptedBounds += bounds
+                }
+            }
+        return acceptedIds
     }
 
     private fun primaryRegionLabels(
@@ -220,3 +261,6 @@ object MapLabelPresentationBuilder {
 private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
 private const val CONSTELLATION_COLLISION_PADDING_PX = 6.0
 private const val MAX_VISIBLE_SYSTEM_LABELS = 700
+private const val MAX_EMPHASIZED_SYSTEM_LABELS = 80
+private const val EMPHASIZED_SYSTEM_LABEL_COLLISION_PADDING_PX = 2.0
+private const val SYSTEM_LABEL_OFFSET_PX = 5.0

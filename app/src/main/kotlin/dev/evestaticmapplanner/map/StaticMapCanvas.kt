@@ -88,6 +88,13 @@ fun StaticMapCanvas(
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
     val density = LocalDensity.current
     val mapDisplayPreferences = state.appPreferences.mapDisplay
+    val visualEmphasis = remember(activeRoute, capitalRoute, missionState.normalRoutes, missionState.capitalRoutes) {
+        MapVisualEmphasis.fromDisplayedRoutes(
+            userNormalRoute = activeRoute,
+            userCapitalRoute = capitalRoute,
+            missionState = missionState,
+        )
+    }
     val labelPresentation = remember(
         scene,
         transform,
@@ -95,6 +102,7 @@ fun StaticMapCanvas(
         mapDisplayPreferences,
         textMeasurer,
         renderCache,
+        visualEmphasis,
     ) {
         MapLabelPresentationBuilder.build(
             scene = scene,
@@ -104,6 +112,7 @@ fun StaticMapCanvas(
                 val size = renderCache.label(text, type, mapDisplayPreferences, textMeasurer).size
                 MapSize(size.width.toDouble(), size.height.toDouble())
             },
+            emphasizedSystemIds = visualEmphasis.focusedSystemIds,
         )
     }
     val routeOverlay = remember(scene, activeRoute) {
@@ -265,13 +274,14 @@ fun StaticMapCanvas(
                     renderCache,
                     labelPresentation,
                     mapDisplayPreferences,
+                    visualEmphasis,
                 )
             }
         }
         if (showAnsiblexLayer && ansiblexConnections.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize()) {
                 with(MapRenderer) {
-                    drawAnsiblexLayer(scene, transform, ansiblexConnections)
+                    drawAnsiblexLayer(scene, transform, ansiblexConnections, visualEmphasis)
                 }
             }
         }
@@ -312,6 +322,21 @@ fun StaticMapCanvas(
         projectedMissionCapitalRoutes.forEachIndexed { index, overlay ->
             Canvas(Modifier.fillMaxSize()) {
                 with(MapRenderer) { drawMissionCapitalRoute(transform, overlay, index) }
+            }
+        }
+        if (visualEmphasis.isActive) {
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) {
+                    drawEmphasizedSystems(
+                        scene = scene,
+                        transform = transform,
+                        presentation = labelPresentation,
+                        emphasis = visualEmphasis,
+                        textMeasurer = textMeasurer,
+                        cache = renderCache,
+                        preferences = mapDisplayPreferences,
+                    )
+                }
             }
         }
         if (presentedMarkers.isNotEmpty()) {
