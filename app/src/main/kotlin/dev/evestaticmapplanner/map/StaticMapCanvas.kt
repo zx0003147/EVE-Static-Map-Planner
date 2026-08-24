@@ -88,11 +88,25 @@ fun StaticMapCanvas(
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
     val density = LocalDensity.current
     val mapDisplayPreferences = state.appPreferences.mapDisplay
-    val visualEmphasis = remember(activeRoute, capitalRoute, missionState.normalRoutes, missionState.capitalRoutes) {
-        MapVisualEmphasis.fromDisplayedRoutes(
+    val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer) {
+        if (showAnsiblexLayer) ansiblexConnections.filter(AnsiblexConnection::enabled) else emptyList()
+    }
+    val visualEmphasis = remember(
+        activeRoute,
+        capitalRoute,
+        missionState.normalRoutes,
+        missionState.capitalRoutes,
+        state.selectedSystemId,
+        scene,
+        visibleAnsiblexConnections,
+    ) {
+        MapVisualEmphasis.fromDisplayedMapState(
             userNormalRoute = activeRoute,
             userCapitalRoute = capitalRoute,
             missionState = missionState,
+            selectedSystemId = state.selectedSystemId?.takeIf(scene.nodesById::containsKey),
+            stargateEdges = scene.edges,
+            visibleAnsiblexConnections = visibleAnsiblexConnections,
         )
     }
     val labelPresentation = remember(
@@ -112,7 +126,7 @@ fun StaticMapCanvas(
                 val size = renderCache.label(text, type, mapDisplayPreferences, textMeasurer).size
                 MapSize(size.width.toDouble(), size.height.toDouble())
             },
-            emphasizedSystemIds = visualEmphasis.focusedSystemIds,
+            emphasizedSystemIds = visualEmphasis.prioritizedSystemIds,
         )
     }
     val routeOverlay = remember(scene, activeRoute) {

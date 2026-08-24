@@ -60,7 +60,7 @@ object MapLabelPresentationBuilder {
         transform: MapTransform,
         semanticMode: SemanticLabelMode,
         metricsProvider: MapLabelMetricsProvider,
-        emphasizedSystemIds: Set<Int> = emptySet(),
+        emphasizedSystemIds: Collection<Int> = emptySet(),
     ): MapLabelPresentation {
         val viewportBounds = transform.visibleWorldBounds()
         val contentBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
@@ -106,7 +106,7 @@ object MapLabelPresentationBuilder {
         scene: ProjectedMapScene,
         transform: MapTransform,
         visibleSystemIds: Set<Int>,
-        emphasizedSystemIds: Set<Int>,
+        emphasizedSystemIds: Collection<Int>,
         metricsProvider: MapLabelMetricsProvider,
     ): List<Int> {
         if (emphasizedSystemIds.isEmpty()) return emptyList()

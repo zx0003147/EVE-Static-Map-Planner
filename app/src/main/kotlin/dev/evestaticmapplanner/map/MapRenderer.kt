@@ -89,7 +89,9 @@ object MapRenderer {
         scene.edges.forEach { edge ->
             if (!edge.bounds.intersects(visibleBounds)) return@forEach
             drawLine(
-                color = EDGE_COLOR.multiplyAlpha(emphasis.backgroundConnectionAlphaMultiplier),
+                color = EDGE_COLOR.multiplyAlpha(
+                    emphasis.stargateAlphaMultiplier(edge.firstSystemId, edge.secondSystemId),
+                ),
                 start = transform.worldToScreen(edge.first).toOffset(),
                 end = transform.worldToScreen(edge.second).toOffset(),
                 strokeWidth = 1f,
@@ -196,7 +198,7 @@ object MapRenderer {
             val first = scene.nodesById[connection.firstSystemId]?.position ?: return@forEach
             val second = scene.nodesById[connection.secondSystemId]?.position ?: return@forEach
             drawLine(
-                color = ANSIBLEX_NETWORK_COLOR.multiplyAlpha(emphasis.backgroundConnectionAlphaMultiplier),
+                color = ANSIBLEX_NETWORK_COLOR.multiplyAlpha(emphasis.ansiblexAlphaMultiplier(connection.id)),
                 start = transform.worldToScreen(first).toOffset(),
                 end = transform.worldToScreen(second).toOffset(),
                 strokeWidth = 1.5f,

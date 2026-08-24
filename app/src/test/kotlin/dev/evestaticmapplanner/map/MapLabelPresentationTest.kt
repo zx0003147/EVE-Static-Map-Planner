@@ -195,6 +195,24 @@ class MapLabelPresentationTest {
     }
 
     @Test
+    fun `emphasized labels preserve selected neighbor and route priority order`() {
+        val scene = sceneOf(
+            SystemSpec(1, -30.0, 0.0, regionId = 1, constellationId = 10),
+            SystemSpec(2, 0.0, 0.0, regionId = 1, constellationId = 10),
+            SystemSpec(3, 30.0, 0.0, regionId = 1, constellationId = 10),
+        )
+
+        val presentation = present(
+            scene = scene,
+            transform = transform(centerX = 0.0, zoom = 1.0),
+            mode = SemanticLabelMode.REGION_ONLY,
+            emphasizedSystemIds = listOf(2, 3, 1),
+        )
+
+        assertEquals(listOf(2, 3, 1), presentation.emphasizedSystemLabelIds)
+    }
+
+    @Test
     fun `emphasized route labels follow the shared presentation path in both projections`() {
         val visibleInBoth = testSystem(SystemSpec(1, 0.0, 0.0, 1, 10))
         val realOnly = testSystem(SystemSpec(2, 30.0, 0.0, 1, 10), hasOfficialPosition = false)
@@ -229,7 +247,7 @@ class MapLabelPresentationTest {
         scene: dev.evestaticmapplanner.core.map.ProjectedMapScene,
         transform: MapTransform,
         mode: SemanticLabelMode,
-        emphasizedSystemIds: Set<Int> = emptySet(),
+        emphasizedSystemIds: Collection<Int> = emptySet(),
     ) = MapLabelPresentationBuilder.build(scene, transform, mode, FIXED_METRICS, emphasizedSystemIds)
 
     private fun sceneOf(vararg specs: SystemSpec): dev.evestaticmapplanner.core.map.ProjectedMapScene {
