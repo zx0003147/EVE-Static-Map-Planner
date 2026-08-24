@@ -4,6 +4,8 @@ import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.core.marker.SavedMarkerChild
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -196,6 +198,7 @@ class MarkerViewModelTest {
 
 private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : SavedMarkerRepository {
     private val markers = initial.associateByTo(linkedMapOf(), Marker::systemId)
+    private val children = linkedMapOf<Int, MutableList<SavedMarkerChild>>()
     var loadFailure = false
     var createFailure = false
     var updateFailure = false
@@ -233,7 +236,29 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     override fun delete(systemId: Int): Boolean {
         deleteCalls++
         if (deleteFailure) error("forced marker delete failure")
-        return markers.remove(systemId) != null
+        return (markers.remove(systemId) != null).also { removed ->
+            if (removed) children.remove(systemId)
+        }
+    }
+
+    override fun getChildren(parentSystemId: Int): List<SavedMarkerChild> =
+        children[parentSystemId].orEmpty().sortedWith(compareBy(SavedMarkerChild::orderIndex, SavedMarkerChild::id))
+
+    override fun addChild(parentSystemId: Int, type: SavedMarkerChildType): SavedMarkerChild {
+        check(parentSystemId in markers) { "missing parent marker" }
+        val owned = children.getOrPut(parentSystemId, ::mutableListOf)
+        check(owned.none { it.type == type }) { "duplicate child type" }
+        return SavedMarkerChild.create(
+            id = "child-${++tick}",
+            parentSystemId = parentSystemId,
+            type = type,
+            orderIndex = (owned.maxOfOrNull(SavedMarkerChild::orderIndex) ?: -1) + 1,
+        ).also(owned::add)
+    }
+
+    override fun removeChild(parentSystemId: Int, childId: String): Boolean {
+        val owned = children[parentSystemId] ?: return false
+        return owned.removeAll { it.id == childId }
     }
 }
 

@@ -3,7 +3,7 @@ package dev.evestaticmapplanner.data.db
 import java.sql.Connection
 
 object UserDatabaseSchema {
-    const val VERSION = 2
+    const val VERSION = 3
 
     internal val savedMarkersCreateStatement =
         """
@@ -16,6 +16,26 @@ object UserDatabaseSchema {
             updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0)
         ) STRICT
         """.trimIndent()
+
+    internal val savedMarkerChildrenCreateStatements = listOf(
+        """
+        CREATE TABLE saved_marker_children (
+            id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
+            parent_system_id INTEGER NOT NULL CHECK(parent_system_id > 0),
+            type_key TEXT NOT NULL CHECK(
+                length(type_key) BETWEEN 1 AND 64 AND
+                type_key = lower(type_key) AND
+                type_key NOT GLOB '*[^a-z0-9._-]*' AND
+                substr(type_key, 1, 1) GLOB '[a-z0-9]'
+            ),
+            order_index INTEGER NOT NULL CHECK(order_index >= 0),
+            CONSTRAINT uq_saved_marker_child_type UNIQUE(parent_system_id, type_key),
+            CONSTRAINT uq_saved_marker_child_order UNIQUE(parent_system_id, order_index),
+            CONSTRAINT fk_saved_marker_child_parent
+                FOREIGN KEY(parent_system_id) REFERENCES saved_markers(system_id) ON DELETE CASCADE
+        ) STRICT
+        """.trimIndent(),
+    )
 
     private val createStatements = listOf(
         """
@@ -58,7 +78,7 @@ object UserDatabaseSchema {
         "CREATE INDEX idx_ansiblex_enabled ON ansiblex_connections(enabled)",
         "CREATE INDEX idx_ansiblex_source ON ansiblex_connections(source)",
         savedMarkersCreateStatement,
-    )
+    ) + savedMarkerChildrenCreateStatements
 
     fun create(connection: Connection) {
         connection.createStatement().use { statement ->
@@ -69,5 +89,11 @@ object UserDatabaseSchema {
 
     internal fun addSavedMarkers(connection: Connection) {
         connection.createStatement().use { it.execute(savedMarkersCreateStatement) }
+    }
+
+    internal fun addSavedMarkerChildren(connection: Connection) {
+        connection.createStatement().use { statement ->
+            savedMarkerChildrenCreateStatements.forEach(statement::execute)
+        }
     }
 }

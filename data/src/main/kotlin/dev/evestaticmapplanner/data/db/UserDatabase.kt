@@ -70,11 +70,33 @@ object UserDatabase {
         while (version < UserDatabaseSchema.VERSION) {
             when (version) {
                 1 -> migrateVersionOneToTwo(connection, path, migrationHook)
+                2 -> migrateVersionTwoToThree(connection, path, migrationHook)
                 else -> throw UserDatabaseException(
                     "No migration is available from user database schema $version to ${UserDatabaseSchema.VERSION}",
                 )
             }
             version++
+        }
+    }
+
+    private fun migrateVersionTwoToThree(
+        connection: Connection,
+        path: Path,
+        migrationHook: (Connection) -> Unit,
+    ) {
+        connection.autoCommit = false
+        try {
+            UserDatabaseSchema.addSavedMarkerChildren(connection)
+            validateContents(connection, path, requiredTables(version = 3), requiredIndexes(version = 3))
+            migrationHook(connection)
+            connection.createStatement().use { it.execute("PRAGMA user_version = 3") }
+            validate(connection, path, expectedVersion = 3)
+            connection.commit()
+        } catch (error: Throwable) {
+            connection.rollback()
+            throw error
+        } finally {
+            connection.autoCommit = true
         }
     }
 
@@ -143,6 +165,7 @@ object UserDatabase {
             throw UserDatabaseException("User database schema is incomplete: missing indexes ${requiredIndexes - actualIndexes}")
         }
         if ("saved_markers" in requiredTables) validateSavedMarkersSchema(connection)
+        if ("saved_marker_children" in requiredTables) validateSavedMarkerChildrenSchema(connection)
         val foreignKeyErrors = connection.createStatement().use { statement ->
             statement.executeQuery("PRAGMA foreign_key_check").use { result -> result.next() }
         }
@@ -203,6 +226,87 @@ object UserDatabase {
         }
     }
 
+    private fun validateSavedMarkerChildrenSchema(connection: Connection) {
+        data class Column(val name: String, val type: String, val notNull: Boolean, val primaryKey: Boolean)
+
+        val columns = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA table_info(saved_marker_children)").use { result ->
+                buildList {
+                    while (result.next()) {
+                        add(
+                            Column(
+                                name = result.getString("name"),
+                                type = result.getString("type"),
+                                notNull = result.getInt("notnull") == 1,
+                                primaryKey = result.getInt("pk") == 1,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        val expected = listOf(
+            Column("id", "TEXT", notNull = true, primaryKey = true),
+            Column("parent_system_id", "INTEGER", notNull = true, primaryKey = false),
+            Column("type_key", "TEXT", notNull = true, primaryKey = false),
+            Column("order_index", "INTEGER", notNull = true, primaryKey = false),
+        )
+        if (columns != expected) throw UserDatabaseException("User database saved_marker_children schema is invalid")
+
+        val createSql = connection.createStatement().use { statement ->
+            statement.executeQuery(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'saved_marker_children'",
+            ).use { result ->
+                if (!result.next()) throw UserDatabaseException(
+                    "User database saved_marker_children table has no schema SQL",
+                )
+                result.getString(1).uppercase().replace(Regex("\\s+"), " ")
+            }
+        }
+        val requiredFragments = setOf(
+            "STRICT",
+            "CHECK(PARENT_SYSTEM_ID > 0)",
+            "CHECK(ORDER_INDEX >= 0)",
+            "LENGTH(TYPE_KEY) BETWEEN 1 AND 64",
+            "TYPE_KEY = LOWER(TYPE_KEY)",
+            "TYPE_KEY NOT GLOB '*[^A-Z0-9._-]*'",
+            "UNIQUE(PARENT_SYSTEM_ID, TYPE_KEY)",
+            "UNIQUE(PARENT_SYSTEM_ID, ORDER_INDEX)",
+            "ON DELETE CASCADE",
+        )
+        val missing = requiredFragments.filterNot(createSql::contains)
+        if (missing.isNotEmpty()) {
+            throw UserDatabaseException("User database saved_marker_children constraints are incomplete: missing $missing")
+        }
+
+        data class ForeignKey(
+            val table: String,
+            val from: String,
+            val to: String,
+            val onDelete: String,
+        )
+        val foreignKeys = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA foreign_key_list(saved_marker_children)").use { result ->
+                buildList {
+                    while (result.next()) {
+                        add(
+                            ForeignKey(
+                                table = result.getString("table"),
+                                from = result.getString("from"),
+                                to = result.getString("to"),
+                                onDelete = result.getString("on_delete"),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        val expectedForeignKey = ForeignKey("saved_markers", "parent_system_id", "system_id", "CASCADE")
+        if (foreignKeys != listOf(expectedForeignKey)) {
+            throw UserDatabaseException("User database saved_marker_children ownership constraint is invalid")
+        }
+    }
+
     private fun Connection.userVersion(): Int = createStatement().use { statement ->
         statement.executeQuery("PRAGMA user_version").use { result ->
             check(result.next())
@@ -222,6 +326,7 @@ object UserDatabase {
     private fun requiredTables(version: Int): Set<String> = buildSet {
         if (version >= 1) addAll(setOf("ansiblex_connections", "ansiblex_import_batches"))
         if (version >= 2) add("saved_markers")
+        if (version >= 3) add("saved_marker_children")
     }
 
     private fun requiredIndexes(version: Int): Set<String> = if (version >= 1) {
