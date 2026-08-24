@@ -351,7 +351,7 @@ private fun LocalControlClientResult.toMcpResult(toolName: String, listResultKey
             else -> buildJsonObject { put("result", resultValue) }
         }
         CallToolResult(
-            content = listOf(TextContent("$toolName completed.")),
+            content = listOf(TextContent(McpTextFallbackFormatter.format(toolName, structured))),
             isError = false,
             structuredContent = structured,
         )

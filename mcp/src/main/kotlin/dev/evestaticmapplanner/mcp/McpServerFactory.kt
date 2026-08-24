@@ -14,7 +14,7 @@ internal fun createMcpServer(client: McpMapClient): Server {
     return Server(
         serverInfo = Implementation(
             name = "eve-static-map-planner",
-            version = "0.1.2",
+            version = McpBuildInfo.version,
             title = "EVE Static Map Planner",
         ),
         options = ServerOptions(

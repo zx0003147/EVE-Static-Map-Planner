@@ -39,6 +39,25 @@ kotlin {
 }
 
 val launcherName = "EVE Map MCP Bridge"
+val generatedBuildInfoDirectory = layout.buildDirectory.dir("generated/resources/buildInfo")
+val generateMcpBuildInfo by tasks.registering {
+    inputs.property("applicationVersion", project.version.toString())
+    outputs.dir(generatedBuildInfoDirectory)
+    doLast {
+        val output = generatedBuildInfoDirectory.get().file("mcp-build.properties").asFile
+        output.parentFile.mkdirs()
+        output.writeText("version=${project.version}\n", Charsets.UTF_8)
+    }
+}
+
+sourceSets.named("main") {
+    resources.srcDir(generatedBuildInfoDirectory)
+}
+
+tasks.processResources {
+    dependsOn(generateMcpBuildInfo)
+}
+
 val launcherRuntimeModules = listOf(
     "java.base",
     "java.instrument",
@@ -107,6 +126,7 @@ val createLauncher by tasks.registering(Exec::class) {
 tasks.test {
     useJUnitPlatform()
     dependsOn(createLauncher)
+    systemProperty("eve.mcp.expectedVersion", project.version.toString())
     systemProperty(
         "eve.mcp.launcher.path",
         launcherImageDirectory.map { it.file("$launcherName.exe").asFile.absolutePath }.get(),

@@ -5,15 +5,16 @@ import io.modelcontextprotocol.kotlin.sdk.ExperimentalMcpApi
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.testing.ChannelTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -30,6 +31,7 @@ class McpProtocolTest {
         val client = Client(Implementation("step-3a-test", "1.0"))
         try {
             client.connect(transports.clientTransport)
+            assertEquals(System.getProperty("eve.mcp.expectedVersion"), client.serverVersion?.version)
             val capabilities = assertNotNull(client.serverCapabilities)
             assertTrue(capabilities.tools != null)
             assertTrue(capabilities.resources == null)
@@ -43,29 +45,62 @@ class McpProtocolTest {
 
             val search = client.callTool("search_system", mapOf("query" to "Jita"))
             assertFalse(search.isError == true)
-            assertEquals("Jita", search.structuredContent?.get("systems")
-                ?.let { it as JsonArray }?.single()?.jsonObject?.get("canonicalName")?.jsonPrimitive?.content)
+            val expectedSearch = buildJsonObject {
+                put("systems", JsonArray(listOf(buildJsonObject {
+                    put("systemId", 30000142)
+                    put("canonicalName", "Jita")
+                    put("regionId", 10000002)
+                    put("constellationId", 20000020)
+                    put("securityStatus", 0.9)
+                })))
+            }
+            assertEquals(expectedSearch, search.structuredContent)
+            assertContains(search.text(), "Found 1 system.")
+            assertContains(search.text(), "Name:\nJita")
+            assertContains(search.text(), "System ID:\n30000142")
 
             val begin = client.callTool("begin_mission", mapOf("title" to "Protocol Mission"))
             assertFalse(begin.isError == true)
-            assertEquals("mission-1", begin.structuredContent?.get("missionId")?.jsonPrimitive?.content)
+            assertEquals(buildJsonObject {
+                put("missionId", "mission-1")
+                put("title", "Protocol Mission")
+                put("revision", 1)
+            }, begin.structuredContent)
+            assertContains(begin.text(), "Mission created successfully.")
+            assertContains(begin.text(), "Mission ID:\nmission-1")
+            assertContains(begin.text(), "Revision:\n1")
 
             val mission = client.callTool("get_mission", mapOf("missionId" to "mission-1"))
             assertFalse(mission.isError == true)
             assertEquals("mission-1", mission.structuredContent?.get("missionId")?.jsonPrimitive?.content)
+            assertContains(mission.text(), "Mission details.")
+            assertContains(mission.text(), "Routes:\n0")
 
             val range = client.callTool(
                 "show_jump_range",
                 mapOf("missionId" to "mission-1", "originSystemId" to 30000142, "effectiveRangeLy" to 5.0),
             )
             assertFalse(range.isError == true)
-            assertEquals("range-1", range.structuredContent?.get("overlayId")?.jsonPrimitive?.content)
-            assertFalse("jumpRangeId" in range.structuredContent.orEmpty())
+            assertEquals(buildJsonObject {
+                put("missionId", "mission-1")
+                put("overlayId", "range-1")
+                put("originSystemId", 30000142)
+                put("effectiveRangeLy", 5.0)
+                put("reachableSystemCount", 42)
+                put("revision", 2)
+            }, range.structuredContent)
+            assertContains(range.text(), "Jump range displayed successfully.")
+            assertContains(range.text(), "Overlay ID:\nrange-1")
 
             val invalid = client.callTool("search_system", mapOf("query" to "Jita", "requestId" to "forbidden"))
             assertTrue(invalid.isError == true)
-            assertEquals("INVALID_ARGUMENT", invalid.structuredContent?.get("error")?.jsonObject
-                ?.get("code")?.jsonPrimitive?.content)
+            assertEquals(buildJsonObject {
+                put("error", buildJsonObject {
+                    put("code", "INVALID_ARGUMENT")
+                    put("message", "The request is invalid.")
+                })
+            }, invalid.structuredContent)
+            assertEquals("INVALID_ARGUMENT: The request is invalid.", invalid.text())
 
             val unknown = client.callTool("unknown_tool", emptyMap())
             assertTrue(unknown.isError == true)
@@ -76,6 +111,9 @@ class McpProtocolTest {
         }
     }
 }
+
+private fun io.modelcontextprotocol.kotlin.sdk.types.CallToolResult.text(): String =
+    (content.single() as TextContent).text
 
 private class ProtocolMapClient : RecordingProtocolClient() {
     val calls = mutableListOf<String>()
