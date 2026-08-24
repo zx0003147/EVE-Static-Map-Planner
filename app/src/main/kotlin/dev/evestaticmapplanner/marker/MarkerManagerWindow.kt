@@ -222,6 +222,9 @@ fun MarkerManagerWindow(
             request = request,
             isBusy = pendingEditorSystemId?.let { it in markerState.busySystemIds } == true,
             error = editorLocalError ?: markerState.operationError,
+            children = request.systemId?.let { markerState.childrenByParentSystemId[it] }.orEmpty(),
+            onAddChild = { type -> request.systemId?.let { markerViewModel.addChild(it, type) } },
+            onRemoveChild = { childId -> request.systemId?.let { markerViewModel.removeChild(it, childId) } },
             saveEnabled = editorLocalError == null,
             systemSearch = if (request.systemId == null) {
                 MarkerEditorSystemSearch(editorSystemQuery, editorSystemResults, editorSelectedSystem)

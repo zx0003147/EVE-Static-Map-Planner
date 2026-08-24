@@ -22,6 +22,47 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class MarkerViewModelTest {
     @Test
+    fun `saved children load in one bulk request including empty and unknown types`() = runTest {
+        val repository = FakeSavedMarkerRepository(listOf(savedMarker(1, "One"), savedMarker(2, "Two")))
+        repository.seedChild(1, "future_custom_type", orderIndex = 4)
+        repository.seedChild(1, "staging", orderIndex = 1)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+
+        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        advanceUntilIdle()
+
+        assertEquals(1, repository.bulkChildrenCalls)
+        assertEquals(listOf("staging", "future_custom_type"), viewModel.state.value.childrenByParentSystemId[1]?.map { it.type.key })
+        assertEquals(emptyList(), viewModel.state.value.childrenByParentSystemId[2])
+    }
+
+    @Test
+    fun `child add duplicate prevention and targeted removal refresh state without recreating parent`() = runTest {
+        val parent = savedMarker(9, "Parent")
+        val repository = FakeSavedMarkerRepository(listOf(parent))
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        advanceUntilIdle()
+
+        listOf("staging", "danger", "keepstar").forEach { key ->
+            assertTrue(viewModel.addChild(9, SavedMarkerChildType.of(key)))
+            advanceUntilIdle()
+        }
+        assertEquals(listOf("staging", "danger", "keepstar"), viewModel.state.value.childrenByParentSystemId[9]?.map { it.type.key })
+        assertFalse(viewModel.addChild(9, SavedMarkerChildType.of("staging")))
+        assertEquals(3, repository.addChildCalls)
+
+        val danger = viewModel.state.value.childrenByParentSystemId.getValue(9).single { it.type.key == "danger" }
+        assertTrue(viewModel.removeChild(9, danger.id))
+        advanceUntilIdle()
+
+        assertEquals(listOf("staging", "keepstar"), viewModel.state.value.childrenByParentSystemId[9]?.map { it.type.key })
+        assertEquals(parent, viewModel.state.value.markersBySystemId[9])
+        assertEquals(0, repository.updateCalls)
+        assertEquals(0, repository.deleteCalls)
+    }
+
+    @Test
     fun `temporary workflow is session-only defaults yellow and never calls persistent mutations`() = runTest {
         val repository = FakeSavedMarkerRepository()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -79,6 +120,7 @@ class MarkerViewModelTest {
         assertTrue(2 in viewModel.state.value.busySystemIds)
         advanceUntilIdle()
         assertEquals("New", viewModel.state.value.markersBySystemId[2]?.name)
+        assertEquals(emptyList(), viewModel.state.value.childrenByParentSystemId[2])
 
         assertTrue(viewModel.updateSaved(2, MarkerDraft.create(name = "Edited", color = MarkerColor.BLUE)))
         assertEquals("New", viewModel.state.value.markersBySystemId[2]?.name)
@@ -206,6 +248,8 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     var createCalls = 0
     var updateCalls = 0
     var deleteCalls = 0
+    var addChildCalls = 0
+    var bulkChildrenCalls = 0
     private var tick = 0L
 
     override fun getAll(): List<Marker> {
@@ -244,7 +288,13 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     override fun getChildren(parentSystemId: Int): List<SavedMarkerChild> =
         children[parentSystemId].orEmpty().sortedWith(compareBy(SavedMarkerChild::orderIndex, SavedMarkerChild::id))
 
+    override fun getAllChildren(): Map<Int, List<SavedMarkerChild>> {
+        bulkChildrenCalls++
+        return children.keys.sorted().associateWith(::getChildren)
+    }
+
     override fun addChild(parentSystemId: Int, type: SavedMarkerChildType): SavedMarkerChild {
+        addChildCalls++
         check(parentSystemId in markers) { "missing parent marker" }
         val owned = children.getOrPut(parentSystemId, ::mutableListOf)
         check(owned.none { it.type == type }) { "duplicate child type" }
@@ -259,6 +309,17 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     override fun removeChild(parentSystemId: Int, childId: String): Boolean {
         val owned = children[parentSystemId] ?: return false
         return owned.removeAll { it.id == childId }
+    }
+
+    fun seedChild(parentSystemId: Int, typeKey: String, orderIndex: Int) {
+        children.getOrPut(parentSystemId, ::mutableListOf).add(
+            SavedMarkerChild.create(
+                id = "seed-$parentSystemId-$typeKey",
+                parentSystemId = parentSystemId,
+                type = SavedMarkerChildType.of(typeKey),
+                orderIndex = orderIndex,
+            ),
+        )
     }
 }
 

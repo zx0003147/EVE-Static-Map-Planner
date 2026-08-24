@@ -21,7 +21,9 @@ import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
+import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
 import dev.evestaticmapplanner.marker.markerColor
+import dev.evestaticmapplanner.marker.drawSavedMarkerChildIcon
 import dev.evestaticmapplanner.control.mission.MissionMarker
 
 enum class MapDetailLevel {
@@ -376,22 +378,40 @@ object MapRenderer {
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
+        savedMarkerAppearance: SavedMarkerAppearancePreferences,
     ) {
         val halfSize = (MARKER_DIAMOND_SIZE_DP / 2f).dp.toPx()
+        val savedMarkerRing = savedMarkerRingRenderState(savedMarkerAppearance)
         markers.forEach { presented ->
             val center = presented.screenCenter.toOffset()
-            val diamond = Path().apply {
-                moveTo(center.x, center.y - halfSize)
-                lineTo(center.x + halfSize, center.y)
-                lineTo(center.x, center.y + halfSize)
-                lineTo(center.x - halfSize, center.y)
-                close()
-            }
             val color = markerColor(presented.marker.color)
-            if (presented.visualStyle == MarkerVisualStyle.SOLID_DIAMOND) {
-                drawPath(diamond, color)
-                drawPath(diamond, Color(0xFF18232D), style = Stroke(1.dp.toPx()))
+            if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
+                val ringRadius = savedMarkerRing.radiusDp.dp.toPx()
+                savedMarkerRing.glowLayers.forEach { layer ->
+                    drawCircle(color.copy(alpha = layer.alpha), ringRadius + layer.expansionDp.dp.toPx(), center)
+                }
+                drawCircle(color, ringRadius, center, style = Stroke(savedMarkerRing.lineWidthDp.dp.toPx()))
+                presented.children.forEach { child ->
+                    val childCenter = child.screenCenter.toOffset()
+                    val badgeRadius = SAVED_MARKER_CHILD_BADGE_RADIUS_DP.dp.toPx()
+                    drawCircle(Color(0xEE111C26), badgeRadius, childCenter)
+                    drawCircle(color.copy(alpha = 0.9f), badgeRadius, childCenter, style = Stroke(1.25.dp.toPx()))
+                    drawCircle(color.copy(alpha = 0.12f), badgeRadius + 2.dp.toPx(), childCenter)
+                    drawSavedMarkerChildIcon(
+                        visual = child.visual,
+                        center = childCenter,
+                        size = badgeRadius * 1.34f,
+                        tint = Color(0xFFF1F5F8),
+                    )
+                }
             } else {
+                val diamond = Path().apply {
+                    moveTo(center.x, center.y - halfSize)
+                    lineTo(center.x + halfSize, center.y)
+                    lineTo(center.x, center.y + halfSize)
+                    lineTo(center.x - halfSize, center.y)
+                    close()
+                }
                 drawPath(diamond, color, style = Stroke(2.dp.toPx()))
             }
             presented.visibleName?.let { name ->
@@ -400,7 +420,11 @@ object MapRenderer {
                     textLayoutResult = label,
                     color = color,
                     topLeft = Offset(
-                        center.x + halfSize + 4.dp.toPx(),
+                        center.x + if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
+                            savedMarkerRing.radiusDp.dp.toPx() + 4.dp.toPx()
+                        } else {
+                            halfSize + 4.dp.toPx()
+                        },
                         center.y - label.size.height / 2f,
                     ),
                 )
@@ -512,4 +536,34 @@ private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
 private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0
 private const val MARKER_DIAMOND_SIZE_DP = 10f
+private const val SAVED_MARKER_CHILD_BADGE_RADIUS_DP = 9f
 private const val EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f
+
+internal data class SavedMarkerGlowLayer(
+    val expansionDp: Float,
+    val alpha: Float,
+)
+
+internal data class SavedMarkerRingRenderState(
+    val radiusDp: Float,
+    val lineWidthDp: Float,
+    val glowLayers: List<SavedMarkerGlowLayer>,
+)
+
+internal fun savedMarkerRingRenderState(
+    preferences: SavedMarkerAppearancePreferences,
+): SavedMarkerRingRenderState {
+    val strengthScale = 0.4f + 1.2f * preferences.glowStrength
+    return SavedMarkerRingRenderState(
+        radiusDp = preferences.ringRadiusDp,
+        lineWidthDp = preferences.lineWidthDp,
+        glowLayers = if (preferences.glowEnabled) {
+            listOf(
+                SavedMarkerGlowLayer(expansionDp = 6f, alpha = 0.08f * strengthScale),
+                SavedMarkerGlowLayer(expansionDp = 3f, alpha = 0.18f * strengthScale),
+            )
+        } else {
+            emptyList()
+        },
+    )
+}

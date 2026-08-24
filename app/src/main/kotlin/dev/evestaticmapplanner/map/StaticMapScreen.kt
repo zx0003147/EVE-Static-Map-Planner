@@ -238,6 +238,9 @@ fun StaticMapScreen(
             request = request,
             isBusy = request.systemId?.let { it in markerState.busySystemIds } == true,
             error = markerState.operationError,
+            children = request.systemId?.let { markerState.childrenByParentSystemId[it] }.orEmpty(),
+            onAddChild = { type -> request.systemId?.let { markerViewModel.addChild(it, type) } },
+            onRemoveChild = { childId -> request.systemId?.let { markerViewModel.removeChild(it, childId) } },
             onSave = { systemId, draft ->
                 when (request.mode) {
                     MarkerEditorMode.EDIT_TEMPORARY -> if (markerViewModel.updateTemporary(systemId, draft)) {

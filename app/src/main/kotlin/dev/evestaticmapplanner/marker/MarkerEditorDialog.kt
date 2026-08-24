@@ -7,8 +7,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
+import dev.evestaticmapplanner.core.marker.SavedMarkerChild
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import dev.evestaticmapplanner.search.SystemSearchField
@@ -60,6 +67,9 @@ fun MarkerEditorDialog(
     systemSearch: MarkerEditorSystemSearch? = null,
     onSystemQueryChange: (String) -> Unit = {},
     onSystemSelected: (SolarSystem) -> Unit = {},
+    children: List<SavedMarkerChild> = emptyList(),
+    onAddChild: (SavedMarkerChildType) -> Unit = {},
+    onRemoveChild: (String) -> Unit = {},
     onSave: (Int, MarkerDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -70,7 +80,13 @@ fun MarkerEditorDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
         title = { Text(if (request.mode == MarkerEditorMode.CREATE_SAVED) "Add Saved Marker" else "Edit Marker") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = markerEditorContentMaxHeight)
+                    .verticalScroll(rememberScrollState()),
+            ) {
                 if (request.systemId != null) {
                     OutlinedTextField(
                         value = request.systemName.orEmpty(),
@@ -110,6 +126,14 @@ fun MarkerEditorDialog(
                 )
                 Text("Color", style = MaterialTheme.typography.labelLarge)
                 MarkerColorPalette(color, onSelected = { color = it })
+                if (request.mode == MarkerEditorMode.EDIT_SAVED) {
+                    SavedMarkerTagsEditor(
+                        children = children,
+                        enabled = !isBusy,
+                        onAddChild = onAddChild,
+                        onRemoveChild = onRemoveChild,
+                    )
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -126,6 +150,70 @@ fun MarkerEditorDialog(
             TextButton(enabled = !isBusy, onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+private val markerEditorContentMaxHeight = 460.dp
+
+@Composable
+private fun SavedMarkerTagsEditor(
+    children: List<SavedMarkerChild>,
+    enabled: Boolean,
+    onAddChild: (SavedMarkerChildType) -> Unit,
+    onRemoveChild: (String) -> Unit,
+) {
+    var addMenuExpanded by remember { mutableStateOf(false) }
+    val available = remember(children) { SavedMarkerChildVisuals.availableFor(children) }
+    Text("Tags", style = MaterialTheme.typography.labelLarge)
+    if (children.isEmpty()) {
+        Text("No tags assigned.", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAFC1D1))
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+            children.forEach { child ->
+                val visual = SavedMarkerChildVisuals.resolve(child.type)
+                Surface(
+                    color = Color(0xFF1B2A37),
+                    border = BorderStroke(1.dp, Color(0xFF415466)),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(start = 9.dp, end = 3.dp, top = 3.dp, bottom = 3.dp),
+                    ) {
+                        SavedMarkerChildIcon(visual, Modifier.size(20.dp))
+                        Text(visual.label, modifier = Modifier.weight(1f))
+                        TextButton(enabled = enabled, onClick = { onRemoveChild(child.id) }) { Text("×") }
+                    }
+                }
+            }
+        }
+    }
+    Box {
+        TextButton(
+            enabled = enabled && available.isNotEmpty(),
+            onClick = { addMenuExpanded = true },
+        ) { Text(if (available.isEmpty()) "All tags assigned" else "+ Add Tag") }
+        DropdownMenu(
+            expanded = addMenuExpanded,
+            onDismissRequest = { addMenuExpanded = false },
+        ) {
+            available.forEach { visual ->
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            SavedMarkerChildIcon(visual, Modifier.size(20.dp))
+                            Text(visual.label)
+                        }
+                    },
+                    onClick = {
+                        addMenuExpanded = false
+                        onAddChild(checkNotNull(visual.type))
+                    },
+                )
+            }
+        }
+    }
 }
 
 internal fun markerEditorSystemId(

@@ -27,9 +27,27 @@ data class AiControlPreferences(
 data class MarkerPreferences(
     val showMarkers: Boolean = true,
     val showMarkerNames: Boolean = true,
+    val savedMarkerAppearance: SavedMarkerAppearancePreferences = SavedMarkerAppearancePreferences.Defaults,
 ) {
     companion object {
         val Defaults = MarkerPreferences()
+    }
+}
+
+data class SavedMarkerAppearancePreferences(
+    val ringRadiusDp: Float = DEFAULT_SAVED_MARKER_RING_RADIUS_DP,
+    val lineWidthDp: Float = DEFAULT_SAVED_MARKER_LINE_WIDTH_DP,
+    val glowEnabled: Boolean = true,
+    val glowStrength: Float = DEFAULT_SAVED_MARKER_GLOW_STRENGTH,
+) {
+    init {
+        require(ringRadiusDp.isFinite() && ringRadiusDp in MIN_SAVED_MARKER_RING_RADIUS_DP..MAX_SAVED_MARKER_RING_RADIUS_DP)
+        require(lineWidthDp.isFinite() && lineWidthDp in MIN_SAVED_MARKER_LINE_WIDTH_DP..MAX_SAVED_MARKER_LINE_WIDTH_DP)
+        require(glowStrength.isFinite() && glowStrength in MIN_SAVED_MARKER_GLOW_STRENGTH..MAX_SAVED_MARKER_GLOW_STRENGTH)
+    }
+
+    companion object {
+        val Defaults = SavedMarkerAppearancePreferences()
     }
 }
 
@@ -96,6 +114,8 @@ class PropertiesPreferencesStore(
         if (properties.getProperty(KEY_SETTINGS_VERSION) != SETTINGS_VERSION) return AppPreferences.Defaults
 
         val defaults = MapDisplayPreferences.Defaults
+        val markerDefaults = MarkerPreferences.Defaults
+        val savedMarkerAppearanceDefaults = markerDefaults.savedMarkerAppearance
         val constellationThreshold = properties.validDouble(
             KEY_CONSTELLATION_THRESHOLD,
             defaults.constellationZoomThreshold,
@@ -135,10 +155,28 @@ class PropertiesPreferencesStore(
                 ) { it in 1f..MAX_FONT_SIZE_SP },
             ),
             marker = MarkerPreferences(
-                showMarkers = properties.validBoolean(KEY_SHOW_MARKERS, MarkerPreferences.Defaults.showMarkers),
+                showMarkers = properties.validBoolean(KEY_SHOW_MARKERS, markerDefaults.showMarkers),
                 showMarkerNames = properties.validBoolean(
                     KEY_SHOW_MARKER_NAMES,
-                    MarkerPreferences.Defaults.showMarkerNames,
+                    markerDefaults.showMarkerNames,
+                ),
+                savedMarkerAppearance = SavedMarkerAppearancePreferences(
+                    ringRadiusDp = properties.validFloat(
+                        KEY_SAVED_MARKER_RING_RADIUS,
+                        savedMarkerAppearanceDefaults.ringRadiusDp,
+                    ) { it in MIN_SAVED_MARKER_RING_RADIUS_DP..MAX_SAVED_MARKER_RING_RADIUS_DP },
+                    lineWidthDp = properties.validFloat(
+                        KEY_SAVED_MARKER_LINE_WIDTH,
+                        savedMarkerAppearanceDefaults.lineWidthDp,
+                    ) { it in MIN_SAVED_MARKER_LINE_WIDTH_DP..MAX_SAVED_MARKER_LINE_WIDTH_DP },
+                    glowEnabled = properties.validBoolean(
+                        KEY_SAVED_MARKER_GLOW_ENABLED,
+                        savedMarkerAppearanceDefaults.glowEnabled,
+                    ),
+                    glowStrength = properties.validFloat(
+                        KEY_SAVED_MARKER_GLOW_STRENGTH,
+                        savedMarkerAppearanceDefaults.glowStrength,
+                    ) { it in MIN_SAVED_MARKER_GLOW_STRENGTH..MAX_SAVED_MARKER_GLOW_STRENGTH },
                 ),
             ),
             aiControl = AiControlPreferences(
@@ -169,6 +207,10 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_SYSTEM_FONT_SIZE, mapDisplay.systemFontSizeSp.toString())
                 setProperty(KEY_SHOW_MARKERS, marker.showMarkers.toString())
                 setProperty(KEY_SHOW_MARKER_NAMES, marker.showMarkerNames.toString())
+                setProperty(KEY_SAVED_MARKER_RING_RADIUS, marker.savedMarkerAppearance.ringRadiusDp.toString())
+                setProperty(KEY_SAVED_MARKER_LINE_WIDTH, marker.savedMarkerAppearance.lineWidthDp.toString())
+                setProperty(KEY_SAVED_MARKER_GLOW_ENABLED, marker.savedMarkerAppearance.glowEnabled.toString())
+                setProperty(KEY_SAVED_MARKER_GLOW_STRENGTH, marker.savedMarkerAppearance.glowStrength.toString())
                 setProperty(KEY_AI_CONTROL_ENABLED, aiControl.enabled.toString())
             }
             Files.newOutputStream(temporary).use {
@@ -221,6 +263,15 @@ const val DEFAULT_CONSTELLATION_FONT_SIZE_SP = 13f
 const val DEFAULT_SYSTEM_FONT_SIZE_SP = 11f
 const val MAX_ZOOM_THRESHOLD = 250.0
 const val MAX_FONT_SIZE_SP = 72f
+const val DEFAULT_SAVED_MARKER_RING_RADIUS_DP = 13f
+const val MIN_SAVED_MARKER_RING_RADIUS_DP = 10f
+const val MAX_SAVED_MARKER_RING_RADIUS_DP = 30f
+const val DEFAULT_SAVED_MARKER_LINE_WIDTH_DP = 2f
+const val MIN_SAVED_MARKER_LINE_WIDTH_DP = 1f
+const val MAX_SAVED_MARKER_LINE_WIDTH_DP = 5f
+const val DEFAULT_SAVED_MARKER_GLOW_STRENGTH = 0.5f
+const val MIN_SAVED_MARKER_GLOW_STRENGTH = 0f
+const val MAX_SAVED_MARKER_GLOW_STRENGTH = 1f
 
 private const val KEY_SETTINGS_VERSION = "settings.version"
 private const val KEY_CONSTELLATION_THRESHOLD = "mapDisplay.constellationZoomThreshold"
@@ -232,4 +283,8 @@ private const val KEY_CONSTELLATION_FONT_SIZE = "mapDisplay.constellationFontSiz
 private const val KEY_SYSTEM_FONT_SIZE = "mapDisplay.systemFontSizeSp"
 private const val KEY_SHOW_MARKERS = "marker.showMarkers"
 private const val KEY_SHOW_MARKER_NAMES = "marker.showMarkerNames"
+private const val KEY_SAVED_MARKER_RING_RADIUS = "marker.savedMarkerAppearance.ringRadiusDp"
+private const val KEY_SAVED_MARKER_LINE_WIDTH = "marker.savedMarkerAppearance.lineWidthDp"
+private const val KEY_SAVED_MARKER_GLOW_ENABLED = "marker.savedMarkerAppearance.glowEnabled"
+private const val KEY_SAVED_MARKER_GLOW_STRENGTH = "marker.savedMarkerAppearance.glowStrength"
 private const val KEY_AI_CONTROL_ENABLED = "aiControl.enabled"

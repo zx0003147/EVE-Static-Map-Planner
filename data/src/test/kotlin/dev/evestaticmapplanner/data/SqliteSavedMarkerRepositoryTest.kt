@@ -204,6 +204,26 @@ class SqliteSavedMarkerRepositoryTest {
         assertEquals(1, repository.getChildren(1).size)
         assertEquals(1, repository.getChildren(2).size)
     }
+
+    @Test
+    fun `bulk child load returns all populated parents in deterministic order without n plus one queries`() {
+        val path = createTempDirectory("saved-marker-child-bulk").resolve("user.db")
+        val ids = ArrayDeque(listOf("a", "b", "c"))
+        val repository = SqliteSavedMarkerRepository(path, idGenerator = ids::removeFirst)
+        repository.create(10, MarkerDraft.create())
+        repository.create(20, MarkerDraft.create())
+        repository.create(30, MarkerDraft.create())
+        repository.addChild(20, SavedMarkerChildType.of("danger"))
+        repository.addChild(10, SavedMarkerChildType.of("staging"))
+        repository.addChild(10, SavedMarkerChildType.of("keepstar"))
+
+        val loaded = repository.getAllChildren()
+
+        assertEquals(listOf(10, 20), loaded.keys.toList())
+        assertEquals(listOf("staging", "keepstar"), loaded.getValue(10).map { it.type.key })
+        assertEquals(listOf("danger"), loaded.getValue(20).map { it.type.key })
+        assertFalse(30 in loaded)
+    }
 }
 
 private fun fixedClock(instant: Instant): Clock = Clock.fixed(instant, ZoneOffset.UTC)

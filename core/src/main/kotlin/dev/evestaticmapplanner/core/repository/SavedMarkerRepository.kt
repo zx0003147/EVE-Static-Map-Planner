@@ -16,6 +16,8 @@ interface SavedMarkerRepository {
 
     fun getChildren(parentSystemId: Int): List<SavedMarkerChild>
 
+    fun getAllChildren(): Map<Int, List<SavedMarkerChild>>
+
     fun addChild(parentSystemId: Int, type: SavedMarkerChildType): SavedMarkerChild
 
     fun removeChild(parentSystemId: Int, childId: String): Boolean

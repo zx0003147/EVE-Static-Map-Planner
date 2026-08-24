@@ -21,6 +21,7 @@ import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
+import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -307,10 +308,20 @@ class MapViewModelTest {
         val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
         advanceUntilIdle()
         val mapDisplay = MapDisplayPreferences.Defaults.copy(regionPrimaryFontSizeSp = 24f)
-        val marker = MarkerPreferences(showMarkers = false, showMarkerNames = false)
+        val marker = MarkerPreferences(
+            showMarkers = false,
+            showMarkerNames = false,
+            savedMarkerAppearance = SavedMarkerAppearancePreferences(
+                ringRadiusDp = 25f,
+                lineWidthDp = 4f,
+                glowEnabled = false,
+                glowStrength = 0.75f,
+            ),
+        )
 
         viewModel.updateMapDisplayPreferences(mapDisplay)
         viewModel.updateMarkerPreferences(marker)
+        assertEquals(marker, viewModel.state.value.appPreferences.marker)
         advanceUntilIdle()
         viewModel.resetMapDisplayPreferences()
         advanceUntilIdle()

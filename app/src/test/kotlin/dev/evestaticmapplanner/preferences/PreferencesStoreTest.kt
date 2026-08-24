@@ -23,6 +23,10 @@ class PreferencesStoreTest {
         assertEquals(MarkerPreferences.Defaults, AppPreferences.Defaults.marker)
         assertTrue(MarkerPreferences.Defaults.showMarkers)
         assertTrue(MarkerPreferences.Defaults.showMarkerNames)
+        assertEquals(13f, MarkerPreferences.Defaults.savedMarkerAppearance.ringRadiusDp)
+        assertEquals(2f, MarkerPreferences.Defaults.savedMarkerAppearance.lineWidthDp)
+        assertTrue(MarkerPreferences.Defaults.savedMarkerAppearance.glowEnabled)
+        assertEquals(0.5f, MarkerPreferences.Defaults.savedMarkerAppearance.glowStrength)
         assertFalse(AppPreferences.Defaults.aiControl.enabled)
     }
 
@@ -39,7 +43,16 @@ class PreferencesStoreTest {
                 constellationFontSizeSp = 14f,
                 systemFontSizeSp = 12f,
             ),
-            marker = MarkerPreferences(showMarkers = false, showMarkerNames = false),
+            marker = MarkerPreferences(
+                showMarkers = false,
+                showMarkerNames = false,
+                savedMarkerAppearance = SavedMarkerAppearancePreferences(
+                    ringRadiusDp = 24.5f,
+                    lineWidthDp = 3.5f,
+                    glowEnabled = false,
+                    glowStrength = 0.8f,
+                ),
+            ),
             aiControl = AiControlPreferences(enabled = true),
         )
 
@@ -47,6 +60,8 @@ class PreferencesStoreTest {
 
         assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=1" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.glowEnabled=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.enabled=true" })
         assertEquals(expected, PropertiesPreferencesStore(path).load())
 
@@ -130,6 +145,27 @@ class PreferencesStoreTest {
 
         assertFalse(loaded.showMarkers)
         assertTrue(loaded.showMarkerNames)
+        assertEquals(SavedMarkerAppearancePreferences.Defaults, loaded.savedMarkerAppearance)
+    }
+
+    @Test
+    fun `invalid saved marker appearance values fall back independently under version one`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(
+            path,
+            """
+            settings.version=1
+            marker.savedMarkerAppearance.ringRadiusDp=999
+            marker.savedMarkerAppearance.lineWidthDp=-4
+            marker.savedMarkerAppearance.glowEnabled=not-a-boolean
+            marker.savedMarkerAppearance.glowStrength=NaN
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            SavedMarkerAppearancePreferences.Defaults,
+            PropertiesPreferencesStore(path).load().marker.savedMarkerAppearance,
+        )
     }
 
     @Test

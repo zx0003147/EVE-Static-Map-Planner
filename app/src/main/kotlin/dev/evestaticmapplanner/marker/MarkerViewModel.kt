@@ -3,6 +3,8 @@ package dev.evestaticmapplanner.marker
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.core.marker.SavedMarkerChild
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -163,10 +165,63 @@ class MarkerViewModel(
                     check(repository.delete(systemId)) { "Saved marker no longer exists for solar system $systemId" }
                 }
             }.onSuccess {
-                completeSavedMutation(systemId) { markers -> markers - systemId }
+                setState { current ->
+                    current.copy(
+                        markersBySystemId = current.markersBySystemId - systemId,
+                        childrenByParentSystemId = current.childrenByParentSystemId - systemId,
+                        busySystemIds = current.busySystemIds - systemId,
+                        operationError = null,
+                    )
+                }
             }.onFailure { error ->
                 failSavedMutation(systemId, error, "Unable to remove saved marker")
             }
+        }
+        return true
+    }
+
+    fun addChild(parentSystemId: Int, type: SavedMarkerChildType): Boolean {
+        val repository = savedMarkerRepository ?: return rejectDatabaseUnavailable()
+        if (!reserveExistingSaved(parentSystemId)) return false
+        synchronized(stateLock) {
+            val current = mutableState.value
+            if (current.childrenByParentSystemId[parentSystemId].orEmpty().any { it.type == type }) {
+                mutableState.value = current.copy(
+                    busySystemIds = current.busySystemIds - parentSystemId,
+                    operationError = "${type.key} is already assigned to this saved marker",
+                )
+                return false
+            }
+        }
+        scope.launch {
+            runCatching { withContext(ioDispatcher) { repository.addChild(parentSystemId, type) } }
+                .onSuccess { child -> completeChildMutation(parentSystemId) { children -> children + child } }
+                .onFailure { error -> failSavedMutation(parentSystemId, error, "Unable to add saved marker tag") }
+        }
+        return true
+    }
+
+    fun removeChild(parentSystemId: Int, childId: String): Boolean {
+        val repository = savedMarkerRepository ?: return rejectDatabaseUnavailable()
+        val child = synchronized(stateLock) {
+            val current = mutableState.value
+            current.childrenByParentSystemId[parentSystemId].orEmpty().firstOrNull { it.id == childId }
+        }
+        if (child == null) {
+            setState { it.copy(operationError = "Saved marker tag no longer exists") }
+            return false
+        }
+        if (!reserveExistingSaved(parentSystemId)) return false
+        scope.launch {
+            runCatching {
+                withContext(ioDispatcher) {
+                    check(repository.removeChild(parentSystemId, childId)) { "Saved marker tag no longer exists" }
+                }
+            }
+                .onSuccess {
+                    completeChildMutation(parentSystemId) { children -> children.filterNot { it.id == childId } }
+                }
+                .onFailure { error -> failSavedMutation(parentSystemId, error, "Unable to remove saved marker tag") }
         }
         return true
     }
@@ -220,17 +275,30 @@ class MarkerViewModel(
     private fun loadSavedMarkers() {
         val repository = checkNotNull(savedMarkerRepository)
         scope.launch {
-            runCatching { withContext(ioDispatcher) { repository.getAll() } }
-                .onSuccess { markers ->
+            runCatching {
+                withContext(ioDispatcher) {
+                    repository.getAll().let { markers ->
+                        markers to repository.getAllChildren()
+                    }
+                }
+            }
+                .onSuccess { (markers, childrenByParent) ->
                     val bySystemId = markers.associateBy(Marker::systemId)
                     check(bySystemId.size == markers.size) { "Saved marker repository returned duplicate solar systems" }
                     check(markers.all { it.persistence == MarkerPersistence.SAVED }) {
                         "Saved marker repository returned a temporary marker"
                     }
+                    check(childrenByParent.keys.all(bySystemId::containsKey)) {
+                        "Saved marker repository returned children without a loaded parent"
+                    }
+                    val completeChildrenByParent = bySystemId.keys.associateWith { systemId ->
+                        childrenByParent[systemId].orEmpty()
+                    }
                     setState {
                         it.copy(
                             isLoading = false,
                             markersBySystemId = bySystemId,
+                            childrenByParentSystemId = completeChildrenByParent,
                             databaseError = null,
                             operationError = null,
                         )
@@ -281,9 +349,27 @@ class MarkerViewModel(
         systemId: Int,
         transform: (Map<Int, Marker>) -> Map<Int, Marker>,
     ) = setState { current ->
+        val updatedMarkers = transform(current.markersBySystemId)
+        val updatedChildren = updatedMarkers.values
+            .filter { it.persistence == MarkerPersistence.SAVED }
+            .associate { marker -> marker.systemId to current.childrenByParentSystemId[marker.systemId].orEmpty() }
         current.copy(
-            markersBySystemId = transform(current.markersBySystemId),
+            markersBySystemId = updatedMarkers,
+            childrenByParentSystemId = updatedChildren,
             busySystemIds = current.busySystemIds - systemId,
+            operationError = null,
+        )
+    }
+
+    private fun completeChildMutation(
+        parentSystemId: Int,
+        transform: (List<SavedMarkerChild>) -> List<SavedMarkerChild>,
+    ) = setState { current ->
+        val updated = transform(current.childrenByParentSystemId[parentSystemId].orEmpty())
+            .sortedWith(compareBy(SavedMarkerChild::orderIndex, SavedMarkerChild::id))
+        current.copy(
+            childrenByParentSystemId = current.childrenByParentSystemId + (parentSystemId to updated),
+            busySystemIds = current.busySystemIds - parentSystemId,
             operationError = null,
         )
     }

@@ -105,6 +105,27 @@ class SqliteSavedMarkerRepository(
         }
     }
 
+    override fun getAllChildren(): Map<Int, List<SavedMarkerChild>> {
+        return UserDatabase.open(databasePath).use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT id, parent_system_id, type_key, order_index
+                FROM saved_marker_children
+                ORDER BY parent_system_id, order_index, id
+                """.trimIndent(),
+            ).use { statement ->
+                statement.executeQuery().use { result ->
+                    val childrenByParent = linkedMapOf<Int, MutableList<SavedMarkerChild>>()
+                    while (result.next()) {
+                        val child = result.toSavedMarkerChild()
+                        childrenByParent.getOrPut(child.parentSystemId, ::mutableListOf).add(child)
+                    }
+                    childrenByParent.mapValues { (_, children) -> children.toList() }
+                }
+            }
+        }
+    }
+
     override fun addChild(parentSystemId: Int, type: SavedMarkerChildType): SavedMarkerChild {
         require(parentSystemId > 0) { "Saved marker parent system ID must be positive" }
         return UserDatabase.open(databasePath).use { connection ->

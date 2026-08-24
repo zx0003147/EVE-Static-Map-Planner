@@ -88,6 +88,7 @@ fun StaticMapCanvas(
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
     val density = LocalDensity.current
     val mapDisplayPreferences = state.appPreferences.mapDisplay
+    val savedMarkerAppearance = state.appPreferences.marker.savedMarkerAppearance
     val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer) {
         if (showAnsiblexLayer) ansiblexConnections.filter(AnsiblexConnection::enabled) else emptyList()
     }
@@ -159,23 +160,41 @@ fun StaticMapCanvas(
         }
     }
     val markerOffsetPx = with(density) { 10.dp.toPx().toDouble() }
+    val childOrbitRadiusPx = with(density) {
+        savedMarkerChildOrbitRadiusDp(savedMarkerAppearance.ringRadiusDp).dp.toPx().toDouble()
+    }
+    val childBadgeHitRadiusPx = with(density) { 12.dp.toPx().toDouble() }
+    val childCorridorRadiusPx = with(density) { 7.dp.toPx().toDouble() }
+    var activeMarkerInteractionSystemId by remember { mutableStateOf<Int?>(null) }
+    var hoveredSavedMarkerChild by remember { mutableStateOf<PresentedSavedMarkerChild?>(null) }
+    val expandedMarkerSystemIds = buildSet {
+        state.hoveredSystemId?.let(::add)
+        state.selectedSystemId?.let(::add)
+        activeMarkerInteractionSystemId?.let(::add)
+    }
     val presentedMarkers = remember(
         scene,
         transform,
         labelPresentation.visibleSystemIds,
         markerState.markersBySystemId,
+        markerState.childrenByParentSystemId,
+        expandedMarkerSystemIds,
         state.appPreferences.marker,
         state.semanticLabelMode,
         markerOffsetPx,
+        childOrbitRadiusPx,
     ) {
         MarkerMapPresentationBuilder.build(
             scene = scene,
             transform = transform,
             visibleSystemIds = labelPresentation.visibleSystemIds,
             markersBySystemId = markerState.markersBySystemId,
+            childrenByParentSystemId = markerState.childrenByParentSystemId,
+            expandedSystemIds = expandedMarkerSystemIds,
             preferences = state.appPreferences.marker,
             semanticMode = state.semanticLabelMode,
             offsetPx = markerOffsetPx,
+            childOrbitRadiusPx = childOrbitRadiusPx,
         )
     }
     var pressedAt by remember { mutableStateOf<MapPoint?>(null) }
@@ -189,6 +208,8 @@ fun StaticMapCanvas(
     }
 
     LaunchedEffect(scene, viewport, state.canvasSize) {
+        activeMarkerInteractionSystemId = null
+        hoveredSavedMarkerChild = null
         withFrameNanos { }
         onFirstMapDisplayed()
     }
@@ -247,7 +268,20 @@ fun StaticMapCanvas(
                         lastDragPosition = point
                     }
                 } else {
-                    onHover(point)
+                    val markerHit = hitTestSavedMarkerInteraction(
+                        markers = presentedMarkers,
+                        point = point,
+                        badgeHitRadiusPx = childBadgeHitRadiusPx,
+                        corridorRadiusPx = childCorridorRadiusPx,
+                    )
+                    if (markerHit != null) {
+                        activeMarkerInteractionSystemId = markerHit.parentSystemId
+                        hoveredSavedMarkerChild = markerHit.child
+                    } else {
+                        activeMarkerInteractionSystemId = null
+                        hoveredSavedMarkerChild = null
+                        onHover(point)
+                    }
                 }
             }
             .onPointerEvent(PointerEventType.Exit) {
@@ -255,6 +289,8 @@ fun StaticMapCanvas(
                 pressedAt = null
                 lastDragPosition = null
                 isDragging = false
+                activeMarkerInteractionSystemId = null
+                hoveredSavedMarkerChild = null
                 onHoverExit()
             }
             .onPointerEvent(PointerEventType.Release) { event ->
@@ -356,7 +392,13 @@ fun StaticMapCanvas(
         if (presentedMarkers.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize()) {
                 with(MapRenderer) {
-                    drawMarkers(presentedMarkers, textMeasurer, renderCache, mapDisplayPreferences)
+                    drawMarkers(
+                        presentedMarkers,
+                        textMeasurer,
+                        renderCache,
+                        mapDisplayPreferences,
+                        savedMarkerAppearance,
+                    )
                 }
             }
         }
@@ -384,6 +426,27 @@ fun StaticMapCanvas(
                     textMeasurer = textMeasurer,
                     cache = renderCache,
                     preferences = mapDisplayPreferences,
+                )
+            }
+        }
+        hoveredSavedMarkerChild?.let { child ->
+            Surface(
+                color = androidx.compose.ui.graphics.Color(0xF21B2A37),
+                contentColor = androidx.compose.ui.graphics.Color(0xFFF1F5F8),
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .zIndex(SAVED_MARKER_TOOLTIP_Z_INDEX)
+                    .offset {
+                        IntOffset(
+                            child.screenCenter.x.toInt() + 12,
+                            child.screenCenter.y.toInt() - 16,
+                        )
+                    },
+            ) {
+                Text(
+                    child.visual.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(7.dp),
                 )
             }
         }
@@ -487,3 +550,13 @@ internal fun Rect?.containsPoint(point: Offset): Boolean =
 private const val DRAG_SLOP_PX = 4.0
 internal const val CONTEXT_DISMISS_Z_INDEX = 9f
 internal const val CONTEXT_MENU_Z_INDEX = 10f
+internal const val SAVED_MARKER_TOOLTIP_Z_INDEX = 8f
+
+internal fun savedMarkerChildOrbitRadiusDp(parentRingRadiusDp: Float): Float =
+    DEFAULT_SAVED_MARKER_CHILD_ORBIT_RADIUS_DP.coerceAtLeast(
+        parentRingRadiusDp + SAVED_MARKER_CHILD_BADGE_RADIUS_DP + SAVED_MARKER_CHILD_CLEARANCE_DP,
+    )
+
+private const val DEFAULT_SAVED_MARKER_CHILD_ORBIT_RADIUS_DP = 38f
+private const val SAVED_MARKER_CHILD_BADGE_RADIUS_DP = 9f
+private const val SAVED_MARKER_CHILD_CLEARANCE_DP = 6f

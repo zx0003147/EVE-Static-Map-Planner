@@ -6,4 +6,9 @@ This file contains third-party notices. It is not the source-code license for EV
 
 EVE Static Map Planner is an unofficial third-party tool. It is not affiliated with or endorsed by CCP hf.
 
+The custom Keepstar child-marker vector is traced from CCP's
+`Icons/items/Brackets/citadelExtraLarge.png` in the official
+`Uprising_V21.03_Icons.zip` Image Export Collection. The source bitmap is used only as a
+development geometry reference and is not bundled or loaded at runtime. The reference imagery remains © CCP hf.
+
 The project name and other branding must receive a separate public-distribution branding review before any public release.

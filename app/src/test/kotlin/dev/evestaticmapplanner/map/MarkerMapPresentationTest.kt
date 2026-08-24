@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.map
 
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
+import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
@@ -9,6 +10,8 @@ import dev.evestaticmapplanner.core.map.RealXzProjection
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
+import dev.evestaticmapplanner.core.marker.SavedMarkerChild
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SchematicPosition
@@ -70,15 +73,65 @@ class MarkerMapPresentationTest {
     }
 
     @Test
-    fun `saved marker resolves to a solid diamond`() {
+    fun `saved marker resolves to an outer ring centered on its system`() {
         val marker = Marker.saved(1, MarkerDraft.create(), Instant.EPOCH, Instant.EPOCH)
+        val systemCenter = transform.worldToScreen(scene.nodes.single().position)
 
         val presented = MarkerMapPresentationBuilder.build(
             scene, transform, listOf(1), mapOf(1 to marker), MarkerPreferences.Defaults,
             SemanticLabelMode.SYSTEM, 10.0,
         ).single()
 
-        assertEquals(MarkerVisualStyle.SOLID_DIAMOND, presented.visualStyle)
+        assertEquals(MarkerVisualStyle.OUTER_RING, presented.visualStyle)
+        assertEquals(systemCenter, presented.screenCenter)
+        assertTrue(presented.children.isEmpty())
+    }
+
+    @Test
+    fun `expanded saved marker preserves repository child order in deterministic clockwise radial layout`() {
+        val marker = Marker.saved(1, MarkerDraft.create(), Instant.EPOCH, Instant.EPOCH)
+        val children = listOf(
+            SavedMarkerChild.create("later", 1, SavedMarkerChildType.of("danger"), 8),
+            SavedMarkerChild.create("first", 1, SavedMarkerChildType.of("staging"), 2),
+            SavedMarkerChild.create("last", 1, SavedMarkerChildType.of("keepstar"), 20),
+        )
+        val center = transform.worldToScreen(scene.nodes.single().position)
+
+        val presented = MarkerMapPresentationBuilder.build(
+            scene, transform, listOf(1), mapOf(1 to marker), MarkerPreferences.Defaults,
+            SemanticLabelMode.SYSTEM, 10.0,
+            childrenByParentSystemId = mapOf(1 to children),
+            expandedSystemIds = setOf(1),
+            childOrbitRadiusPx = 40.0,
+        ).single()
+
+        assertEquals(children, presented.children.map { it.child })
+        assertEquals(center.x, presented.children.first().screenCenter.x, absoluteTolerance = 0.0001)
+        assertEquals(center.y - 40.0, presented.children.first().screenCenter.y, absoluteTolerance = 0.0001)
+        assertEquals("Keepstar", presented.children.last().visual.label)
+    }
+
+    @Test
+    fun `expansion truth table and spoke hit region keep child hover usable`() {
+        assertTrue(!isSavedMarkerExpanded(false, false))
+        assertTrue(isSavedMarkerExpanded(true, false))
+        assertTrue(isSavedMarkerExpanded(false, true))
+        assertTrue(isSavedMarkerExpanded(true, true))
+        assertTrue(isSavedMarkerExpanded(false, false, isInteractionActive = true))
+
+        val marker = Marker.saved(1, MarkerDraft.create(), Instant.EPOCH, Instant.EPOCH)
+        val child = SavedMarkerChild.create("child", 1, SavedMarkerChildType.of("staging"), 0)
+        val presented = MarkerMapPresentationBuilder.build(
+            scene, transform, listOf(1), mapOf(1 to marker), MarkerPreferences.Defaults,
+            SemanticLabelMode.SYSTEM, 10.0,
+            childrenByParentSystemId = mapOf(1 to listOf(child)), expandedSystemIds = setOf(1), childOrbitRadiusPx = 40.0,
+        ).single()
+        val center = presented.screenCenter
+        val childCenter = presented.children.single().screenCenter
+
+        assertEquals(1, hitTestSavedMarkerInteraction(listOf(presented), MapPoint(center.x, center.y - 20.0), 12.0, 7.0)?.parentSystemId)
+        assertEquals(child, hitTestSavedMarkerInteraction(listOf(presented), childCenter, 12.0, 7.0)?.child?.child)
+        assertNull(hitTestSavedMarkerInteraction(listOf(presented), MapPoint(center.x + 25.0, center.y + 25.0), 12.0, 7.0))
     }
 
     @Test

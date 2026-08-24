@@ -188,6 +188,39 @@ private fun MarkerPreferencesContent(
     PreferenceCheckbox("Show marker names", preferences.showMarkerNames, preferences.showMarkers) {
         onChange(preferences.copy(showMarkerNames = it))
     }
+    HorizontalDivider(color = Color(0xFF314252))
+    Text("Saved Marker Appearance", style = MaterialTheme.typography.titleSmall)
+    val appearance = preferences.savedMarkerAppearance
+    NumericPreferenceSlider(
+        label = "Outer Ring Radius",
+        value = appearance.ringRadiusDp.toDouble(),
+        suffix = "dp",
+        decimals = 1,
+        sliderRange = MIN_SAVED_MARKER_RING_RADIUS_DP.toDouble()..MAX_SAVED_MARKER_RING_RADIUS_DP.toDouble(),
+        steps = 39,
+        isValid = { it in MIN_SAVED_MARKER_RING_RADIUS_DP.toDouble()..MAX_SAVED_MARKER_RING_RADIUS_DP.toDouble() },
+    ) { onChange(preferences.copy(savedMarkerAppearance = appearance.copy(ringRadiusDp = it.toFloat()))) }
+    NumericPreferenceSlider(
+        label = "Outer Ring Line Width",
+        value = appearance.lineWidthDp.toDouble(),
+        suffix = "dp",
+        decimals = 1,
+        sliderRange = MIN_SAVED_MARKER_LINE_WIDTH_DP.toDouble()..MAX_SAVED_MARKER_LINE_WIDTH_DP.toDouble(),
+        steps = 39,
+        isValid = { it in MIN_SAVED_MARKER_LINE_WIDTH_DP.toDouble()..MAX_SAVED_MARKER_LINE_WIDTH_DP.toDouble() },
+    ) { onChange(preferences.copy(savedMarkerAppearance = appearance.copy(lineWidthDp = it.toFloat()))) }
+    PreferenceCheckbox("Glow", appearance.glowEnabled) {
+        onChange(preferences.copy(savedMarkerAppearance = appearance.copy(glowEnabled = it)))
+    }
+    NumericPreferenceSlider(
+        label = "Glow Strength",
+        value = appearance.glowStrength.toDouble(),
+        decimals = 2,
+        sliderRange = MIN_SAVED_MARKER_GLOW_STRENGTH.toDouble()..MAX_SAVED_MARKER_GLOW_STRENGTH.toDouble(),
+        steps = 19,
+        isValid = { it in MIN_SAVED_MARKER_GLOW_STRENGTH.toDouble()..MAX_SAVED_MARKER_GLOW_STRENGTH.toDouble() },
+        enabled = appearance.glowEnabled,
+    ) { onChange(preferences.copy(savedMarkerAppearance = appearance.copy(glowStrength = it.toFloat()))) }
     TextButton(onClick = onReset) { Text("Reset Marker") }
 }
 
@@ -244,6 +277,7 @@ private fun NumericPreferenceSlider(
     sliderRange: ClosedFloatingPointRange<Double>,
     steps: Int = 0,
     isValid: (Double) -> Boolean,
+    enabled: Boolean = true,
     onValueChange: (Double) -> Unit,
 ) {
     var draft by remember { mutableStateOf(formatValue(value, decimals)) }
@@ -257,12 +291,17 @@ private fun NumericPreferenceSlider(
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) Color.Unspecified else Color(0xFF71808D),
+            )
             Slider(
                 value = value.coerceIn(sliderRange).toFloat(),
                 onValueChange = { onValueChange(it.toDouble()) },
                 valueRange = sliderRange.start.toFloat()..sliderRange.endInclusive.toFloat(),
                 steps = steps,
+                enabled = enabled,
             )
         }
         OutlinedTextField(
@@ -276,6 +315,7 @@ private fun NumericPreferenceSlider(
             suffix = if (suffix.isEmpty()) null else ({ Text(suffix) }),
             singleLine = true,
             isError = invalid,
+            enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.width(104.dp).onFocusChanged { focusState ->
                 val wasFocused = isFocused
