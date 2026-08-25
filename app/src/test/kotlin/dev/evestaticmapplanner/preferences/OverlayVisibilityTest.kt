@@ -23,7 +23,9 @@ class OverlayVisibilityTest {
         val disabled = defaults.withEnabled(firstKey, false)
         assertFalse(disabled.isEnabled(firstKey))
         assertTrue(disabled.isEnabled(secondKey))
-        assertTrue(disabled.withEnabled(firstKey, true).isEnabled(firstKey))
+        val restored = disabled.withEnabled(firstKey, true)
+        assertTrue(restored.isEnabled(firstKey))
+        assertEquals(OverlayVisibilityPreferences.Defaults, restored)
     }
 
     @Test

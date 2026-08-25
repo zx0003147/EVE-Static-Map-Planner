@@ -333,22 +333,22 @@ fun StaticMapCanvas(
                 )
             }
         }
-        if (showAnsiblexLayer && ansiblexConnections.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize()) {
-                with(MapRenderer) {
-                    drawAnsiblexLayer(scene, transform, ansiblexConnections, visualEmphasis)
-                }
-            }
-        }
         if (featureOverlayPresentation.entries.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.FEATURE_OVERLAY)) {
                 with(MapRenderer) {
                     drawFeatureOverlays(scene, transform, featureOverlayPresentation)
                 }
             }
         }
+        if (showAnsiblexLayer && ansiblexConnections.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ANSIBLEX)) {
+                with(MapRenderer) {
+                    drawAnsiblexLayer(scene, transform, ansiblexConnections, visualEmphasis)
+                }
+            }
+        }
         if (projectedJumpOverlays.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.RANGE_OVERLAY)) {
                 with(MapRenderer) {
                     drawJumpRangeOverlays(
                         scene = scene,
@@ -360,34 +360,34 @@ fun StaticMapCanvas(
             }
         }
         if (projectedMissionJumpRanges.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.RANGE_OVERLAY)) {
                 with(MapRenderer) { drawMissionJumpRangeOverlays(scene, transform, projectedMissionJumpRanges) }
             }
         }
         routeOverlay?.let { overlay ->
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
                 with(MapRenderer) {
                     drawRoute(scene, transform, overlay)
                 }
             }
         }
         projectedCapitalRoute?.let { overlay ->
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
                 with(MapRenderer) { drawCapitalRoute(scene, transform, overlay) }
             }
         }
         projectedMissionNormalRoutes.forEachIndexed { index, overlay ->
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
                 with(MapRenderer) { drawMissionRoute(transform, overlay, index) }
             }
         }
         projectedMissionCapitalRoutes.forEachIndexed { index, overlay ->
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
                 with(MapRenderer) { drawMissionCapitalRoute(transform, overlay, index) }
             }
         }
         if (visualEmphasis.isActive) {
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE_FOCUS)) {
                 with(MapRenderer) {
                     drawEmphasizedSystems(
                         scene = scene,
@@ -402,7 +402,7 @@ fun StaticMapCanvas(
             }
         }
         if (presentedMarkers.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.SAVED_MARKER)) {
                 with(MapRenderer) {
                     drawMarkers(
                         presentedMarkers,
@@ -415,7 +415,7 @@ fun StaticMapCanvas(
             }
         }
         if (missionState.markers.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.SAVED_MARKER)) {
                 with(MapRenderer) {
                     drawMissionMarkers(
                         scene,
@@ -428,7 +428,7 @@ fun StaticMapCanvas(
                 }
             }
         }
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.SELECTED_SYSTEM_FOCUS)) {
             with(MapRenderer) {
                 drawInteraction(
                     scene = scene,
@@ -472,6 +472,13 @@ fun StaticMapCanvas(
                     .zIndex(CompactSystemInfoCardDefaults.zIndex),
             )
         }
+        FeatureOverlayLegend(
+            sections = featureOverlayPresentation.legendSections,
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.BottomStart)
+                .padding(12.dp)
+                .zIndex(FEATURE_OVERLAY_LEGEND_Z_INDEX),
+        )
         state.contextMenu?.let { menu ->
             Spacer(
                 Modifier
@@ -563,6 +570,17 @@ private const val DRAG_SLOP_PX = 4.0
 internal const val CONTEXT_DISMISS_Z_INDEX = 9f
 internal const val CONTEXT_MENU_Z_INDEX = 10f
 internal const val SAVED_MARKER_TOOLTIP_Z_INDEX = 8f
+internal const val FEATURE_OVERLAY_LEGEND_Z_INDEX = 6f
+
+internal object StaticMapVisualLayerOrder {
+    const val FEATURE_OVERLAY = 1f
+    const val ANSIBLEX = 2f
+    const val RANGE_OVERLAY = 2.5f
+    const val ROUTE = 3f
+    const val ROUTE_FOCUS = 3.5f
+    const val SAVED_MARKER = 4f
+    const val SELECTED_SYSTEM_FOCUS = 5f
+}
 
 internal fun savedMarkerChildOrbitRadiusDp(parentRingRadiusDp: Float): Float =
     DEFAULT_SAVED_MARKER_CHILD_ORBIT_RADIUS_DP.coerceAtLeast(

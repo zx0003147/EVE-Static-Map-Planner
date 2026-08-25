@@ -147,14 +147,14 @@ object MapRenderer {
         transform: MapTransform,
         presentation: FeatureOverlayPresentation,
     ) {
-        val baseRadius = systemNodeRadius(detailLevel(transform.viewport.zoom)) + 3f
+        val ring = featureOverlayRingRenderState(detailLevel(transform.viewport.zoom))
         presentation.entries.forEach { entry ->
             val node = scene.nodesById[entry.systemId] ?: return@forEach
             drawCircle(
-                color = FEATURE_OVERLAY_COLOR,
-                radius = baseRadius + entry.ringIndex * 3f,
+                color = entry.color,
+                radius = ring.baseRadiusPx + entry.ringIndex * ring.spacingPx,
                 center = transform.worldToScreen(node.position).toOffset(),
-                style = Stroke(1.5f),
+                style = Stroke(ring.strokeWidthPx),
             )
         }
     }
@@ -503,6 +503,18 @@ private fun systemNodeRadius(level: MapDetailLevel): Float = when (level) {
     MapDetailLevel.DETAIL -> 3.0f
 }
 
+internal data class FeatureOverlayRingRenderState(
+    val baseRadiusPx: Float,
+    val spacingPx: Float,
+    val strokeWidthPx: Float,
+)
+
+internal fun featureOverlayRingRenderState(level: MapDetailLevel): FeatureOverlayRingRenderState = when (level) {
+    MapDetailLevel.OVERVIEW -> FeatureOverlayRingRenderState(6.8f, 3.4f, 2.4f)
+    MapDetailLevel.NORMAL -> FeatureOverlayRingRenderState(7.2f, 3.4f, 2.25f)
+    MapDetailLevel.DETAIL -> FeatureOverlayRingRenderState(7.6f, 3.4f, 2.0f)
+}
+
 private fun MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())
 
 private val MAP_BACKGROUND = Color(0xFF09121D)
@@ -516,7 +528,6 @@ private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
 private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
-private val FEATURE_OVERLAY_COLOR = Color(0xFF8EA8BD)
 internal val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
 internal val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
 private val ROUTE_START_COLOR = Color(0xFF57E389)

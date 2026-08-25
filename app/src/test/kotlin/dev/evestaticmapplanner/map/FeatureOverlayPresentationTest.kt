@@ -14,6 +14,7 @@ import dev.evestaticmapplanner.feature.api.OverlayLayer
 import dev.evestaticmapplanner.feature.api.OverlayLayerState
 import dev.evestaticmapplanner.feature.api.OverlayProviderDescriptor
 import dev.evestaticmapplanner.feature.api.OverlayState
+import androidx.compose.ui.graphics.Color
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -40,6 +41,41 @@ class FeatureOverlayPresentationTest {
                 PresentedFeatureOverlayEntry(SYSTEM_ID, 1),
             ),
             presentation.entries,
+        )
+    }
+
+    @Test
+    fun `presentation converts generic ring metadata and builds reusable legend`() {
+        val provider = OverlayProviderDescriptor("test.provider", "Test Provider")
+        val state = OverlayState(listOf(
+            OverlayLayerState(provider, OverlayLayer("sovereignty", "Sovereignty"), listOf(
+                OverlayEntry(
+                    "sovereignty",
+                    SYSTEM_ID,
+                    title = "Goonswarm Federation",
+                    value = "ring-color:#B3F2C94C",
+                ),
+                OverlayEntry(
+                    "sovereignty",
+                    30_000_002,
+                    title = "Fraternity",
+                    value = "ring-color:#B34D9DE0",
+                ),
+            )),
+        ))
+
+        val presentation = FeatureOverlayPresentationBuilder.build(state, scene())
+
+        assertEquals(Color(0xB3F2C94C), presentation.entries.first { it.systemId == SYSTEM_ID }.color)
+        assertEquals(
+            FeatureOverlayLegendSection(
+                "Sovereignty",
+                listOf(
+                    FeatureOverlayLegendEntry("Fraternity", Color(0xB34D9DE0)),
+                    FeatureOverlayLegendEntry("Goonswarm Federation", Color(0xB3F2C94C)),
+                ),
+            ),
+            presentation.legendSections.single(),
         )
     }
 

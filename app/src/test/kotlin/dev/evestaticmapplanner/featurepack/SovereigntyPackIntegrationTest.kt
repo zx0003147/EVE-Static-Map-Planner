@@ -58,11 +58,12 @@ class SovereigntyPackIntegrationTest {
             assertEquals(FeaturePackRuntimeState.ENABLED, manager.state.value.packs.single().runtimeState)
             with(overlays.state.value.layers.single()) {
                 assertEquals("Sovereignty", layer.name)
-                assertEquals("SV-1 Fixture Alliance", entries.first { it.systemId == 30_004_759 }.title)
+                assertEquals("Goonswarm Federation", entries.first { it.systemId == 30_004_759 }.title)
+                assertEquals("ring-color:#CCF2C94C", entries.first { it.systemId == 30_004_759 }.value)
             }
             with(systemInfo.request(30_004_759).sections.single()) {
                 assertEquals("Sovereignty", title)
-                assertEquals("SV-1 Fixture Alliance", fields.first { it.key == "owner" }.value)
+                assertEquals("Goonswarm Federation", fields.first { it.key == "owner" }.value)
             }
 
             assertTrue(manager.setEnabled(installed.packId, false).isSuccess)
