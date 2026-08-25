@@ -24,6 +24,7 @@ include(
     ":control-transport",
     ":core",
     ":data",
+    ":feature-api",
     ":mcp",
     ":sde",
 )

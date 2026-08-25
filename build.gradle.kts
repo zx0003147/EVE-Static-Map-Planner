@@ -20,6 +20,7 @@ tasks.named("build") {
         ":control-transport:build",
         ":core:build",
         ":data:build",
+        ":feature-api:build",
         ":mcp:build",
         ":sde:build",
     )

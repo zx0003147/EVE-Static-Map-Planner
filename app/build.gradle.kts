@@ -101,6 +101,7 @@ dependencies {
     implementation(project(":control"))
     implementation(project(":control-transport"))
     implementation(project(":data"))
+    implementation(project(":feature-api"))
     implementation(project(":sde"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
