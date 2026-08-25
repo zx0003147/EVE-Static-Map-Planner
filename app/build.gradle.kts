@@ -55,6 +55,10 @@ val featurePackFixture by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
 }
+val sovereigntyPackFixture by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
 
 nativeOutputDir?.let { layout.buildDirectory.set(file(it).resolve("app-build")) }
 
@@ -122,14 +126,19 @@ dependencies {
         featurePackFixture.name,
         project(mapOf("path" to ":feature-api", "configuration" to "fixturePackElements")),
     )
+    add(
+        sovereigntyPackFixture.name,
+        project(mapOf("path" to ":sovereignty-pack", "configuration" to "sovereigntyPackElements")),
+    )
 }
 
 tasks.test {
     useJUnitPlatform()
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    dependsOn(featurePackFixture)
+    dependsOn(featurePackFixture, sovereigntyPackFixture)
     doFirst {
         systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
+        systemProperty("sovereignty.pack.fixture.jar", sovereigntyPackFixture.singleFile.absolutePath)
     }
 }
 
