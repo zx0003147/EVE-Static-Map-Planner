@@ -52,6 +52,8 @@ import dev.evestaticmapplanner.marker.MarkerEditorRequest
 import dev.evestaticmapplanner.marker.MarkerUiState
 import dev.evestaticmapplanner.marker.MarkerViewModel
 import dev.evestaticmapplanner.control.MissionMapUiState
+import dev.evestaticmapplanner.feature.api.OverlayState
+import dev.evestaticmapplanner.feature.api.SystemInfoState
 import java.nio.file.Path
 
 @Composable
@@ -64,6 +66,8 @@ fun StaticMapScreen(
     capitalState: CapitalRouteUiState,
     markerState: MarkerUiState,
     missionState: MissionMapUiState,
+    featureOverlayState: OverlayState,
+    systemInfoState: SystemInfoState,
     viewModel: MapViewModel,
     routeViewModel: RoutePlannerViewModel,
     jumpViewModel: JumpOverlayViewModel,
@@ -128,11 +132,13 @@ fun StaticMapScreen(
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
                         markerState = markerState,
                         missionState = missionState,
+                        featureOverlayState = featureOverlayState,
                         compactSystemInfo = CompactSystemInfoPresentationBuilder.build(
                             state,
                             routeState,
                             jumpState,
                             state.selectedSystemId?.let(markerState.markersBySystemId::get),
+                            systemInfoState,
                         ),
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
                         onZoom = viewModel::zoomAt,

@@ -19,6 +19,10 @@ interface FeaturePackContext {
     fun storage(): PackStorage
 
     fun logger(): FeaturePackLogger
+
+    fun overlays(): OverlayRegistry
+
+    fun systemInfo(): SystemInfoRegistry
 }
 
 /** The lifecycle handle returned by a successfully started Pack. */

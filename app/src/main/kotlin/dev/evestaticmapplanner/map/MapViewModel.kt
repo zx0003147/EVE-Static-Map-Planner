@@ -16,6 +16,7 @@ import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.preferences.DefaultPreferencesStore
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
+import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -244,6 +245,17 @@ class MapViewModel(
             current.copy(appPreferences = current.appPreferences.copy(marker = MarkerPreferences.Defaults))
         }
         schedulePreferencesSave()
+    }
+
+    fun updateOverlayVisibilityPreferences(preferences: OverlayVisibilityPreferences) {
+        mutableState.update { current ->
+            current.copy(appPreferences = current.appPreferences.copy(overlayVisibility = preferences))
+        }
+        schedulePreferencesSave()
+    }
+
+    fun resetOverlayVisibilityPreferences() {
+        updateOverlayVisibilityPreferences(OverlayVisibilityPreferences.Defaults)
     }
 
     suspend fun updateAiControlPreferences(preferences: AiControlPreferences): Result<Unit> = withContext(NonCancellable) {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -20,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +35,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.control.AiControlStatus
+import dev.evestaticmapplanner.featurepack.FeaturePackInstallationState
+import dev.evestaticmapplanner.featurepack.FeaturePackManagerItem
+import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
+import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeState
+import dev.evestaticmapplanner.feature.api.OverlayState
 import java.util.Locale
 
 @Composable
@@ -43,10 +50,14 @@ fun PreferencesWindow(
     onMarkerChange: (MarkerPreferences) -> Unit,
     aiControlStatus: AiControlStatus,
     aiControlError: String?,
+    featurePackManagerViewModel: FeaturePackManagerViewModel,
+    overlayState: OverlayState,
+    onOverlayVisibilityChange: (OverlayVisibilityPreferences) -> Unit,
     onAiControlChange: (Boolean) -> Unit,
     onResetMapDisplay: () -> Unit,
     onResetMarker: () -> Unit,
     onResetAiControl: () -> Unit,
+    onResetOverlayVisibility: () -> Unit,
     onResetAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -98,6 +109,15 @@ fun PreferencesWindow(
                                 onAiControlChange,
                                 onResetAiControl,
                             )
+                            PreferencesCategory.FEATURE_PACKS -> FeaturePacksPreferencesContent(
+                                featurePackManagerViewModel,
+                            )
+                            PreferencesCategory.OVERLAYS -> OverlayPreferencesContent(
+                                overlayState,
+                                preferences.overlayVisibility,
+                                onOverlayVisibilityChange,
+                                onResetOverlayVisibility,
+                            )
                         }
                     }
                 }
@@ -115,6 +135,102 @@ private enum class PreferencesCategory(val label: String) {
     MAP_DISPLAY("Map Display"),
     MARKER("Marker"),
     AI_CONTROL("AI Control"),
+    FEATURE_PACKS("Feature Packs"),
+    OVERLAYS("Overlays"),
+}
+
+@Composable
+private fun OverlayPreferencesContent(
+    overlayState: OverlayState,
+    preferences: OverlayVisibilityPreferences,
+    onChange: (OverlayVisibilityPreferences) -> Unit,
+    onReset: () -> Unit,
+) {
+    val uiState = remember(overlayState, preferences) {
+        OverlayManagementUiStateBuilder.build(overlayState, preferences)
+    }
+
+    Text("Map Overlays", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Visibility changes affect map presentation only. Feature Packs remain enabled.",
+        color = Color(0xFFAAB9C7),
+    )
+    if (uiState.overlays.isEmpty()) {
+        Text("No Feature Pack overlays are currently available.", color = Color(0xFFAAB9C7))
+    }
+    uiState.overlays.forEach { item ->
+        HorizontalDivider(color = Color(0xFF314252))
+        PreferenceCheckbox(item.name, item.enabled) { enabled ->
+            onChange(preferences.withEnabled(item.key, enabled))
+        }
+        Text("Source: ${item.providerName}", color = Color(0xFFAAB9C7))
+        item.description?.let { Text(it, color = Color(0xFFAAB9C7)) }
+        item.providerDescription?.let { Text("Provider: $it", color = Color(0xFF71808D)) }
+    }
+    TextButton(onClick = onReset, enabled = preferences.disabledLayers.isNotEmpty()) {
+        Text("Enable All Overlays")
+    }
+}
+
+@Composable
+private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewModel) {
+    val state by viewModel.state.collectAsState()
+    var removePending by remember { mutableStateOf<FeaturePackManagerItem?>(null) }
+    LaunchedEffect(viewModel) { viewModel.refresh() }
+
+    Text("Feature Packs", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Installed Packs are local to this Windows user. New Packs are disabled by default.",
+        color = Color(0xFFAAB9C7),
+    )
+    state.discoveryErrors.forEach { Text(it, color = Color(0xFFFFB4AB)) }
+    if (state.initialized && state.packs.isEmpty() && state.discoveryErrors.isEmpty()) {
+        Text("No Feature Packs are installed.", color = Color(0xFFAAB9C7))
+    }
+    state.packs.forEach { item ->
+        val pack = item.pack
+        HorizontalDivider(color = Color(0xFF314252))
+        Text(pack.displayName, style = MaterialTheme.typography.titleSmall)
+        Text("ID: ${pack.packId.value}", color = Color(0xFFAAB9C7))
+        Text("Version: ${pack.version?.value ?: "Unavailable"}")
+        Text("Publisher: ${pack.publisher ?: "Unavailable"}")
+        Text("Path: ${pack.path}", color = Color(0xFFAAB9C7))
+        Text(
+            "Status: " + when {
+                pack.installationState == FeaturePackInstallationState.MISSING_JAR -> "Missing pack.jar"
+                pack.installationState == FeaturePackInstallationState.INVALID_PACK -> "Invalid Pack"
+                item.runtimeState == FeaturePackRuntimeState.ENABLED -> "Enabled"
+                else -> "Disabled"
+            },
+        )
+        pack.lastError?.let { Text(it, color = Color(0xFFFFB4AB)) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (item.runtimeState == FeaturePackRuntimeState.ENABLED) {
+                TextButton(onClick = { viewModel.setEnabled(pack.packId, false) }) { Text("Disable") }
+            } else {
+                TextButton(
+                    enabled = pack.installationState == FeaturePackInstallationState.INSTALLED,
+                    onClick = { viewModel.setEnabled(pack.packId, true) },
+                ) { Text("Enable") }
+            }
+            TextButton(onClick = { removePending = item }) { Text("Remove") }
+        }
+    }
+
+    removePending?.let { item ->
+        AlertDialog(
+            onDismissRequest = { removePending = null },
+            title = { Text("Remove ${item.pack.displayName}?") },
+            text = { Text("This deletes the installed Pack directory. Pack-owned data is retained.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.remove(item.pack.packId)
+                    removePending = null
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { removePending = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable

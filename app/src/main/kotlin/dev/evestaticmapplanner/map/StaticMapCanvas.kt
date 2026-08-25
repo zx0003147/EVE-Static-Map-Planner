@@ -49,6 +49,7 @@ import dev.evestaticmapplanner.marker.MarkerUiState
 import dev.evestaticmapplanner.marker.SystemContextAction
 import dev.evestaticmapplanner.marker.SystemContextMenuPresentationBuilder
 import dev.evestaticmapplanner.control.MissionMapUiState
+import dev.evestaticmapplanner.feature.api.OverlayState
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -63,6 +64,7 @@ fun StaticMapCanvas(
     showAnsiblexLayer: Boolean,
     markerState: MarkerUiState,
     missionState: MissionMapUiState,
+    featureOverlayState: OverlayState,
     compactSystemInfo: CompactSystemInfoPresentation?,
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
@@ -158,6 +160,9 @@ fun StaticMapCanvas(
                 scene,
             )
         }
+    }
+    val featureOverlayPresentation = remember(scene, featureOverlayState) {
+        FeatureOverlayPresentationBuilder.build(featureOverlayState, scene)
     }
     val markerOffsetPx = with(density) { 10.dp.toPx().toDouble() }
     val childOrbitRadiusPx = with(density) {
@@ -332,6 +337,13 @@ fun StaticMapCanvas(
             Canvas(Modifier.fillMaxSize()) {
                 with(MapRenderer) {
                     drawAnsiblexLayer(scene, transform, ansiblexConnections, visualEmphasis)
+                }
+            }
+        }
+        if (featureOverlayPresentation.entries.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                with(MapRenderer) {
+                    drawFeatureOverlays(scene, transform, featureOverlayPresentation)
                 }
             }
         }

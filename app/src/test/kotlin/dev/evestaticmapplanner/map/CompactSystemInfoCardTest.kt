@@ -21,6 +21,9 @@ import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
+import dev.evestaticmapplanner.feature.api.SystemInfoField
+import dev.evestaticmapplanner.feature.api.SystemInfoSection
+import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.route.RoutePlannerUiState
@@ -104,6 +107,51 @@ class CompactSystemInfoCardTest {
         assertEquals("1DQ1-A", first?.title)
         assertEquals("T5ZI-S", second?.title)
         assertEquals(9, second?.selectedSystemId)
+    }
+
+    @Test
+    fun `matching extension state is appended without replacing core information`() {
+        val extension = SystemInfoSection(
+            sectionId = "fixture",
+            title = "Fixture Information",
+            fields = listOf(SystemInfoField("source", "Source", "Feature Pack")),
+        )
+
+        val presentation = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                selectedState(system(2, "1DQ1-A")),
+                RoutePlannerUiState(),
+                JumpOverlayUiState(),
+                systemInfoState = SystemInfoState(2, listOf(extension)),
+            ),
+        )
+
+        assertEquals("1DQ1-A", presentation.title)
+        assertEquals("2", presentation.fields.first { it.label == "System ID" }.value)
+        assertEquals(listOf("fixture"), presentation.extensionSections.map { it.sectionId })
+    }
+
+    @Test
+    fun `stale extension state is not shown after map selection changes`() {
+        val stale = SystemInfoState(
+            2,
+            listOf(SystemInfoSection(
+                "fixture",
+                "Fixture",
+                fields = listOf(SystemInfoField("status", "Status", "Stale")),
+            )),
+        )
+
+        val presentation = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                selectedState(system(9, "T5ZI-S")),
+                RoutePlannerUiState(),
+                JumpOverlayUiState(),
+                systemInfoState = stale,
+            ),
+        )
+
+        assertTrue(presentation.extensionSections.isEmpty())
     }
 
     @Test

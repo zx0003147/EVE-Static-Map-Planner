@@ -5,9 +5,11 @@ import dev.evestaticmapplanner.packaging.MsiLegacyPackageCleanupReader
 import dev.evestaticmapplanner.packaging.WindowsAppImageIntegration
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.tasks.testing.Test
 import java.io.File
 import java.nio.charset.Charset
 import java.util.UUID
+import java.util.jar.JarFile
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -49,6 +51,10 @@ val composeApplicationImage = nativeComposeOutputBase.resolve("main/app/EVE Stat
 val integratedImageBuildRoot = nativeComposeOutputBase.resolve("main/integrated-app")
 val integratedApplicationImage = integratedImageBuildRoot.resolve("EVE Static Map Planner")
 val mcpInstalledLibraries = project(":mcp").layout.buildDirectory.dir("install/mcp/lib")
+val featurePackFixture by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
 
 nativeOutputDir?.let { layout.buildDirectory.set(file(it).resolve("app-build")) }
 
@@ -112,11 +118,19 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    add(
+        featurePackFixture.name,
+        project(mapOf("path" to ":feature-api", "configuration" to "fixturePackElements")),
+    )
 }
 
 tasks.test {
     useJUnitPlatform()
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    dependsOn(featurePackFixture)
+    doFirst {
+        systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
+    }
 }
 
 val verifyWindowsInstallerResources by tasks.registering {
@@ -366,6 +380,73 @@ val createIntegratedDistributable by tasks.registering {
     }
 }
 
+val verifyFeaturePackPackaging by tasks.registering {
+    group = "verification"
+    description = "Verifies that Feature Packs remain external to the single-runtime production app-image."
+    dependsOn(createIntegratedDistributable, featurePackFixture)
+    inputs.dir(integratedApplicationImage)
+    inputs.files(featurePackFixture)
+    outputs.upToDateWhen { false }
+    doLast {
+        check(integratedApplicationImage.isDirectory) {
+            "Missing integrated application image: $integratedApplicationImage"
+        }
+        val allPaths = integratedApplicationImage.walkTopDown().toList()
+        check(allPaths.none { it.isFile && it.name.equals("pack.jar", ignoreCase = true) }) {
+            "An external Feature Pack JAR was bundled into the application image"
+        }
+        check(allPaths.filter { it.isDirectory && it.name.equals("runtime", ignoreCase = true) } ==
+            listOf(integratedApplicationImage.resolve("runtime"))) {
+            "The production image must contain exactly one top-level runtime"
+        }
+        check(allPaths.count {
+            it.isFile && it.name == "modules" && it.parentFile?.name == "lib" &&
+                it.parentFile?.parentFile?.name.equals("runtime", ignoreCase = true)
+        } == 1) {
+            "The production image must contain exactly one JRE module image"
+        }
+
+        val applicationJars = integratedApplicationImage.resolve("app").walkTopDown()
+            .filter { it.isFile && it.extension.equals("jar", ignoreCase = true) }
+            .toList()
+        val apiClass = "dev/evestaticmapplanner/feature/api/FeaturePackEntrypoint.class"
+        val fixtureClass = "dev/evestaticmapplanner/feature/fixture/MinimalFixturePack.class"
+        check(applicationJars.count { jar -> JarFile(jar).use { it.getEntry(apiClass) != null } } == 1) {
+            "The packaged application must expose exactly one Feature API class identity"
+        }
+        check(applicationJars.none { jar -> JarFile(jar).use { it.getEntry(fixtureClass) != null } }) {
+            "The fixture Feature Pack was embedded in the production application"
+        }
+
+        val fixtureJar = featurePackFixture.singleFile
+        JarFile(fixtureJar).use { jar ->
+            val entries = jar.entries().asSequence().map { it.name }.toList()
+            check(entries.none { it.startsWith("kotlin/") }) { "Fixture Pack bundles Kotlin stdlib" }
+            check(entries.none { it.startsWith("dev/evestaticmapplanner/feature/api/") }) {
+                "Fixture Pack bundles feature-api"
+            }
+            check(entries.none { it.endsWith("java.exe", ignoreCase = true) }) { "Fixture Pack bundles a JVM" }
+        }
+    }
+}
+
+val featurePackInstalledImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs Feature Pack lifecycle validation through the final Windows production launcher."
+    dependsOn(createIntegratedDistributable, featurePackFixture)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.featurepack.FeaturePackInstalledImageTest")
+    systemProperty("feature.pack.installed.image", integratedApplicationImage.absolutePath)
+    doFirst {
+        systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
+    }
+    inputs.dir(integratedApplicationImage)
+    inputs.files(featurePackFixture)
+    outputs.upToDateWhen { false }
+}
+
 // Compose 1.10.0 always appends its private --resource-dir after freeArgs. Keep
 // its public packageMsi task and app-image prerequisites, but replace the final
 // invocation with a two-pass jpackage pipeline. Pass 1 is a non-release probe;
@@ -375,6 +456,8 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
     setActions(emptyList())
     dependsOn(
         createIntegratedDistributable,
+        verifyFeaturePackPackaging,
+        featurePackInstalledImageTest,
         verifyWindowsInstallerResources,
         ":mcp:analyzeProductionRuntimeModules",
         ":mcp:installedImageTest",
@@ -597,6 +680,9 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
             longMsiName(it[2]).lowercase() in WindowsAppImageIntegration.forbiddenPackagedFileNames
         }
         check(forbiddenFileRows.isEmpty()) { "Final MSI contains runtime/user data: $forbiddenFileRows" }
+        check(distributionAudit.files.none { longMsiName(it[2]).equals("pack.jar", ignoreCase = true) }) {
+            "Final MSI contains an external Feature Pack JAR"
+        }
         check(distributionAudit.files.none { longMsiName(it[2]).contains("ktor", ignoreCase = true) }) {
             "Final MSI contains a Ktor runtime"
         }

@@ -10,6 +10,7 @@ data class AppPreferences(
     val mapDisplay: MapDisplayPreferences = MapDisplayPreferences.Defaults,
     val marker: MarkerPreferences = MarkerPreferences.Defaults,
     val aiControl: AiControlPreferences = AiControlPreferences.Defaults,
+    val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
 ) {
     companion object {
         val Defaults = AppPreferences()
@@ -182,6 +183,7 @@ class PropertiesPreferencesStore(
             aiControl = AiControlPreferences(
                 enabled = properties.safeAiControlEnabled(warningSink),
             ),
+            overlayVisibility = properties.overlayVisibilityPreferences(),
         )
     }
 
@@ -196,6 +198,7 @@ class PropertiesPreferencesStore(
             val mapDisplay = preferences.mapDisplay
             val marker = preferences.marker
             val aiControl = preferences.aiControl
+            val overlayVisibility = preferences.overlayVisibility
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_CONSTELLATION_THRESHOLD, mapDisplay.constellationZoomThreshold.toString())
@@ -212,6 +215,10 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_SAVED_MARKER_GLOW_ENABLED, marker.savedMarkerAppearance.glowEnabled.toString())
                 setProperty(KEY_SAVED_MARKER_GLOW_STRENGTH, marker.savedMarkerAppearance.glowStrength.toString())
                 setProperty(KEY_AI_CONTROL_ENABLED, aiControl.enabled.toString())
+                setProperty(
+                    KEY_OVERLAY_DISABLED_LAYERS,
+                    overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
+                )
             }
             Files.newOutputStream(temporary).use {
                 properties.store(it, "EVE Static Map Planner preferences")
@@ -253,6 +260,17 @@ private fun Properties.safeAiControlEnabled(warningSink: (String) -> Unit): Bool
     }
 }
 
+private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferences {
+    val disabledLayers = getProperty(KEY_OVERLAY_DISABLED_LAYERS)
+        ?.split(',')
+        .orEmpty()
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .mapNotNull(OverlayLayerKey::decode)
+        .toSet()
+    return OverlayVisibilityPreferences(disabledLayers)
+}
+
 const val SETTINGS_VERSION = "1"
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
@@ -288,3 +306,4 @@ private const val KEY_SAVED_MARKER_LINE_WIDTH = "marker.savedMarkerAppearance.li
 private const val KEY_SAVED_MARKER_GLOW_ENABLED = "marker.savedMarkerAppearance.glowEnabled"
 private const val KEY_SAVED_MARKER_GLOW_STRENGTH = "marker.savedMarkerAppearance.glowStrength"
 private const val KEY_AI_CONTROL_ENABLED = "aiControl.enabled"
+private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"

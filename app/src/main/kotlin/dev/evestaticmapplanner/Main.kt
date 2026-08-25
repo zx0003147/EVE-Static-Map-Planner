@@ -33,6 +33,10 @@ import dev.evestaticmapplanner.control.MapViewportControlAdapter
 import dev.evestaticmapplanner.control.MissionMapStateStore
 import dev.evestaticmapplanner.control.RepositorySystemReadPort
 import dev.evestaticmapplanner.control.transport.LocalControlServer
+import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidation
+import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
+import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
+import dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntime
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
@@ -48,6 +52,7 @@ import dev.evestaticmapplanner.marker.MarkerViewModel
 import dev.evestaticmapplanner.marker.MarkerManagerWindow
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
+import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
 import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import dev.evestaticmapplanner.sde.update.JdkSdeHttpTransport
@@ -71,6 +76,17 @@ import kotlinx.coroutines.launch
 
 fun main(arguments: Array<String>) {
     AppDiagnostics.initialize()
+    FeaturePackRuntimeValidationArguments.parseOrNull(arguments)?.let { validation ->
+        runCatching { FeaturePackRuntimeValidation.run(validation) }
+            .onFailure { AppDiagnostics.fatal("Feature Pack runtime validation failed", it) }
+            .getOrThrow()
+        AppDiagnostics.close()
+        return
+    }
+    val featurePackRuntime = ProductionFeaturePackRuntime.start()
+    featurePackRuntime.startReport.failures.forEach { failure ->
+        AppDiagnostics.warning("Feature Pack loading continued after ${failure.kind}: ${failure.message}", failure.cause)
+    }
     val buildInfo = ApplicationBuildInfo.current
     AppDiagnostics.info(
         "Application starting: version=${buildInfo.appVersion}, commit=${buildInfo.gitCommit.take(12)}, " +
@@ -79,7 +95,12 @@ fun main(arguments: Array<String>) {
     Thread.setDefaultUncaughtExceptionHandler { thread, error ->
         AppDiagnostics.fatal("Uncaught fatal exception on thread ${thread.name}", error)
     }
-    Runtime.getRuntime().addShutdownHook(Thread(AppDiagnostics::close, "application-log-shutdown"))
+    Runtime.getRuntime().addShutdownHook(Thread({
+        featurePackRuntime.closeSafely().failures.forEach { failure ->
+            AppDiagnostics.warning("Feature Pack shutdown continued after ${failure.kind}: ${failure.message}", failure.cause)
+        }
+        AppDiagnostics.close()
+    }, "application-runtime-shutdown"))
     val initial = runCatching {
         StartupCoordinator().resolve(AppArguments.parse(arguments))
     }.getOrElse {
@@ -105,6 +126,7 @@ fun main(arguments: Array<String>) {
                 when (val resolution = startup) {
                     is StartupResolution.Ready -> ReadyApplication(
                         resolution.configuration,
+                        featurePackRuntime,
                         exitRequested,
                         ::exitApplication,
                     )
@@ -145,6 +167,7 @@ private fun BootstrapApplication(configuration: StartupConfiguration, onInstalle
 @Composable
 private fun FrameWindowScope.ReadyApplication(
     configuration: StartupConfiguration,
+    featurePackRuntime: ProductionFeaturePackRuntime,
     exitRequested: Boolean,
     onExitApplication: () -> Unit,
 ) {
@@ -158,6 +181,9 @@ private fun FrameWindowScope.ReadyApplication(
             ApplicationDirectories.root().resolve("settings.properties"),
             warningSink = AppDiagnostics::warning,
         )
+    }
+    val featurePackManagerViewModel = remember(featurePackRuntime) {
+        FeaturePackManagerViewModel(featurePackRuntime.manager)
     }
     val mapViewModel = remember(configuration) {
         MapViewModel(
@@ -318,6 +344,14 @@ private fun FrameWindowScope.ReadyApplication(
     val capitalState by capitalViewModel.state.collectAsState()
     val markerState by markerViewModel.state.collectAsState()
     val missionState by missionMapStateStore.state.collectAsState()
+    val featureOverlayState by featurePackRuntime.overlayHost.state.collectAsState()
+    val systemInfoState by featurePackRuntime.systemInfoHost.state.collectAsState()
+    LaunchedEffect(mapState.selectedSystemId, featurePackRuntime.systemInfoHost) {
+        featurePackRuntime.systemInfoHost.request(mapState.selectedSystemId)
+    }
+    val visibleFeatureOverlayState = remember(featureOverlayState, mapState.appPreferences.overlayVisibility) {
+        OverlayVisibilityFilter.visibleState(featureOverlayState, mapState.appPreferences.overlayVisibility)
+    }
     val staticDataState by staticDataViewModel.state.collectAsState()
     val aiControlStatus by controlLifecycle.status.collectAsState()
     val uiScope = rememberCoroutineScope()
@@ -362,6 +396,8 @@ private fun FrameWindowScope.ReadyApplication(
         capitalState = capitalState,
         markerState = markerState,
         missionState = missionState,
+        featureOverlayState = visibleFeatureOverlayState,
+        systemInfoState = systemInfoState,
         viewModel = mapViewModel,
         routeViewModel = routeViewModel,
         jumpViewModel = jumpViewModel,
@@ -381,6 +417,9 @@ private fun FrameWindowScope.ReadyApplication(
             onMarkerChange = mapViewModel::updateMarkerPreferences,
             aiControlStatus = aiControlStatus,
             aiControlError = aiPreferenceError,
+            featurePackManagerViewModel = featurePackManagerViewModel,
+            overlayState = featureOverlayState,
+            onOverlayVisibilityChange = mapViewModel::updateOverlayVisibilityPreferences,
             onAiControlChange = { enabled ->
                 uiScope.launch {
                     aiPreferenceError = null
@@ -413,6 +452,7 @@ private fun FrameWindowScope.ReadyApplication(
                     )
                 }
             },
+            onResetOverlayVisibility = mapViewModel::resetOverlayVisibilityPreferences,
             onResetAll = {
                 uiScope.launch {
                     aiPreferenceError = null

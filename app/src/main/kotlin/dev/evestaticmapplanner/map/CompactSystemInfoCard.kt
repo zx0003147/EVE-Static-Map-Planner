@@ -29,6 +29,8 @@ import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.marker.markerColor
+import dev.evestaticmapplanner.feature.api.SystemInfoSection
+import dev.evestaticmapplanner.feature.api.SystemInfoState
 import java.util.Locale
 
 data class CompactInfoField(
@@ -46,6 +48,7 @@ data class CompactSystemInfoPresentation(
     val jumpOverlayLabels: List<String>,
     val isInJumpIntersection: Boolean,
     val marker: CompactMarkerPresentation?,
+    val extensionSections: List<SystemInfoSection> = emptyList(),
 )
 
 data class CompactMarkerPresentation(
@@ -62,8 +65,11 @@ object CompactSystemInfoPresentationBuilder {
         routeState: RoutePlannerUiState,
         jumpState: JumpOverlayUiState,
         marker: Marker? = null,
+        systemInfoState: SystemInfoState = SystemInfoState(null, emptyList()),
     ): CompactSystemInfoPresentation? {
         val selectedSystemId = state.selectedSystemId ?: return null
+        val extensionSections = systemInfoState.sections.takeIf { systemInfoState.systemId == selectedSystemId }
+            ?: emptyList()
         val fallbackName = state.scene?.nodesById?.get(selectedSystemId)?.system?.name
             ?: "System $selectedSystemId"
         val details = state.selectedSystemDetails?.takeIf { it.system.id == selectedSystemId }
@@ -77,6 +83,7 @@ object CompactSystemInfoPresentationBuilder {
                 jumpOverlayLabels = emptyList(),
                 isInJumpIntersection = false,
                 marker = marker?.toCompactPresentation(),
+                extensionSections = extensionSections,
             )
 
         val ansiblex = routeState.ansiblexConnections.filter {
@@ -106,6 +113,7 @@ object CompactSystemInfoPresentationBuilder {
             jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },
             isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,
             marker = marker?.toCompactPresentation(),
+            extensionSections = extensionSections,
         )
     }
 }
@@ -177,6 +185,16 @@ fun CompactSystemInfoCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFFFD166),
                 )
+            }
+            presentation.extensionSections.forEach { section ->
+                Text(
+                    section.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFF9FB1C1),
+                )
+                section.fields.forEach { field ->
+                    CompactInfoRow(CompactInfoField(field.label, field.value))
+                }
             }
         }
     }

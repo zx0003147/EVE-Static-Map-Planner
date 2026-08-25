@@ -25,6 +25,23 @@ dependencies {
 val fixturePackJar by tasks.registering(Jar::class) {
     archiveClassifier.set("fixture-pack")
     from(fixturePack.output)
+    manifest {
+        attributes(
+            "EVE-Feature-Pack-Id" to "fixture.pack",
+            "EVE-Feature-Pack-Name" to "Minimal Fixture Pack",
+            "EVE-Feature-Pack-Version" to "0.0.1-test",
+            "EVE-Feature-Pack-Publisher" to "EVE Static Map Planner Tests",
+        )
+    }
+}
+
+val fixturePackElements by configurations.creating {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+}
+
+artifacts {
+    add(fixturePackElements.name, fixturePackJar)
 }
 
 val verifyFeatureApiDependencies by tasks.registering {

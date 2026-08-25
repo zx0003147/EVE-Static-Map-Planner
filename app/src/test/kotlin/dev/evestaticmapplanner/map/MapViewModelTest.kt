@@ -20,6 +20,8 @@ import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
+import dev.evestaticmapplanner.preferences.OverlayLayerKey
+import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
 import dev.evestaticmapplanner.route.RoutePlannerUiState
@@ -337,6 +339,30 @@ class MapViewModelTest {
         assertEquals(mapDisplay, viewModel.state.value.appPreferences.mapDisplay)
         assertEquals(MarkerPreferences.Defaults, viewModel.state.value.appPreferences.marker)
         assertEquals(mapDisplay, store.stored.mapDisplay)
+    }
+
+    @Test
+    fun `overlay visibility updates state and persists disable then enable`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store = FakePreferencesStore()
+        val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        val key = OverlayLayerKey("fixture.provider", "status")
+        advanceUntilIdle()
+
+        viewModel.updateOverlayVisibilityPreferences(
+            OverlayVisibilityPreferences.Defaults.withEnabled(key, false),
+        )
+        assertFalse(viewModel.state.value.appPreferences.overlayVisibility.isEnabled(key))
+        advanceUntilIdle()
+        assertFalse(store.stored.overlayVisibility.isEnabled(key))
+
+        viewModel.updateOverlayVisibilityPreferences(
+            viewModel.state.value.appPreferences.overlayVisibility.withEnabled(key, true),
+        )
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.appPreferences.overlayVisibility.isEnabled(key))
+        assertTrue(store.stored.overlayVisibility.isEnabled(key))
     }
 
     @Test

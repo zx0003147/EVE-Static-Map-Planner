@@ -1,8 +1,8 @@
 # Feature Pack developer contract
 
-The Feature Pack API is a first-party extension boundary for EVE Static Map Planner. FP-1 establishes only the
-small lifecycle, identity, host-information, storage, logging, and compatibility contracts in `:feature-api`.
-Pack discovery and loading do not exist yet.
+The Feature Pack API is a first-party extension boundary for EVE Static Map Planner. `:feature-api` contains only the
+small lifecycle, identity, host-information, storage, logging, and compatibility contracts. FP-2A adds the isolated
+local host in `:app`; FP-2B validates that the application-owned host works from the packaged production runtime.
 
 ## Status and lifecycle
 
@@ -10,7 +10,35 @@ Pack discovery and loading do not exist yet.
   returns an explicitly non-frozen development identifier; it is not Feature API version 1.
 - The planned v1 lifecycle is restart-only. Core will eventually discover exactly one `FeaturePackEntrypoint` per
   Pack, call `start(context)`, and close the returned `FeaturePackSession` during application shutdown.
-- FP-2 owns isolated class loaders, `ServiceLoader`, discovery, failure isolation, and packaged-runtime validation.
+- FP-2A owns one isolated class loader per Pack, `ServiceLoader`, and lifecycle failure isolation. FP-2B adds the
+  production directory resolver and installed-image lifecycle validation without changing those strategies.
+
+## Production discovery location
+
+On Windows, external Packs are discovered below:
+
+```text
+%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\<pack-id>\pack.jar
+```
+
+This location is user-writable for a normal per-user installation, remains outside the jpackage/MSI application
+image, and therefore does not require administrator rights or mutate signed installation files. A future Feature Pack
+installer can create one child directory and place its `pack.jar` there after showing the user an installation review.
+FP-2B deliberately does not define that public install/container format or add a manager UI.
+
+The application treats an absent `feature-packs` directory as the normal no-Pack state. Discovery does not create the
+directory, Pack storage, worker threads, databases, or network activity. Newly discovered Packs are disabled by
+default. A bad Pack is reported and skipped while Core continues; successfully started Packs are closed when disabled
+or during application shutdown.
+
+FP-3 reads lightweight management metadata from the standard JAR manifest without loading Pack classes. `pack.jar`
+must contain `EVE-Feature-Pack-Id`, `EVE-Feature-Pack-Name`, `EVE-Feature-Pack-Version`, and
+`EVE-Feature-Pack-Publisher`. The containing directory name must equal the Pack ID. When an enabled Pack is loaded, its
+runtime `FeaturePackDescriptor` must match these values. Enable state and the latest lifecycle error are stored in
+`%LOCALAPPDATA%\EVE Static Map Planner\feature-pack-manager.properties`; no Pack database is created.
+
+The production image contains the host and one shared `feature-api` identity. It does not contain Pack JARs, a Pack
+copy of Kotlin stdlib, or another JVM/JRE.
 
 ## Trust boundary
 

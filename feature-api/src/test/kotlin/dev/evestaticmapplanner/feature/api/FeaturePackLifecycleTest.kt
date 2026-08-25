@@ -61,5 +61,18 @@ class FeaturePackLifecycleTest {
                 events += "$level:$message"
             }
         }
+
+        override fun overlays() = OverlayRegistry { NoOpOverlayRegistration }
+
+        override fun systemInfo() = SystemInfoRegistry { NoOpSystemInfoRegistration }
+    }
+
+    private object NoOpOverlayRegistration : OverlayRegistration {
+        override fun close() = Unit
+    }
+
+    private object NoOpSystemInfoRegistration : SystemInfoRegistration {
+        override fun refresh() = Unit
+        override fun close() = Unit
     }
 }

@@ -141,6 +141,24 @@ object MapRenderer {
         }
     }
 
+    /** Generic host-owned rendering for Pack data; no provider or Pack types cross this boundary. */
+    fun DrawScope.drawFeatureOverlays(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        presentation: FeatureOverlayPresentation,
+    ) {
+        val baseRadius = systemNodeRadius(detailLevel(transform.viewport.zoom)) + 3f
+        presentation.entries.forEach { entry ->
+            val node = scene.nodesById[entry.systemId] ?: return@forEach
+            drawCircle(
+                color = FEATURE_OVERLAY_COLOR,
+                radius = baseRadius + entry.ringIndex * 3f,
+                center = transform.worldToScreen(node.position).toOffset(),
+                style = Stroke(1.5f),
+            )
+        }
+    }
+
     fun DrawScope.drawEmphasizedSystems(
         scene: ProjectedMapScene,
         transform: MapTransform,
@@ -498,6 +516,7 @@ private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
 private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
+private val FEATURE_OVERLAY_COLOR = Color(0xFF8EA8BD)
 internal val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
 internal val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
 private val ROUTE_START_COLOR = Color(0xFF57E389)

@@ -54,6 +54,12 @@ class PreferencesStoreTest {
                 ),
             ),
             aiControl = AiControlPreferences(enabled = true),
+            overlayVisibility = OverlayVisibilityPreferences(
+                disabledLayers = setOf(
+                    OverlayLayerKey("fixture.provider", "second"),
+                    OverlayLayerKey("fixture.provider", "first"),
+                ),
+            ),
         )
 
         PropertiesPreferencesStore(path).save(expected)
@@ -63,6 +69,9 @@ class PreferencesStoreTest {
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.glowEnabled=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.enabled=true" })
+        assertTrue(Files.readString(path).lineSequence().any {
+            it == "overlay.disabledLayers=fixture.provider/first,fixture.provider/second"
+        })
         assertEquals(expected, PropertiesPreferencesStore(path).load())
 
         PropertiesPreferencesStore(path).save(expected.copy(aiControl = AiControlPreferences(enabled = false)))
@@ -166,6 +175,21 @@ class PreferencesStoreTest {
             SavedMarkerAppearancePreferences.Defaults,
             PropertiesPreferencesStore(path).load().marker.savedMarkerAppearance,
         )
+    }
+
+    @Test
+    fun `invalid overlay visibility values fall back individually to enabled`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(
+            path,
+            "settings.version=1\noverlay.disabledLayers=fixture.provider/valid,bad,UPPER/layer,a/b/c,/missing\n",
+        )
+
+        val loaded = PropertiesPreferencesStore(path).load().overlayVisibility
+
+        assertEquals(setOf(OverlayLayerKey("fixture.provider", "valid")), loaded.disabledLayers)
+        assertFalse(loaded.isEnabled(OverlayLayerKey("fixture.provider", "valid")))
+        assertTrue(loaded.isEnabled(OverlayLayerKey("fixture.provider", "other")))
     }
 
     @Test
