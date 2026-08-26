@@ -273,7 +273,7 @@ private fun FeaturePackContextLifecycle.closeHostResourcesIgnoringFailure(origin
 
 private class SharedFeaturePackParentClassLoader(
     private val applicationClassLoader: ClassLoader,
-) : ClassLoader(null) {
+) : ClassLoader(ClassLoader.getPlatformClassLoader()) {
     override fun loadClass(name: String, resolve: Boolean): Class<*> {
         val loaded = when {
             PLATFORM_PREFIXES.any(name::startsWith) -> super.loadClass(name, false)

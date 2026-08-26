@@ -40,6 +40,14 @@ runtime `FeaturePackDescriptor` must match these values. Enable state and the la
 The production image contains the host and one shared `feature-api` identity. It does not contain Pack JARs, a Pack
 copy of Kotlin stdlib, or another JVM/JRE.
 
+## Class loading
+
+Each external Pack has its own JAR class loader. Standard JDK classes are delegated through the normal bootstrap and
+platform loader hierarchy, so a Pack can use JDK modules included in the packaged runtime. The application loader
+remains the owner of the Feature API and shared Kotlin runtime, preserving one common contract identity. Pack-private
+classes and dependencies stay in that Pack's loader, while application implementation packages are not exposed by the
+shared parent boundary. A JDK API is available only when its module is present in the custom jlink runtime.
+
 ## Trust boundary
 
 Feature Packs run in-process and are **not** a JVM security sandbox. The API limits accidental coupling; it does not

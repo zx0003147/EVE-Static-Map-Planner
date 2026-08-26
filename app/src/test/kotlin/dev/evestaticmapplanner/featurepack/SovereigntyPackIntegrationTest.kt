@@ -10,6 +10,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SovereigntyPackIntegrationTest {
     @Test
@@ -49,6 +50,34 @@ class SovereigntyPackIntegrationTest {
             }
         }
 
+    @Test
+    fun `external Pack starts production Public ESI client path from fresh cache without Internet`() =
+        withTempDirectory { root ->
+            val packRoot = root.resolve("feature-packs")
+            val destination = packRoot.resolve("sovereignty.pack/pack.jar")
+            destination.parent.createDirectories()
+            Files.copy(sovereigntyPackJar, destination)
+            val cache = root.resolve(
+                "feature-pack-storage/sovereignty.pack/cache/public-esi-lkg.json",
+            )
+            cache.parent.createDirectories()
+            Files.writeString(cache, VALID_PUBLIC_ESI_CACHE)
+            PropertiesFeaturePackManagerStateStore(root.resolve("feature-pack-manager.properties")).save(
+                mapOf(PackId("sovereignty.pack") to StoredFeaturePackState(enabled = true)),
+            )
+            val events = mutableListOf<String>()
+
+            val runtime = ProductionFeaturePackRuntime.start(packRoot, root, events::add)
+            try {
+                assertEquals(listOf(PackId("sovereignty.pack")), runtime.startReport.loadedPackIds)
+                assertTrue(runtime.startReport.failures.isEmpty())
+                assertTrue(events.contains("INFO:sovereignty.pack:Sovereignty Pack started"))
+            } finally {
+                assertTrue(runtime.closeSafely().failures.isEmpty())
+            }
+            assertTrue(events.contains("INFO:sovereignty.pack:Sovereignty Pack stopped"))
+        }
+
     private inline fun withTempDirectory(block: (Path) -> Unit) {
         val root = createTempDirectory("sv-3c-1-integration-")
         try {
@@ -61,5 +90,14 @@ class SovereigntyPackIntegrationTest {
     private companion object {
         val sovereigntyPackJar: Path
             get() = Path.of(requireNotNull(System.getProperty("sovereignty.pack.fixture.jar")))
+        val VALID_PUBLIC_ESI_CACHE = """
+            {
+              "formatVersion": 1,
+              "source": "PUBLIC_ESI",
+              "records": [
+                {"systemId": 30004759, "allianceName": "Cached Alliance", "corporationName": null, "sovereigntyStatus": "Claimed"}
+              ]
+            }
+        """.trimIndent()
     }
 }

@@ -20,6 +20,8 @@ import dev.evestaticmapplanner.feature.api.SystemInfoProviderDescriptor
 import dev.evestaticmapplanner.feature.api.SystemInfoRegistration
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoSnapshot
+import java.net.http.HttpClient
+import java.sql.DriverManager
 
 class MinimalFixturePack : FeaturePackEntrypoint {
     override fun descriptor(): FeaturePackDescriptor = FeaturePackDescriptor(
@@ -30,6 +32,9 @@ class MinimalFixturePack : FeaturePackEntrypoint {
     )
 
     override fun start(context: FeaturePackContext): FeaturePackSession {
+        HttpClient.newBuilder()
+        check(HttpClient::class.java.module.name == "java.net.http")
+        check(DriverManager::class.java.module.name == "java.sql")
         val resource = javaClass.getResourceAsStream("/fixture-pack-resource.txt")
             ?.bufferedReader()
             ?.use { it.readText().trim() }

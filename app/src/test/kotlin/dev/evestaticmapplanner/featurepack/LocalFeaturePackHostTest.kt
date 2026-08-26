@@ -15,8 +15,10 @@ import dev.evestaticmapplanner.feature.api.OverlayRegistration
 import dev.evestaticmapplanner.feature.api.OverlayRegistry
 import dev.evestaticmapplanner.feature.api.SystemInfoRegistration
 import dev.evestaticmapplanner.feature.api.SystemInfoRegistry
+import java.net.http.HttpClient
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.DriverManager
 import java.util.jar.JarEntry
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
@@ -82,6 +84,10 @@ class LocalFeaturePackHostTest {
                 FeaturePackEntrypoint::class.java,
                 loaded.classLoader.loadClass(FeaturePackEntrypoint::class.java.name),
             )
+            assertSame(String::class.java, loaded.classLoader.loadClass(String::class.java.name))
+            assertSame(HttpClient::class.java, loaded.classLoader.loadClass(HttpClient::class.java.name))
+            assertSame(DriverManager::class.java, loaded.classLoader.loadClass(DriverManager::class.java.name))
+            assertSame(Unit::class.java, loaded.classLoader.loadClass(Unit::class.java.name))
             assertFailsWith<ClassNotFoundException> {
                 loaded.classLoader.loadClass("dev.evestaticmapplanner.core.model.SolarSystem")
             }
@@ -93,6 +99,47 @@ class LocalFeaturePackHostTest {
                 events,
             )
             assertIs<FeaturePackCloseResult.Closed>(loaded.closeSafely())
+        }
+
+    @Test
+    fun `multiple Packs retain private class identity and share only the intentional parent boundary`() =
+        withTempDirectory { root ->
+            val secondJar = rewriteFixtureJar(root.resolve("second-pack.jar"), listOf(SECOND_PROVIDER))
+            val host = LocalFeaturePackHost()
+            val contextFactory = FeaturePackContextFactory {
+                TestFeaturePackContext(root.resolve("storage"), mutableListOf())
+            }
+
+            val first = assertIs<FeaturePackLoadResult.Loaded>(
+                host.load(candidate(fixtureJar), contextFactory),
+            ).pack
+            val second = assertIs<FeaturePackLoadResult.Loaded>(
+                host.load(candidate(secondJar), contextFactory),
+            ).pack
+            try {
+                assertNotSame(first.classLoader, second.classLoader)
+                assertNotSame(
+                    first.classLoader.loadClass(MINIMAL_PROVIDER),
+                    second.classLoader.loadClass(MINIMAL_PROVIDER),
+                )
+                assertSame(
+                    FeaturePackEntrypoint::class.java,
+                    first.classLoader.loadClass(FeaturePackEntrypoint::class.java.name),
+                )
+                assertSame(
+                    FeaturePackEntrypoint::class.java,
+                    second.classLoader.loadClass(FeaturePackEntrypoint::class.java.name),
+                )
+                assertFailsWith<ClassNotFoundException> {
+                    first.classLoader.loadClass("dev.evestaticmapplanner.core.model.SolarSystem")
+                }
+                assertFailsWith<ClassNotFoundException> {
+                    second.classLoader.loadClass("dev.evestaticmapplanner.core.model.SolarSystem")
+                }
+            } finally {
+                assertIs<FeaturePackCloseResult.Closed>(second.closeSafely())
+                assertIs<FeaturePackCloseResult.Closed>(first.closeSafely())
+            }
         }
 
     @Test
