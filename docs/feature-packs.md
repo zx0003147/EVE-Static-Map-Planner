@@ -50,10 +50,25 @@ Packs receive only Pack-scoped `data`, `config`, and `cache` path resolution. Co
 available. Relative paths use a strict portable syntax. The future host implementation must also defend against
 symlink and Windows reparse-point escapes.
 
-The production Sovereignty Pack stores its versioned PUBLIC_ESI Last Known Good snapshot at the Pack-relative cache
-path `public-esi-lkg.json`. A valid cache is used without contacting ESI. With no usable cache, SV-3C-2 still performs
-one synchronous Public ESI snapshot load during Pack startup, before the Compose window is created; freshness and
-background refresh remain deferred to SV-3C-3.
+The production Sovereignty Pack stores its versioned, canonical PUBLIC_ESI Last Known Good (LKG) snapshot at the
+Pack-relative cache path `public-esi-lkg.json`. During each Pack startup it selects exactly one snapshot before
+registering Overlay and System Info providers. A valid cache whose successful file modification time is no more than
+one hour old is considered fresh and avoids ESI entirely. This one-hour threshold is a local Sovereignty Pack v1
+product policy, not an official CCP freshness guarantee. The exact one-hour boundary remains fresh, and a future file
+timestamp caused by a local clock adjustment is also treated as fresh.
+
+A stale valid LKG remains the fallback while the Pack makes exactly one synchronous Public ESI refresh attempt. A
+fully valid remote snapshot atomically replaces the LKG and becomes the session snapshot. If ESI is unavailable, the
+remote result is invalid, or cache persistence fails, the old LKG is not deleted or touched; a valid remote snapshot
+whose cache write fails is still used in memory for that Pack session. Missing or unusable caches also trigger exactly
+one startup attempt, but malformed data is never used as a fallback and production never substitutes the embedded
+fixture.
+
+After startup registration, sovereignty data is fixed until the Pack or application restarts: there is no runtime
+polling, live snapshot replacement, Overlay invalidation, background worker, scheduler, retry loop, or timer. Live
+Pack refresh, an Overlay invalidation API, and background-worker lifecycle support remain deferred platform work and
+are not Sovereignty Pack v1 requirements. The synchronous network attempt for stale, missing, or unusable caches is
+an accepted v1 startup tradeoff.
 
 ## Deliberate exclusions
 
