@@ -50,6 +50,11 @@ Packs receive only Pack-scoped `data`, `config`, and `cache` path resolution. Co
 available. Relative paths use a strict portable syntax. The future host implementation must also defend against
 symlink and Windows reparse-point escapes.
 
+The production Sovereignty Pack stores its versioned PUBLIC_ESI Last Known Good snapshot at the Pack-relative cache
+path `public-esi-lkg.json`. A valid cache is used without contacting ESI. With no usable cache, SV-3C-2 still performs
+one synchronous Public ESI snapshot load during Pack startup, before the Compose window is created; freshness and
+background refresh remain deferred to SV-3C-3.
+
 ## Deliberate exclusions
 
 The API does not expose Compose UI, Canvas/rendering types, coroutines or scopes, Core domain models, arbitrary
