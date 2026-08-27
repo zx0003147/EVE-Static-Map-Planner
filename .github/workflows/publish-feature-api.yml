@@ -1,0 +1,85 @@
+name: Publish Feature API
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# Feature API releases are immutable. Run this workflow once for 1.0.0.
+concurrency:
+  group: publish-feature-api-1.0.0
+  cancel-in-progress: false
+
+jobs:
+  publish-feature-api:
+    name: Publish Feature API 1.0.0
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle and validate wrappers
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          validate-wrappers: true
+
+      - name: Confirm Feature API artifact version is 1.0.0
+        shell: pwsh
+        run: |
+          $versionEntry = Get-Content gradle.properties | Where-Object { $_ -match '^featureApiArtifactVersion=' }
+          if ($versionEntry.Count -ne 1 -or $versionEntry -ne 'featureApiArtifactVersion=1.0.0') {
+            throw "This workflow may publish only Feature API artifact version 1.0.0."
+          }
+
+      - name: Verify frozen Feature API 1.0.0
+        shell: pwsh
+        run: >-
+          .\gradlew.bat --no-daemon --console=plain
+          :feature-api:test
+          :feature-api:verifyFeatureApiPublication
+          :feature-api:verifyFeatureApiCoordinateConsumer
+
+      - name: Refuse duplicate Feature API 1.0.0 publication
+        shell: pwsh
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $artifactUri = "https://maven.pkg.github.com/zx0003147/EVE-Static-Map-Planner/dev/evestaticmapplanner/feature-api/1.0.0/feature-api-1.0.0.pom"
+          $credential = "${env:GITHUB_ACTOR}:${env:GITHUB_TOKEN}"
+          $authorization = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($credential))
+          $response = Invoke-WebRequest `
+            -Uri $artifactUri `
+            -Headers @{ Authorization = "Basic $authorization" } `
+            -Method Get `
+            -SkipHttpErrorCheck
+
+          if ($response.StatusCode -eq 200) {
+            throw "Feature API 1.0.0 is already published. Release versions are immutable."
+          }
+          if ($response.StatusCode -ne 404) {
+            throw "Could not verify that Feature API 1.0.0 is unpublished (HTTP $($response.StatusCode))."
+          }
+
+      - name: Publish Feature API 1.0.0 to GitHub Packages
+        shell: pwsh
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          .\gradlew.bat --no-daemon --console=plain
+          -PenableFeatureApiGitHubPackagesPublication=true
+          :feature-api:publishFeatureApiPublicationToGithubPackagesRepository
