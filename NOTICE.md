@@ -2,6 +2,10 @@
 
 This file contains third-party notices. It is not the source-code license for EVE Static Map Planner.
 
+Open-source component inventory and accompanying license texts are provided in
+`THIRD-PARTY-NOTICES.md` and `legal/`. The Windows distribution also preserves
+the bundled Temurin runtime's complete module legal tree and release metadata.
+
 © 2014 CCP hf. All rights reserved. “EVE”, “EVE Online”, “CCP”, and all related logos and images are trademarks or registered trademarks of CCP hf.
 
 EVE Static Map Planner is an unofficial third-party tool. It is not affiliated with or endorsed by CCP hf.

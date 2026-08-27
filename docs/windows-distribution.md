@@ -58,7 +58,11 @@ Do not substitute an unversioned/latest extension or WiX 3/5. The packaging
 task also fails closed unless the Gradle runtime is JDK 25.0.4+7, because the
 jpackage WiX authoring contract below was audited against that exact build.
 
-WiX and the JDK are build-machine dependencies only. The installed application contains its own jlink runtime and does not require a system Java installation.
+WiX is a build-machine dependency only. The installed application contains its
+own Temurin jlink runtime and does not require a system Java installation.
+The app image and MSI must include the top-level notices and `legal/` bundle,
+including the exact Temurin vendor notice, and must preserve the runtime's own
+`legal/` tree and `release` metadata.
 
 ## Installation and data boundary
 
@@ -112,6 +116,17 @@ Treat the template as a narrow compatibility asset, not as a general invitation
 to customize WiX. Any JDK upgrade must diff and re-audit the upstream jpackage
 `main.wxs`, the generated `bundle.wxf` property id, and this guard before an MSI
 is published.
+
+The exact upstream template is pinned to Adoptium `jdk25u` tag
+`jdk-25.0.4+7`, path
+`src/jdk.jpackage/windows/classes/jdk/jpackage/internal/resources/main.wxs`,
+and template SHA-256
+`932C805A5B28BF73844540BDF239F3CAAB943F01DBBAEE0160973A00B6B05120`.
+Because the upstream file has no Classpath Exception designation, the adapted
+template is treated separately under GPL-2.0-only. Its file-local modification
+notice and `legal/openjdk-jpackage/OPENJDK-LICENSE.txt` must remain in source
+and binary distributions. This does not impose that license on the project's
+separate original source.
 
 ### Application-specific Component GUID namespace
 

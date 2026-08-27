@@ -56,6 +56,12 @@ sourceSets.named("main") {
 
 tasks.processResources {
     dependsOn(generateMcpBuildInfo)
+    from(rootProject.files("NOTICE.md", "THIRD-PARTY-NOTICES.md")) {
+        into("legal")
+    }
+    from(rootProject.layout.projectDirectory.dir("legal")) {
+        into("legal")
+    }
 }
 
 val launcherRuntimeModules = listOf(

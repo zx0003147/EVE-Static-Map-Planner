@@ -1,4 +1,20 @@
 <?xml version="1.0" ?>
+<!--
+  Third-party adapted source; this file is not covered by any license later
+  selected for the project's original source.
+
+  Upstream: Eclipse Adoptium OpenJDK 25u, tag jdk-25.0.4+7
+  Path: src/jdk.jpackage/windows/classes/jdk/jpackage/internal/resources/main.wxs
+  Source commit recorded by the build JDK: a2ce02c38bc9
+  Unmodified template SHA-256:
+    932C805A5B28BF73844540BDF239F3CAAB943F01DBBAEE0160973A00B6B05120
+  License: GPL-2.0-only for this template. The upstream file contains no
+  Classpath Exception designation; see legal/openjdk-jpackage/OPENJDK-LICENSE.txt.
+
+  Modified by the EVE Static Map Planner project beginning 2026-08-20:
+  converted from WiX 3 authoring to WiX 4, added the guarded major-upgrade
+  RemoveFolderEx suppression, and added the per-user MCP PATH component.
+-->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <?ifdef JpIsSystemWide ?>

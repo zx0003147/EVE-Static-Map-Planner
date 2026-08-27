@@ -43,6 +43,11 @@ val historicalProductCodes = setOf(
     "{A9BA3E5C-BEAA-336C-830D-5663D6477EEA}", // 0.2.0
 )
 val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
+val distributionNoticeFiles = files(
+    rootProject.file("NOTICE.md"),
+    rootProject.file("THIRD-PARTY-NOTICES.md"),
+)
+val distributionLegalDirectory = rootProject.layout.projectDirectory.dir("legal")
 val nativeComposeOutputBase = nativeOutputDir
     ?.let(::file)
     ?.resolve("compose")
@@ -98,7 +103,10 @@ sourceSets.named("main") {
 
 tasks.processResources {
     dependsOn(generateBuildInfo)
-    from(rootProject.file("NOTICE.md")) {
+    from(distributionNoticeFiles) {
+        into("legal")
+    }
+    from(distributionLegalDirectory) {
         into("legal")
     }
 }
@@ -230,6 +238,8 @@ val createIntegratedDistributable by tasks.registering {
     dependsOn("createDistributable", ":mcp:installDist")
     inputs.dir(composeApplicationImage)
     inputs.dir(mcpInstalledLibraries)
+    inputs.files(distributionNoticeFiles)
+    inputs.dir(distributionLegalDirectory)
     inputs.property("applicationVersion", appVersion)
     inputs.property("mcpMainClass", WindowsAppImageIntegration.MCP_MAIN_CLASS)
     outputs.dir(integratedApplicationImage)
@@ -291,6 +301,12 @@ val createIntegratedDistributable by tasks.registering {
                 val target = inputDirectory.resolve(source.name)
                 if (source.isDirectory) source.copyRecursively(target, overwrite = true) else source.copyTo(target)
             }
+        val stagedLegalDirectory = inputDirectory.resolve("legal")
+        check(stagedLegalDirectory.mkdirs()) { "Could not create the distribution legal directory" }
+        distributionNoticeFiles.files.forEach { notice ->
+            notice.copyTo(stagedLegalDirectory.resolve(notice.name), overwrite = true)
+        }
+        distributionLegalDirectory.asFile.copyRecursively(stagedLegalDirectory, overwrite = true)
         check(inputDirectory.resolve(mainJar).isFile) { "Compose main jar was not staged: $mainJar" }
         val stagedMcpDirectory = inputDirectory.resolve("mcp")
         check(stagedMcpDirectory.mkdirs()) { "Could not create the MCP production classpath directory" }
