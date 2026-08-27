@@ -1,0 +1,75 @@
+name: Core CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    name: Test and build on Windows / JDK 25
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle and validate wrappers
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          validate-wrappers: true
+
+      - name: Verify Feature API tests and coordinate publication
+        shell: pwsh
+        run: >-
+          .\gradlew.bat --no-daemon --console=plain
+          :feature-api:test
+          :feature-api:verifyFeatureApiPublication
+          :feature-api:verifyFeatureApiCoordinateConsumer
+
+      - name: Test Core application modules
+        shell: pwsh
+        run: >-
+          .\gradlew.bat --no-daemon --console=plain
+          :core:test
+          :app:test
+          :control:test
+          :control-transport:test
+          :data:test
+          :sde:test
+          :mcp:test
+
+      - name: Verify generic Feature Pack Host behavior
+        shell: pwsh
+        run: >-
+          .\gradlew.bat --no-daemon --console=plain
+          :app:test
+          --tests dev.evestaticmapplanner.featurepack.LocalFeaturePackHostTest
+          --tests dev.evestaticmapplanner.featurepack.FeaturePackManagerTest
+          --tests dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntimeTest
+
+      - name: Verify MCP catalog remains exactly 20 tools
+        shell: pwsh
+        run: >-
+          .\gradlew.bat --no-daemon --console=plain
+          :mcp:test
+          --tests dev.evestaticmapplanner.mcp.McpToolCatalogTest
+
+      - name: Build all Core modules without MSI
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon --console=plain build

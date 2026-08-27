@@ -6,7 +6,7 @@ This audit reviewed the current `:feature-api` surface, the external Pack manife
 ClassLoader, `ServiceLoader` discovery, lifecycle and storage boundaries, Overlay and System Info registration,
 Feature Pack manager status, Preferences presentation, and the now-external first-party Sovereignty Pack.
 
-The current public surface is sufficient for the completed first-party Pack architecture and the near-term external
+The current public surface is sufficient for the completed first-party Pack architecture and the completed external
 repository split. No public class, method, field, or interface signature was added or changed. The approved
 public-contract normalization established version `1`, and the completed audit plus FP-COMPAT-1 enforcement now make
 `FeatureApiVersions.current()` return `FeatureApiVersion("1", true)`. Feature API contract version `1` is frozen.

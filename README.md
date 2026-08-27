@@ -17,9 +17,18 @@ V1 intentionally excludes ESI, intel, killboards, application auto-update, signi
 - `mcp`: Core-owned MCP server and its 20-tool catalog.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 
-The Sovereignty Pack implementation lives in an external Sovereignty Pack repository and is not a Core module.
-Core discovers prebuilt Pack JARs from the external Feature Pack location described in
-`docs/feature-packs.md`.
+## External Feature Packs
+
+Sovereignty is a first-party external Feature Pack maintained in the external Sovereignty Pack repository
+(`EVE-Sovereignty-Pack`). Core does not contain or bundle its production implementation.
+
+- Core owns the frozen Feature API v1 contract and the Feature Pack Host/runtime.
+- On Windows, Packs are installed below
+  `%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\<pack-id>\pack.jar`.
+- Core validates manifest compatibility before creating a Pack ClassLoader.
+- A normal Core build and no-Pack application startup require no Sovereignty checkout or artifact.
+
+See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
 
 ## Requirements
 
