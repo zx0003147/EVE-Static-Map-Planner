@@ -47,6 +47,23 @@ Without that property, `SovereigntyPackIntegrationTest` is excluded while all ge
 to run. The absolute path is invocation-only and must not be committed. Sovereignty implementation and data-source
 documentation belong to the external repository; this document records only Host-visible integration behavior.
 
+## Cross-repository acceptance
+
+Before a Core, Sovereignty Pack, or Feature API artifact release, run the Core-owned acceptance runner from a clean
+`main` checkout of each repository and pass the standalone Sovereignty repository explicitly:
+
+```powershell
+.\scripts\acceptance-feature-pack.ps1 `
+    -SovereigntyRepo "C:\path\to\EVE-Sovereignty-Pack"
+```
+
+The runner publishes Feature API `1.0.0` only to Core's generated test Maven repository, builds and verifies the
+standalone thin Pack by Maven coordinates, clean-builds Core without the Pack, runs no-Pack/compatibility/Host and
+generic presentation regressions, supplies the canonical external `pack.jar` only to the explicit integration test,
+and enforces the 20-tool MCP catalog. It also checks both repositories for tracked source changes before and after the
+run. The workflow uses fixture/LKG data rather than live ESI, performs no remote publication, and writes only ignored
+Gradle build outputs.
+
 GitHub Packages publication is prepared for a future authorized release, but no package has been published. Its
 repository is registered only when `-PenableFeatureApiGitHubPackagesPublication=true` is supplied explicitly; only
 that remote operation reads `GITHUB_ACTOR` and `GITHUB_TOKEN`. A future external Pack can optionally use a Gradle
