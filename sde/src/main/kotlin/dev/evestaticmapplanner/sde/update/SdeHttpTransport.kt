@@ -30,8 +30,8 @@ fun interface SdeHttpTransport {
 }
 
 class JdkSdeHttpTransport(
+    private val userAgent: String,
     connectTimeout: Duration = Duration.ofSeconds(15),
-    private val userAgent: String = "EVE-Static-Map-Planner/0.1",
 ) : SdeHttpTransport {
     private val client = HttpClient.newBuilder()
         .connectTimeout(connectTimeout)

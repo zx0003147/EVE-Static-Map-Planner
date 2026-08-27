@@ -27,7 +27,7 @@ fun main(arguments: Array<String>) {
     }
     val paths = ManagedStaticDataPaths(root)
     paths.initialize()
-    val transport = JdkSdeHttpTransport()
+    val transport = JdkSdeHttpTransport(userAgent = "EVE-Static-Map-Planner-SDE-QA/1")
     val client = SdeUpdateClient(transport, LatestBuildCacheStore(paths))
     val latest = client.checkLatest()
     println("LATEST_BUILD ${latest.buildInfo.buildNumber}")

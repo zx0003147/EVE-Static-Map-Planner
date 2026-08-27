@@ -506,7 +506,9 @@ private fun createUpdateService(
     scope: CoroutineScope,
     onFirstInstallActivated: (Long) -> Unit = {},
 ): SdeUpdateService {
-    val transport = JdkSdeHttpTransport()
+    val transport = JdkSdeHttpTransport(
+        userAgent = "EVE-Static-Map-Planner/${ApplicationBuildInfo.current.appVersion}",
+    )
     val pendingStore = PendingUpdateStore(paths)
     val client = SdeUpdateClient(transport, LatestBuildCacheStore(paths))
     return SdeUpdateService(
