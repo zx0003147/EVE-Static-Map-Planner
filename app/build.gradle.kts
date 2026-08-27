@@ -55,10 +55,7 @@ val featurePackFixture by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
 }
-val sovereigntyPackFixture by configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-}
+val sovereigntyPackJar = providers.gradleProperty("sovereigntyPackJar")
 
 nativeOutputDir?.let { layout.buildDirectory.set(file(it).resolve("app-build")) }
 
@@ -126,19 +123,23 @@ dependencies {
         featurePackFixture.name,
         project(mapOf("path" to ":feature-api", "configuration" to "fixturePackElements")),
     )
-    add(
-        sovereigntyPackFixture.name,
-        project(mapOf("path" to ":sovereignty-pack", "configuration" to "sovereigntyPackElements")),
-    )
 }
 
 tasks.test {
     useJUnitPlatform()
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    dependsOn(featurePackFixture, sovereigntyPackFixture)
+    dependsOn(featurePackFixture)
+    val externalSovereigntyPackJar = sovereigntyPackJar.orNull?.takeIf(String::isNotBlank)
+    if (externalSovereigntyPackJar == null) {
+        exclude("**/SovereigntyPackIntegrationTest.class")
+    } else {
+        inputs.property("sovereigntyPackJar", externalSovereigntyPackJar)
+    }
     doFirst {
         systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
-        systemProperty("sovereignty.pack.fixture.jar", sovereigntyPackFixture.singleFile.absolutePath)
+        externalSovereigntyPackJar?.let { configuredPath ->
+            systemProperty("sovereignty.pack.jar", file(configuredPath).absolutePath)
+        }
     }
 }
 

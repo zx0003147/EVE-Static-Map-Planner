@@ -23,6 +23,5 @@ tasks.named("build") {
         ":feature-api:build",
         ":mcp:build",
         ":sde:build",
-        ":sovereignty-pack:build",
     )
 }

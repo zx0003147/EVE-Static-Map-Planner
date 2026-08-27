@@ -4,7 +4,7 @@
 
 This audit reviewed the current `:feature-api` surface, the external Pack manifest and loader, the shared parent
 ClassLoader, `ServiceLoader` discovery, lifecycle and storage boundaries, Overlay and System Info registration,
-Feature Pack manager status, Preferences presentation, and the first-party Sovereignty Pack.
+Feature Pack manager status, Preferences presentation, and the now-external first-party Sovereignty Pack.
 
 The current public surface is sufficient for the completed first-party Pack architecture and the near-term external
 repository split. No public class, method, field, or interface signature was added or changed. The approved
@@ -129,4 +129,5 @@ review so they do not silently invalidate existing v1 Packs. The frozen flag doe
 platform from evolving. Core can produce the build-time artifact
 `dev.evestaticmapplanner:feature-api:1.0.0` in an ignored test Maven repository without changing the runtime contract
 `EVE-Feature-API-Version: 1`. Remote GitHub Packages publication remains an explicit future release operation; no
-package has been uploaded. This work does not split repositories or define third-party compatibility promises.
+package has been uploaded. The Sovereignty implementation now belongs to an external repository, while Core retains
+the frozen API and generic Host infrastructure. This does not define third-party compatibility promises.

@@ -27,5 +27,4 @@ include(
     ":feature-api",
     ":mcp",
     ":sde",
-    ":sovereignty-pack",
 )

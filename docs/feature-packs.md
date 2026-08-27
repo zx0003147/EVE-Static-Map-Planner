@@ -34,6 +34,19 @@ The Core build can publish the artifact to the generated, ignored
 does not use Maven Local, GitHub credentials, a sibling checkout, or a Gradle project dependency. Normal `publish`
 targets only this generated repository and has no remote side effect.
 
+The Sovereignty Pack implementation is maintained in an external Sovereignty Pack repository. Core owns the frozen
+Feature API, Host, manager, generic Overlay/System Info presentation, and generic fixture Pack; it neither contains nor
+builds a `sovereignty-pack` Gradle module. A normal Core build needs no Sovereignty checkout or artifact. For explicit
+cross-repository verification, first build the external repository's canonical `sovereignty.pack/pack.jar`, then run:
+
+```powershell
+.\gradlew.bat :app:test -PsovereigntyPackJar="C:\path\to\sovereignty.pack\pack.jar"
+```
+
+Without that property, `SovereigntyPackIntegrationTest` is excluded while all generic Host and fixture tests continue
+to run. The absolute path is invocation-only and must not be committed. Sovereignty implementation and data-source
+documentation belong to the external repository; this document records only Host-visible integration behavior.
+
 GitHub Packages publication is prepared for a future authorized release, but no package has been published. Its
 repository is registered only when `-PenableFeatureApiGitHubPackagesPublication=true` is supplied explicitly; only
 that remote operation reads `GITHUB_ACTOR` and `GITHUB_TOKEN`. A future external Pack can optionally use a Gradle

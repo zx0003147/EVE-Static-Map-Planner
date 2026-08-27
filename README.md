@@ -9,9 +9,17 @@ V1 intentionally excludes ESI, intel, killboards, application auto-update, signi
 ## Modules
 
 - `app`: Compose Desktop UI, startup coordination, diagnostics, and Windows native distribution configuration.
+- `control`: Application control operations shared by UI and automation callers.
+- `control-transport`: Transport-neutral control request and response contracts.
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
+- `feature-api`: Frozen Feature API v1 contracts and generic external Pack test fixture.
+- `mcp`: Core-owned MCP server and its 20-tool catalog.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
+
+The Sovereignty Pack implementation lives in an external Sovereignty Pack repository and is not a Core module.
+Core discovers prebuilt Pack JARs from the external Feature Pack location described in
+`docs/feature-packs.md`.
 
 ## Requirements
 
