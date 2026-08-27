@@ -16,9 +16,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -161,8 +163,76 @@ fun StaticMapCanvas(
             )
         }
     }
-    val featureOverlayPresentation = remember(scene, featureOverlayState) {
-        FeatureOverlayPresentationBuilder.build(featureOverlayState, scene)
+    val featureOverlayScope = rememberCoroutineScope()
+    val featureOverlayCoordinator = remember(featureOverlayScope) {
+        FeatureOverlayPresentationCoordinator(
+            scope = featureOverlayScope,
+            computer = { overlayState, projectedScene ->
+                FeatureOverlayPresentationBuilder.build(
+                    state = overlayState,
+                    scene = projectedScene,
+                )
+            },
+        )
+    }
+    val featureOverlayKey = remember(scene, featureOverlayState) {
+        FeatureOverlayGeometryKey.from(scene, featureOverlayState)
+    }
+    val cachedFeatureOverlayPresentation = remember(featureOverlayKey) {
+        featureOverlayCoordinator.peek(featureOverlayKey)
+    }
+    var completedFeatureOverlayPresentation by remember { mutableStateOf<KeyedFeatureOverlayPresentation?>(null) }
+    val featureOverlayPresentation = cachedFeatureOverlayPresentation
+        ?: completedFeatureOverlayPresentation
+            ?.takeIf { it.key == featureOverlayKey }
+            ?.presentation
+        ?: FeatureOverlayPresentation.Empty
+    LaunchedEffect(featureOverlayKey, featureOverlayCoordinator) {
+        when (val request = featureOverlayCoordinator.request(featureOverlayKey, featureOverlayState, scene)) {
+            is FeatureOverlayPresentationRequest.Cached -> {
+                completedFeatureOverlayPresentation = KeyedFeatureOverlayPresentation(
+                    featureOverlayKey,
+                    request.presentation,
+                )
+            }
+            is FeatureOverlayPresentationRequest.Pending -> {
+                val presentation = request.result.await()
+                if (featureOverlayCoordinator.isCurrent(featureOverlayKey)) {
+                    completedFeatureOverlayPresentation = KeyedFeatureOverlayPresentation(
+                        featureOverlayKey,
+                        presentation,
+                    )
+                }
+            }
+        }
+    }
+    val emblemRepository = remember(featureOverlayScope) {
+        PresentationEmblemAssetRepository(
+            scope = featureOverlayScope,
+            loader = JdkPresentationEmblemImageLoader(),
+        )
+    }
+    val emblemZoomPolicy = remember(mapDisplayPreferences.sovereigntyLogoEmphasisZoom) {
+        FeatureOverlayEmblemZoomPolicy(
+            emphasisZoom = mapDisplayPreferences.sovereigntyLogoEmphasisZoom,
+        )
+    }
+    val emblemPlacements = remember(featureOverlayPresentation, transform, emblemZoomPolicy) {
+        FeatureOverlayEmblemLod.placements(
+            featureOverlayPresentation.emblemCandidates,
+            transform,
+            emblemZoomPolicy,
+        )
+    }
+    val requestedEmblemReferences = remember(emblemPlacements) {
+        emblemPlacements.map { it.candidate.reference }.distinctBy(PresentationEmblemReference::key)
+    }
+    LaunchedEffect(requestedEmblemReferences, emblemRepository) {
+        requestedEmblemReferences.forEach(emblemRepository::request)
+    }
+    val emblemAssetStates by emblemRepository.states.collectAsState()
+    val presentedFeatureEmblems = remember(emblemPlacements, emblemAssetStates) {
+        FeatureOverlayEmblemLod.readyEmblems(emblemPlacements, emblemAssetStates)
     }
     val markerOffsetPx = with(density) { 10.dp.toPx().toDouble() }
     val childOrbitRadiusPx = with(density) {
@@ -328,16 +398,11 @@ fun StaticMapCanvas(
                     textMeasurer,
                     renderCache,
                     labelPresentation,
+                    featureOverlayPresentation,
                     mapDisplayPreferences,
                     visualEmphasis,
+                    presentedFeatureEmblems,
                 )
-            }
-        }
-        if (featureOverlayPresentation.entries.isNotEmpty()) {
-            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.FEATURE_OVERLAY)) {
-                with(MapRenderer) {
-                    drawFeatureOverlays(scene, transform, featureOverlayPresentation)
-                }
             }
         }
         if (showAnsiblexLayer && ansiblexConnections.isNotEmpty()) {
@@ -573,7 +638,7 @@ internal const val SAVED_MARKER_TOOLTIP_Z_INDEX = 8f
 internal const val FEATURE_OVERLAY_LEGEND_Z_INDEX = 6f
 
 internal object StaticMapVisualLayerOrder {
-    const val FEATURE_OVERLAY = 1f
+    const val BASE_MAP = 0f
     const val ANSIBLEX = 2f
     const val RANGE_OVERLAY = 2.5f
     const val ROUTE = 3f

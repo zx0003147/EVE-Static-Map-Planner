@@ -5,8 +5,15 @@ import kotlin.test.assertTrue
 
 class StaticMapVisualLayerOrderTest {
     @Test
-    fun `feature overlay remains below route marker and selection focus`() {
-        assertTrue(StaticMapVisualLayerOrder.FEATURE_OVERLAY < StaticMapVisualLayerOrder.ANSIBLEX)
+    fun `territory remains below topology route marker and selection focus`() {
+        assertTrue(BaseMapVisualLayer.BACKGROUND < BaseMapVisualLayer.FEATURE_TERRITORY)
+        assertTrue(BaseMapVisualLayer.FEATURE_TERRITORY < BaseMapVisualLayer.FEATURE_TERRITORY_EMBLEMS)
+        assertTrue(BaseMapVisualLayer.FEATURE_TERRITORY_EMBLEMS < BaseMapVisualLayer.REGION_BACKGROUND_LABELS)
+        assertTrue(BaseMapVisualLayer.FEATURE_TERRITORY_EMBLEMS < BaseMapVisualLayer.STARGATE_CONNECTIONS)
+        assertTrue(BaseMapVisualLayer.FEATURE_TERRITORY_EMBLEMS < BaseMapVisualLayer.SYSTEM_NODES_AND_LABELS)
+        assertTrue(BaseMapVisualLayer.FEATURE_TERRITORY < BaseMapVisualLayer.STARGATE_CONNECTIONS)
+        assertTrue(BaseMapVisualLayer.FEATURE_TERRITORY < BaseMapVisualLayer.SYSTEM_NODES_AND_LABELS)
+        assertTrue(StaticMapVisualLayerOrder.BASE_MAP < StaticMapVisualLayerOrder.ANSIBLEX)
         assertTrue(StaticMapVisualLayerOrder.ANSIBLEX < StaticMapVisualLayerOrder.ROUTE_FOCUS)
         assertTrue(StaticMapVisualLayerOrder.ROUTE_FOCUS < StaticMapVisualLayerOrder.SAVED_MARKER)
         assertTrue(StaticMapVisualLayerOrder.SAVED_MARKER < StaticMapVisualLayerOrder.SELECTED_SYSTEM_FOCUS)

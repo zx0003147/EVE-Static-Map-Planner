@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
@@ -30,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -115,7 +118,9 @@ fun PreferencesWindow(
                             PreferencesCategory.OVERLAYS -> OverlayPreferencesContent(
                                 overlayState,
                                 preferences.overlayVisibility,
+                                preferences.mapDisplay,
                                 onOverlayVisibilityChange,
+                                onMapDisplayChange,
                                 onResetOverlayVisibility,
                             )
                         }
@@ -143,7 +148,9 @@ private enum class PreferencesCategory(val label: String) {
 private fun OverlayPreferencesContent(
     overlayState: OverlayState,
     preferences: OverlayVisibilityPreferences,
+    mapDisplay: MapDisplayPreferences,
     onChange: (OverlayVisibilityPreferences) -> Unit,
+    onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     onReset: () -> Unit,
 ) {
     val uiState = remember(overlayState, preferences) {
@@ -170,6 +177,75 @@ private fun OverlayPreferencesContent(
     TextButton(onClick = onReset, enabled = preferences.disabledLayers.isNotEmpty()) {
         Text("Enable All Overlays")
     }
+    if (uiState.showSovereigntyLogoPreferences) {
+        HorizontalDivider(color = Color(0xFF314252))
+        Text("Sovereignty", style = MaterialTheme.typography.titleSmall)
+        Text("Sovereignty Logo Emphasis Zoom", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Choose the zoom level where alliance logos transition between background watermarks and " +
+                "bright political-map emblems.",
+            color = Color(0xFFAAB9C7),
+        )
+        SovereigntyLogoEmphasisZoomPreference(mapDisplay.sovereigntyLogoEmphasisZoom) { emphasisZoom ->
+            onMapDisplayChange(mapDisplay.copy(sovereigntyLogoEmphasisZoom = emphasisZoom))
+        }
+    }
+}
+
+@Composable
+private fun SovereigntyLogoEmphasisZoomPreference(
+    value: Double,
+    onValueChange: (Double) -> Unit,
+) {
+    var draft by remember { mutableStateOf(formatValue(value, 2)) }
+    var showError by remember { mutableStateOf(false) }
+    var isFocused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(value, isFocused, showError) {
+        if (!isFocused && !showError) {
+            draft = formatValue(value, 2)
+        }
+    }
+    OutlinedTextField(
+        value = draft,
+        onValueChange = { text ->
+            draft = text
+            val parsed = text.toDoubleOrNull()
+            val valid = parsed != null && parsed.isFinite() &&
+                parsed in MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM..MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM
+            showError = false
+            if (valid) onValueChange(checkNotNull(parsed))
+        },
+        suffix = { Text("x") },
+        supportingText = if (showError) ({
+            Text(
+                "Enter ${formatValue(MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, 2)}–" +
+                    "${formatValue(MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, 2)}.",
+            )
+        }) else null,
+        singleLine = true,
+        isError = showError,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        modifier = Modifier.width(160.dp).onFocusChanged { focusState ->
+            val wasFocused = isFocused
+            isFocused = focusState.isFocused
+            if (!wasFocused && focusState.isFocused) {
+                showError = false
+            } else if (wasFocused && !focusState.isFocused) {
+                val parsed = draft.toDoubleOrNull()
+                val valid = parsed != null && parsed.isFinite() &&
+                    parsed in MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM..MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM
+                showError = !valid
+                if (valid) draft = formatValue(checkNotNull(parsed), 2)
+            }
+        },
+    )
+    Text(
+        "Full map range 0.01x–250x; 0.05x steps are recommended near overview zoom.",
+        color = Color(0xFF71808D),
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable

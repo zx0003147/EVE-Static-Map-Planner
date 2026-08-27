@@ -60,6 +60,7 @@ data class MapDisplayPreferences(
     val regionBackgroundAlpha: Float = DEFAULT_REGION_BACKGROUND_ALPHA,
     val constellationFontSizeSp: Float = DEFAULT_CONSTELLATION_FONT_SIZE_SP,
     val systemFontSizeSp: Float = DEFAULT_SYSTEM_FONT_SIZE_SP,
+    val sovereigntyLogoEmphasisZoom: Double = DEFAULT_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM,
 ) {
     init {
         require(
@@ -81,6 +82,13 @@ data class MapDisplayPreferences(
         require(regionBackgroundAlpha.isFinite() && regionBackgroundAlpha in 0f..1f)
         require(constellationFontSizeSp.isFinite() && constellationFontSizeSp in 1f..MAX_FONT_SIZE_SP)
         require(systemFontSizeSp.isFinite() && systemFontSizeSp in 1f..MAX_FONT_SIZE_SP)
+        require(
+            sovereigntyLogoEmphasisZoom.isFinite() &&
+                sovereigntyLogoEmphasisZoom in MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM..MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM,
+        ) {
+            "Sovereignty logo emphasis zoom must be between " +
+                "$MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM and $MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM"
+        }
     }
 
     companion object {
@@ -154,6 +162,10 @@ class PropertiesPreferencesStore(
                     KEY_SYSTEM_FONT_SIZE,
                     defaults.systemFontSizeSp,
                 ) { it in 1f..MAX_FONT_SIZE_SP },
+                sovereigntyLogoEmphasisZoom = properties.validDouble(
+                    KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM,
+                    defaults.sovereigntyLogoEmphasisZoom,
+                ) { it in MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM..MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM },
             ),
             marker = MarkerPreferences(
                 showMarkers = properties.validBoolean(KEY_SHOW_MARKERS, markerDefaults.showMarkers),
@@ -208,6 +220,7 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_REGION_BACKGROUND_ALPHA, mapDisplay.regionBackgroundAlpha.toString())
                 setProperty(KEY_CONSTELLATION_FONT_SIZE, mapDisplay.constellationFontSizeSp.toString())
                 setProperty(KEY_SYSTEM_FONT_SIZE, mapDisplay.systemFontSizeSp.toString())
+                setProperty(KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, mapDisplay.sovereigntyLogoEmphasisZoom.toString())
                 setProperty(KEY_SHOW_MARKERS, marker.showMarkers.toString())
                 setProperty(KEY_SHOW_MARKER_NAMES, marker.showMarkerNames.toString())
                 setProperty(KEY_SAVED_MARKER_RING_RADIUS, marker.savedMarkerAppearance.ringRadiusDp.toString())
@@ -274,6 +287,9 @@ private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferen
 const val SETTINGS_VERSION = "1"
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
+const val DEFAULT_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 0.75
+const val MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 0.01
+const val MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 250.0
 const val DEFAULT_REGION_PRIMARY_FONT_SIZE_SP = 16f
 const val DEFAULT_REGION_BACKGROUND_FONT_SIZE_SP = 20f
 const val DEFAULT_REGION_BACKGROUND_ALPHA = 0.07f
@@ -299,6 +315,7 @@ private const val KEY_REGION_BACKGROUND_FONT_SIZE = "mapDisplay.regionBackground
 private const val KEY_REGION_BACKGROUND_ALPHA = "mapDisplay.regionBackgroundAlpha"
 private const val KEY_CONSTELLATION_FONT_SIZE = "mapDisplay.constellationFontSizeSp"
 private const val KEY_SYSTEM_FONT_SIZE = "mapDisplay.systemFontSizeSp"
+private const val KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = "mapDisplay.sovereigntyLogoEmphasisZoom"
 private const val KEY_SHOW_MARKERS = "marker.showMarkers"
 private const val KEY_SHOW_MARKER_NAMES = "marker.showMarkerNames"
 private const val KEY_SAVED_MARKER_RING_RADIUS = "marker.savedMarkerAppearance.ringRadiusDp"

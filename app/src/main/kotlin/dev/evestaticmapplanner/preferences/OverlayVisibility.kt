@@ -50,6 +50,7 @@ data class OverlayManagementItem(
 
 data class OverlayManagementUiState(
     val overlays: List<OverlayManagementItem>,
+    val showSovereigntyLogoPreferences: Boolean,
 )
 
 object OverlayManagementUiStateBuilder {
@@ -68,6 +69,9 @@ object OverlayManagementUiStateBuilder {
                 enabled = visibility.isEnabled(key),
             )
         },
+        showSovereigntyLogoPreferences = overlayState.layers.any { layerState ->
+            layerState.provider.id == SOVEREIGNTY_PROVIDER_ID && layerState.layer.id == SOVEREIGNTY_LAYER_ID
+        },
     )
 }
 
@@ -83,3 +87,5 @@ object OverlayVisibilityFilter {
 private fun OverlayLayerState.key() = OverlayLayerKey(provider.id, layer.id)
 
 private val OVERLAY_ID_SYNTAX = Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*")
+private const val SOVEREIGNTY_PROVIDER_ID = "sovereignty.pack.overlay"
+private const val SOVEREIGNTY_LAYER_ID = "sovereignty"

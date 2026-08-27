@@ -2,16 +2,23 @@ package dev.evestaticmapplanner.map
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
@@ -30,6 +37,15 @@ enum class MapDetailLevel {
     OVERVIEW,
     NORMAL,
     DETAIL,
+}
+
+internal enum class BaseMapVisualLayer {
+    BACKGROUND,
+    FEATURE_TERRITORY,
+    FEATURE_TERRITORY_EMBLEMS,
+    REGION_BACKGROUND_LABELS,
+    STARGATE_CONNECTIONS,
+    SYSTEM_NODES_AND_LABELS,
 }
 
 class MapRenderCache {
@@ -74,10 +90,20 @@ object MapRenderer {
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         presentation: MapLabelPresentation,
+        featureOverlayPresentation: FeatureOverlayPresentation,
         preferences: MapDisplayPreferences,
         emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
+        featureEmblems: List<PresentedFeatureEmblem> = emptyList(),
     ) {
         drawRect(MAP_BACKGROUND)
+
+        drawFeatureTerritories(
+            transform = transform,
+            presentation = featureOverlayPresentation,
+            alphaMultiplier = emphasis.hierarchyLabelAlphaMultiplier,
+        )
+
+        drawFeatureEmblems(transform, featureEmblems, emphasis.hierarchyLabelAlphaMultiplier)
 
         drawPresentedLabels(
             labels = presentation.regionLabels.filter { it.type == MapLabelType.REGION_BACKGROUND },
@@ -145,20 +171,74 @@ object MapRenderer {
         }
     }
 
-    /** Generic host-owned rendering for Pack data; no provider or Pack types cross this boundary. */
-    fun DrawScope.drawFeatureOverlays(
-        scene: ProjectedMapScene,
+    private fun DrawScope.drawFeatureEmblems(
+        transform: MapTransform,
+        emblems: List<PresentedFeatureEmblem>,
+        alphaMultiplier: Float,
+    ) {
+        emblems.forEach { emblem ->
+            val center = transform.worldToScreen(emblem.anchor)
+            val size = emblem.sizePx.toInt().coerceAtLeast(1)
+            clipToTerritory(emblem.clipTerritory, transform) {
+                drawImage(
+                    image = emblem.image,
+                    srcOffset = IntOffset.Zero,
+                    srcSize = IntSize(emblem.image.width, emblem.image.height),
+                    dstOffset = IntOffset((center.x - size / 2.0).toInt(), (center.y - size / 2.0).toInt()),
+                    dstSize = IntSize(size, size),
+                    alpha = emblem.alpha * alphaMultiplier,
+                    filterQuality = FilterQuality.Medium,
+                )
+            }
+        }
+    }
+
+    private fun DrawScope.clipToTerritory(
+        territory: PresentedFeatureTerritory,
+        transform: MapTransform,
+        draw: DrawScope.() -> Unit,
+    ) {
+        clipPath(contourPath(territory.polygon, transform)) {
+            clipTerritoryHoles(territory.holes, transform, 0, draw)
+        }
+    }
+
+    private fun DrawScope.clipTerritoryHoles(
+        holes: List<List<MapPoint>>,
+        transform: MapTransform,
+        index: Int,
+        draw: DrawScope.() -> Unit,
+    ) {
+        if (index >= holes.size) {
+            draw()
+            return
+        }
+        clipPath(contourPath(holes[index], transform), clipOp = ClipOp.Difference) {
+            clipTerritoryHoles(holes, transform, index + 1, draw)
+        }
+    }
+
+    /** Generic host-owned territory rendering for Pack data; no provider or Pack types cross this boundary. */
+    private fun DrawScope.drawFeatureTerritories(
         transform: MapTransform,
         presentation: FeatureOverlayPresentation,
+        alphaMultiplier: Float,
     ) {
-        val ring = featureOverlayRingRenderState(detailLevel(transform.viewport.zoom))
-        presentation.entries.forEach { entry ->
-            val node = scene.nodesById[entry.systemId] ?: return@forEach
-            drawCircle(
-                color = entry.color,
-                radius = ring.baseRadiusPx + entry.ringIndex * ring.spacingPx,
-                center = transform.worldToScreen(node.position).toOffset(),
-                style = Stroke(ring.strokeWidthPx),
+        val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
+        presentation.territories.forEach { territory ->
+            if (!territory.bounds.intersects(visibleBounds)) return@forEach
+            val path = territoryPath(territory, transform)
+            drawPath(
+                path = path,
+                color = territory.color.copy(alpha = TERRITORY_FILL_ALPHA * alphaMultiplier),
+            )
+        }
+        presentation.boundaries.forEach { boundary ->
+            if (!boundary.bounds.intersects(visibleBounds)) return@forEach
+            drawPath(
+                path = boundaryPath(boundary, transform),
+                color = TERRITORY_BOUNDARY_COLOR.copy(alpha = TERRITORY_BOUNDARY_ALPHA * alphaMultiplier),
+                style = Stroke(TERRITORY_BOUNDARY_WIDTH_PX),
             )
         }
     }
@@ -531,9 +611,39 @@ object MapRenderer {
             )
         }
     }
+
+    private fun territoryPath(territory: PresentedFeatureTerritory, transform: MapTransform): Path = Path().apply {
+        fillType = PathFillType.EvenOdd
+        addClosedContour(territory.polygon, transform)
+        territory.holes.forEach { addClosedContour(it, transform) }
+    }
+
+    private fun contourPath(points: List<MapPoint>, transform: MapTransform): Path = Path().apply {
+        addClosedContour(points, transform)
+    }
+
+    private fun Path.addClosedContour(points: List<MapPoint>, transform: MapTransform) {
+        val first = transform.worldToScreen(points.first()).toOffset()
+        moveTo(first.x, first.y)
+        points.drop(1).forEach { point ->
+            val screen = transform.worldToScreen(point).toOffset()
+            lineTo(screen.x, screen.y)
+        }
+        close()
+    }
+
+    private fun boundaryPath(boundary: PresentedFeatureBoundary, transform: MapTransform): Path {
+        val screenPoints = boundary.points.map { transform.worldToScreen(it).toOffset() }
+        return Path().apply {
+            moveTo(screenPoints.first().x, screenPoints.first().y)
+            screenPoints.drop(1).forEach { point -> lineTo(point.x, point.y) }
+            if (boundary.closed) close()
+        }
+    }
 }
 
 private fun Color.multiplyAlpha(multiplier: Float): Color = copy(alpha = alpha * multiplier)
+
 
 private fun systemNodeRadius(level: MapDetailLevel): Float = when (level) {
     MapDetailLevel.OVERVIEW -> 1.4f
@@ -541,21 +651,10 @@ private fun systemNodeRadius(level: MapDetailLevel): Float = when (level) {
     MapDetailLevel.DETAIL -> 3.0f
 }
 
-internal data class FeatureOverlayRingRenderState(
-    val baseRadiusPx: Float,
-    val spacingPx: Float,
-    val strokeWidthPx: Float,
-)
-
-internal fun featureOverlayRingRenderState(level: MapDetailLevel): FeatureOverlayRingRenderState = when (level) {
-    MapDetailLevel.OVERVIEW -> FeatureOverlayRingRenderState(6.8f, 3.4f, 2.4f)
-    MapDetailLevel.NORMAL -> FeatureOverlayRingRenderState(7.2f, 3.4f, 2.25f)
-    MapDetailLevel.DETAIL -> FeatureOverlayRingRenderState(7.6f, 3.4f, 2.0f)
-}
-
 private fun MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())
 
 private val MAP_BACKGROUND = Color(0xFF09121D)
+private val TERRITORY_BOUNDARY_COLOR = Color(0xFF6F8496)
 private val EDGE_COLOR = Color(0x553F6685)
 private val CONNECTED_NODE_COLOR = Color(0xFF75B9E7)
 private val UNCONNECTED_NODE_COLOR = Color(0xFF596673)
@@ -614,6 +713,9 @@ internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences):
 }
 
 private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
+private const val TERRITORY_FILL_ALPHA = 0.20f
+private const val TERRITORY_BOUNDARY_ALPHA = 0.24f
+private const val TERRITORY_BOUNDARY_WIDTH_PX = 0.8f
 private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0
 private const val MARKER_DIAMOND_SIZE_DP = 10f

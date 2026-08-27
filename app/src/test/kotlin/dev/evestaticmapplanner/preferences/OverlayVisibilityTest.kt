@@ -38,8 +38,40 @@ class OverlayVisibilityTest {
         assertEquals(listOf("First Layer", "Second Layer"), uiState.overlays.map { it.name })
         assertEquals(listOf("Fixture Provider", "Fixture Provider"), uiState.overlays.map { it.providerName })
         assertEquals(listOf(true, false), uiState.overlays.map { it.enabled })
+        assertFalse(uiState.showSovereigntyLogoPreferences)
         val toggled = preferences.withEnabled(uiState.overlays[1].key, true)
         assertTrue(toggled.isEnabled(secondKey))
+    }
+
+    @Test
+    fun `Sovereignty logo setting is absent without registered Sovereignty overlay`() {
+        val empty = OverlayManagementUiStateBuilder.build(
+            OverlayState(emptyList()),
+            OverlayVisibilityPreferences.Defaults,
+        )
+        val unrelated = OverlayManagementUiStateBuilder.build(
+            overlayState(),
+            OverlayVisibilityPreferences.Defaults,
+        )
+
+        assertFalse(empty.showSovereigntyLogoPreferences)
+        assertFalse(unrelated.showSovereigntyLogoPreferences)
+    }
+
+    @Test
+    fun `Sovereignty logo setting is present with registered Sovereignty overlay`() {
+        val provider = OverlayProviderDescriptor("sovereignty.pack.overlay", "Sovereignty")
+        val state = OverlayState(listOf(
+            OverlayLayerState(
+                provider,
+                OverlayLayer("sovereignty", "Sovereignty"),
+                listOf(OverlayEntry("sovereignty", 30_000_001)),
+            ),
+        ))
+
+        val uiState = OverlayManagementUiStateBuilder.build(state, OverlayVisibilityPreferences.Defaults)
+
+        assertTrue(uiState.showSovereigntyLogoPreferences)
     }
 
     @Test

@@ -6,6 +6,7 @@ import kotlin.io.path.name
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -20,6 +21,7 @@ class PreferencesStoreTest {
         assertEquals(0.07f, MapDisplayPreferences.Defaults.regionBackgroundAlpha)
         assertEquals(13f, MapDisplayPreferences.Defaults.constellationFontSizeSp)
         assertEquals(11f, MapDisplayPreferences.Defaults.systemFontSizeSp)
+        assertEquals(0.75, MapDisplayPreferences.Defaults.sovereigntyLogoEmphasisZoom)
         assertEquals(MarkerPreferences.Defaults, AppPreferences.Defaults.marker)
         assertTrue(MarkerPreferences.Defaults.showMarkers)
         assertTrue(MarkerPreferences.Defaults.showMarkerNames)
@@ -42,6 +44,7 @@ class PreferencesStoreTest {
                 regionBackgroundAlpha = 0.12f,
                 constellationFontSizeSp = 14f,
                 systemFontSizeSp = 12f,
+                sovereigntyLogoEmphasisZoom = 0.85,
             ),
             marker = MarkerPreferences(
                 showMarkers = false,
@@ -69,6 +72,9 @@ class PreferencesStoreTest {
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.glowEnabled=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.enabled=true" })
+        assertTrue(Files.readString(path).lineSequence().any {
+            it == "mapDisplay.sovereigntyLogoEmphasisZoom=0.85"
+        })
         assertTrue(Files.readString(path).lineSequence().any {
             it == "overlay.disabledLayers=fixture.provider/first,fixture.provider/second"
         })
@@ -107,6 +113,7 @@ class PreferencesStoreTest {
             mapDisplay.regionBackgroundAlpha=0.12
             mapDisplay.constellationFontSizeSp=15
             mapDisplay.systemFontSizeSp=12
+            mapDisplay.sovereigntyLogoEmphasisZoom=not-a-mode
             future.unknown.preference=ignored
             """.trimIndent(),
         )
@@ -120,6 +127,42 @@ class PreferencesStoreTest {
         assertEquals(0.12f, loaded.regionBackgroundAlpha)
         assertEquals(15f, loaded.constellationFontSizeSp)
         assertEquals(12f, loaded.systemFontSizeSp)
+        assertEquals(0.75, loaded.sovereigntyLogoEmphasisZoom)
+    }
+
+    @Test
+    fun `Sovereignty logo emphasis zoom rejects non-finite and out-of-range values`() {
+        listOf(
+            0.0,
+            -0.5,
+            Double.NaN,
+            Double.POSITIVE_INFINITY,
+            0.009,
+            250.01,
+        ).forEach { invalid ->
+            assertFailsWith<IllegalArgumentException> {
+                MapDisplayPreferences(sovereigntyLogoEmphasisZoom = invalid)
+            }
+        }
+
+        assertEquals(0.01, MapDisplayPreferences(sovereigntyLogoEmphasisZoom = 0.01).sovereigntyLogoEmphasisZoom)
+        assertEquals(250.0, MapDisplayPreferences(sovereigntyLogoEmphasisZoom = 250.0).sovereigntyLogoEmphasisZoom)
+    }
+
+    @Test
+    fun `invalid stored Sovereignty logo emphasis zoom falls back to default`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        listOf("0", "-1", "NaN", "Infinity", "0.009", "250.01").forEach { invalid ->
+            Files.writeString(
+                path,
+                "settings.version=1\nmapDisplay.sovereigntyLogoEmphasisZoom=$invalid\n",
+            )
+
+            assertEquals(
+                0.75,
+                PropertiesPreferencesStore(path).load().mapDisplay.sovereigntyLogoEmphasisZoom,
+            )
+        }
     }
 
     @Test
@@ -220,10 +263,14 @@ class PreferencesStoreTest {
     fun `reset to defaults is persisted`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val store = PropertiesPreferencesStore(path)
-        store.save(AppPreferences(MapDisplayPreferences(systemZoomThreshold = 12.0)))
+        store.save(AppPreferences(MapDisplayPreferences(
+            systemZoomThreshold = 12.0,
+            sovereigntyLogoEmphasisZoom = 0.85,
+        )))
 
         assertEquals(AppPreferences.Defaults, store.resetToDefaults())
         assertEquals(AppPreferences.Defaults, PropertiesPreferencesStore(path).load())
+        assertEquals(0.75, PropertiesPreferencesStore(path).load().mapDisplay.sovereigntyLogoEmphasisZoom)
         assertFalse(PropertiesPreferencesStore(path).load().aiControl.enabled)
     }
 
