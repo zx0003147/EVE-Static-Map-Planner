@@ -44,7 +44,7 @@ version constant or competing compatibility system was added.
 - `OverlayRegistration.refresh()` and live Overlay invalidation.
 - Sovereignty polling, background refresh, schedulers, and Pack lifecycle workers.
 - Hot install, uninstall, or reload without restart.
-- Third-party Pack ecosystem and publication of a separate Feature API artifact.
+- Third-party Pack ecosystem and remote publication of the prepared Feature API artifact.
 - Security sandboxing. Feature Packs remain trusted first-party in-process JVM extensions.
 
 ### C. Not a public API issue
@@ -126,5 +126,7 @@ and restart-only lifecycle are unchanged.
 Feature API v1 is now a stable binary/source contract and should not be broken casually. A breaking public API change
 requires a new major contract identity such as version `2`. Backward-compatible additions still require deliberate
 review so they do not silently invalidate existing v1 Packs. The frozen flag does not prevent the wider Feature Pack
-platform from evolving. This task does not split repositories, publish Maven artifacts, or define third-party
-compatibility promises.
+platform from evolving. Core can produce the build-time artifact
+`dev.evestaticmapplanner:feature-api:1.0.0` in an ignored test Maven repository without changing the runtime contract
+`EVE-Feature-API-Version: 1`. Remote GitHub Packages publication remains an explicit future release operation; no
+package has been uploaded. This work does not split repositories or define third-party compatibility promises.

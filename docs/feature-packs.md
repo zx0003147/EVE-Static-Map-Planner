@@ -9,10 +9,37 @@ local host in `:app`; FP-2B validates that the application-owned host works from
 - The compatibility authority is `FeatureApiVersions.current()`, which returns `FeatureApiVersion("1", true)`.
   Feature API contract version `1` is frozen after its final public-surface audit and production compatibility
   enforcement. The canonical manifest representation remains the positive decimal integer `1`.
-- The planned v1 lifecycle is restart-only. Core will eventually discover exactly one `FeaturePackEntrypoint` per
-  Pack, call `start(context)`, and close the returned `FeaturePackSession` during application shutdown.
+- The v1 lifecycle is restart-only. Core discovers exactly one `FeaturePackEntrypoint` per
+  Pack, calls `start(context)`, and closes the returned `FeaturePackSession` during application shutdown.
 - FP-2A owns one isolated class loader per Pack, `ServiceLoader`, and lifecycle failure isolation. FP-2B adds the
   production directory resolver and installed-image lifecycle validation without changing those strategies.
+
+## Feature API build artifact
+
+Feature API runtime compatibility and Feature API artifact publication use separate version identities:
+
+```text
+Runtime compatibility contract: EVE-Feature-API-Version: 1
+Maven artifact: dev.evestaticmapplanner:feature-api:1.0.0
+Desktop application version: independent
+```
+
+Contract version `1` controls whether the Host may load a Pack. Artifact version `1.0.0` identifies the build-time
+library revision used by a Pack compiler. The desktop application's release version has its own lifecycle and does not
+set either Feature API identity. A Pack should consume the artifact as `compileOnly` and use the same coordinate for
+its tests, so the Host remains the only runtime owner of Feature API classes.
+
+The Core build can publish the artifact to the generated, ignored
+`feature-api/build/test-maven-repository` and then compile an independent fixture by Maven coordinate. This verification
+does not use Maven Local, GitHub credentials, a sibling checkout, or a Gradle project dependency. Normal `publish`
+targets only this generated repository and has no remote side effect.
+
+GitHub Packages publication is prepared for a future authorized release, but no package has been published. Its
+repository is registered only when `-PenableFeatureApiGitHubPackagesPublication=true` is supplied explicitly; only
+that remote operation reads `GITHUB_ACTOR` and `GITHUB_TOKEN`. A future external Pack can optionally use a Gradle
+composite build for local co-development by substituting
+`dev.evestaticmapplanner:feature-api:1.0.0` with Core's `:feature-api` project. The consumer must opt into that composite
+and supply its Core checkout path; Core does not require or hardcode a sibling repository.
 
 ## Production discovery location
 
