@@ -58,18 +58,30 @@ Packs receive only Pack-scoped `data`, `config`, and `cache` path resolution. Co
 available. Relative paths use a strict portable syntax. The future host implementation must also defend against
 symlink and Windows reparse-point escapes.
 
-The production Sovereignty Pack stores its versioned, canonical PUBLIC_ESI Last Known Good (LKG) snapshot at the
-Pack-relative cache path `public-esi-lkg.json`. During each Pack startup it selects exactly one snapshot before
-registering Overlay and System Info providers. A valid cache whose successful file modification time is no more than
-one hour old is considered fresh and avoids ESI entirely. This one-hour threshold is a local Sovereignty Pack v1
-product policy, not an official CCP freshness guarantee. The exact one-hour boundary remains fresh, and a future file
-timestamp caused by a local clock adjustment is also treated as fresh.
+The production Sovereignty Pack uses the `PUBLIC_ESI` data-source mode and only anonymous public ESI operations:
+`GET /sovereignty/systems` followed by `POST /universe/names` for owner-name resolution. It does not use OAuth, SSO,
+a character token, or Character ESI. Each canonical sovereignty record contains a positive `allianceId`, resolved
+`allianceName`, optional `corporationName`, and sovereignty status; `allianceId` is the stable owner identity.
+
+The Pack stores its versioned, validated PUBLIC_ESI Last Known Good (LKG) snapshot through `PackStorage` at
+`cache/public-esi-lkg.json`. This is a canonical snapshot cache, not a database or raw HTTP-response cache. During each
+Pack startup it selects exactly one snapshot before registering Overlay and System Info providers. A valid cache whose
+successful file modification time is no more than one hour old is considered fresh and avoids ESI entirely. This
+one-hour threshold is a local Sovereignty Pack v1 product policy, not an official CCP freshness guarantee. The exact
+one-hour boundary remains fresh, and a future file timestamp caused by a local clock adjustment is also treated as
+fresh.
+
+The current LKG format is v2 and retains the positive Public ESI `allianceId` beside the resolved display name. The
+decoder still accepts structurally and semantically valid v1 files, whose historical format did not contain alliance
+IDs. A v1 hit is logged explicitly and uses a deterministic legacy-name visual key until a later successful startup
+refresh writes v2; missing identity is never invented or mistaken for a real ESI ID. New/fresh v2 caches recover the
+same alliance-ID identity without contacting ESI.
 
 A stale valid LKG remains the fallback while the Pack makes exactly one synchronous Public ESI refresh attempt. A
 fully valid remote snapshot atomically replaces the LKG and becomes the session snapshot. If ESI is unavailable, the
 remote result is invalid, or cache persistence fails, the old LKG is not deleted or touched; a valid remote snapshot
 whose cache write fails is still used in memory for that Pack session. Missing or unusable caches also trigger exactly
-one startup attempt, but malformed data is never used as a fallback and production never substitutes the embedded
+one startup attempt, but malformed data is never used as a fallback and production never substitutes the `EMBEDDED`
 fixture.
 
 After startup registration, sovereignty data is fixed until the Pack or application restarts: there is no runtime
@@ -77,6 +89,73 @@ polling, live snapshot replacement, Overlay invalidation, background worker, sch
 Pack refresh, an Overlay invalidation API, and background-worker lifecycle support remain deferred platform work and
 are not Sovereignty Pack v1 requirements. The synchronous network attempt for stale, missing, or unusable caches is
 an accepted v1 startup tradeoff.
+
+## Sovereignty visual presentation
+
+Sovereignty v1 has one presentation: a low-priority territory background. Visible generic owner seeds first form one
+conservative supported-domain mask from `localSceneScale * 1.35` discs. After one-cell local closing, an exterior flood
+classifies background connected to the mask's outside; only enclosed holes of at most 96 cells are repaired. Every
+retained domain component must contain a real ownership seed. Cells outside that mask remain transparent true void
+even when ordinary base-map systems exist there. All owners then compete in
+one deterministic shared assignment field strictly inside the mask, so each supported cell has at most one owner and
+interacting A/B support shares one border without a synthetic seam. Owner-density reinforcement and label smoothing
+can change the winner but cannot expand the supported domain. Explicit Unknown/Unclaimed entries are ordinary seeds;
+unsupported space is never synthesized as Unknown. Territory fills, enclave holes, and one neutral boundary graph are
+then extracted from that same field. The shared boundary graph classifies assignment-to-background edges separately
+from owner-to-owner edges: outer contours receive six constrained low-pass passes at neighbor weight 0.24, while
+political seams retain three passes at 0.21. Both fills still reuse exactly the same shared vertex positions, so the
+extra outer smoothing cannot create overlap, cracks, or double borders. Each seed first reserves
+a protected core whose nominal radius is `localSceneScale * 0.28`. Rival cores that are too close shrink symmetrically
+to half their separation minus grid clearance and epsilon; protected cells constrain label cleanup, and candidate
+boundary-smoothing moves that enter a core are rejected. Boundary vertices are smoothed once and reused by every
+adjacent owner, preventing independently processed contours from producing cracks, overlaps, or double-stroked color
+mixing. Per-system Sovereignty rings are not rendered.
+
+Territory metadata carries a Pack-owned stable owner key based on `allianceId` plus a deterministic base color. Generic
+ID colors use HSL saturation 0.68–0.78 and lightness 0.60–0.66; explicit Unknown/Unclaimed ownership remains neutral
+gray, while the small Goonswarm and Fraternity ID overrides remain recognizable. During cached presentation
+preparation, a bounded deterministic neighbor pass adjusts only owners whose normalized RGB distance is below 0.24.
+Core does not understand alliances, sovereignty ownership, or Pack-specific layer IDs, and owner grouping never
+depends on presentation color. For owners with an alliance ID, the Pack also projects a generic emblem key and the
+official `https://images.evetech.net/alliances/{allianceId}/logo?size=256` reference through the existing text metadata
+channel. The host creates at most one candidate per connected component only when it contains at least four owner
+systems, 80 assignment cells, and a usable anchor at least two cell layers inside the boundary. Anchor selection is
+performed once with cached presentation geometry: an owned, sufficiently clear centroid cell wins; otherwise a
+deterministic 0.65 centrality / 0.35 boundary-clearance score selects a safe interior cell. Projection-stable canonical
+region anchors exclude a conservative label rectangle of 4.5–8.0 cells horizontally (scaled by region-name length)
+and 3.25 cells vertically. A component with no boundary-safe, label-safe cell is suppressed. Pan and zoom therefore
+never select or rebuild an anchor.
+
+The host loads qualifying alliance emblems asynchronously from `images.evetech.net`. Its bounded, session-only memory
+cache deduplicates in-flight requests and remembers failures for the session; there is no disk image cache. Watermark
+sizing follows projected component area and bounds, uses a 72 px preferred minimum and 272 px maximum, and remains
+capped by the fixed anchor's shared-field boundary clearance. Image completion changes only image presentation state;
+it does not invalidate or rebuild political territory geometry. Ownership colors never depend on logo availability.
+
+`Sovereignty Logo Emphasis Zoom` is persisted in the existing `settings.properties` preferences. The Overlays page
+shows this Sovereignty subsection only while an available Overlay/provider exposes the Sovereignty capability. The
+user-selected threshold `T` accepts the full map zoom range from 0.01x through 250x and defaults to 0.75x. At zooms at
+or below `T`, emblems use the high-visibility overview treatment, reaching a maximum alpha of 0.94 and receiving a
+small size boost. Above `T`, they transition into a lower-alpha background watermark and become fully hidden at about
+`8 / 3 × T`. Choosing 250x therefore keeps logos in the emphasized treatment across the application's practical zoom
+range; there is no fixed 2.0x hide cutoff. Zoom changes only recompute lightweight emblem placement, alpha, and size.
+
+Territory presentation geometry and stable emblem anchors are cached outside the hot draw path. Pan, zoom, emblem
+image completion, and changes to the emblem threshold preference do not rebuild territory geometry. The same cached
+presentation path supports both `OFFICIAL_2D` and `REAL_XZ` projections.
+
+On Windows/Skia, emblem clipping intersects the outer territory contour first, then applies every enclave or territory
+hole as an individual `ClipOp.Difference`. A combined EvenOdd `clipPath` is not used because it can produce an empty
+effective clip on that backend. Territory polygon filling may still use the EvenOdd fill rule; fill construction and
+the nested emblem clip operations are deliberately separate.
+
+The generic Feature Overlay legend is collapsed by default and expands or collapses when its header is clicked. A
+single section uses that section's title; multiple sections use `Map overlays` and retain their individual section
+titles. This behavior is host-owned and is not specific to the Sovereignty Pack.
+
+Saved Marker outer rings and the Selected System ring remain separate Core-owned marker and interaction visuals. They,
+along with routes, hover state, system nodes, and labels, render above territory and are not recolored by it. There is
+no Rings/Territory mode selector.
 
 ## Deliberate exclusions
 
