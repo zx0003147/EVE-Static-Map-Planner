@@ -90,12 +90,16 @@ object MapRenderer {
         val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
         scene.edges.forEach { edge ->
             if (!edge.bounds.intersects(visibleBounds)) return@forEach
+            val geometry = stargateConnectionGeometry(
+                start = transform.worldToScreen(edge.first),
+                end = transform.worldToScreen(edge.second),
+            )
             drawLine(
                 color = EDGE_COLOR.multiplyAlpha(
                     emphasis.stargateAlphaMultiplier(edge.firstSystemId, edge.secondSystemId),
                 ),
-                start = transform.worldToScreen(edge.first).toOffset(),
-                end = transform.worldToScreen(edge.second).toOffset(),
+                start = geometry.start.toOffset(),
+                end = geometry.end.toOffset(),
                 strokeWidth = 1f,
             )
         }
@@ -214,15 +218,28 @@ object MapRenderer {
         connections: List<AnsiblexConnection>,
         emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
     ) {
+        val path = Path()
         connections.asSequence().filter(AnsiblexConnection::enabled).forEach { connection ->
             val first = scene.nodesById[connection.firstSystemId]?.position ?: return@forEach
             val second = scene.nodesById[connection.secondSystemId]?.position ?: return@forEach
-            drawLine(
+            val geometry = ansiblexConnectionGeometry(
+                firstSystemId = connection.firstSystemId,
+                secondSystemId = connection.secondSystemId,
+                first = transform.worldToScreen(first),
+                second = transform.worldToScreen(second),
+            )
+            path.reset()
+            path.moveTo(geometry.start.x.toFloat(), geometry.start.y.toFloat())
+            path.quadraticTo(
+                geometry.control.x.toFloat(),
+                geometry.control.y.toFloat(),
+                geometry.end.x.toFloat(),
+                geometry.end.y.toFloat(),
+            )
+            drawPath(
+                path = path,
                 color = ANSIBLEX_NETWORK_COLOR.multiplyAlpha(emphasis.ansiblexAlphaMultiplier(connection.id)),
-                start = transform.worldToScreen(first).toOffset(),
-                end = transform.worldToScreen(second).toOffset(),
-                strokeWidth = 1.5f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f)),
+                style = Stroke(width = 1.5f, pathEffect = ANSIBLEX_NETWORK_DASH_EFFECT),
             )
         }
     }
@@ -232,18 +249,39 @@ object MapRenderer {
         transform: MapTransform,
         overlay: ProjectedRouteOverlay,
     ) {
+        val curvedPath = Path()
         overlay.legs.forEach { leg ->
-            drawLine(
-                color = if (leg.edge.type == RouteEdgeType.ANSIBLEX) ROUTE_ANSIBLEX_COLOR else ROUTE_STARGATE_COLOR,
-                start = transform.worldToScreen(leg.from).toOffset(),
-                end = transform.worldToScreen(leg.to).toOffset(),
-                strokeWidth = if (leg.edge.type == RouteEdgeType.ANSIBLEX) 4f else 3f,
-                pathEffect = if (leg.edge.type == RouteEdgeType.ANSIBLEX) {
-                    PathEffect.dashPathEffect(floatArrayOf(12f, 7f))
-                } else {
-                    null
-                },
+            val style = routeLegRenderStyle(leg.edge.type)
+            val geometry = activeRouteConnectionGeometry(
+                firstSystemId = leg.edge.fromSystemId,
+                secondSystemId = leg.edge.toSystemId,
+                edgeType = leg.edge.type,
+                start = transform.worldToScreen(leg.from),
+                end = transform.worldToScreen(leg.to),
             )
+            when (geometry) {
+                is StraightMapConnectionGeometry -> drawLine(
+                    color = style.color,
+                    start = geometry.start.toOffset(),
+                    end = geometry.end.toOffset(),
+                    strokeWidth = style.strokeWidth,
+                )
+                is QuadraticMapConnectionGeometry -> {
+                    curvedPath.reset()
+                    curvedPath.moveTo(geometry.start.x.toFloat(), geometry.start.y.toFloat())
+                    curvedPath.quadraticTo(
+                        geometry.control.x.toFloat(),
+                        geometry.control.y.toFloat(),
+                        geometry.end.x.toFloat(),
+                        geometry.end.y.toFloat(),
+                    )
+                    drawPath(
+                        path = curvedPath,
+                        color = style.color,
+                        style = Stroke(width = style.strokeWidth, pathEffect = ROUTE_ANSIBLEX_DASH_EFFECT),
+                    )
+                }
+            }
         }
         scene.nodesById[overlay.route.startSystemId]?.let { node ->
             val center = transform.worldToScreen(node.position).toOffset()
@@ -528,8 +566,11 @@ private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
 private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
+private val ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(floatArrayOf(6f, 5f))
 internal val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
 internal val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
+internal val ROUTE_ANSIBLEX_DASH_PATTERN = listOf(12f, 7f)
+private val ROUTE_ANSIBLEX_DASH_EFFECT = PathEffect.dashPathEffect(ROUTE_ANSIBLEX_DASH_PATTERN.toFloatArray())
 private val ROUTE_START_COLOR = Color(0xFF57E389)
 private val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
 internal val CAPITAL_ROUTE_COLOR = Color(0xFFB388FF)
@@ -552,6 +593,16 @@ internal val MISSION_CAPITAL_COLORS = listOf(
     Color(0xCCFF5C57),
     Color(0xB3FF5C57),
 )
+internal data class RouteLegRenderStyle(
+    val color: Color,
+    val strokeWidth: Float,
+    val dashPattern: List<Float>?,
+)
+
+internal fun routeLegRenderStyle(type: RouteEdgeType): RouteLegRenderStyle = when (type) {
+    RouteEdgeType.STARGATE -> RouteLegRenderStyle(ROUTE_STARGATE_COLOR, 3f, null)
+    RouteEdgeType.ANSIBLEX -> RouteLegRenderStyle(ROUTE_ANSIBLEX_COLOR, 4f, ROUTE_ANSIBLEX_DASH_PATTERN)
+}
 private val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {
     MapLabelType.SYSTEM -> LABEL_COLOR
