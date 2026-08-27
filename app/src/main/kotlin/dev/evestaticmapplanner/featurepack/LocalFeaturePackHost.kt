@@ -5,12 +5,12 @@ import dev.evestaticmapplanner.feature.api.FeaturePackDescriptor
 import dev.evestaticmapplanner.feature.api.FeaturePackEntrypoint
 import dev.evestaticmapplanner.feature.api.FeaturePackSession
 import java.io.IOException
+import java.net.URL
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.ServiceLoader
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.jar.JarFile
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
@@ -27,6 +27,8 @@ enum class FeaturePackFailureKind {
     MISSING_JAR,
     INVALID_JAR,
     INVALID_DESCRIPTOR,
+    INCOMPATIBLE_FEATURE_API,
+    CLASSLOADER_CREATION_FAILED,
     ZERO_ENTRYPOINTS,
     MULTIPLE_ENTRYPOINTS,
     SERVICE_LOADING_FAILED,
@@ -75,9 +77,19 @@ internal fun interface FeaturePackContextLifecycle {
  * Application-owned coordinators choose the discovery root and explicitly load
  * candidates; the host itself has no UI, network, database, or startup policy.
  */
-class LocalFeaturePackHost(
-    private val applicationClassLoader: ClassLoader = FeaturePackEntrypoint::class.java.classLoader,
+class LocalFeaturePackHost private constructor(
+    private val applicationClassLoader: ClassLoader,
+    private val packClassLoaderFactory: (URL, ClassLoader) -> URLClassLoader,
 ) {
+    constructor(
+        applicationClassLoader: ClassLoader = FeaturePackEntrypoint::class.java.classLoader,
+    ) : this(applicationClassLoader, { jarUrl, parent -> URLClassLoader(arrayOf(jarUrl), parent) })
+
+    internal constructor(
+        applicationClassLoader: ClassLoader,
+        packClassLoaderFactory: FeaturePackClassLoaderFactory,
+    ) : this(applicationClassLoader, packClassLoaderFactory::create)
+
     fun discover(developmentRoot: Path): FeaturePackDiscoveryReport {
         val normalizedRoot = developmentRoot.toAbsolutePath().normalize()
         if (!normalizedRoot.isDirectory()) {
@@ -130,19 +142,39 @@ class LocalFeaturePackHost(
         if (!jar.isRegularFile()) {
             return failed(FeaturePackFailureKind.MISSING_JAR, "Feature Pack JAR does not exist: $jar")
         }
-        try {
-            JarFile(jar.toFile()).use { /* Validate the ZIP/JAR container before creating a loader. */ }
+        val manifestMetadata = try {
+            FeaturePackJarManifest.read(jar)
         } catch (error: IOException) {
             return failed(FeaturePackFailureKind.INVALID_JAR, "Feature Pack JAR is invalid: $jar", error)
+        } catch (error: IllegalArgumentException) {
+            return failed(
+                FeaturePackFailureKind.INVALID_DESCRIPTOR,
+                "Feature Pack metadata is invalid for $jar: ${error.message ?: error::class.simpleName}",
+                error,
+            )
         } catch (error: Throwable) {
             rethrowIfFatal(error)
             return failed(FeaturePackFailureKind.INVALID_JAR, "Feature Pack JAR could not be inspected: $jar", error)
         }
+        FeaturePackCompatibilityPolicy.incompatibilityMessage(
+            manifestMetadata.requiredFeatureApiVersion,
+        )?.let { message ->
+            return failed(FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API, message)
+        }
 
-        val packClassLoader = URLClassLoader(
-            arrayOf(jar.toUri().toURL()),
-            SharedFeaturePackParentClassLoader(applicationClassLoader),
-        )
+        val packClassLoader = try {
+            packClassLoaderFactory(
+                jar.toUri().toURL(),
+                SharedFeaturePackParentClassLoader(applicationClassLoader),
+            )
+        } catch (error: Throwable) {
+            rethrowIfFatal(error)
+            return failed(
+                FeaturePackFailureKind.CLASSLOADER_CREATION_FAILED,
+                "Feature Pack ClassLoader creation failed: $jar",
+                error,
+            )
+        }
         val entrypoint = when (val result = findEntrypoint(packClassLoader, jar)) {
             is EntrypointResult.Found -> result.entrypoint
             is EntrypointResult.Failed -> {
@@ -215,6 +247,10 @@ class LocalFeaturePackHost(
 
         data class Failed(val failure: FeaturePackFailure) : EntrypointResult
     }
+}
+
+internal fun interface FeaturePackClassLoaderFactory {
+    fun create(jarUrl: URL, parent: ClassLoader): URLClassLoader
 }
 
 class LoadedFeaturePack internal constructor(

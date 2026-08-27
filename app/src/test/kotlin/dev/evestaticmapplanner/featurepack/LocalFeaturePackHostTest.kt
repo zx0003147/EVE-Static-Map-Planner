@@ -16,9 +16,11 @@ import dev.evestaticmapplanner.feature.api.OverlayRegistry
 import dev.evestaticmapplanner.feature.api.SystemInfoRegistration
 import dev.evestaticmapplanner.feature.api.SystemInfoRegistry
 import java.net.http.HttpClient
+import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
+import java.util.jar.Attributes
 import java.util.jar.JarEntry
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
@@ -30,6 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
@@ -99,6 +102,66 @@ class LocalFeaturePackHostTest {
                 events,
             )
             assertIs<FeaturePackCloseResult.Closed>(loaded.closeSafely())
+        }
+
+    @Test
+    fun `future Feature API is rejected before ClassLoader creation or Pack initialization`() =
+        withTempDirectory { root ->
+            val futurePack = rewriteFixtureJar(
+                root.resolve("future-pack.jar"),
+                listOf(COMPATIBILITY_PROBE_PROVIDER),
+                mapOf(FeaturePackJarManifest.FEATURE_API_VERSION to "2"),
+            )
+            var classLoaderCreations = 0
+            val host = LocalFeaturePackHost(
+                FeaturePackEntrypoint::class.java.classLoader,
+                FeaturePackClassLoaderFactory { jarUrl, parent ->
+                    classLoaderCreations += 1
+                    URLClassLoader(arrayOf(jarUrl), parent)
+                },
+            )
+            val previousStatic = System.getProperty(STATIC_PROBE_PROPERTY)
+            val previousConstructor = System.getProperty(CONSTRUCTOR_PROBE_PROPERTY)
+            System.clearProperty(STATIC_PROBE_PROPERTY)
+            System.clearProperty(CONSTRUCTOR_PROBE_PROPERTY)
+            try {
+                val result = host.load(candidate(futurePack)) {
+                    error("An incompatible Pack must not receive a context")
+                }
+
+                val failure = assertIs<FeaturePackLoadResult.Failed>(result).failure
+                assertEquals(FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API, failure.kind)
+                assertTrue(failure.message.contains("requires Feature API 2"))
+                assertTrue(failure.message.contains("provides Feature API 1"))
+                assertEquals(0, classLoaderCreations)
+                assertNull(System.getProperty(STATIC_PROBE_PROPERTY))
+                assertNull(System.getProperty(CONSTRUCTOR_PROBE_PROPERTY))
+            } finally {
+                restoreSystemProperty(STATIC_PROBE_PROPERTY, previousStatic)
+                restoreSystemProperty(CONSTRUCTOR_PROBE_PROPERTY, previousConstructor)
+            }
+        }
+
+    @Test
+    fun `missing and invalid Feature API declarations are rejected as metadata before loading`() =
+        withTempDirectory { root ->
+            val invalidValues = listOf<String?>(null, "", "0", "-1", "not-an-integer", "2147483648", "01")
+            invalidValues.forEachIndexed { index, value ->
+                val jar = rewriteFixtureJar(
+                    root.resolve("invalid-api-$index.jar"),
+                    listOf(MINIMAL_PROVIDER),
+                    mapOf(FeaturePackJarManifest.FEATURE_API_VERSION to value),
+                )
+
+                val failure = assertIs<FeaturePackLoadResult.Failed>(
+                    LocalFeaturePackHost().load(candidate(jar)) {
+                        error("Invalid compatibility metadata must not create a context")
+                    },
+                ).failure
+
+                assertEquals(FeaturePackFailureKind.INVALID_DESCRIPTOR, failure.kind, "value=$value")
+                assertTrue(failure.message.contains(FeaturePackJarManifest.FEATURE_API_VERSION), "value=$value")
+            }
         }
 
     @Test
@@ -215,6 +278,7 @@ class LocalFeaturePackHostTest {
             val entries = jar.entries().asSequence().map { it.name }.toList()
             assertTrue(entries.contains(SERVICE_ENTRY))
             assertTrue(entries.contains("dev/evestaticmapplanner/feature/fixture/MinimalFixturePack.class"))
+            assertEquals("1", jar.manifest.mainAttributes.getValue(FeaturePackJarManifest.FEATURE_API_VERSION))
             assertTrue(
                 entries.filter { it.endsWith(".class") }
                     .all { it.startsWith("dev/evestaticmapplanner/feature/fixture/") },
@@ -246,11 +310,24 @@ class LocalFeaturePackHostTest {
 
     private fun candidate(jar: Path) = LocalFeaturePackCandidate(jar.parent, jar)
 
-    private fun rewriteFixtureJar(destination: Path, providers: List<String>?): Path {
+    private fun rewriteFixtureJar(
+        destination: Path,
+        providers: List<String>?,
+        manifestAttributes: Map<String, String?> = emptyMap(),
+    ): Path {
         JarFile(fixtureJar.toFile()).use { source ->
-            JarOutputStream(Files.newOutputStream(destination)).use { output ->
+            val manifest = source.manifest.apply {
+                manifestAttributes.forEach { (name, value) ->
+                    if (value == null) {
+                        mainAttributes.remove(Attributes.Name(name))
+                    } else {
+                        mainAttributes.putValue(name, value)
+                    }
+                }
+            }
+            JarOutputStream(Files.newOutputStream(destination), manifest).use { output ->
                 source.entries().asSequence()
-                    .filterNot { it.name == SERVICE_ENTRY }
+                    .filterNot { it.name == SERVICE_ENTRY || it.name.equals("META-INF/MANIFEST.MF", true) }
                     .forEach { sourceEntry ->
                         val targetEntry = JarEntry(sourceEntry.name).apply { time = sourceEntry.time }
                         output.putNextEntry(targetEntry)
@@ -267,6 +344,10 @@ class LocalFeaturePackHostTest {
             }
         }
         return destination
+    }
+
+    private fun restoreSystemProperty(name: String, value: String?) {
+        if (value == null) System.clearProperty(name) else System.setProperty(name, value)
     }
 
     private inline fun withTempDirectory(block: (Path) -> Unit) {
@@ -332,6 +413,10 @@ class LocalFeaturePackHostTest {
             "dev.evestaticmapplanner.feature.fixture.StartupFailureFixturePack"
         const val CLOSE_FAILURE_PROVIDER =
             "dev.evestaticmapplanner.feature.fixture.CloseFailureFixturePack"
+        const val COMPATIBILITY_PROBE_PROVIDER =
+            "dev.evestaticmapplanner.feature.fixture.CompatibilityInitializationProbePack"
+        const val STATIC_PROBE_PROPERTY = "feature.pack.compatibility.probe.static"
+        const val CONSTRUCTOR_PROBE_PROPERTY = "feature.pack.compatibility.probe.constructor"
         val APP_ROOT_CLASSES = setOf(
             "dev/evestaticmapplanner/MainKt.class",
             "dev/evestaticmapplanner/StartupCoordinator.class",

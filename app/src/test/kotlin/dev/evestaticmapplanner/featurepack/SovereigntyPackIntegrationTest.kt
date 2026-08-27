@@ -6,6 +6,7 @@ import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.ServiceLoader
+import java.util.jar.JarFile
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -13,6 +14,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SovereigntyPackIntegrationTest {
+    @Test
+    fun `canonical Sovereignty Pack artifact declares Host-supported Feature API v1`() {
+        JarFile(sovereigntyPackJar.toFile()).use { jar ->
+            assertEquals(
+                "1",
+                jar.manifest.mainAttributes.getValue(FeaturePackJarManifest.FEATURE_API_VERSION),
+            )
+            assertEquals(
+                dev.evestaticmapplanner.feature.api.FeatureApiVersions.current().identifier,
+                jar.manifest.mainAttributes.getValue(FeaturePackJarManifest.FEATURE_API_VERSION),
+            )
+        }
+    }
+
     @Test
     fun `external Pack appears in manager and ServiceLoader constructs its production entrypoint`() =
         withTempDirectory { root ->

@@ -6,8 +6,9 @@ local host in `:app`; FP-2B validates that the application-owned host works from
 
 ## Status and lifecycle
 
-- The API remains pre-release and unfrozen through FP-1, OV-1, and OV-3. `FeatureApiVersions.current()` therefore
-  returns an explicitly non-frozen development identifier; it is not Feature API version 1.
+- The compatibility authority is `FeatureApiVersions.current()`, which returns `FeatureApiVersion("1", true)`.
+  Feature API contract version `1` is frozen after its final public-surface audit and production compatibility
+  enforcement. The canonical manifest representation remains the positive decimal integer `1`.
 - The planned v1 lifecycle is restart-only. Core will eventually discover exactly one `FeaturePackEntrypoint` per
   Pack, call `start(context)`, and close the returned `FeaturePackSession` during application shutdown.
 - FP-2A owns one isolated class loader per Pack, `ServiceLoader`, and lifecycle failure isolation. FP-2B adds the
@@ -32,9 +33,13 @@ default. A bad Pack is reported and skipped while Core continues; successfully s
 or during application shutdown.
 
 FP-3 reads lightweight management metadata from the standard JAR manifest without loading Pack classes. `pack.jar`
-must contain `EVE-Feature-Pack-Id`, `EVE-Feature-Pack-Name`, `EVE-Feature-Pack-Version`, and
-`EVE-Feature-Pack-Publisher`. The containing directory name must equal the Pack ID. When an enabled Pack is loaded, its
-runtime `FeaturePackDescriptor` must match these values. Enable state and the latest lifecycle error are stored in
+must contain `EVE-Feature-Pack-Id`, `EVE-Feature-Pack-Name`, `EVE-Feature-Pack-Version`,
+`EVE-Feature-Pack-Publisher`, and `EVE-Feature-API-Version`. The API value must be a canonical positive decimal integer
+and must exactly match `FeatureApiVersions.current()`. Missing, empty, zero, negative, non-integer, non-canonical, or
+overflowing values make the Pack metadata invalid. A different valid version makes the Pack incompatible. Both cases
+are rejected before a Pack ClassLoader or `ServiceLoader` exists. The containing directory name must equal the Pack ID.
+When an enabled compatible Pack is loaded, its runtime `FeaturePackDescriptor` must match the manifest identity values.
+Enable state and the latest lifecycle error are stored in
 `%LOCALAPPDATA%\EVE Static Map Planner\feature-pack-manager.properties`; no Pack database is created.
 
 The production image contains the host and one shared `feature-api` identity. It does not contain Pack JARs, a Pack

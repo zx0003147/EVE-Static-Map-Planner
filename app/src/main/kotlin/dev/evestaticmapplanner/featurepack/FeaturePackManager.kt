@@ -56,7 +56,11 @@ class FeaturePackManager(
         snapshot.packs.filter(RegisteredFeaturePack::enabled).forEach { pack ->
             if (pack.installationState != FeaturePackInstallationState.INSTALLED) {
                 val failure = FeaturePackFailure(
-                    FeaturePackFailureKind.INVALID_DESCRIPTOR,
+                    if (pack.installationState == FeaturePackInstallationState.INCOMPATIBLE) {
+                        FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API
+                    } else {
+                        FeaturePackFailureKind.INVALID_DESCRIPTOR
+                    },
                     pack.lastError ?: "Enabled Feature Pack is not installed correctly: ${pack.packId.value}",
                 )
                 failures += failure

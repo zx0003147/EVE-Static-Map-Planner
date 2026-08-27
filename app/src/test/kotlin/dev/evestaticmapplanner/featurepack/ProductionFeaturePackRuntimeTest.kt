@@ -1,6 +1,8 @@
 package dev.evestaticmapplanner.featurepack
 
+import dev.evestaticmapplanner.feature.api.FeaturePackEntrypoint
 import dev.evestaticmapplanner.feature.api.PackId
+import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarEntry
@@ -40,8 +42,16 @@ class ProductionFeaturePackRuntimeTest {
             val packRoot = applicationRoot.resolve("feature-packs")
             val storageRoot = applicationRoot.resolve("feature-pack-storage")
             val threadsBefore = liveNonDaemonThreadIds()
+            var classLoaderCreations = 0
+            val host = LocalFeaturePackHost(
+                FeaturePackEntrypoint::class.java.classLoader,
+                FeaturePackClassLoaderFactory { jarUrl, parent ->
+                    classLoaderCreations += 1
+                    URLClassLoader(arrayOf(jarUrl), parent)
+                },
+            )
 
-            val runtime = ProductionFeaturePackRuntime.start(packRoot, applicationRoot)
+            val runtime = ProductionFeaturePackRuntime.start(packRoot, applicationRoot, host = host)
             val close = runtime.closeSafely()
 
             assertTrue(runtime.startReport.candidates.isEmpty())
@@ -50,6 +60,7 @@ class ProductionFeaturePackRuntimeTest {
             assertTrue(close.failures.isEmpty())
             assertFalse(Files.exists(packRoot))
             assertFalse(Files.exists(storageRoot))
+            assertEquals(0, classLoaderCreations)
             assertEquals(threadsBefore, liveNonDaemonThreadIds())
         }
 

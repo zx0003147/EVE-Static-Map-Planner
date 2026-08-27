@@ -8,11 +8,11 @@ class FeaturePackCompatibilityTest {
     private val platform = HostPlatform("windows", "x64")
 
     @Test
-    fun `current API identity is explicitly pre-freeze`() {
+    fun `current API identity is canonical frozen v1`() {
         val version = FeatureApiVersions.current()
 
-        assertFalse(version.frozen)
-        assertTrue(version.identifier.contains("development"))
+        assertTrue(version.identifier == "1")
+        assertTrue(version.frozen)
     }
 
     @Test

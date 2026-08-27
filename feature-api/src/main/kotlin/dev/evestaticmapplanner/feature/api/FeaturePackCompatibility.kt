@@ -46,9 +46,9 @@ class FeatureApiVersion(
     }
 }
 
-/** Current pre-freeze API marker. It must not be interpreted as frozen API version 1. */
+/** Current frozen v1 compatibility identity. Breaking contract changes require a new major API version. */
 object FeatureApiVersions {
-    fun current(): FeatureApiVersion = FeatureApiVersion("fp1-development", false)
+    fun current(): FeatureApiVersion = FeatureApiVersion("1", true)
 }
 
 /** Minimal platform identity; no filesystem roots or environment details are exposed. */

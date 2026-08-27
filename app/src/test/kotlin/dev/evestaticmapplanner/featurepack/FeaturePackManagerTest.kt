@@ -131,6 +131,83 @@ class FeaturePackManagerTest {
     }
 
     @Test
+    fun `registry and manager expose an understandable incompatible Feature API state`() =
+        withTempDirectory { root ->
+            rewriteFixtureJar(
+                destination = root.resolve("feature-packs/fixture.future/pack.jar"),
+                provider = STARTUP_FAILURE_PROVIDER,
+                packId = "fixture.future",
+                displayName = "Future Fixture Pack",
+                featureApiVersion = "2",
+            )
+            val manager = manager(root, mutableListOf())
+
+            val snapshot = manager.refresh()
+            val pack = snapshot.packs.single()
+
+            assertEquals(FeaturePackInstallationState.INCOMPATIBLE, pack.installationState)
+            assertEquals("2", pack.requiredFeatureApiVersion?.identifier)
+            assertTrue(pack.lastError.orEmpty().contains("requires Feature API 2"))
+            assertTrue(pack.lastError.orEmpty().contains("provides Feature API 1"))
+            assertEquals(FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API, snapshot.failures.single().kind)
+            assertEquals(FeaturePackRuntimeState.DISABLED, manager.state.value.packs.single().runtimeState)
+        }
+
+    @Test
+    fun `registry surfaces malformed Feature API metadata as an understandable invalid Pack`() =
+        withTempDirectory { root ->
+            rewriteFixtureJar(
+                destination = root.resolve("feature-packs/fixture.invalid-metadata/pack.jar"),
+                provider = STARTUP_FAILURE_PROVIDER,
+                packId = "fixture.invalid-metadata",
+                displayName = "Invalid Metadata Fixture Pack",
+                featureApiVersion = "",
+            )
+
+            val item = manager(root, mutableListOf()).apply { refresh() }.state.value.packs.single()
+
+            assertEquals(FeaturePackInstallationState.INVALID_PACK, item.pack.installationState)
+            assertTrue(item.pack.lastError.orEmpty().contains(FeaturePackJarManifest.FEATURE_API_VERSION))
+            assertTrue(item.pack.lastError.orEmpty().contains("positive decimal integer"))
+            assertEquals(FeaturePackRuntimeState.DISABLED, item.runtimeState)
+        }
+
+    @Test
+    fun `compatible Pack still loads when another enabled Pack is incompatible`() = withTempDirectory { root ->
+        installFixture(root)
+        rewriteFixtureJar(
+            destination = root.resolve("feature-packs/fixture.future/pack.jar"),
+            provider = STARTUP_FAILURE_PROVIDER,
+            packId = "fixture.future",
+            displayName = "Future Fixture Pack",
+            featureApiVersion = "2",
+        )
+        stateStore(root).save(
+            mapOf(
+                PackId("fixture.pack") to StoredFeaturePackState(enabled = true),
+                PackId("fixture.future") to StoredFeaturePackState(enabled = true),
+            ),
+        )
+        val events = mutableListOf<String>()
+        val manager = manager(root, events)
+
+        val result = manager.startEnabledPacks()
+
+        assertEquals(listOf(PackId("fixture.pack")), result.loadedPackIds)
+        assertTrue(result.failures.any { it.kind == FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API })
+        assertEquals(listOf("INFO:Fixture Pack started"), events)
+        assertEquals(
+            FeaturePackRuntimeState.ENABLED,
+            manager.state.value.packs.single { it.pack.packId == PackId("fixture.pack") }.runtimeState,
+        )
+        assertEquals(
+            FeaturePackRuntimeState.DISABLED,
+            manager.state.value.packs.single { it.pack.packId == PackId("fixture.future") }.runtimeState,
+        )
+        manager.closeSafely()
+    }
+
+    @Test
     fun `ViewModel exposes lazy state actions and removal deletes only the installed Pack`() =
         withTempDirectory { root ->
             val packDirectory = installFixture(root).parent
@@ -181,12 +258,14 @@ class FeaturePackManagerTest {
         provider: String,
         packId: String,
         displayName: String,
+        featureApiVersion: String = "1",
     ) {
         destination.parent.createDirectories()
         JarFile(fixtureJar.toFile()).use { source ->
             val manifest = source.manifest.apply {
                 mainAttributes.putValue(FeaturePackJarManifest.PACK_ID, packId)
                 mainAttributes.putValue(FeaturePackJarManifest.DISPLAY_NAME, displayName)
+                mainAttributes.putValue(FeaturePackJarManifest.FEATURE_API_VERSION, featureApiVersion)
             }
             JarOutputStream(Files.newOutputStream(destination), manifest).use { output ->
                 source.entries().asSequence()

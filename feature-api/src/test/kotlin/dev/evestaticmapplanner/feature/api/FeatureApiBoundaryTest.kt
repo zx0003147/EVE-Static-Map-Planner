@@ -46,6 +46,7 @@ class FeatureApiBoundaryTest {
 
         JarFile(fixtureJar.toFile()).use { jar ->
             val entries = jar.entries().asSequence().map { it.name }.toList()
+            assertEquals("1", jar.manifest.mainAttributes.getValue("EVE-Feature-API-Version"))
             assertTrue(entries.contains("dev/evestaticmapplanner/feature/fixture/MinimalFixturePack.class"))
             assertFalse(entries.any { it.startsWith("dev/evestaticmapplanner/feature/api/") })
             assertFalse(entries.any { it.startsWith("kotlin/") })

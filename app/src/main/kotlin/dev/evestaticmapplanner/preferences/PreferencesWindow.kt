@@ -275,6 +275,7 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
             "Status: " + when {
                 pack.installationState == FeaturePackInstallationState.MISSING_JAR -> "Missing pack.jar"
                 pack.installationState == FeaturePackInstallationState.INVALID_PACK -> "Invalid Pack"
+                pack.installationState == FeaturePackInstallationState.INCOMPATIBLE -> "Incompatible"
                 item.runtimeState == FeaturePackRuntimeState.ENABLED -> "Enabled"
                 else -> "Disabled"
             },

@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.featurepack
 
+import dev.evestaticmapplanner.feature.api.FeatureApiVersion
+import dev.evestaticmapplanner.feature.api.FeatureApiVersions
 import dev.evestaticmapplanner.feature.api.PackId
 import dev.evestaticmapplanner.feature.api.PackVersion
 import java.nio.file.AtomicMoveNotSupportedException
@@ -13,6 +15,7 @@ import kotlin.io.path.isRegularFile
 
 enum class FeaturePackInstallationState {
     INSTALLED,
+    INCOMPATIBLE,
     MISSING_JAR,
     INVALID_PACK,
 }
@@ -22,6 +25,7 @@ data class RegisteredFeaturePack(
     val displayName: String,
     val version: PackVersion?,
     val publisher: String?,
+    val requiredFeatureApiVersion: FeatureApiVersion?,
     val path: Path,
     val jar: Path,
     val enabled: Boolean,
@@ -167,17 +171,31 @@ class LocalFeaturePackRegistry(
                         require(metadata.packId == packId) {
                             "Manifest Pack ID ${metadata.packId.value} does not match directory $directoryName"
                         }
+                        val incompatibility = FeaturePackCompatibilityPolicy.incompatibilityMessage(
+                            metadata.requiredFeatureApiVersion,
+                        )
                         packs += RegisteredFeaturePack(
                             packId = packId,
                             displayName = metadata.displayName,
                             version = metadata.version,
                             publisher = metadata.publisher,
+                            requiredFeatureApiVersion = metadata.requiredFeatureApiVersion,
                             path = directory,
                             jar = jar,
                             enabled = saved.enabled,
-                            installationState = FeaturePackInstallationState.INSTALLED,
-                            lastError = saved.lastError,
+                            installationState = if (incompatibility == null) {
+                                FeaturePackInstallationState.INSTALLED
+                            } else {
+                                FeaturePackInstallationState.INCOMPATIBLE
+                            },
+                            lastError = incompatibility ?: saved.lastError,
                         )
+                        if (incompatibility != null) {
+                            failures += FeaturePackFailure(
+                                FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API,
+                                incompatibility,
+                            )
+                        }
                     } catch (error: Throwable) {
                         rethrowIfFatal(error)
                         val message = "Feature Pack metadata is invalid for $jar: ${error.message ?: error::class.simpleName}"
@@ -217,6 +235,7 @@ class LocalFeaturePackRegistry(
         displayName = packId.value,
         version = null,
         publisher = null,
+        requiredFeatureApiVersion = null,
         path = directory,
         jar = jar,
         enabled = saved.enabled,
@@ -230,6 +249,7 @@ data class FeaturePackManifestMetadata(
     val displayName: String,
     val version: PackVersion,
     val publisher: String,
+    val requiredFeatureApiVersion: FeatureApiVersion,
 )
 
 object FeaturePackJarManifest {
@@ -237,6 +257,7 @@ object FeaturePackJarManifest {
     const val DISPLAY_NAME = "EVE-Feature-Pack-Name"
     const val VERSION = "EVE-Feature-Pack-Version"
     const val PUBLISHER = "EVE-Feature-Pack-Publisher"
+    const val FEATURE_API_VERSION = "EVE-Feature-API-Version"
 
     fun read(jar: Path): FeaturePackManifestMetadata = JarFile(jar.toFile()).use { file ->
         val attributes = requireNotNull(file.manifest) { "JAR manifest is missing" }.mainAttributes
@@ -245,6 +266,9 @@ object FeaturePackJarManifest {
             displayName = validatedLabel(requireAttribute(attributes.getValue(DISPLAY_NAME), DISPLAY_NAME), DISPLAY_NAME),
             version = PackVersion(requireAttribute(attributes.getValue(VERSION), VERSION)),
             publisher = validatedLabel(requireAttribute(attributes.getValue(PUBLISHER), PUBLISHER), PUBLISHER),
+            requiredFeatureApiVersion = parseFeatureApiVersion(
+                requireAttribute(attributes.getValue(FEATURE_API_VERSION), FEATURE_API_VERSION),
+            ),
         )
     }
 
@@ -256,6 +280,30 @@ object FeaturePackJarManifest {
             "Manifest attribute $name is invalid"
         }
         return value
+    }
+
+    private fun parseFeatureApiVersion(value: String): FeatureApiVersion {
+        require(POSITIVE_DECIMAL_INTEGER.matches(value)) {
+            "Manifest attribute $FEATURE_API_VERSION must be a canonical positive decimal integer"
+        }
+        val parsed = requireNotNull(value.toIntOrNull()) {
+            "Manifest attribute $FEATURE_API_VERSION is outside the supported integer range"
+        }
+        return FeatureApiVersion(parsed.toString(), FeatureApiVersions.current().frozen)
+    }
+
+    private val POSITIVE_DECIMAL_INTEGER = Regex("[1-9][0-9]*")
+}
+
+internal object FeaturePackCompatibilityPolicy {
+    fun incompatibilityMessage(required: FeatureApiVersion): String? {
+        val provided = FeatureApiVersions.current()
+        return if (required == provided) {
+            null
+        } else {
+            "Feature Pack requires Feature API ${required.identifier}. " +
+                "This version of EVE Static Map Planner provides Feature API ${provided.identifier}."
+        }
     }
 }
 

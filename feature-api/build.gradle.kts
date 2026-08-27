@@ -31,6 +31,7 @@ val fixturePackJar by tasks.registering(Jar::class) {
             "EVE-Feature-Pack-Name" to "Minimal Fixture Pack",
             "EVE-Feature-Pack-Version" to "0.0.1-test",
             "EVE-Feature-Pack-Publisher" to "EVE Static Map Planner Tests",
+            "EVE-Feature-API-Version" to "1",
         )
     }
 }

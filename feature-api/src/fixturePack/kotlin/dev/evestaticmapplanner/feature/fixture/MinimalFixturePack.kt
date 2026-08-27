@@ -154,3 +154,26 @@ class CloseFailureFixturePack : FeaturePackEntrypoint {
         }
     }
 }
+
+class CompatibilityInitializationProbePack : FeaturePackEntrypoint {
+    companion object {
+        init {
+            System.setProperty("feature.pack.compatibility.probe.static", "initialized")
+        }
+    }
+
+    init {
+        System.setProperty("feature.pack.compatibility.probe.constructor", "constructed")
+    }
+
+    override fun descriptor(): FeaturePackDescriptor = FeaturePackDescriptor(
+        packId = PackId("fixture.compatibility-probe"),
+        displayName = "Compatibility Initialization Probe Pack",
+        packVersion = PackVersion("0.0.1-test"),
+        publisher = "EVE Static Map Planner Tests",
+    )
+
+    override fun start(context: FeaturePackContext): FeaturePackSession = object : FeaturePackSession {
+        override fun close() = Unit
+    }
+}
