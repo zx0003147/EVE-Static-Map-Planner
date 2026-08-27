@@ -81,6 +81,7 @@ class LocalControlExecutorSaturationTest {
         val serviceCalls = AtomicInteger()
         val serviceThreads = linkedSetOf<String>()
         val busyAuditThread = AtomicReference<String>()
+        val busyAudited = CountDownLatch(1)
         val service = object : StubMapControlService() {
             override suspend fun searchSystems(request: SearchSystemsRequest): ControlResult<List<SystemSummaryDto>> {
                 synchronized(serviceThreads) { serviceThreads += Thread.currentThread().name }
@@ -94,7 +95,10 @@ class LocalControlExecutorSaturationTest {
             service,
             "0.1.2",
             auditSink = LocalControlAuditSink { event ->
-                if (event.resultCode == "APP_BUSY") busyAuditThread.set(Thread.currentThread().name)
+                if (event.resultCode == "APP_BUSY") {
+                    busyAuditThread.set(Thread.currentThread().name)
+                    busyAudited.countDown()
+                }
             },
         )
         server.executorFactory = { instanceId -> BoundedHttpExecutor(instanceId, 1, 1, 1, 1) }
@@ -111,8 +115,10 @@ class LocalControlExecutorSaturationTest {
             assertEquals(503, busy.statusCode())
             assertTrue(busy.body().contains("APP_BUSY"))
             assertEquals(1, serviceCalls.get(), "Busy response must not call MapControlService")
-            assertTrue(busyAuditThread.get().startsWith("local-control-busy-"))
-            assertFalse(busyAuditThread.get().contains("HTTP-Dispatcher"))
+            assertTrue(busyAudited.await(2, TimeUnit.SECONDS), "Busy audit event was not observed")
+            val busyAuditThreadName = assertNotNull(busyAuditThread.get())
+            assertTrue(busyAuditThreadName.startsWith("local-control-busy-"))
+            assertFalse(busyAuditThreadName.contains("HTTP-Dispatcher"))
 
             val unauthorizedBusy = send(endpoint, null, "saturation-unauthorized")
             assertEquals(401, unauthorizedBusy.statusCode())
