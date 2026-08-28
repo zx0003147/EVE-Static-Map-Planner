@@ -10,6 +10,28 @@ interface SystemReadPort {
     suspend fun getSystemInfo(systemId: Int): SystemInfoDto?
 }
 
+data class SavedMarkerCreatePortRequest(
+    val systemId: Int,
+    val name: String?,
+    val notes: String?,
+    val color: dev.evestaticmapplanner.core.marker.MarkerColor,
+)
+
+interface SavedMarkerControlPort {
+    suspend fun getSystemMarker(systemId: Int): SavedMarkerSummaryDto?
+    suspend fun createSavedMarker(request: SavedMarkerCreatePortRequest): SavedMarkerSummaryDto
+}
+
+object DeniedSavedMarkerControlPort : SavedMarkerControlPort {
+    override suspend fun getSystemMarker(systemId: Int): SavedMarkerSummaryDto? = denied()
+    override suspend fun createSavedMarker(request: SavedMarkerCreatePortRequest): SavedMarkerSummaryDto = denied()
+
+    private fun denied(): Nothing = throw ControlPortFailure(
+        ControlErrorCode.CAPABILITY_DENIED,
+        "AI Saved Marker capability is denied",
+    )
+}
+
 interface RoutePlanningPort {
     suspend fun calculateNormalRoute(
         startSystemId: Int,

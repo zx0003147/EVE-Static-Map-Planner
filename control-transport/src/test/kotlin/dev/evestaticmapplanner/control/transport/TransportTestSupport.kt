@@ -12,11 +12,14 @@ import dev.evestaticmapplanner.control.ClearMissionRoutesCommand
 import dev.evestaticmapplanner.control.ControlError
 import dev.evestaticmapplanner.control.ControlErrorCode
 import dev.evestaticmapplanner.control.ControlResult
+import dev.evestaticmapplanner.control.CreateSavedMarkerCommand
+import dev.evestaticmapplanner.control.CreateSavedMarkerReceipt
 import dev.evestaticmapplanner.control.FitMissionCommand
 import dev.evestaticmapplanner.control.FocusSystemCommand
 import dev.evestaticmapplanner.control.GetActiveMissionsRequest
 import dev.evestaticmapplanner.control.GetMissionRequest
 import dev.evestaticmapplanner.control.GetSystemInfoRequest
+import dev.evestaticmapplanner.control.GetSystemMarkersRequest
 import dev.evestaticmapplanner.control.MapControlService
 import dev.evestaticmapplanner.control.MissionJumpRangeReceipt
 import dev.evestaticmapplanner.control.MissionMarkerReceipt
@@ -32,6 +35,7 @@ import dev.evestaticmapplanner.control.ShowCapitalRouteCommand
 import dev.evestaticmapplanner.control.ShowJumpRangeCommand
 import dev.evestaticmapplanner.control.ShowNormalRouteCommand
 import dev.evestaticmapplanner.control.SystemInfoDto
+import dev.evestaticmapplanner.control.SystemMarkersDto
 import dev.evestaticmapplanner.control.SystemSummaryDto
 import dev.evestaticmapplanner.control.mission.Mission
 import java.net.URI
@@ -46,11 +50,14 @@ internal open class StubMapControlService : MapControlService {
 
     override suspend fun searchSystems(request: SearchSystemsRequest) = denied<List<SystemSummaryDto>>(request.requestId)
     override suspend fun getSystemInfo(request: GetSystemInfoRequest) = denied<SystemInfoDto>(request.requestId)
+    override suspend fun getSystemMarkers(request: GetSystemMarkersRequest) = denied<SystemMarkersDto>(request.requestId)
     override suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest) = denied<NormalRouteDto>(request.requestId)
     override suspend fun calculateCapitalRoute(request: CalculateCapitalRouteRequest) = denied<CapitalRouteDto>(request.requestId)
     override suspend fun getActiveMissions(request: GetActiveMissionsRequest) = denied<List<MissionSummaryDto>>(request.requestId)
     override suspend fun getMission(request: GetMissionRequest) = denied<Mission>(request.requestId)
     override suspend fun beginMission(command: BeginMissionCommand) = denied<MissionSummaryDto>(command.requestId)
+    override suspend fun createSavedMarker(command: CreateSavedMarkerCommand) =
+        denied<CreateSavedMarkerReceipt>(command.requestId)
     override suspend fun focusSystem(command: FocusSystemCommand) = denied<SystemSummaryDto>(command.requestId)
     override suspend fun showNormalRoute(command: ShowNormalRouteCommand) = denied<MissionRouteReceipt>(command.requestId)
     override suspend fun showCapitalRoute(command: ShowCapitalRouteCommand) = denied<MissionRouteReceipt>(command.requestId)

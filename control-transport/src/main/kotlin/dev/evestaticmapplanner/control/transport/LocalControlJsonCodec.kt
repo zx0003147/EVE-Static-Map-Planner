@@ -12,11 +12,14 @@ import dev.evestaticmapplanner.control.ClearMissionMarkersCommand
 import dev.evestaticmapplanner.control.ClearMissionRoutesCommand
 import dev.evestaticmapplanner.control.ControlErrorCode
 import dev.evestaticmapplanner.control.ControlResult
+import dev.evestaticmapplanner.control.CreateSavedMarkerCommand
+import dev.evestaticmapplanner.control.CreateSavedMarkerReceipt
 import dev.evestaticmapplanner.control.FitMissionCommand
 import dev.evestaticmapplanner.control.FocusSystemCommand
 import dev.evestaticmapplanner.control.GetActiveMissionsRequest
 import dev.evestaticmapplanner.control.GetMissionRequest
 import dev.evestaticmapplanner.control.GetSystemInfoRequest
+import dev.evestaticmapplanner.control.GetSystemMarkersRequest
 import dev.evestaticmapplanner.control.MapControlService
 import dev.evestaticmapplanner.control.MissionJumpRangeReceipt
 import dev.evestaticmapplanner.control.MissionMarkerReceipt
@@ -32,6 +35,7 @@ import dev.evestaticmapplanner.control.ShowCapitalRouteCommand
 import dev.evestaticmapplanner.control.ShowJumpRangeCommand
 import dev.evestaticmapplanner.control.ShowNormalRouteCommand
 import dev.evestaticmapplanner.control.SystemInfoDto
+import dev.evestaticmapplanner.control.SystemMarkersDto
 import dev.evestaticmapplanner.control.SystemSummaryDto
 import dev.evestaticmapplanner.control.mission.Mission
 import dev.evestaticmapplanner.control.mission.MissionId
@@ -116,6 +120,13 @@ internal class LocalControlJsonCodec {
             request.requireFields(setOf("requestId", "systemId"))
             controlResponse(service.getSystemInfo(GetSystemInfoRequest(request.requestId(), request.int("systemId"))), ::systemInfoJson)
         }
+        LocalControlOperation.SYSTEM_MARKERS -> {
+            request.requireFields(setOf("requestId", "systemId"))
+            controlResponse(
+                service.getSystemMarkers(GetSystemMarkersRequest(request.requestId(), request.int("systemId"))),
+                ::systemMarkersJson,
+            )
+        }
         LocalControlOperation.NORMAL_ROUTE -> {
             request.requireFields(setOf("requestId", "startSystemId", "destinationSystemId", "useAnsiblex"))
             controlResponse(
@@ -164,6 +175,25 @@ internal class LocalControlJsonCodec {
             controlResponse(
                 service.beginMission(BeginMissionCommand(request.requestId(), request.idempotencyKey(), request.string("title"))),
                 ::missionSummaryJson,
+            )
+        }
+        LocalControlOperation.CREATE_SAVED_MARKER -> {
+            request.requireFields(
+                setOf("requestId", "idempotencyKey", "systemId", "name", "notes", "color"),
+                setOf("requestId", "idempotencyKey", "systemId", "color"),
+            )
+            controlResponse(
+                service.createSavedMarker(
+                    CreateSavedMarkerCommand(
+                        requestId = request.requestId(),
+                        idempotencyKey = request.idempotencyKey(),
+                        systemId = request.int("systemId"),
+                        name = request.optionalString("name"),
+                        notes = request.optionalString("notes"),
+                        color = request.enum("color", MarkerColor::valueOf),
+                    ),
+                ),
+                ::createSavedMarkerReceiptJson,
             )
         }
         LocalControlOperation.FOCUS_SYSTEM -> {
@@ -432,11 +462,14 @@ private fun <T> JsonObject.optionalEnum(name: String, parse: (String) -> T): T? 
 private fun invalid(): Nothing = throw WireRequestFailure(400, "INVALID_ARGUMENT", "The request is invalid")
 
 private fun httpStatus(code: ControlErrorCode): Int = when (code) {
-    ControlErrorCode.INVALID_ARGUMENT, ControlErrorCode.AMBIGUOUS_SYSTEM -> 400
+    ControlErrorCode.INVALID_ARGUMENT, ControlErrorCode.INVALID_MARKER_DATA,
+    ControlErrorCode.AMBIGUOUS_SYSTEM -> 400
     ControlErrorCode.CAPABILITY_DENIED -> 403
-    ControlErrorCode.NOT_FOUND, ControlErrorCode.OBJECT_NOT_FOUND, ControlErrorCode.MISSION_NOT_FOUND,
+    ControlErrorCode.NOT_FOUND, ControlErrorCode.SYSTEM_NOT_FOUND, ControlErrorCode.OBJECT_NOT_FOUND,
+    ControlErrorCode.MISSION_NOT_FOUND,
     ControlErrorCode.ROUTE_NOT_FOUND -> 404
-    ControlErrorCode.MISSION_LIMIT_EXCEEDED, ControlErrorCode.IDEMPOTENCY_CONFLICT -> 409
+    ControlErrorCode.MARKER_ALREADY_EXISTS, ControlErrorCode.MISSION_LIMIT_EXCEEDED,
+    ControlErrorCode.IDEMPOTENCY_CONFLICT -> 409
     ControlErrorCode.RATE_LIMITED -> 429
     ControlErrorCode.APP_NOT_READY, ControlErrorCode.DATABASE_UNAVAILABLE -> 503
     ControlErrorCode.TIMEOUT -> 504
@@ -445,10 +478,13 @@ private fun httpStatus(code: ControlErrorCode): Int = when (code) {
 
 private fun safeMessage(code: ControlErrorCode): String = when (code) {
     ControlErrorCode.INVALID_ARGUMENT -> "The request is invalid"
+    ControlErrorCode.INVALID_MARKER_DATA -> "The saved marker data is invalid"
     ControlErrorCode.AMBIGUOUS_SYSTEM -> "The solar system reference is ambiguous"
     ControlErrorCode.CAPABILITY_DENIED -> "The operation is not allowed"
-    ControlErrorCode.NOT_FOUND, ControlErrorCode.OBJECT_NOT_FOUND, ControlErrorCode.MISSION_NOT_FOUND ->
+    ControlErrorCode.NOT_FOUND, ControlErrorCode.SYSTEM_NOT_FOUND, ControlErrorCode.OBJECT_NOT_FOUND,
+    ControlErrorCode.MISSION_NOT_FOUND ->
         "The requested object was not found"
+    ControlErrorCode.MARKER_ALREADY_EXISTS -> "A saved marker already exists for this solar system"
     ControlErrorCode.ROUTE_NOT_FOUND -> "No route was found"
     ControlErrorCode.MISSION_LIMIT_EXCEEDED -> "A Mission resource limit was reached"
     ControlErrorCode.RATE_LIMITED -> "The request rate limit was exceeded"
@@ -475,6 +511,45 @@ private fun systemInfoJson(value: SystemInfoDto) = buildJsonObject {
     put("y", value.y)
     put("z", value.z)
     put("stargateCount", value.stargateCount)
+}
+
+private fun systemMarkersJson(value: SystemMarkersDto) = buildJsonObject {
+    put("systemId", value.systemId)
+    put("savedMarker", value.savedMarker?.let(::savedMarkerJson) ?: JsonNull)
+    put("missionMarkers", buildJsonArray {
+        value.missionMarkers.forEach { marker ->
+            add(buildJsonObject {
+                put("missionId", marker.missionId.value)
+                put("markerId", marker.markerId.value)
+                put("systemId", marker.systemId)
+                put("role", marker.role.name)
+                put("label", marker.label?.let(::JsonPrimitive) ?: JsonNull)
+                put("notes", marker.notes?.let(::JsonPrimitive) ?: JsonNull)
+                put("color", marker.color.name)
+            })
+        }
+    })
+}
+
+private fun savedMarkerJson(value: dev.evestaticmapplanner.control.SavedMarkerSummaryDto) = buildJsonObject {
+    put("systemId", value.systemId)
+    put("name", value.name?.let(::JsonPrimitive) ?: JsonNull)
+    put("color", value.color.name)
+    put("notes", value.notes?.let(::JsonPrimitive) ?: JsonNull)
+    put("children", buildJsonArray {
+        value.children.forEach { child ->
+            add(buildJsonObject {
+                put("id", child.id)
+                put("type", child.type)
+                put("orderIndex", child.orderIndex)
+            })
+        }
+    })
+    put("createdBy", value.createdBy.name)
+}
+
+private fun createSavedMarkerReceiptJson(value: CreateSavedMarkerReceipt) = buildJsonObject {
+    put("marker", savedMarkerJson(value.marker))
 }
 
 private fun normalRouteJson(value: NormalRouteDto) = buildJsonObject {

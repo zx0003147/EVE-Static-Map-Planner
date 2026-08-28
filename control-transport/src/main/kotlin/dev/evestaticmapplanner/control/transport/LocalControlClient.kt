@@ -33,7 +33,10 @@ enum class LocalControlClientErrorCode {
     OBJECT_NOT_FOUND,
     AMBIGUOUS_SYSTEM,
     INVALID_ARGUMENT,
+    INVALID_MARKER_DATA,
     CAPABILITY_DENIED,
+    MARKER_ALREADY_EXISTS,
+    SYSTEM_NOT_FOUND,
     MISSION_NOT_FOUND,
     MISSION_LIMIT_EXCEEDED,
     ROUTE_NOT_FOUND,
@@ -92,6 +95,14 @@ class LocalControlClient internal constructor(
         }
     }
 
+    suspend fun getSystemMarkers(systemId: Int): LocalControlClientResult =
+        query(LocalControlOperation.SYSTEM_MARKERS) { requestId ->
+            buildJsonObject {
+                put("requestId", requestId)
+                put("systemId", systemId)
+            }
+        }
+
     suspend fun calculateNormalRoute(
         startSystemId: Int,
         destinationSystemId: Int,
@@ -131,6 +142,20 @@ class LocalControlClient internal constructor(
 
     suspend fun beginMission(title: String): LocalControlClientResult = mutation(LocalControlOperation.BEGIN_MISSION) { ids ->
         ids.body { put("title", title) }
+    }
+
+    suspend fun createSavedMarker(
+        systemId: Int,
+        name: String?,
+        notes: String?,
+        color: String,
+    ): LocalControlClientResult = mutation(LocalControlOperation.CREATE_SAVED_MARKER) { ids ->
+        ids.body {
+            put("systemId", systemId)
+            if (name != null) put("name", name)
+            if (notes != null) put("notes", notes)
+            put("color", color)
+        }
     }
 
     suspend fun focusSystem(systemId: Int): LocalControlClientResult = mutation(LocalControlOperation.FOCUS_SYSTEM) { ids ->
@@ -489,7 +514,10 @@ private fun failureForWireCode(code: String): LocalControlClientResult = when (c
     "OBJECT_NOT_FOUND" -> failure(LocalControlClientErrorCode.OBJECT_NOT_FOUND)
     "AMBIGUOUS_SYSTEM" -> failure(LocalControlClientErrorCode.AMBIGUOUS_SYSTEM)
     "INVALID_ARGUMENT" -> failure(LocalControlClientErrorCode.INVALID_ARGUMENT)
+    "INVALID_MARKER_DATA" -> failure(LocalControlClientErrorCode.INVALID_MARKER_DATA)
     "CAPABILITY_DENIED" -> failure(LocalControlClientErrorCode.CAPABILITY_DENIED)
+    "MARKER_ALREADY_EXISTS" -> failure(LocalControlClientErrorCode.MARKER_ALREADY_EXISTS)
+    "SYSTEM_NOT_FOUND" -> failure(LocalControlClientErrorCode.SYSTEM_NOT_FOUND)
     "MISSION_NOT_FOUND" -> failure(LocalControlClientErrorCode.MISSION_NOT_FOUND)
     "MISSION_LIMIT_EXCEEDED" -> failure(LocalControlClientErrorCode.MISSION_LIMIT_EXCEEDED)
     "ROUTE_NOT_FOUND" -> failure(LocalControlClientErrorCode.ROUTE_NOT_FOUND)
@@ -518,7 +546,10 @@ private fun safeMessage(code: LocalControlClientErrorCode): String = when (code)
     LocalControlClientErrorCode.MISSION_NOT_FOUND -> "The requested object was not found."
     LocalControlClientErrorCode.AMBIGUOUS_SYSTEM -> "The solar system reference is ambiguous."
     LocalControlClientErrorCode.INVALID_ARGUMENT -> "The request is invalid."
+    LocalControlClientErrorCode.INVALID_MARKER_DATA -> "The saved marker data is invalid."
     LocalControlClientErrorCode.CAPABILITY_DENIED -> "The operation is not allowed."
+    LocalControlClientErrorCode.MARKER_ALREADY_EXISTS -> "A saved marker already exists for this solar system."
+    LocalControlClientErrorCode.SYSTEM_NOT_FOUND -> "The solar system was not found."
     LocalControlClientErrorCode.MISSION_LIMIT_EXCEEDED -> "A Mission resource limit was reached."
     LocalControlClientErrorCode.ROUTE_NOT_FOUND -> "No route was found."
     LocalControlClientErrorCode.APP_NOT_READY -> "The map is not ready."

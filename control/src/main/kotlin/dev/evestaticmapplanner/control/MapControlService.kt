@@ -5,12 +5,14 @@ import dev.evestaticmapplanner.control.mission.Mission
 interface MapControlService {
     suspend fun searchSystems(request: SearchSystemsRequest): ControlResult<List<SystemSummaryDto>>
     suspend fun getSystemInfo(request: GetSystemInfoRequest): ControlResult<SystemInfoDto>
+    suspend fun getSystemMarkers(request: GetSystemMarkersRequest): ControlResult<SystemMarkersDto>
     suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest): ControlResult<NormalRouteDto>
     suspend fun calculateCapitalRoute(request: CalculateCapitalRouteRequest): ControlResult<CapitalRouteDto>
     suspend fun getActiveMissions(request: GetActiveMissionsRequest): ControlResult<List<MissionSummaryDto>>
     suspend fun getMission(request: GetMissionRequest): ControlResult<Mission>
 
     suspend fun beginMission(command: BeginMissionCommand): ControlResult<MissionSummaryDto>
+    suspend fun createSavedMarker(command: CreateSavedMarkerCommand): ControlResult<CreateSavedMarkerReceipt>
     suspend fun focusSystem(command: FocusSystemCommand): ControlResult<SystemSummaryDto>
     suspend fun showNormalRoute(command: ShowNormalRouteCommand): ControlResult<MissionRouteReceipt>
     suspend fun showCapitalRoute(command: ShowCapitalRouteCommand): ControlResult<MissionRouteReceipt>

@@ -8,6 +8,12 @@ import kotlin.test.assertTrue
 
 class LocalControlEndpointContractTest {
     @Test
+    fun `Control API v2 keeps wire protocol v1`() {
+        assertEquals(2, LocalControlProtocol.CONTROL_API_VERSION)
+        assertEquals(1, LocalControlProtocol.PROTOCOL_VERSION)
+    }
+
+    @Test
     fun `transport methods exactly match MapControlService allowlist`() {
         val serviceMethods = MapControlService::class.java.declaredMethods.map { it.name }.toSet()
         val mappedMethods = LocalControlOperation.entries.mapNotNull(LocalControlOperation::serviceMethod).toSet()
@@ -23,12 +29,19 @@ class LocalControlEndpointContractTest {
         val combined = LocalControlOperation.entries.joinToString(" ") { "${it.path} ${it.serviceMethod}" }.lowercase()
         listOf(
             "invoke", "execute", "generic", "method", "class", "sql", "file", "shell", "process",
-            "saved", "ansiblexmutation", "preference", "database", "mcp",
+            "ansiblexmutation", "preference", "database", "mcp",
         ).forEach { forbidden -> assertFalse(combined.contains(forbidden), forbidden) }
 
         assertTrue(LocalControlOperation.allowedPaths.all { it.startsWith("/v1/") })
         assertEquals(LocalControlOperation.entries.size, LocalControlOperation.allowedPaths.size)
-        assertEquals(6, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
-        assertEquals(14, LocalControlOperation.entries.count(LocalControlOperation::mutation))
+        assertEquals(7, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
+        assertEquals(15, LocalControlOperation.entries.count(LocalControlOperation::mutation))
+        val savedMarkerOperations = LocalControlOperation.entries.filter {
+            it.path.contains("saved-marker") || it.serviceMethod == "getSystemMarkers"
+        }
+        assertEquals(
+            setOf(LocalControlOperation.SYSTEM_MARKERS, LocalControlOperation.CREATE_SAVED_MARKER),
+            savedMarkerOperations.toSet(),
+        )
     }
 }

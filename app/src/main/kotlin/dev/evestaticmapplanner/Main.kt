@@ -25,6 +25,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
+import dev.evestaticmapplanner.control.AiSavedMarkerControlAdapter
 import dev.evestaticmapplanner.control.AiMapControlLifecycleController
 import dev.evestaticmapplanner.control.AppAiControlSession
 import dev.evestaticmapplanner.control.AppLocalControlAuditSink
@@ -242,7 +243,6 @@ private fun FrameWindowScope.ReadyApplication(
             scope = markerServiceScope,
         )
     }
-    @Suppress("UNUSED_VARIABLE")
     val aiSavedMarkerApplicationService = remember(savedMarkerService, mapViewModel, universeRepository) {
         AiSavedMarkerApplicationService(
             savedMarkerService = savedMarkerService,
@@ -292,6 +292,7 @@ private fun FrameWindowScope.ReadyApplication(
                     jumpPlanningPort = planningPorts,
                     viewportControlPort = MapViewportControlAdapter(mapViewModel),
                     missionRenderStatePort = missionMapStateStore,
+                    savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
                     scope = sessionScope,
                 )
                 AppAiControlSession(

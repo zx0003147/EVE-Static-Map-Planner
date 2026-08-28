@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.control.mission.MissionMarkerId
 import dev.evestaticmapplanner.control.mission.MissionMarkerRole
 import dev.evestaticmapplanner.control.mission.MissionRouteId
 import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 
 sealed interface ControlResult<out T> {
     data class Success<T>(
@@ -30,7 +31,10 @@ enum class ControlErrorCode {
     OBJECT_NOT_FOUND,
     AMBIGUOUS_SYSTEM,
     INVALID_ARGUMENT,
+    INVALID_MARKER_DATA,
     CAPABILITY_DENIED,
+    MARKER_ALREADY_EXISTS,
+    SYSTEM_NOT_FOUND,
     MISSION_NOT_FOUND,
     MISSION_LIMIT_EXCEEDED,
     ROUTE_NOT_FOUND,
@@ -122,6 +126,41 @@ data class MissionMarkerReceipt(
     val role: MissionMarkerRole,
 )
 
+data class SavedMarkerChildSummaryDto(
+    val id: String,
+    val type: String,
+    val orderIndex: Int,
+)
+
+data class SavedMarkerSummaryDto(
+    val systemId: Int,
+    val name: String?,
+    val color: MarkerColor,
+    val notes: String?,
+    val children: List<SavedMarkerChildSummaryDto>,
+    val createdBy: SavedMarkerCreatedBy,
+)
+
+data class MissionMarkerSummaryDto(
+    val missionId: MissionId,
+    val markerId: MissionMarkerId,
+    val systemId: Int,
+    val role: MissionMarkerRole,
+    val label: String?,
+    val notes: String?,
+    val color: MarkerColor,
+)
+
+data class SystemMarkersDto(
+    val systemId: Int,
+    val savedMarker: SavedMarkerSummaryDto?,
+    val missionMarkers: List<MissionMarkerSummaryDto>,
+)
+
+data class CreateSavedMarkerReceipt(
+    val marker: SavedMarkerSummaryDto,
+)
+
 data class MissionMutationReceipt(
     val missionId: MissionId,
 )
@@ -142,6 +181,7 @@ data class SearchSystemsRequest(
 ) : QueryRequest
 
 data class GetSystemInfoRequest(override val requestId: String, val systemId: Int) : QueryRequest
+data class GetSystemMarkersRequest(override val requestId: String, val systemId: Int) : QueryRequest
 data class CalculateNormalRouteRequest(
     override val requestId: String,
     val startSystemId: Int,
@@ -161,6 +201,14 @@ data class BeginMissionCommand(
     override val requestId: String,
     override val idempotencyKey: String,
     val title: String,
+) : MutationCommand
+data class CreateSavedMarkerCommand(
+    override val requestId: String,
+    override val idempotencyKey: String,
+    val systemId: Int,
+    val name: String? = null,
+    val notes: String? = null,
+    val color: MarkerColor,
 ) : MutationCommand
 data class FocusSystemCommand(
     override val requestId: String,

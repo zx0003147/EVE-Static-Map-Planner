@@ -8,6 +8,7 @@ class AppMapControlCoordinator(
     jumpPlanningPort: JumpPlanningPort,
     viewportControlPort: ViewportControlPort,
     missionRenderStatePort: MissionRenderStatePort,
+    savedMarkerControlPort: SavedMarkerControlPort,
     scope: CoroutineScope,
     private val service: DefaultMapControlService = DefaultMapControlService(
         systemReadPort = systemReadPort,
@@ -15,6 +16,7 @@ class AppMapControlCoordinator(
         jumpPlanningPort = jumpPlanningPort,
         viewportControlPort = viewportControlPort,
         missionRenderStatePort = missionRenderStatePort,
+        savedMarkerControlPort = savedMarkerControlPort,
         scope = scope,
     ),
 ) : MapControlService by service, AutoCloseable {

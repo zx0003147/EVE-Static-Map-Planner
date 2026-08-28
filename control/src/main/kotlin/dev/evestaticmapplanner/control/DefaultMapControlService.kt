@@ -21,6 +21,7 @@ class DefaultMapControlService(
     private val missionRenderStatePort: MissionRenderStatePort,
     scope: CoroutineScope,
     private val registry: MissionRegistry = MissionRegistry(),
+    private val savedMarkerControlPort: SavedMarkerControlPort = DeniedSavedMarkerControlPort,
 ) : MapControlService, AutoCloseable {
     private val dispatcher = MapControlCommandDispatcher(scope)
     private val idempotency = IdempotencyCache()
@@ -40,6 +41,28 @@ class DefaultMapControlService(
             validateSystemId(request.systemId)
             systemReadPort.getSystemInfo(request.systemId)
                 ?: throw ControlFailure(ControlErrorCode.NOT_FOUND, "Solar system was not found")
+        }
+
+    override suspend fun getSystemMarkers(request: GetSystemMarkersRequest): ControlResult<SystemMarkersDto> =
+        query(request.requestId) {
+            validateRequestId(request.requestId)
+            validateSystemId(request.systemId)
+            val savedMarker = savedMarkerControlPort.getSystemMarker(request.systemId)
+            val missionMarkers = registry.active()
+                .flatMap(Mission::markers)
+                .filter { it.systemId == request.systemId }
+                .map { marker ->
+                    MissionMarkerSummaryDto(
+                        missionId = marker.missionId,
+                        markerId = marker.markerId,
+                        systemId = marker.systemId,
+                        role = marker.role,
+                        label = marker.label,
+                        notes = marker.notes,
+                        color = marker.color,
+                    )
+                }
+            SystemMarkersDto(request.systemId, savedMarker, missionMarkers)
         }
 
     override suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest): ControlResult<NormalRouteDto> =
@@ -91,6 +114,27 @@ class DefaultMapControlService(
         val mission = registry.begin(command.title.trim())
         publishMissions()
         success(command.requestId, mission.toSummary(), mission.revision)
+    }
+
+    override suspend fun createSavedMarker(
+        command: CreateSavedMarkerCommand,
+    ): ControlResult<CreateSavedMarkerReceipt> = mutation(
+        "createSavedMarker",
+        command,
+        listOf(command.systemId, command.name, command.notes, command.color),
+    ) {
+        validateSystemId(command.systemId)
+        validateOptionalText("name", command.name, ControlLimits.MAX_LABEL_CODE_POINTS)
+        validateOptionalText("notes", command.notes, ControlLimits.MAX_NOTES_CODE_POINTS)
+        val marker = savedMarkerControlPort.createSavedMarker(
+            SavedMarkerCreatePortRequest(
+                systemId = command.systemId,
+                name = command.name,
+                notes = command.notes,
+                color = command.color,
+            ),
+        )
+        success(command.requestId, CreateSavedMarkerReceipt(marker))
     }
 
     override suspend fun focusSystem(command: FocusSystemCommand): ControlResult<SystemSummaryDto> = mutation(

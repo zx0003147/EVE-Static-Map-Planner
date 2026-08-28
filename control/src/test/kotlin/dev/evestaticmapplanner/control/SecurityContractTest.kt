@@ -13,7 +13,8 @@ class SecurityContractTest {
         assertEquals(
             setOf(
                 "searchSystems", "getSystemInfo", "calculateNormalRoute", "calculateCapitalRoute",
-                "getActiveMissions", "getMission", "beginMission", "focusSystem", "showNormalRoute",
+                "getSystemMarkers", "getActiveMissions", "getMission", "beginMission", "createSavedMarker",
+                "focusSystem", "showNormalRoute",
                 "showCapitalRoute", "removeMissionRoute", "clearMissionRoutes", "showJumpRange",
                 "removeJumpRange", "clearMissionJumpRanges", "addMissionMarker", "removeMissionMarker",
                 "clearMissionMarkers", "fitMission", "clearMission",
@@ -39,7 +40,14 @@ class SecurityContractTest {
             ShowJumpRangeCommand::class,
             AddMissionMarkerCommand::class,
         ).mapNotNull { it.simpleName }
-        assertTrue(commandNames.none { it.contains("Saved", true) || it.contains("AnsiblexMutation", true) })
+        assertTrue(commandNames.none { it.contains("AnsiblexMutation", true) })
+        val savedMarkerOperations = MapControlService::class.java.declaredMethods
+            .map { it.name }
+            .filter { it.contains("SavedMarker", true) || it == "getSystemMarkers" }
+        assertEquals(setOf("getSystemMarkers", "createSavedMarker"), savedMarkerOperations.toSet())
+        assertFalse(savedMarkerOperations.any { operation ->
+            listOf("update", "delete", "remove", "clear", "replace").any { it in operation.lowercase() }
+        })
         assertEquals(6, MissionMarkerRole.entries.size)
     }
 }

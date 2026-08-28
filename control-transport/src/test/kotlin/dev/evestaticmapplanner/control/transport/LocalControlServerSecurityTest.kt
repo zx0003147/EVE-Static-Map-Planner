@@ -193,7 +193,7 @@ class LocalControlServerSecurityTest {
             assertEquals(200, handshake.status)
             assertTrue(handshake.body.contains("\"protocolVersion\":1"))
             assertTrue(handshake.body.contains("\"appVersion\":\"0.1.2\""))
-            assertTrue(handshake.body.contains("\"controlApiVersion\":1"))
+            assertTrue(handshake.body.contains("\"controlApiVersion\":2"))
             assertNotNull(server.sessionMetadata?.instanceId)
             listOf("sessionSecret", "repository", "static.db", "user.db", "className", "stackTrace").forEach {
                 assertFalse(handshake.body.contains(it, ignoreCase = true), it)

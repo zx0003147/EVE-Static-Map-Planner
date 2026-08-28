@@ -6,7 +6,7 @@ import java.time.Instant
 
 object LocalControlProtocol {
     const val PROTOCOL_VERSION = 1
-    const val CONTROL_API_VERSION = 1
+    const val CONTROL_API_VERSION = 2
     const val REQUEST_BODY_LIMIT_BYTES = 64 * 1024
     const val RESPONSE_BODY_LIMIT_BYTES = 1024 * 1024
     const val HTTP_WORKER_COUNT = 4
@@ -53,11 +53,13 @@ enum class LocalControlOperation(
     HANDSHAKE("/v1/handshake", null, false, TimeoutKind.QUERY),
     SEARCH_SYSTEM("/v1/query/search-system", "searchSystems", false, TimeoutKind.QUERY),
     SYSTEM_INFO("/v1/query/system-info", "getSystemInfo", false, TimeoutKind.QUERY),
+    SYSTEM_MARKERS("/v1/query/system-markers", "getSystemMarkers", false, TimeoutKind.QUERY),
     NORMAL_ROUTE("/v1/query/normal-route", "calculateNormalRoute", false, TimeoutKind.ROUTE_OR_JUMP),
     CAPITAL_ROUTE("/v1/query/capital-route", "calculateCapitalRoute", false, TimeoutKind.CAPITAL_ROUTE),
     ACTIVE_MISSIONS("/v1/query/active-missions", "getActiveMissions", false, TimeoutKind.QUERY),
     MISSION("/v1/query/mission", "getMission", false, TimeoutKind.QUERY),
     BEGIN_MISSION("/v1/command/begin-mission", "beginMission", true, TimeoutKind.QUERY),
+    CREATE_SAVED_MARKER("/v1/command/create-saved-marker", "createSavedMarker", true, TimeoutKind.QUERY),
     FOCUS_SYSTEM("/v1/command/focus-system", "focusSystem", true, TimeoutKind.QUERY),
     SHOW_NORMAL_ROUTE("/v1/command/show-normal-route", "showNormalRoute", true, TimeoutKind.ROUTE_OR_JUMP),
     SHOW_CAPITAL_ROUTE("/v1/command/show-capital-route", "showCapitalRoute", true, TimeoutKind.CAPITAL_ROUTE),
