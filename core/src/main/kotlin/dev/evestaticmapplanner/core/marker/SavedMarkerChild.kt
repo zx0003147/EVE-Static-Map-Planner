@@ -14,6 +14,39 @@ value class SavedMarkerChildType private constructor(val key: String) {
         fun of(key: String): SavedMarkerChildType = SavedMarkerChildType(
             key.trim().lowercase(Locale.ROOT),
         )
+
+        val STAGING = of("staging")
+        val RALLY = of("rally")
+        val DANGER = of("danger")
+        val LOGISTICS = of("logistics")
+        val HOME = of("home")
+        val BACKUP = of("backup")
+        val INDUSTRIAL = of("industrial")
+        val STRATEGIC = of("strategic")
+        val KEEPSTAR = of("keepstar")
+
+        val supportedTypes: List<SavedMarkerChildType> = listOf(
+            STAGING,
+            RALLY,
+            DANGER,
+            LOGISTICS,
+            HOME,
+            BACKUP,
+            INDUSTRIAL,
+            STRATEGIC,
+            KEEPSTAR,
+        )
+
+        private val supportedKeys = supportedTypes.mapTo(linkedSetOf()) { it.key }
+
+        fun normalizeSupported(types: Iterable<SavedMarkerChildType>): List<SavedMarkerChildType> {
+            val normalized = linkedMapOf<String, SavedMarkerChildType>()
+            types.forEach { type ->
+                require(type.key in supportedKeys) { "Unsupported saved marker tag: ${type.key}" }
+                normalized.putIfAbsent(type.key, type)
+            }
+            return normalized.values.toList()
+        }
     }
 }
 

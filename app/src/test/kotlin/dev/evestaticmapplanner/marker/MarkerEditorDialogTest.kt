@@ -17,6 +17,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import java.time.Instant
 import kotlin.test.Test
@@ -39,7 +40,7 @@ class MarkerEditorDialogTest {
                     request = MarkerEditorRequest(MarkerEditorMode.EDIT_SAVED, 1, "Jita", marker),
                     isBusy = false,
                     error = null,
-                    onSave = { _, _ -> },
+                    onSave = { _, _, _ -> },
                     onDismiss = {},
                 )
             }
@@ -72,7 +73,7 @@ class MarkerEditorDialogTest {
                     isBusy = false,
                     error = null,
                     children = children,
-                    onSave = { _, _ -> },
+                    onSave = { _, _, _ -> },
                     onDismiss = {},
                 )
             }
@@ -98,7 +99,7 @@ class MarkerEditorDialogTest {
                     error = null,
                     systemSearch = MarkerEditorSystemSearch(systemQuery, emptyList(), null),
                     onSystemQueryChange = { systemQuery = it },
-                    onSave = { _, _ -> },
+                    onSave = { _, _, _ -> },
                     onDismiss = { dismissCount++ },
                 )
             }
@@ -119,5 +120,28 @@ class MarkerEditorDialogTest {
         onNodeWithText("Cancel").performClick()
 
         assertEquals(1, dismissCount)
+    }
+
+    @Test
+    fun `create saved marker reuses tag picker and submits initial tags with the draft`() = runComposeUiTest {
+        var submittedTags = emptyList<SavedMarkerChildType>()
+        setContent {
+            MaterialTheme {
+                MarkerEditorDialog(
+                    request = MarkerEditorRequest(MarkerEditorMode.CREATE_SAVED, 1, "Jita"),
+                    isBusy = false,
+                    error = null,
+                    onSave = { _, _, tags -> submittedTags = tags },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        onNodeWithText("+ Add Tag").performScrollTo().performClick()
+        onNodeWithText("Staging").performClick()
+        onNodeWithText("Staging").assertIsDisplayed()
+        onNodeWithText("Save").performClick()
+
+        assertEquals(listOf(SavedMarkerChildType.STAGING), submittedTags)
     }
 }

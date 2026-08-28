@@ -116,7 +116,11 @@ class MarkerViewModel(
         true
     }
 
-    fun createSaved(systemId: Int, draft: MarkerDraft): Boolean {
+    fun createSaved(
+        systemId: Int,
+        draft: MarkerDraft,
+        initialTags: List<SavedMarkerChildType> = emptyList(),
+    ): Boolean {
         synchronized(stateLock) {
             val current = currentState()
             creationError(current, systemId)?.let {
@@ -126,7 +130,7 @@ class MarkerViewModel(
             reserve(systemId)
         }
         scope.launch {
-            runCatching { savedMarkerService.create(systemId, draft) }
+            runCatching { savedMarkerService.create(systemId, draft, initialTags) }
                 .onSuccess { completeSavedMutation(systemId) }
                 .onFailure { error -> failSavedMutation(systemId, error, "Unable to create saved marker") }
         }

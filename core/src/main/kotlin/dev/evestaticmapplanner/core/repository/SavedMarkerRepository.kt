@@ -6,6 +6,11 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 
+data class SavedMarkerCreation(
+    val marker: Marker,
+    val children: List<SavedMarkerChild>,
+)
+
 interface SavedMarkerRepository {
     fun getAll(): List<Marker>
 
@@ -14,6 +19,13 @@ interface SavedMarkerRepository {
         draft: MarkerDraft,
         createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
     ): Marker
+
+    fun createWithChildren(
+        systemId: Int,
+        draft: MarkerDraft,
+        initialChildTypes: List<SavedMarkerChildType>,
+        createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
+    ): SavedMarkerCreation
 
     fun update(systemId: Int, draft: MarkerDraft): Marker
 

@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.mcp
 import dev.evestaticmapplanner.control.transport.LocalControlClientResult
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -11,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class McpToolCatalogTest {
@@ -101,12 +103,19 @@ class McpToolCatalogTest {
         assertTrue(query.description.orEmpty().contains("requires the user to enable"))
 
         val create = definitions.getValue("create_saved_marker").tool
-        assertEquals(setOf("systemId", "color", "name", "notes"), create.inputSchema.properties.orEmpty().keys)
+        assertEquals(setOf("systemId", "color", "name", "notes", "tags"), create.inputSchema.properties.orEmpty().keys)
         assertEquals(listOf("systemId", "color"), create.inputSchema.required)
         assertTrue(create.description.orEmpty().contains("create-only"))
-        listOf("overwrites", "updates", "deletes", "tags", "children").forEach {
+        listOf("overwrites", "updates", "deletes", "initial tags", "cannot add or remove tags").forEach {
             assertTrue(create.description.orEmpty().contains(it), it)
         }
+        val tags = assertIs<JsonObject>(create.inputSchema.properties.orEmpty().getValue("tags"))
+        assertEquals("array", assertIs<JsonPrimitive>(tags.getValue("type")).content)
+        val items = assertIs<JsonObject>(tags.getValue("items"))
+        assertEquals(
+            listOf("STAGING", "RALLY", "DANGER", "LOGISTICS", "HOME", "BACKUP", "INDUSTRIAL", "STRATEGIC", "KEEPSTAR"),
+            assertIs<JsonArray>(items.getValue("enum")).map { assertIs<JsonPrimitive>(it).content },
+        )
 
         val invoke = definitions.getValue("create_saved_marker").invoke
         listOf(
@@ -117,7 +126,20 @@ class McpToolCatalogTest {
             buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("name", JsonNull) },
             buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("notes", "x".repeat(1025)) },
             buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("children", JsonNull) },
+            buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("tags", JsonNull) },
+            buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("tags", "DANGER") },
+            buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("tags", JsonArray(listOf(JsonPrimitive("UNKNOWN")))) },
         ).forEach { arguments -> assertFails { invoke(arguments) } }
+
+        val client = RecordingClient()
+        McpToolCatalog.definitions(client).associateBy { it.tool.name }.getValue("create_saved_marker").invoke(
+            buildJsonObject {
+                put("systemId", 30000142)
+                put("color", "BLUE")
+                put("tags", JsonArray(listOf(JsonPrimitive("STAGING"), JsonPrimitive("STRATEGIC"))))
+            },
+        )
+        assertEquals(listOf("STAGING", "STRATEGIC"), client.createdTags)
     }
 }
 
@@ -165,6 +187,7 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
 
 private class RecordingClient : McpMapClient {
     var called: String? = null
+    var createdTags: List<String>? = null
 
     private fun result(name: String): LocalControlClientResult {
         called = name
@@ -181,8 +204,16 @@ private class RecordingClient : McpMapClient {
     override suspend fun getActiveMissions() = result("get_active_missions")
     override suspend fun getMission(missionId: String) = result("get_mission")
     override suspend fun beginMission(title: String) = result("begin_mission")
-    override suspend fun createSavedMarker(systemId: Int, color: String, name: String?, notes: String?) =
-        result("create_saved_marker")
+    override suspend fun createSavedMarker(
+        systemId: Int,
+        color: String,
+        name: String?,
+        notes: String?,
+        tags: List<String>,
+    ): LocalControlClientResult {
+        createdTags = tags
+        return result("create_saved_marker")
+    }
     override suspend fun focusSystem(systemId: Int) = result("focus_system")
     override suspend fun showNormalRoute(missionId: String, startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         result("show_normal_route")

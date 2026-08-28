@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.mcp
 import dev.evestaticmapplanner.control.transport.LocalControlClientError
 import dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode
 import dev.evestaticmapplanner.control.transport.LocalControlClientResult
+import dev.evestaticmapplanner.control.transport.LocalControlProtocol
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
@@ -258,21 +259,23 @@ internal object McpToolCatalog {
         commandTool(
             "create_saved_marker",
             "Create one persistent Saved Marker after the user has explicitly requested permanent storage. " +
-                "Requires Saved Marker access in Preferences. This create-only tool never overwrites, updates, deletes, " +
-                "or clears an existing marker and cannot create tags or children.",
+                "Optional tags set supported initial tags in the same atomic create. Requires Saved Marker access in " +
+                "Preferences. This create-only tool never overwrites, updates, deletes, or clears an existing marker, " +
+                "and cannot add or remove tags on an existing marker.",
             schema(
                 listOf("systemId", "color"),
                 "systemId" to positiveIntegerProperty(),
                 "color" to enumProperty(MARKER_COLORS),
                 "name" to stringProperty(120),
                 "notes" to stringProperty(1024),
+                "tags" to enumArrayProperty(SAVED_MARKER_TAGS),
             ),
             objectOutput("marker"),
             false,
         ) { arguments ->
             val input = StrictArguments(
                 arguments,
-                setOf("systemId", "color", "name", "notes"),
+                setOf("systemId", "color", "name", "notes", "tags"),
                 setOf("systemId", "color"),
             )
             client.createSavedMarker(
@@ -280,6 +283,7 @@ internal object McpToolCatalog {
                 color = input.enum("color", MARKER_COLORS),
                 name = input.optionalString("name", 120),
                 notes = input.optionalString("notes", 1024),
+                tags = input.optionalEnumArray("tags", SAVED_MARKER_TAGS),
             )
         },
     ).also { check(it.map { definition -> definition.tool.name } == names) }
@@ -367,6 +371,12 @@ private class StrictArguments(
         ?.takeUnless(JsonPrimitive::isString)?.booleanOrNull ?: invalid()
     fun enum(name: String, allowed: Set<String>): String = primitiveString(name).takeIf { it in allowed } ?: invalid()
     fun optionalEnum(name: String, allowed: Set<String>): String? = if (name in values) enum(name, allowed) else null
+    fun optionalEnumArray(name: String, allowed: Set<String>): List<String> {
+        if (name !in values) return emptyList()
+        return (values[name] as? JsonArray)?.map { item ->
+            (item as? JsonPrimitive)?.takeIf(JsonPrimitive::isString)?.content?.takeIf { it in allowed } ?: invalid()
+        } ?: invalid()
+    }
 
     private fun primitiveString(name: String): String = (values[name] as? JsonPrimitive)
         ?.takeIf(JsonPrimitive::isString)?.content ?: invalid()
@@ -468,6 +478,10 @@ private fun positiveIntegerProperty() = buildJsonObject { put("type", "integer")
 private fun rangeProperty() = buildJsonObject { put("type", "number"); put("exclusiveMinimum", 0); put("maximum", 20) }
 private fun booleanProperty() = buildJsonObject { put("type", "boolean") }
 private fun arrayProperty() = buildJsonObject { put("type", "array") }
+private fun enumArrayProperty(values: Set<String>) = buildJsonObject {
+    put("type", "array")
+    put("items", enumProperty(values))
+}
 private fun enumProperty(values: Set<String>) = buildJsonObject {
     put("type", "string")
     put("enum", buildJsonArray { values.forEach { add(JsonPrimitive(it)) } })
@@ -476,3 +490,4 @@ private fun invalid(): Nothing = throw IllegalArgumentException("Invalid MCP too
 
 private val MARKER_ROLES = linkedSetOf("RALLY", "DESTINATION", "DANGER", "BACKUP", "WAYPOINT", "INFO")
 private val MARKER_COLORS = linkedSetOf("RED", "ORANGE", "YELLOW", "GREEN", "BLUE", "PURPLE", "WHITE")
+private val SAVED_MARKER_TAGS = LocalControlProtocol.SAVED_MARKER_TAGS.toCollection(linkedSetOf())

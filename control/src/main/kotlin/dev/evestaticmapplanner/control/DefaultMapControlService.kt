@@ -121,7 +121,13 @@ class DefaultMapControlService(
     ): ControlResult<CreateSavedMarkerReceipt> = mutation(
         "createSavedMarker",
         command,
-        listOf(command.systemId, command.name, command.notes, command.color),
+        listOf(
+            command.systemId,
+            command.name,
+            command.notes,
+            command.color,
+            command.tags.distinctBy { it.key }.map { it.key },
+        ),
     ) {
         validateSystemId(command.systemId)
         validateOptionalText("name", command.name, ControlLimits.MAX_LABEL_CODE_POINTS)
@@ -132,6 +138,7 @@ class DefaultMapControlService(
                 name = command.name,
                 notes = command.notes,
                 color = command.color,
+                tags = command.tags.distinctBy { it.key },
             ),
         )
         success(command.requestId, CreateSavedMarkerReceipt(marker))

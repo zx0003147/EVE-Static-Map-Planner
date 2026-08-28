@@ -147,6 +147,13 @@ internal object McpTextFallbackFormatter {
             appendLine("Saved Marker created successfully.")
             appendLine()
             appendMarkerFields(marker)
+            val children = marker.array("children")
+            if (children.isNotEmpty()) {
+                appendField(
+                    "Tags",
+                    children.mapNotNull { (it as? JsonObject)?.text("type") }.joinToString(", "),
+                )
+            }
             appendField("Created by", marker.text("createdBy"))
         }.trimEnd()
     }

@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.control
 
 import dev.evestaticmapplanner.control.mission.MissionMarkerRole
 import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
@@ -92,10 +93,18 @@ class SystemMarkerControlServiceTest {
         val port = FakeSavedMarkerControlPort()
         service(port).use { service ->
             val command = CreateSavedMarkerCommand(
-                "create", "same", 1, "  Home  ", "Notes\nremain", MarkerColor.BLUE,
+                "create",
+                "same",
+                1,
+                "  Home  ",
+                "Notes\nremain",
+                MarkerColor.BLUE,
+                listOf(SavedMarkerChildType.STAGING, SavedMarkerChildType.STRATEGIC),
             )
             val created = service.createSavedMarker(command).success()
             assertEquals(SavedMarkerCreatedBy.AI, created.value.marker.createdBy)
+            assertEquals(listOf("staging", "strategic"), created.value.marker.children.map { it.type })
+            assertEquals(command.tags, port.lastRequest?.tags)
             assertEquals(1, port.createCalls)
 
             assertEquals(created, service.createSavedMarker(command.copy(requestId = "retry")).success())
@@ -140,6 +149,7 @@ private class FakeSavedMarkerControlPort(
 ) : SavedMarkerControlPort {
     var failure: ControlErrorCode? = null
     var createCalls = 0
+    var lastRequest: SavedMarkerCreatePortRequest? = null
 
     override suspend fun getSystemMarker(systemId: Int): SavedMarkerSummaryDto? {
         failure?.let { throw ControlPortFailure(it, it.name) }
@@ -148,6 +158,7 @@ private class FakeSavedMarkerControlPort(
 
     override suspend fun createSavedMarker(request: SavedMarkerCreatePortRequest): SavedMarkerSummaryDto {
         createCalls++
+        lastRequest = request
         failure?.let { throw ControlPortFailure(it, it.name) }
         if (marker?.systemId == request.systemId) {
             throw ControlPortFailure(ControlErrorCode.MARKER_ALREADY_EXISTS, "duplicate")
@@ -158,6 +169,9 @@ private class FakeSavedMarkerControlPort(
             notes = request.notes,
             color = request.color,
             createdBy = SavedMarkerCreatedBy.AI,
+            children = request.tags.mapIndexed { index, type ->
+                SavedMarkerChildSummaryDto("child-$index", type.key, index)
+            },
         ).also { marker = it }
     }
 }
@@ -195,12 +209,13 @@ private fun savedMarker(
     notes: String? = "Persistent notes",
     color: MarkerColor = MarkerColor.YELLOW,
     createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.AI,
+    children: List<SavedMarkerChildSummaryDto> = listOf(SavedMarkerChildSummaryDto("child", "staging", 0)),
 ) = SavedMarkerSummaryDto(
     systemId,
     name,
     color,
     notes,
-    listOf(SavedMarkerChildSummaryDto("child", "staging", 0)),
+    children,
     createdBy,
 )
 

@@ -247,13 +247,13 @@ fun StaticMapScreen(
             children = request.systemId?.let { markerState.childrenByParentSystemId[it] }.orEmpty(),
             onAddChild = { type -> request.systemId?.let { markerViewModel.addChild(it, type) } },
             onRemoveChild = { childId -> request.systemId?.let { markerViewModel.removeChild(it, childId) } },
-            onSave = { systemId, draft ->
+            onSave = { systemId, draft, initialTags ->
                 when (request.mode) {
                     MarkerEditorMode.EDIT_TEMPORARY -> if (markerViewModel.updateTemporary(systemId, draft)) {
                         markerEditor = null
                         expectedMarkerDraft = null
                     }
-                    MarkerEditorMode.CREATE_SAVED -> if (markerViewModel.createSaved(systemId, draft)) {
+                    MarkerEditorMode.CREATE_SAVED -> if (markerViewModel.createSaved(systemId, draft, initialTags)) {
                         expectedMarkerDraft = draft
                     }
                     MarkerEditorMode.EDIT_SAVED -> if (markerViewModel.updateSaved(systemId, draft)) {

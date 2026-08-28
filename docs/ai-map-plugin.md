@@ -54,13 +54,13 @@ Create a temporary map mission named Delve Move, show the requested normal route
 
 The first prompt must not create a Mission or display a route. The second must use only Mission-owned temporary objects. Capital requests require an explicit effective jump range.
 
-Plain marker requests are temporary Mission Markers. Only an explicit permanent or Saved Marker request may call `create_saved_marker`. Query requests use `get_system_markers` and distinguish persistent Saved Marker data from session-only Mission Markers. Saved Marker read/create requires the separate Saved Marker Access permission in Preferences; denial never silently falls back to a Mission Marker.
+Plain marker requests are temporary Mission Markers. Only an explicit permanent or Saved Marker request may call `create_saved_marker`; supported initial tags may be included in that one atomic create, but AI cannot change tags on an existing Saved Marker. Query requests use `get_system_markers` and distinguish persistent Saved Marker data from session-only Mission Markers. Saved Marker read/create requires the separate Saved Marker Access permission in Preferences; denial never silently falls back to a Mission Marker.
 
 ## Disconnected and safety behavior
 
 If the Plugin is installed but `eve-map-mcp.exe` cannot start, install EVE Static Map Planner 0.5.0 or later and fully restart Codex. Do not search for a development launcher or fall back to a shell.
 
-`APP_DISCONNECTED` is different: the MCP server is running, but the map is closed or AI Control is disabled. Start the map and enable AI Control. The assistant may control temporary Mission state and permission-gated Saved Marker read/create only. It cannot update, overwrite, delete, clear, tag, or add children to Saved Markers, or alter user routes, Ansiblex connections, preferences, databases, or other user-owned state.
+`APP_DISCONNECTED` is different: the MCP server is running, but the map is closed or AI Control is disabled. Start the map and enable AI Control. The assistant may control temporary Mission state and permission-gated Saved Marker read/create only, including supported initial tags in a create request. It cannot update, overwrite, delete, clear, or change tags or children on an existing Saved Marker, or alter user routes, Ansiblex connections, preferences, databases, or other user-owned state.
 
 The map repository continues to validate the application, Control API, launcher, MSI, and fixed 22-tool server contract. The Plugin repository validates the manifest, Skill, bundled `.mcp.json`, marketplace, and safe behavior contract.
 

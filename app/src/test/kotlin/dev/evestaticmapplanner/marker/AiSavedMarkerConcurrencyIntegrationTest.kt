@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.marker
 
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SchematicPosition
@@ -180,7 +181,15 @@ class AiSavedMarkerConcurrencyIntegrationTest {
             try {
                 assertIs<ControlResult.Success<*>>(
                     control.createSavedMarker(
-                        CreateSavedMarkerCommand("create", "create", 1, "Durable", "Notes", MarkerColor.BLUE),
+                        CreateSavedMarkerCommand(
+                            "create",
+                            "create",
+                            1,
+                            "Durable",
+                            "Notes",
+                            MarkerColor.BLUE,
+                            listOf(SavedMarkerChildType.LOGISTICS, SavedMarkerChildType.STRATEGIC),
+                        ),
                     ),
                 )
                 val mission = assertIs<ControlResult.Success<*>>(
@@ -203,10 +212,16 @@ class AiSavedMarkerConcurrencyIntegrationTest {
                     control.getSystemMarkers(GetSystemMarkersRequest("after", 1)),
                 ).value as dev.evestaticmapplanner.control.SystemMarkersDto
                 assertEquals(SavedMarkerCreatedBy.AI, after.savedMarker?.createdBy)
+                assertEquals(listOf("logistics", "strategic"), after.savedMarker?.children?.map { it.type })
                 assertTrue(after.missionMarkers.isEmpty())
                 assertEquals(
                     "Durable",
                     SqliteSavedMarkerRepository(database, initializeDatabase = false).getAll().single().name,
+                )
+                assertEquals(
+                    listOf("logistics", "strategic"),
+                    SqliteSavedMarkerRepository(database, initializeDatabase = false)
+                        .getChildren(1).map { it.type.key },
                 )
             } finally {
                 control.close()
@@ -238,7 +253,15 @@ class AiSavedMarkerConcurrencyIntegrationTest {
                 )
                 val create = assertIs<ControlResult.Failure>(
                     control.createSavedMarker(
-                        CreateSavedMarkerCommand("create-denied", "create-denied", 1, "Denied", null, MarkerColor.RED),
+                        CreateSavedMarkerCommand(
+                            "create-denied",
+                            "create-denied",
+                            1,
+                            "Denied",
+                            null,
+                            MarkerColor.RED,
+                            listOf(SavedMarkerChildType.DANGER),
+                        ),
                     ),
                 )
                 assertEquals(ControlErrorCode.CAPABILITY_DENIED, read.error.code)

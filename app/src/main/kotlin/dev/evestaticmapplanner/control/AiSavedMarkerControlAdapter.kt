@@ -19,6 +19,7 @@ class AiSavedMarkerControlAdapter(
                 name = request.name,
                 notes = request.notes,
                 color = request.color,
+                children = request.tags,
             ),
         ).requireMarkerCreateSuccess()
 }

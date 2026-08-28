@@ -7,6 +7,7 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
+import dev.evestaticmapplanner.core.repository.SavedMarkerCreation
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,19 +58,23 @@ class SavedMarkerService(
     suspend fun create(
         systemId: Int,
         draft: MarkerDraft,
+        initialChildTypes: List<SavedMarkerChildType> = emptyList(),
         createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
     ): Marker = mutate { repository ->
         if (systemId in mutableState.value.markersBySystemId) {
             throw SavedMarkerAlreadyExistsException(systemId)
         }
-        val marker = withContext(ioDispatcher) { repository.create(systemId, draft, createdBy) }
-        validateSavedMarker(marker, systemId)
+        val normalizedTypes = SavedMarkerChildType.normalizeSupported(initialChildTypes)
+        val creation = withContext(ioDispatcher) {
+            repository.createWithChildren(systemId, draft, normalizedTypes, createdBy)
+        }
+        validateSavedMarkerCreation(creation, systemId, normalizedTypes)
         val current = mutableState.value
         mutableState.value = current.copy(
-            markersBySystemId = current.markersBySystemId + (systemId to marker),
-            childrenByParentSystemId = current.childrenByParentSystemId + (systemId to emptyList()),
+            markersBySystemId = current.markersBySystemId + (systemId to creation.marker),
+            childrenByParentSystemId = current.childrenByParentSystemId + (systemId to creation.children),
         )
-        marker
+        creation.marker
     }
 
     suspend fun update(systemId: Int, draft: MarkerDraft): Marker = mutate { repository ->
@@ -168,5 +173,22 @@ private val childOrdering = compareBy(SavedMarkerChild::orderIndex, SavedMarkerC
 private fun validateSavedMarker(marker: Marker, expectedSystemId: Int) {
     check(marker.systemId == expectedSystemId && marker.persistence == MarkerPersistence.SAVED) {
         "Saved marker repository returned an invalid marker for solar system $expectedSystemId"
+    }
+}
+
+private fun validateSavedMarkerCreation(
+    creation: SavedMarkerCreation,
+    expectedSystemId: Int,
+    expectedTypes: List<SavedMarkerChildType>,
+) {
+    validateSavedMarker(creation.marker, expectedSystemId)
+    check(creation.children.all { it.parentSystemId == expectedSystemId }) {
+        "Saved marker repository returned a child for the wrong parent"
+    }
+    check(creation.children.sortedWith(childOrdering) == creation.children) {
+        "Saved marker repository returned initial children in an unstable order"
+    }
+    check(creation.children.map { it.type } == expectedTypes) {
+        "Saved marker repository returned unexpected initial children"
     }
 }

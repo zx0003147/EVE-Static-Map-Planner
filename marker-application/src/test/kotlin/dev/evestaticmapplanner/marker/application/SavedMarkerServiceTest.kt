@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
+import dev.evestaticmapplanner.core.repository.SavedMarkerCreation
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -61,12 +62,47 @@ class SavedMarkerServiceTest {
     }
 
     @Test
+    fun `create publishes normalized initial tags only as one complete state`() = runTest {
+        val repository = FakeSavedMarkerRepository()
+        val service = service(repository)
+        advanceUntilIdle()
+
+        val marker = service.create(
+            8,
+            MarkerDraft.create(name = "Tagged"),
+            listOf(SavedMarkerChildType.DANGER, SavedMarkerChildType.DANGER, SavedMarkerChildType.LOGISTICS),
+        )
+
+        assertEquals(marker, service.state.value.markersBySystemId[8])
+        assertEquals(
+            listOf(SavedMarkerChildType.DANGER, SavedMarkerChildType.LOGISTICS),
+            service.state.value.childrenByParentSystemId.getValue(8).map { it.type },
+        )
+        assertEquals(SavedMarkerCreatedBy.USER, marker.createdBy)
+    }
+
+    @Test
+    fun `invalid initial tags fail before repository mutation and leave state unchanged`() = runTest {
+        val repository = FakeSavedMarkerRepository()
+        val service = service(repository)
+        advanceUntilIdle()
+        val before = service.state.value
+
+        assertFailsWith<IllegalArgumentException> {
+            service.create(8, MarkerDraft.create(), listOf(SavedMarkerChildType.of("unsupported")))
+        }
+
+        assertEquals(before, service.state.value)
+        assertEquals(emptyList(), repository.getAll())
+    }
+
+    @Test
     fun `explicit AI create survives update child mutations and service reload`() = runTest {
         val repository = FakeSavedMarkerRepository()
         val originalService = service(repository)
         advanceUntilIdle()
 
-        originalService.create(12, MarkerDraft.create(name = "AI marker"), SavedMarkerCreatedBy.AI)
+        originalService.create(12, MarkerDraft.create(name = "AI marker"), createdBy = SavedMarkerCreatedBy.AI)
         assertEquals(SavedMarkerCreatedBy.AI, originalService.state.value.markersBySystemId[12]?.createdBy)
 
         originalService.update(12, MarkerDraft.create(name = "Edited"))
@@ -176,10 +212,26 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     }
 
     override fun create(systemId: Int, draft: MarkerDraft, createdBy: SavedMarkerCreatedBy): Marker {
+        return createWithChildren(systemId, draft, emptyList(), createdBy).marker
+    }
+
+    override fun createWithChildren(
+        systemId: Int,
+        draft: MarkerDraft,
+        initialChildTypes: List<SavedMarkerChildType>,
+        createdBy: SavedMarkerCreatedBy,
+    ): SavedMarkerCreation {
         failIf(Failure.CREATE)
         check(systemId !in markers) { "duplicate marker" }
+        val types = SavedMarkerChildType.normalizeSupported(initialChildTypes)
         val instant = Instant.EPOCH.plusSeconds(++tick)
-        return Marker.saved(systemId, draft, instant, instant, createdBy).also { markers[systemId] = it }
+        val marker = Marker.saved(systemId, draft, instant, instant, createdBy)
+        val createdChildren = types.mapIndexed { index, type ->
+            SavedMarkerChild.create("child-${++tick}", systemId, type, index)
+        }
+        markers[systemId] = marker
+        children[systemId] = createdChildren.toMutableList()
+        return SavedMarkerCreation(marker, createdChildren)
     }
 
     override fun update(systemId: Int, draft: MarkerDraft): Marker {

@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
+import dev.evestaticmapplanner.core.repository.SavedMarkerCreation
 import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -163,13 +164,22 @@ class MarkerViewModelTest {
         advanceUntilIdle()
         assertEquals(initial, viewModel.state.value.markersBySystemId[1])
 
-        assertTrue(viewModel.createSaved(2, MarkerDraft.create(name = "New", color = MarkerColor.GREEN)))
+        assertTrue(
+            viewModel.createSaved(
+                2,
+                MarkerDraft.create(name = "New", color = MarkerColor.GREEN),
+                listOf(SavedMarkerChildType.STAGING, SavedMarkerChildType.STRATEGIC, SavedMarkerChildType.STAGING),
+            ),
+        )
         assertFalse(2 in viewModel.state.value.markersBySystemId)
         assertTrue(2 in viewModel.state.value.busySystemIds)
         advanceUntilIdle()
         assertEquals("New", viewModel.state.value.markersBySystemId[2]?.name)
         assertEquals(SavedMarkerCreatedBy.USER, viewModel.state.value.markersBySystemId[2]?.createdBy)
-        assertEquals(emptyList(), viewModel.state.value.childrenByParentSystemId[2])
+        assertEquals(
+            listOf("staging", "strategic"),
+            viewModel.state.value.childrenByParentSystemId.getValue(2).map { it.type.key },
+        )
 
         assertTrue(viewModel.updateSaved(2, MarkerDraft.create(name = "Edited", color = MarkerColor.BLUE)))
         assertEquals("New", viewModel.state.value.markersBySystemId[2]?.name)
@@ -360,11 +370,27 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     }
 
     override fun create(systemId: Int, draft: MarkerDraft, createdBy: SavedMarkerCreatedBy): Marker {
+        return createWithChildren(systemId, draft, emptyList(), createdBy).marker
+    }
+
+    override fun createWithChildren(
+        systemId: Int,
+        draft: MarkerDraft,
+        initialChildTypes: List<SavedMarkerChildType>,
+        createdBy: SavedMarkerCreatedBy,
+    ): SavedMarkerCreation {
         createCalls++
         if (createFailure) error("forced marker create failure")
         check(systemId !in markers) { "duplicate marker" }
+        val types = SavedMarkerChildType.normalizeSupported(initialChildTypes)
         val instant = Instant.EPOCH.plusSeconds(++tick)
-        return Marker.saved(systemId, draft, instant, instant, createdBy).also { markers[systemId] = it }
+        val marker = Marker.saved(systemId, draft, instant, instant, createdBy)
+        val createdChildren = types.mapIndexed { index, type ->
+            SavedMarkerChild.create("child-${++tick}", systemId, type, index)
+        }
+        markers[systemId] = marker
+        children[systemId] = createdChildren.toMutableList()
+        return SavedMarkerCreation(marker, createdChildren)
     }
 
     override fun update(systemId: Int, draft: MarkerDraft): Marker {

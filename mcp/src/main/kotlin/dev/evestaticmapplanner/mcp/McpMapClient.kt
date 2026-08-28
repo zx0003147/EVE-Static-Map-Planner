@@ -17,6 +17,7 @@ internal interface McpMapClient : AutoCloseable {
         color: String,
         name: String?,
         notes: String?,
+        tags: List<String>,
     ): LocalControlClientResult
     suspend fun focusSystem(systemId: Int): LocalControlClientResult
     suspend fun showNormalRoute(
@@ -68,8 +69,13 @@ internal class LocalMcpMapClient(
     override suspend fun getActiveMissions() = client.getActiveMissions()
     override suspend fun getMission(missionId: String) = client.getMission(missionId)
     override suspend fun beginMission(title: String) = client.beginMission(title)
-    override suspend fun createSavedMarker(systemId: Int, color: String, name: String?, notes: String?) =
-        client.createSavedMarker(systemId, name, notes, color)
+    override suspend fun createSavedMarker(
+        systemId: Int,
+        color: String,
+        name: String?,
+        notes: String?,
+        tags: List<String>,
+    ) = client.createSavedMarker(systemId, name, notes, color, tags)
     override suspend fun focusSystem(systemId: Int) = client.focusSystem(systemId)
     override suspend fun showNormalRoute(
         missionId: String,

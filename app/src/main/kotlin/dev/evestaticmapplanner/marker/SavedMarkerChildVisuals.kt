@@ -34,15 +34,15 @@ data class SavedMarkerChildVisual(
 
 object SavedMarkerChildVisuals {
     val known: List<SavedMarkerChildVisual> = listOf(
-        known("staging", "Staging", SavedMarkerChildIconKind.FLAG),
-        known("rally", "Rally", SavedMarkerChildIconKind.PEOPLE),
-        known("danger", "Danger", SavedMarkerChildIconKind.WARNING),
-        known("logistics", "Logistics", SavedMarkerChildIconKind.PACKAGE),
-        known("home", "Home", SavedMarkerChildIconKind.HOME),
-        known("backup", "Backup", SavedMarkerChildIconKind.SHIELD),
-        known("industrial", "Industrial", SavedMarkerChildIconKind.FACTORY),
-        known("strategic", "Strategic", SavedMarkerChildIconKind.STAR),
-        known("keepstar", "Keepstar", SavedMarkerChildIconKind.KEEPSTAR_BRACKET),
+        known(SavedMarkerChildType.STAGING, "Staging", SavedMarkerChildIconKind.FLAG),
+        known(SavedMarkerChildType.RALLY, "Rally", SavedMarkerChildIconKind.PEOPLE),
+        known(SavedMarkerChildType.DANGER, "Danger", SavedMarkerChildIconKind.WARNING),
+        known(SavedMarkerChildType.LOGISTICS, "Logistics", SavedMarkerChildIconKind.PACKAGE),
+        known(SavedMarkerChildType.HOME, "Home", SavedMarkerChildIconKind.HOME),
+        known(SavedMarkerChildType.BACKUP, "Backup", SavedMarkerChildIconKind.SHIELD),
+        known(SavedMarkerChildType.INDUSTRIAL, "Industrial", SavedMarkerChildIconKind.FACTORY),
+        known(SavedMarkerChildType.STRATEGIC, "Strategic", SavedMarkerChildIconKind.STAR),
+        known(SavedMarkerChildType.KEEPSTAR, "Keepstar", SavedMarkerChildIconKind.KEEPSTAR_BRACKET),
     )
 
     private val byKey = known.associateBy { checkNotNull(it.type).key }
@@ -57,16 +57,20 @@ object SavedMarkerChildVisuals {
     )
 
     fun availableFor(children: List<SavedMarkerChild>): List<SavedMarkerChildVisual> {
-        val assigned = children.mapTo(hashSetOf()) { it.type.key }
+        return availableForTypes(children.map { it.type })
+    }
+
+    fun availableForTypes(types: List<SavedMarkerChildType>): List<SavedMarkerChildVisual> {
+        val assigned = types.mapTo(hashSetOf()) { it.key }
         return known.filter { checkNotNull(it.type).key !in assigned }
     }
 
     private fun known(
-        key: String,
+        type: SavedMarkerChildType,
         label: String,
         iconKind: SavedMarkerChildIconKind,
         resourcePath: String? = null,
-    ) = SavedMarkerChildVisual(SavedMarkerChildType.of(key), label, iconKind, resourcePath)
+    ) = SavedMarkerChildVisual(type, label, iconKind, resourcePath)
 }
 
 @Composable

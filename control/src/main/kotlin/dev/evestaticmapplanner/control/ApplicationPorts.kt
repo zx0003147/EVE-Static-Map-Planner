@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.control
 
 import dev.evestaticmapplanner.control.mission.Mission
 import dev.evestaticmapplanner.core.jump.JumpRangeResult
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 
@@ -15,6 +16,7 @@ data class SavedMarkerCreatePortRequest(
     val name: String?,
     val notes: String?,
     val color: dev.evestaticmapplanner.core.marker.MarkerColor,
+    val tags: List<SavedMarkerChildType> = emptyList(),
 )
 
 interface SavedMarkerControlPort {

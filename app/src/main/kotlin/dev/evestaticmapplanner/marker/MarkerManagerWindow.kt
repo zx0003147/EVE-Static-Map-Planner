@@ -244,7 +244,7 @@ fun MarkerManagerWindow(
                     editorSystemResults = emptyList()
                     editorLocalError = markerCreationConflict(markerState.markersBySystemId[system.id])
                 },
-                onSave = { systemId, draft ->
+                onSave = { systemId, draft, initialTags ->
                     val conflict = if (request.mode == MarkerEditorMode.CREATE_SAVED) {
                         markerCreationConflict(markerState.markersBySystemId[systemId])
                     } else {
@@ -254,7 +254,7 @@ fun MarkerManagerWindow(
                         editorLocalError = conflict
                     } else {
                         val accepted = when (request.mode) {
-                            MarkerEditorMode.CREATE_SAVED -> markerViewModel.createSaved(systemId, draft)
+                            MarkerEditorMode.CREATE_SAVED -> markerViewModel.createSaved(systemId, draft, initialTags)
                             MarkerEditorMode.EDIT_SAVED -> markerViewModel.updateSaved(systemId, draft)
                             MarkerEditorMode.EDIT_TEMPORARY -> false
                         }

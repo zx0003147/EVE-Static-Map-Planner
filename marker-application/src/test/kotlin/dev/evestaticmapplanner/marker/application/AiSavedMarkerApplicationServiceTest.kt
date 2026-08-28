@@ -13,6 +13,7 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
+import dev.evestaticmapplanner.core.repository.SavedMarkerCreation
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -39,7 +40,9 @@ class AiSavedMarkerApplicationServiceTest {
         val before = fixture.savedMarkerService.state.value
 
         val deniedRead = fixture.aiService.getSystemMarker(1)
-        val deniedCreate = fixture.aiService.createSavedMarker(AiSavedMarkerCreateRequest(1, name = "Denied"))
+        val deniedCreate = fixture.aiService.createSavedMarker(
+            AiSavedMarkerCreateRequest(1, name = "Denied", children = listOf(SavedMarkerChildType.DANGER)),
+        )
 
         assertFailure(AiSavedMarkerErrorCode.CAPABILITY_DENIED, deniedRead)
         assertFailure(AiSavedMarkerErrorCode.CAPABILITY_DENIED, deniedCreate)
@@ -101,19 +104,35 @@ class AiSavedMarkerApplicationServiceTest {
 
         val result = assertIs<AiSavedMarkerResult.Success<AiSavedMarkerSummary>>(
             fixture.aiService.createSavedMarker(
-                AiSavedMarkerCreateRequest(1, name = "  AI marker  ", notes = "  Notes  ", color = MarkerColor.GREEN),
+                AiSavedMarkerCreateRequest(
+                    1,
+                    name = "  AI marker  ",
+                    notes = "  Notes  ",
+                    color = MarkerColor.GREEN,
+                    children = listOf(
+                        SavedMarkerChildType.STAGING,
+                        SavedMarkerChildType.STRATEGIC,
+                        SavedMarkerChildType.STAGING,
+                    ),
+                ),
             ),
         )
 
         assertEquals("AI marker", result.value.name)
         assertEquals("Notes", result.value.notes)
         assertEquals(SavedMarkerCreatedBy.AI, result.value.createdBy)
+        assertEquals(listOf("staging", "strategic"), result.value.children.map { it.type.key })
         assertEquals(SavedMarkerCreatedBy.AI, fixture.repository.getAll().single().createdBy)
         assertEquals(SavedMarkerCreatedBy.AI, fixture.savedMarkerService.state.value.markersBySystemId[1]?.createdBy)
+        assertEquals(
+            listOf("staging", "strategic"),
+            fixture.savedMarkerService.state.value.childrenByParentSystemId.getValue(1).map { it.type.key },
+        )
 
         val reloaded = SavedMarkerService(fixture.repository, null, this, Dispatchers.Default)
         reloaded.state.first { !it.isLoading }
         assertEquals(SavedMarkerCreatedBy.AI, reloaded.state.value.markersBySystemId[1]?.createdBy)
+        assertEquals(listOf("staging", "strategic"), reloaded.state.value.childrenByParentSystemId.getValue(1).map { it.type.key })
     }
 
     @Test
@@ -132,15 +151,19 @@ class AiSavedMarkerApplicationServiceTest {
         listOf(SavedMarkerCreatedBy.USER, SavedMarkerCreatedBy.AI).forEach { provenance ->
             val original = savedMarker(1, "Original", "Keep", provenance)
             val fixture = fixture(listOf(original)).apply {
+                repository.seedChild(1, "home")
                 permissions.allow(AiSavedMarkerCapability.CREATE_SAVED_MARKERS)
             }
             fixture.awaitReady()
 
-            val result = fixture.aiService.createSavedMarker(AiSavedMarkerCreateRequest(1, name = "Replacement"))
+            val result = fixture.aiService.createSavedMarker(
+                AiSavedMarkerCreateRequest(1, name = "Replacement", children = listOf(SavedMarkerChildType.DANGER)),
+            )
 
             assertFailure(AiSavedMarkerErrorCode.MARKER_ALREADY_EXISTS, result)
             assertEquals(original, fixture.repository.getAll().single())
             assertEquals(original, fixture.savedMarkerService.get(1))
+            assertEquals(listOf("home"), fixture.repository.getChildren(1).map { it.type.key })
         }
     }
 
@@ -188,7 +211,7 @@ class AiSavedMarkerApplicationServiceTest {
         assertFailure(
             AiSavedMarkerErrorCode.INVALID_MARKER_DATA,
             fixture.aiService.createSavedMarker(
-                AiSavedMarkerCreateRequest(1, children = setOf(SavedMarkerChildType.of("staging"))),
+                AiSavedMarkerCreateRequest(1, children = listOf(SavedMarkerChildType.of("unsupported"))),
             ),
         )
         assertEquals(0, fixture.repository.createCalls.get())
@@ -267,11 +290,26 @@ private class ConcurrentSavedMarkerRepository(initial: List<Marker>) : SavedMark
     override fun getAll(): List<Marker> = markers.values.sortedBy(Marker::systemId)
 
     override fun create(systemId: Int, draft: MarkerDraft, createdBy: SavedMarkerCreatedBy): Marker {
+        return createWithChildren(systemId, draft, emptyList(), createdBy).marker
+    }
+
+    @Synchronized
+    override fun createWithChildren(
+        systemId: Int,
+        draft: MarkerDraft,
+        initialChildTypes: List<SavedMarkerChildType>,
+        createdBy: SavedMarkerCreatedBy,
+    ): SavedMarkerCreation {
         createCalls.incrementAndGet()
+        val types = SavedMarkerChildType.normalizeSupported(initialChildTypes)
         val instant = Instant.EPOCH.plusSeconds(ticks.incrementAndGet().toLong())
         val marker = Marker.saved(systemId, draft, instant, instant, createdBy)
         check(markers.putIfAbsent(systemId, marker) == null) { "duplicate marker" }
-        return marker
+        val createdChildren = types.mapIndexed { index, type ->
+            SavedMarkerChild.create("child-${ticks.incrementAndGet()}", systemId, type, index)
+        }
+        children[systemId] = createdChildren.toMutableList()
+        return SavedMarkerCreation(marker, createdChildren)
     }
 
     override fun update(systemId: Int, draft: MarkerDraft): Marker = error("not used")

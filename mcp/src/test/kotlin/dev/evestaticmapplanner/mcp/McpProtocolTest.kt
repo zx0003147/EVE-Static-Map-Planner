@@ -192,6 +192,7 @@ private class ProtocolMapClient : RecordingProtocolClient() {
         color: String,
         name: String?,
         notes: String?,
+        tags: List<String>,
     ): LocalControlClientResult {
         calls += "create_saved_marker"
         return LocalControlClientResult.Success(buildJsonObject {
@@ -248,7 +249,13 @@ private open class RecordingProtocolClient : McpMapClient {
     override suspend fun getActiveMissions() = unused()
     override suspend fun getMission(missionId: String) = unused()
     override suspend fun beginMission(title: String) = unused()
-    override suspend fun createSavedMarker(systemId: Int, color: String, name: String?, notes: String?) = unused()
+    override suspend fun createSavedMarker(
+        systemId: Int,
+        color: String,
+        name: String?,
+        notes: String?,
+        tags: List<String>,
+    ) = unused()
     override suspend fun focusSystem(systemId: Int) = unused()
     override suspend fun showNormalRoute(missionId: String, startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) = unused()
     override suspend fun showCapitalRoute(

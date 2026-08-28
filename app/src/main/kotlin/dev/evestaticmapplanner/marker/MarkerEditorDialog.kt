@@ -71,12 +71,13 @@ fun MarkerEditorDialog(
     children: List<SavedMarkerChild> = emptyList(),
     onAddChild: (SavedMarkerChildType) -> Unit = {},
     onRemoveChild: (String) -> Unit = {},
-    onSave: (Int, MarkerDraft) -> Unit,
+    onSave: (Int, MarkerDraft, List<SavedMarkerChildType>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember(request) { mutableStateOf(request.marker?.name.orEmpty()) }
     var notes by remember(request) { mutableStateOf(request.marker?.notes.orEmpty()) }
     var color by remember(request) { mutableStateOf(request.marker?.color ?: MarkerColor.YELLOW) }
+    var initialTags by remember(request) { mutableStateOf(emptyList<SavedMarkerChildType>()) }
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
         title = { Text(if (request.mode == MarkerEditorMode.CREATE_SAVED) "Add Saved Marker" else "Edit Marker") },
@@ -130,12 +131,29 @@ fun MarkerEditorDialog(
                 )
                 Text("Color", style = MaterialTheme.typography.labelLarge)
                 MarkerColorPalette(color, onSelected = { color = it })
-                if (request.mode == MarkerEditorMode.EDIT_SAVED) {
+                if (request.mode == MarkerEditorMode.CREATE_SAVED || request.mode == MarkerEditorMode.EDIT_SAVED) {
+                    val assignedTypes = if (request.mode == MarkerEditorMode.CREATE_SAVED) {
+                        initialTags
+                    } else {
+                        children.map { it.type }
+                    }
                     SavedMarkerTagsEditor(
-                        children = children,
+                        types = assignedTypes,
                         enabled = !isBusy,
-                        onAddChild = onAddChild,
-                        onRemoveChild = onRemoveChild,
+                        onAddChild = { type ->
+                            if (request.mode == MarkerEditorMode.CREATE_SAVED) {
+                                initialTags = SavedMarkerChildType.normalizeSupported(initialTags + type)
+                            } else {
+                                onAddChild(type)
+                            }
+                        },
+                        onRemoveChild = { type ->
+                            if (request.mode == MarkerEditorMode.CREATE_SAVED) {
+                                initialTags = initialTags.filterNot { it == type }
+                            } else {
+                                children.firstOrNull { it.type == type }?.let { onRemoveChild(it.id) }
+                            }
+                        },
                     )
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -146,7 +164,11 @@ fun MarkerEditorDialog(
                 enabled = saveEnabled && !isBusy && markerEditorSystemId(request, systemSearch) != null,
                 onClick = {
                     val systemId = markerEditorSystemId(request, systemSearch) ?: return@TextButton
-                    onSave(systemId, MarkerDraft.create(name, notes, color))
+                    onSave(
+                        systemId,
+                        MarkerDraft.create(name, notes, color),
+                        if (request.mode == MarkerEditorMode.CREATE_SAVED) initialTags else emptyList(),
+                    )
                 },
             ) { Text(if (isBusy) "Saving…" else "Save") }
         },
@@ -160,20 +182,20 @@ private val markerEditorContentMaxHeight = 460.dp
 
 @Composable
 private fun SavedMarkerTagsEditor(
-    children: List<SavedMarkerChild>,
+    types: List<SavedMarkerChildType>,
     enabled: Boolean,
     onAddChild: (SavedMarkerChildType) -> Unit,
-    onRemoveChild: (String) -> Unit,
+    onRemoveChild: (SavedMarkerChildType) -> Unit,
 ) {
     var addMenuExpanded by remember { mutableStateOf(false) }
-    val available = remember(children) { SavedMarkerChildVisuals.availableFor(children) }
+    val available = remember(types) { SavedMarkerChildVisuals.availableForTypes(types) }
     Text("Tags", style = MaterialTheme.typography.labelLarge)
-    if (children.isEmpty()) {
+    if (types.isEmpty()) {
         Text("No tags assigned.", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAFC1D1))
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
-            children.forEach { child ->
-                val visual = SavedMarkerChildVisuals.resolve(child.type)
+            types.forEach { type ->
+                val visual = SavedMarkerChildVisuals.resolve(type)
                 Surface(
                     color = Color(0xFF1B2A37),
                     border = BorderStroke(1.dp, Color(0xFF415466)),
@@ -187,7 +209,7 @@ private fun SavedMarkerTagsEditor(
                     ) {
                         SavedMarkerChildIcon(visual, Modifier.size(20.dp))
                         Text(visual.label, modifier = Modifier.weight(1f))
-                        TextButton(enabled = enabled, onClick = { onRemoveChild(child.id) }) { Text("×") }
+                        TextButton(enabled = enabled, onClick = { onRemoveChild(type) }) { Text("×") }
                     }
                 }
             }

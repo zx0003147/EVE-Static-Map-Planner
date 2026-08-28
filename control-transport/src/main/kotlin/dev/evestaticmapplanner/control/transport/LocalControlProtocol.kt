@@ -1,12 +1,17 @@
 package dev.evestaticmapplanner.control.transport
 
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import java.net.InetAddress
 import java.time.Duration
 import java.time.Instant
+import java.util.Locale
 
 object LocalControlProtocol {
     const val PROTOCOL_VERSION = 1
     const val CONTROL_API_VERSION = 2
+    val SAVED_MARKER_TAGS: List<String> = SavedMarkerChildType.supportedTypes.map {
+        it.key.uppercase(Locale.ROOT)
+    }
     const val REQUEST_BODY_LIMIT_BYTES = 64 * 1024
     const val RESPONSE_BODY_LIMIT_BYTES = 1024 * 1024
     const val HTTP_WORKER_COUNT = 4

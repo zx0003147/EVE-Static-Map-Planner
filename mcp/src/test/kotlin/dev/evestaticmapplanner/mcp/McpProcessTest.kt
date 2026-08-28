@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.control.JumpPlanningPort
 import dev.evestaticmapplanner.control.MissionRenderStatePort
 import dev.evestaticmapplanner.control.RoutePlanningPort
 import dev.evestaticmapplanner.control.SavedMarkerControlPort
+import dev.evestaticmapplanner.control.SavedMarkerChildSummaryDto
 import dev.evestaticmapplanner.control.SavedMarkerCreatePortRequest
 import dev.evestaticmapplanner.control.SavedMarkerSummaryDto
 import dev.evestaticmapplanner.control.SystemInfoDto
@@ -291,11 +292,18 @@ internal object McpEndToEndProbe {
             savedMarkers.allowed = true
             val created = protocolClient.callTool(
                 "create_saved_marker",
-                mapOf("systemId" to 1, "color" to "GREEN", "name" to "Staging", "notes" to "Persistent"),
+                mapOf(
+                    "systemId" to 1,
+                    "color" to "GREEN",
+                    "name" to "Staging",
+                    "notes" to "Persistent",
+                    "tags" to listOf("STAGING", "STRATEGIC"),
+                ),
             )
             check(created.isError != true)
             check(created.structuredContent?.get("marker")?.jsonObject
                 ?.get("createdBy")?.jsonPrimitive?.content == "AI")
+            check((created.structuredContent?.get("marker")?.jsonObject?.get("children") as JsonArray).size == 2)
 
             val mission = protocolClient.callTool("begin_mission", mapOf("title" to "E2E Mission"))
             check(mission.isError != true)
@@ -331,6 +339,7 @@ internal object McpEndToEndProbe {
             check(savedMarkers.marker?.color?.name == "GREEN")
             check(savedMarkers.marker?.notes == "Persistent")
             check(savedMarkers.marker?.createdBy == SavedMarkerCreatedBy.AI)
+            check(savedMarkers.marker?.children?.map { it.type } == listOf("staging", "strategic"))
         } finally {
             runCatching { protocolClient.close() }
             runCatching { mcpServer.close() }
@@ -402,7 +411,9 @@ private class ProbeSavedMarkerPort : SavedMarkerControlPort {
             name = request.name,
             color = request.color,
             notes = request.notes,
-            children = emptyList(),
+            children = request.tags.distinct().mapIndexed { index, type ->
+                SavedMarkerChildSummaryDto("child-$index", type.key, index)
+            },
             createdBy = SavedMarkerCreatedBy.AI,
         ).also { marker = it }
     }

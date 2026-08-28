@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
@@ -149,12 +150,14 @@ class LocalControlClient internal constructor(
         name: String?,
         notes: String?,
         color: String,
+        tags: List<String> = emptyList(),
     ): LocalControlClientResult = mutation(LocalControlOperation.CREATE_SAVED_MARKER) { ids ->
         ids.body {
             put("systemId", systemId)
             if (name != null) put("name", name)
             if (notes != null) put("notes", notes)
             put("color", color)
+            put("tags", buildJsonArray { tags.forEach { add(JsonPrimitive(it)) } })
         }
     }
 

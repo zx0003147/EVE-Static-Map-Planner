@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.control.mission.MissionMarkerId
 import dev.evestaticmapplanner.control.mission.MissionMarkerRole
 import dev.evestaticmapplanner.control.mission.MissionRouteId
 import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 
 sealed interface ControlResult<out T> {
@@ -209,6 +210,7 @@ data class CreateSavedMarkerCommand(
     val name: String? = null,
     val notes: String? = null,
     val color: MarkerColor,
+    val tags: List<SavedMarkerChildType> = emptyList(),
 ) : MutationCommand
 data class FocusSystemCommand(
     override val requestId: String,

@@ -45,6 +45,7 @@ import dev.evestaticmapplanner.control.mission.MissionMarkerRole
 import dev.evestaticmapplanner.control.mission.MissionRoute
 import dev.evestaticmapplanner.control.mission.MissionRouteId
 import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -179,7 +180,7 @@ internal class LocalControlJsonCodec {
         }
         LocalControlOperation.CREATE_SAVED_MARKER -> {
             request.requireFields(
-                setOf("requestId", "idempotencyKey", "systemId", "name", "notes", "color"),
+                setOf("requestId", "idempotencyKey", "systemId", "name", "notes", "color", "tags"),
                 setOf("requestId", "idempotencyKey", "systemId", "color"),
             )
             controlResponse(
@@ -191,6 +192,7 @@ internal class LocalControlJsonCodec {
                         name = request.optionalString("name"),
                         notes = request.optionalString("notes"),
                         color = request.enum("color", MarkerColor::valueOf),
+                        tags = request.optionalSavedMarkerTags("tags"),
                     ),
                 ),
                 ::createSavedMarkerReceiptJson,
@@ -458,6 +460,17 @@ private fun <T> JsonObject.enum(name: String, parse: (String) -> T): T =
 
 private fun <T> JsonObject.optionalEnum(name: String, parse: (String) -> T): T? =
     optionalString(name)?.let { runCatching { parse(it) }.getOrElse { invalid() } }
+
+private fun JsonObject.optionalSavedMarkerTags(name: String): List<SavedMarkerChildType> = when (val value = this[name]) {
+    null -> emptyList()
+    is JsonArray -> value.map { item ->
+        val key = (item as? JsonPrimitive)?.takeIf(JsonPrimitive::isString)?.content ?: invalid()
+        SAVED_MARKER_TAGS[key] ?: invalid()
+    }
+    else -> invalid()
+}
+
+private val SAVED_MARKER_TAGS = LocalControlProtocol.SAVED_MARKER_TAGS.zip(SavedMarkerChildType.supportedTypes).toMap()
 
 private fun invalid(): Nothing = throw WireRequestFailure(400, "INVALID_ARGUMENT", "The request is invalid")
 

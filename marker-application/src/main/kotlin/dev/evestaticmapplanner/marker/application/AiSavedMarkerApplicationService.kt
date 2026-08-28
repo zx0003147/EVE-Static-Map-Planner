@@ -57,7 +57,7 @@ data class AiSavedMarkerCreateRequest(
     val name: String? = null,
     val notes: String? = null,
     val color: MarkerColor = MarkerColor.YELLOW,
-    val children: Set<SavedMarkerChildType> = emptySet(),
+    val children: List<SavedMarkerChildType> = emptyList(),
 )
 
 /**
@@ -86,12 +86,6 @@ class AiSavedMarkerApplicationService(
     ): AiSavedMarkerResult<AiSavedMarkerSummary> {
         deniedUnless(AiSavedMarkerCapability.CREATE_SAVED_MARKERS)?.let { return it }
         validateSystemId(request.systemId)?.let { return it }
-        if (request.children.isNotEmpty()) {
-            return failure(
-                AiSavedMarkerErrorCode.INVALID_MARKER_DATA,
-                "Creating saved marker children is not supported by this application capability",
-            )
-        }
         requireExistingSystem(request.systemId)?.let { return it }
         databaseAvailabilityFailure()?.let { return it }
 
@@ -100,9 +94,11 @@ class AiSavedMarkerApplicationService(
                 return failure(AiSavedMarkerErrorCode.INVALID_MARKER_DATA, it.safeMessage("Saved marker data is invalid"))
             }
         return try {
+            val initialChildren = SavedMarkerChildType.normalizeSupported(request.children)
             val marker = savedMarkerService.create(
                 systemId = request.systemId,
                 draft = draft,
+                initialChildTypes = initialChildren,
                 createdBy = SavedMarkerCreatedBy.AI,
             )
             AiSavedMarkerResult.Success(marker.toSummary(childrenFor(request.systemId)))

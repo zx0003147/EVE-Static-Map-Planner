@@ -188,6 +188,10 @@ class McpTextFallbackFormatterTest {
                 put("systemId", 30000142)
                 put("name", "Logistics")
                 put("color", "GREEN")
+                put("children", kotlinx.serialization.json.buildJsonArray {
+                    add(buildJsonObject { put("type", "logistics") })
+                    add(buildJsonObject { put("type", "strategic") })
+                })
                 put("createdBy", "AI")
             })
         }
@@ -197,6 +201,7 @@ class McpTextFallbackFormatterTest {
         assertContains(text, "Saved Marker created successfully.")
         assertContains(text, "System ID:\n30000142")
         assertContains(text, "Created by:\nAI")
+        assertContains(text, "Tags:\nlogistics, strategic")
     }
 
     @Test

@@ -7,6 +7,7 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
+import dev.evestaticmapplanner.core.repository.SavedMarkerCreation
 import dev.evestaticmapplanner.data.db.UserDatabase
 import java.nio.file.Path
 import java.sql.Connection
@@ -34,11 +35,41 @@ class SqliteSavedMarkerRepository(
     }
 
     override fun create(systemId: Int, draft: MarkerDraft, createdBy: SavedMarkerCreatedBy): Marker {
+        return createWithChildren(systemId, draft, emptyList(), createdBy).marker
+    }
+
+    override fun createWithChildren(
+        systemId: Int,
+        draft: MarkerDraft,
+        initialChildTypes: List<SavedMarkerChildType>,
+        createdBy: SavedMarkerCreatedBy,
+    ): SavedMarkerCreation {
         require(systemId > 0) { "Marker solar system ID must be positive" }
+        val normalizedTypes = SavedMarkerChildType.normalizeSupported(initialChildTypes)
         val now = clock.instant()
         val marker = Marker.saved(systemId, draft, createdAt = now, updatedAt = now, createdBy = createdBy)
-        UserDatabase.open(databasePath).use { connection -> connection.insertSavedMarker(marker) }
-        return marker
+        val children = normalizedTypes.mapIndexed { index, type ->
+            SavedMarkerChild.create(
+                id = idGenerator(),
+                parentSystemId = systemId,
+                type = type,
+                orderIndex = index,
+            )
+        }
+        return UserDatabase.open(databasePath).use { connection ->
+            connection.autoCommit = false
+            try {
+                connection.insertSavedMarker(marker)
+                children.forEach(connection::insertSavedMarkerChild)
+                connection.commit()
+                SavedMarkerCreation(marker, children)
+            } catch (error: Throwable) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
     }
 
     override fun update(systemId: Int, draft: MarkerDraft): Marker {

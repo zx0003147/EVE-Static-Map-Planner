@@ -86,17 +86,35 @@ class SavedMarkerTransportTest {
                 LocalControlOperation.CREATE_SAVED_MARKER.path,
                 HttpRequest.BodyPublishers.ofString(
                     "{\"requestId\":\"create\",\"idempotencyKey\":\"key\",\"systemId\":1," +
-                        "\"name\":\"Home\",\"notes\":\"Line 1\\nLine 2\",\"color\":\"GREEN\"}",
+                        "\"name\":\"Home\",\"notes\":\"Line 1\\nLine 2\",\"color\":\"GREEN\"," +
+                        "\"tags\":[\"STAGING\",\"STRATEGIC\",\"STAGING\"]}",
                 ),
             )
             assertEquals(200, valid.status)
             assertEquals("AI", valid.jsonValue().getValue("marker").jsonObject.getValue("createdBy").jsonPrimitive.content)
             assertEquals(MarkerColor.GREEN, service.lastCreate?.color)
+            assertEquals(listOf("staging", "strategic", "staging"), service.lastCreate?.tags?.map { it.key })
+
+            listOf(
+                "{\"requestId\":\"absent\",\"idempotencyKey\":\"absent\",\"systemId\":2,\"color\":\"RED\"}",
+                "{\"requestId\":\"empty\",\"idempotencyKey\":\"empty\",\"systemId\":2,\"color\":\"RED\",\"tags\":[]}",
+            ).forEach { body ->
+                assertEquals(
+                    200,
+                    rawRequest(server, LocalControlOperation.CREATE_SAVED_MARKER.path, HttpRequest.BodyPublishers.ofString(body)).status,
+                )
+                assertEquals(emptyList(), service.lastCreate?.tags)
+            }
 
             listOf(
                 "{\"requestId\":\"missing\",\"idempotencyKey\":\"key\",\"systemId\":1}",
                 "{\"requestId\":\"color\",\"idempotencyKey\":\"key\",\"systemId\":1,\"color\":\"BLACK\"}",
                 "{\"requestId\":\"unknown\",\"idempotencyKey\":\"key\",\"systemId\":1,\"color\":\"RED\",\"children\":[]}",
+                "{\"requestId\":\"null-tags\",\"idempotencyKey\":\"key\",\"systemId\":1,\"color\":\"RED\",\"tags\":null}",
+                "{\"requestId\":\"wrong-tags\",\"idempotencyKey\":\"key\",\"systemId\":1,\"color\":\"RED\",\"tags\":\"DANGER\"}",
+                "{\"requestId\":\"unknown-tag\",\"idempotencyKey\":\"key\",\"systemId\":1,\"color\":\"RED\",\"tags\":[\"UNKNOWN\"]}",
+                "{\"requestId\":\"lower-tag\",\"idempotencyKey\":\"key\",\"systemId\":1,\"color\":\"RED\",\"tags\":[\"danger\"]}",
+                "{\"requestId\":\"null-tag\",\"idempotencyKey\":\"key\",\"systemId\":1,\"color\":\"RED\",\"tags\":[null]}",
                 "{malformed",
             ).forEach { body ->
                 assertEquals(
@@ -138,9 +156,10 @@ class SavedMarkerTransportTest {
                 val query = assertIs<LocalControlClientResult.Success>(runBlocking { client.getSystemMarkers(1) })
                 assertEquals(1, query.value.jsonObject.getValue("systemId").jsonPrimitive.content.toInt())
                 val create = assertIs<LocalControlClientResult.Success>(
-                    runBlocking { client.createSavedMarker(1, "Home", "Notes", "BLUE") },
+                    runBlocking { client.createSavedMarker(1, "Home", "Notes", "BLUE", listOf("LOGISTICS")) },
                 )
                 assertEquals("AI", create.value.jsonObject.getValue("marker").jsonObject.getValue("createdBy").jsonPrimitive.content)
+                assertEquals(listOf("logistics"), service.lastCreate?.tags?.map { it.key })
                 service.failure = ControlErrorCode.CAPABILITY_DENIED
                 assertEquals(
                     LocalControlClientErrorCode.CAPABILITY_DENIED,
@@ -193,7 +212,9 @@ private open class MarkerTransportService : StubMapControlService() {
                     name = command.name,
                     notes = command.notes,
                     color = command.color,
-                    children = emptyList(),
+                    children = command.tags.distinct().mapIndexed { index, type ->
+                        SavedMarkerChildSummaryDto("child-$index", type.key, index)
+                    },
                 ),
             ),
         )

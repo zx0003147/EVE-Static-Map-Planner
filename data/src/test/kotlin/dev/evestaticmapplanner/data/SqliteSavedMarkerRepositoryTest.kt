@@ -193,6 +193,86 @@ class SqliteSavedMarkerRepositoryTest {
     }
 
     @Test
+    fun `atomic create normalizes duplicate supported tags and persists the complete result`() {
+        val path = createTempDirectory("saved-marker-atomic-create").resolve("user.db")
+        val ids = ArrayDeque(listOf("staging-id", "strategic-id"))
+        val repository = SqliteSavedMarkerRepository(path, idGenerator = ids::removeFirst)
+
+        val creation = repository.createWithChildren(
+            42,
+            MarkerDraft.create(name = "Staging"),
+            listOf(SavedMarkerChildType.STAGING, SavedMarkerChildType.STAGING, SavedMarkerChildType.STRATEGIC),
+            SavedMarkerCreatedBy.USER,
+        )
+
+        assertEquals(SavedMarkerCreatedBy.USER, creation.marker.createdBy)
+        assertEquals(listOf("staging", "strategic"), creation.children.map { it.type.key })
+        assertEquals(listOf(0, 1), creation.children.map { it.orderIndex })
+        val reopened = SqliteSavedMarkerRepository(path)
+        assertEquals(listOf(creation.marker), reopened.getAll())
+        assertEquals(creation.children, reopened.getChildren(42))
+    }
+
+    @Test
+    fun `child insert failure rolls back marker and every initial child in real SQLite`() {
+        val path = createTempDirectory("saved-marker-atomic-rollback").resolve("user.db")
+        val repository = SqliteSavedMarkerRepository(path, idGenerator = { "duplicate-child-id" })
+
+        assertFailsWith<SQLException> {
+            repository.createWithChildren(
+                77,
+                MarkerDraft.create(name = "Must roll back"),
+                listOf(SavedMarkerChildType.DANGER, SavedMarkerChildType.LOGISTICS),
+            )
+        }
+
+        assertEquals(emptyList(), repository.getAll())
+        assertEquals(emptyList(), repository.getChildren(77))
+        UserDatabase.open(path).use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT COUNT(*) FROM saved_markers").use { result ->
+                    assertTrue(result.next())
+                    assertEquals(0, result.getInt(1))
+                }
+                statement.executeQuery("SELECT COUNT(*) FROM saved_marker_children").use { result ->
+                    assertTrue(result.next())
+                    assertEquals(0, result.getInt(1))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `invalid initial tag and duplicate marker leave existing marker children unchanged`() {
+        val path = createTempDirectory("saved-marker-atomic-validation").resolve("user.db")
+        val repository = SqliteSavedMarkerRepository(path, idGenerator = { "original-child" })
+        val original = repository.createWithChildren(
+            9,
+            MarkerDraft.create(name = "Original"),
+            listOf(SavedMarkerChildType.HOME),
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.createWithChildren(
+                10,
+                MarkerDraft.create(name = "Invalid"),
+                listOf(SavedMarkerChildType.of("unknown")),
+            )
+        }
+        assertFailsWith<SQLException> {
+            repository.createWithChildren(
+                9,
+                MarkerDraft.create(name = "Replacement"),
+                listOf(SavedMarkerChildType.DANGER),
+            )
+        }
+
+        assertEquals(listOf(original.marker), repository.getAll())
+        assertEquals(original.children, repository.getChildren(9))
+        assertEquals(emptyList(), repository.getChildren(10))
+    }
+
+    @Test
     fun `removing one child preserves sibling identity and stable sparse ordering`() {
         val path = createTempDirectory("saved-marker-child-remove").resolve("user.db")
         val ids = ArrayDeque(listOf("a", "b", "c", "d"))
