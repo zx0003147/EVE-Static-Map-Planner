@@ -21,6 +21,7 @@ tasks.named("build") {
         ":core:build",
         ":data:build",
         ":feature-api:build",
+        ":marker-application:build",
         ":mcp:build",
         ":sde:build",
     )

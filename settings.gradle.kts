@@ -26,5 +26,6 @@ include(
     ":data",
     ":feature-api",
     ":mcp",
+    ":marker-application",
     ":sde",
 )

@@ -7,8 +7,11 @@ import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
+import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -22,13 +25,41 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class MarkerViewModelTest {
     @Test
+    fun `shared service mutations flow into UI state without a view model reload`() = runTest {
+        val repository = FakeSavedMarkerRepository()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val service = SavedMarkerService(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(service, CoroutineScope(SupervisorJob() + dispatcher))
+        advanceUntilIdle()
+
+        service.create(15, MarkerDraft.create(name = "External"))
+        advanceUntilIdle()
+        assertEquals("External", viewModel.state.value.markersBySystemId[15]?.name)
+
+        service.update(15, MarkerDraft.create(name = "Externally edited"))
+        val child = service.addChild(15, SavedMarkerChildType.of("staging"))
+        advanceUntilIdle()
+        assertEquals("Externally edited", viewModel.state.value.markersBySystemId[15]?.name)
+        assertEquals(listOf(child), viewModel.state.value.childrenByParentSystemId[15])
+
+        service.removeChild(15, child.id)
+        service.delete(15)
+        advanceUntilIdle()
+        assertFalse(15 in viewModel.state.value.markersBySystemId)
+        assertFalse(15 in viewModel.state.value.childrenByParentSystemId)
+    }
+
+    @Test
     fun `saved children load in one bulk request including empty and unknown types`() = runTest {
         val repository = FakeSavedMarkerRepository(listOf(savedMarker(1, "One"), savedMarker(2, "Two")))
         repository.seedChild(1, "future_custom_type", orderIndex = 4)
         repository.seedChild(1, "staging", orderIndex = 1)
         val dispatcher = StandardTestDispatcher(testScheduler)
 
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
 
         assertEquals(1, repository.bulkChildrenCalls)
@@ -41,7 +72,10 @@ class MarkerViewModelTest {
         val parent = savedMarker(9, "Parent")
         val repository = FakeSavedMarkerRepository(listOf(parent))
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
 
         listOf("staging", "danger", "keepstar").forEach { key ->
@@ -66,7 +100,10 @@ class MarkerViewModelTest {
     fun `temporary workflow is session-only defaults yellow and never calls persistent mutations`() = runTest {
         val repository = FakeSavedMarkerRepository()
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
 
         assertTrue(viewModel.addTemporary(10))
@@ -85,7 +122,10 @@ class MarkerViewModelTest {
         assertEquals(0, repository.deleteCalls)
 
         viewModel.addTemporary(11)
-        val restarted = MarkerViewModel(repository, null, this, dispatcher)
+        val restarted = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
         assertFalse(11 in restarted.state.value.markersBySystemId)
     }
@@ -95,7 +135,10 @@ class MarkerViewModelTest {
         val saved = savedMarker(20, "Saved")
         val repository = FakeSavedMarkerRepository(listOf(saved))
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
         viewModel.addTemporary(10)
         viewModel.addTemporary(11)
@@ -111,7 +154,10 @@ class MarkerViewModelTest {
         val initial = savedMarker(1, "Initial")
         val repository = FakeSavedMarkerRepository(listOf(initial))
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
         assertEquals(initial, viewModel.state.value.markersBySystemId[1])
 
@@ -137,7 +183,10 @@ class MarkerViewModelTest {
     fun `one marker per system is enforced for loaded saved and temporary markers`() = runTest {
         val repository = FakeSavedMarkerRepository(listOf(savedMarker(1, "Saved")))
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
 
         assertFalse(viewModel.addTemporary(2))
         assertFalse(viewModel.state.value.canCreateMarkers)
@@ -155,7 +204,10 @@ class MarkerViewModelTest {
     fun `database load failure leaves persistent state unknown and disables creation`() = runTest {
         val repository = FakeSavedMarkerRepository().apply { loadFailure = true }
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
 
         assertFalse(viewModel.state.value.isLoading)
@@ -164,7 +216,10 @@ class MarkerViewModelTest {
         assertFalse(viewModel.addTemporary(1))
         assertFalse(viewModel.createSaved(1, MarkerDraft.create()))
 
-        val unavailable = MarkerViewModel(null, "damaged user.db", this, dispatcher)
+        val unavailable = MarkerViewModel(
+            SavedMarkerService(null, "damaged user.db", this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         assertEquals("damaged user.db", unavailable.state.value.databaseError)
         assertFalse(unavailable.addTemporary(2))
     }
@@ -173,7 +228,10 @@ class MarkerViewModelTest {
     fun `temporary conversion preserves fields and busy blocks concurrent mutation`() = runTest {
         val repository = FakeSavedMarkerRepository()
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
         viewModel.addTemporary(7)
         viewModel.updateTemporary(7, MarkerDraft.create("Staging", "Fleet area", MarkerColor.PURPLE))
@@ -198,7 +256,10 @@ class MarkerViewModelTest {
     fun `conversion failure keeps temporary marker exactly unchanged`() = runTest {
         val repository = FakeSavedMarkerRepository().apply { createFailure = true }
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
         viewModel.addTemporary(8)
         viewModel.updateTemporary(8, MarkerDraft.create("Keep", "Keep notes", MarkerColor.ORANGE))
@@ -217,7 +278,10 @@ class MarkerViewModelTest {
         val original = savedMarker(3, "Original")
         val repository = FakeSavedMarkerRepository(listOf(original))
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val viewModel = MarkerViewModel(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
         advanceUntilIdle()
 
         repository.createFailure = true

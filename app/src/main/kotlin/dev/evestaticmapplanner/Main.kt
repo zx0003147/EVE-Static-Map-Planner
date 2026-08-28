@@ -50,6 +50,7 @@ import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.StaticMapScreen
 import dev.evestaticmapplanner.marker.MarkerViewModel
 import dev.evestaticmapplanner.marker.MarkerManagerWindow
+import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
@@ -226,12 +227,21 @@ private fun FrameWindowScope.ReadyApplication(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
-    val markerViewModel = remember(configuration) {
-        MarkerViewModel(
-            savedMarkerRepository = userComponents.getOrNull()?.savedMarkerRepository,
+    val markerServiceScope = remember(configuration) {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
+    val savedMarkerService = remember(configuration) {
+        SavedMarkerService(
+            repository = userComponents.getOrNull()?.savedMarkerRepository,
             userDatabaseError = userComponents.exceptionOrNull()?.let {
                 "Markers disabled: ${it.message ?: it::class.simpleName}"
             },
+            scope = markerServiceScope,
+        )
+    }
+    val markerViewModel = remember(savedMarkerService) {
+        MarkerViewModel(
+            savedMarkerService = savedMarkerService,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
@@ -310,6 +320,7 @@ private fun FrameWindowScope.ReadyApplication(
         jumpViewModel,
         capitalViewModel,
         markerViewModel,
+        savedMarkerService,
         staticDataViewModel,
     ) {
         ApplicationShutdownCoordinator(
@@ -320,6 +331,7 @@ private fun FrameWindowScope.ReadyApplication(
                 jumpViewModel::close,
                 capitalViewModel::close,
                 markerViewModel::close,
+                savedMarkerService::close,
                 staticDataViewModel::close,
             ),
             closeDiagnostics = AppDiagnostics::close,
