@@ -6,11 +6,18 @@ import dev.evestaticmapplanner.control.transport.LocalControlClientResult
 internal interface McpMapClient : AutoCloseable {
     suspend fun searchSystem(query: String): LocalControlClientResult
     suspend fun getSystemInfo(systemId: Int): LocalControlClientResult
+    suspend fun getSystemMarkers(systemId: Int): LocalControlClientResult
     suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean): LocalControlClientResult
     suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double): LocalControlClientResult
     suspend fun getActiveMissions(): LocalControlClientResult
     suspend fun getMission(missionId: String): LocalControlClientResult
     suspend fun beginMission(title: String): LocalControlClientResult
+    suspend fun createSavedMarker(
+        systemId: Int,
+        color: String,
+        name: String?,
+        notes: String?,
+    ): LocalControlClientResult
     suspend fun focusSystem(systemId: Int): LocalControlClientResult
     suspend fun showNormalRoute(
         missionId: String,
@@ -53,6 +60,7 @@ internal class LocalMcpMapClient(
 ) : McpMapClient {
     override suspend fun searchSystem(query: String) = client.searchSystem(query)
     override suspend fun getSystemInfo(systemId: Int) = client.getSystemInfo(systemId)
+    override suspend fun getSystemMarkers(systemId: Int) = client.getSystemMarkers(systemId)
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
@@ -60,6 +68,8 @@ internal class LocalMcpMapClient(
     override suspend fun getActiveMissions() = client.getActiveMissions()
     override suspend fun getMission(missionId: String) = client.getMission(missionId)
     override suspend fun beginMission(title: String) = client.beginMission(title)
+    override suspend fun createSavedMarker(systemId: Int, color: String, name: String?, notes: String?) =
+        client.createSavedMarker(systemId, name, notes, color)
     override suspend fun focusSystem(systemId: Int) = client.focusSystem(systemId)
     override suspend fun showNormalRoute(
         missionId: String,

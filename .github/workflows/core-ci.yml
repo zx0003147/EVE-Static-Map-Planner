@@ -63,7 +63,7 @@ jobs:
           --tests dev.evestaticmapplanner.featurepack.FeaturePackManagerTest
           --tests dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntimeTest
 
-      - name: Verify MCP catalog remains exactly 20 tools
+      - name: Verify MCP catalog remains exactly 22 tools
         shell: pwsh
         run: >-
           .\gradlew.bat --no-daemon --console=plain

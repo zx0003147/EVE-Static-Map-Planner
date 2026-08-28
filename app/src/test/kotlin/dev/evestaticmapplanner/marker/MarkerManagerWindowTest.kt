@@ -3,11 +3,13 @@ package dev.evestaticmapplanner.marker
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -66,11 +68,26 @@ class MarkerManagerWindowTest {
         assertFalse(markerManagerCanClose(editorOpen = true, deleteConfirmationOpen = true))
     }
 
+    @Test
+    fun `AI provenance badge is visible while USER provenance stays quiet`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                androidx.compose.foundation.layout.Column {
+                    SavedMarkerProvenanceBadge(SavedMarkerCreatedBy.USER)
+                    SavedMarkerProvenanceBadge(SavedMarkerCreatedBy.AI)
+                }
+            }
+        }
+
+        onNodeWithText("Created by AI").assertIsDisplayed()
+    }
+
     private fun row() = SavedMarkerRowPresentation(
         systemId = 30_000_142,
         systemName = "Jita",
         markerName = "Market",
         color = MarkerColor.BLUE,
         notes = null,
+        createdBy = SavedMarkerCreatedBy.USER,
     )
 }

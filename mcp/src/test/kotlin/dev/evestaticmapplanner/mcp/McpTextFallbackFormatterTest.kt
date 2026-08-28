@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.mcp
 
+import dev.evestaticmapplanner.control.transport.LocalControlClientError
+import dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -7,6 +9,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -134,5 +137,97 @@ class McpTextFallbackFormatterTest {
         assertFalse(text.contains("9000000"), "reachableSystemIds must not be dumped")
         assertFalse(text.contains("reachableSystemIds"))
         assertTrue(text.length <= 4_000)
+    }
+
+    @Test
+    fun `system markers distinguish empty saved and Mission lifecycles`() {
+        val empty = buildJsonObject {
+            put("systemId", 30000142)
+            put("savedMarker", kotlinx.serialization.json.JsonNull)
+            put("missionMarkers", buildJsonArray { })
+        }
+        assertTrue(McpTextFallbackFormatter.format("get_system_markers", empty)
+            .contains("No markers found for system 30000142."))
+
+        val aggregate = buildJsonObject {
+            put("systemId", 30000142)
+            put("savedMarker", buildJsonObject {
+                put("systemId", 30000142)
+                put("name", "Logistics")
+                put("color", "GREEN")
+                put("notes", "Persistent notes")
+                put("createdBy", "AI")
+                put("children", buildJsonArray {
+                    add(buildJsonObject { put("id", "child-1"); put("type", "staging"); put("orderIndex", 0) })
+                })
+            })
+            put("missionMarkers", buildJsonArray {
+                add(buildJsonObject {
+                    put("missionId", "mission-1")
+                    put("markerId", "marker-1")
+                    put("role", "DANGER")
+                    put("label", "Camp")
+                    put("notes", "Temporary notes")
+                    put("color", "RED")
+                })
+            })
+        }
+        val text = McpTextFallbackFormatter.format("get_system_markers", aggregate)
+        assertContains(text, "Saved Marker (persistent):")
+        assertContains(text, "Created by:\nAI")
+        assertContains(text, "Tags:\nstaging")
+        assertContains(text, "Temporary Mission Markers: 1")
+        assertContains(text, "mission-1")
+        assertContains(text, "Temporary notes")
+    }
+
+    @Test
+    fun `saved marker creation summary includes AI provenance`() {
+        val result = buildJsonObject {
+            put("marker", buildJsonObject {
+                put("systemId", 30000142)
+                put("name", "Logistics")
+                put("color", "GREEN")
+                put("createdBy", "AI")
+            })
+        }
+
+        val text = McpTextFallbackFormatter.format("create_saved_marker", result)
+
+        assertContains(text, "Saved Marker created successfully.")
+        assertContains(text, "System ID:\n30000142")
+        assertContains(text, "Created by:\nAI")
+    }
+
+    @Test
+    fun `saved marker errors provide distinct actionable fallback text`() {
+        val expected = mapOf(
+            LocalControlClientErrorCode.CAPABILITY_DENIED to "access is disabled",
+            LocalControlClientErrorCode.MARKER_ALREADY_EXISTS to "not overwritten",
+            LocalControlClientErrorCode.SYSTEM_NOT_FOUND to "does not exist",
+            LocalControlClientErrorCode.INVALID_ARGUMENT to "request is invalid",
+            LocalControlClientErrorCode.INVALID_MARKER_DATA to "data is invalid",
+            LocalControlClientErrorCode.DATABASE_UNAVAILABLE to "storage is unavailable",
+            LocalControlClientErrorCode.IDEMPOTENCY_CONFLICT to "did not match",
+            LocalControlClientErrorCode.INTERNAL_ERROR to "Do not claim",
+        )
+        expected.forEach { (code, phrase) ->
+            val text = McpTextFallbackFormatter.formatError(
+                "create_saved_marker",
+                LocalControlClientError(code, "sanitized"),
+            )
+            assertContains(text, code.name)
+            assertContains(text, phrase)
+        }
+    }
+
+    @Test
+    fun `unrelated tools retain their original error message`() {
+        val text = McpTextFallbackFormatter.formatError(
+            "calculate_normal_route",
+            LocalControlClientError(LocalControlClientErrorCode.INVALID_ARGUMENT, "Route endpoint is invalid"),
+        )
+
+        assertEquals("INVALID_ARGUMENT: Route endpoint is invalid", text)
     }
 }

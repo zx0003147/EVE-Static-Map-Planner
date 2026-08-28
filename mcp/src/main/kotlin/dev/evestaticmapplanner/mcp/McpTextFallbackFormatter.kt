@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.mcp
 
+import dev.evestaticmapplanner.control.transport.LocalControlClientError
+import dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -17,6 +19,7 @@ internal object McpTextFallbackFormatter {
         when (toolName) {
             "search_system" -> formatSystemSearch(structuredContent)
             "get_system_info" -> formatSystemInfo(structuredContent)
+            "get_system_markers" -> formatSystemMarkers(structuredContent)
             "calculate_normal_route" -> formatRoute(structuredContent, "NORMAL", "Route calculated.")
             "calculate_capital_route" -> formatRoute(structuredContent, "CAPITAL", "Route calculated.")
             "get_active_missions" -> formatActiveMissions(structuredContent)
@@ -34,9 +37,33 @@ internal object McpTextFallbackFormatter {
             "clear_mission_markers" -> formatMutation("Mission markers cleared successfully.", structuredContent)
             "fit_mission" -> formatMutation("Map fitted to mission successfully.", structuredContent)
             "clear_mission" -> formatMutation("Mission cleared successfully.", structuredContent)
+            "create_saved_marker" -> formatCreatedSavedMarker(structuredContent)
             else -> formatGeneric(toolName, structuredContent)
         },
     )
+
+    fun formatError(toolName: String, error: LocalControlClientError): String {
+        if (toolName !in SAVED_MARKER_TOOLS) return "${error.code.name}: ${error.message}"
+        return when (error.code) {
+            LocalControlClientErrorCode.CAPABILITY_DENIED ->
+                "CAPABILITY_DENIED: Saved Marker access is disabled in Preferences. Permission was denied and no marker was changed."
+            LocalControlClientErrorCode.MARKER_ALREADY_EXISTS ->
+                "MARKER_ALREADY_EXISTS: This solar system already has a Saved Marker. The existing marker was not overwritten."
+            LocalControlClientErrorCode.SYSTEM_NOT_FOUND ->
+                "SYSTEM_NOT_FOUND: The requested solar system does not exist. No marker was changed."
+            LocalControlClientErrorCode.INVALID_ARGUMENT ->
+                "INVALID_ARGUMENT: The marker request is invalid. Check the required systemId and supported field types."
+            LocalControlClientErrorCode.INVALID_MARKER_DATA ->
+                "INVALID_MARKER_DATA: The Saved Marker data is invalid. Check the color and text limits."
+            LocalControlClientErrorCode.DATABASE_UNAVAILABLE ->
+                "DATABASE_UNAVAILABLE: Saved Marker storage is unavailable. The operation was not completed."
+            LocalControlClientErrorCode.IDEMPOTENCY_CONFLICT ->
+                "IDEMPOTENCY_CONFLICT: A retried mutation did not match its original request. No different mutation was applied."
+            LocalControlClientErrorCode.INTERNAL_ERROR ->
+                "INTERNAL_ERROR: The Saved Marker operation failed internally. Do not claim that it succeeded."
+            else -> "${error.code.name}: ${error.message}"
+        }
+    }
 
     private fun formatSystemSearch(content: JsonObject): String {
         val systems = content.array("systems")
@@ -71,6 +98,64 @@ internal object McpTextFallbackFormatter {
             appendField("Security", system?.text("securityStatus"))
             appendField("Stargates", content.text("stargateCount"))
         }.trimEnd()
+    }
+
+    private fun formatSystemMarkers(content: JsonObject): String {
+        val systemId = content.text("systemId") ?: "unknown"
+        val savedMarker = content["savedMarker"] as? JsonObject
+        val missionMarkers = content.array("missionMarkers")
+        if (savedMarker == null && missionMarkers.isEmpty()) {
+            return "No markers found for system $systemId."
+        }
+        return buildString {
+            appendLine("Markers for system $systemId.")
+            if (savedMarker != null) {
+                appendLine()
+                appendLine("Saved Marker (persistent):")
+                appendMarkerFields(savedMarker)
+                val children = savedMarker.array("children")
+                if (children.isNotEmpty()) {
+                    appendField(
+                        "Tags",
+                        children.mapNotNull { (it as? JsonObject)?.text("type") }.joinToString(", "),
+                    )
+                }
+                appendField("Created by", savedMarker.text("createdBy"))
+            } else {
+                appendLine()
+                appendLine("Saved Marker: none")
+            }
+            appendLine()
+            appendLine("Temporary Mission Markers: ${missionMarkers.size}")
+            missionMarkers.take(MAX_MISSION_ITEMS).forEach { element ->
+                val marker = element as? JsonObject ?: return@forEach
+                append("- ${marker.text("markerId") ?: "unknown ID"}")
+                marker.text("missionId")?.let { append(" in Mission $it") }
+                marker.text("role")?.let { append(", role $it") }
+                marker.text("label")?.let { append(", label: $it") }
+                marker.text("color")?.let { append(", color $it") }
+                marker.text("notes")?.let { append(", notes: $it") }
+                appendLine()
+            }
+            appendOmitted(missionMarkers.size - MAX_MISSION_ITEMS, "Mission markers")
+        }.trimEnd()
+    }
+
+    private fun formatCreatedSavedMarker(content: JsonObject): String {
+        val marker = content.obj("marker") ?: JsonObject(emptyMap())
+        return buildString {
+            appendLine("Saved Marker created successfully.")
+            appendLine()
+            appendMarkerFields(marker)
+            appendField("Created by", marker.text("createdBy"))
+        }.trimEnd()
+    }
+
+    private fun StringBuilder.appendMarkerFields(marker: JsonObject) {
+        appendField("System ID", marker.text("systemId"))
+        appendField("Name", marker.text("name"))
+        appendField("Color", marker.text("color"))
+        appendField("Notes", marker.text("notes"))
     }
 
     private fun formatRoute(content: JsonObject, routeType: String, heading: String): String = buildString {
@@ -260,6 +345,8 @@ internal object McpTextFallbackFormatter {
         "role" to "Marker role",
         "revision" to "Revision",
     )
+
+    private val SAVED_MARKER_TOOLS = setOf("get_system_markers", "create_saved_marker")
 
     private const val TRUNCATION_MARKER = "\n[Additional result details truncated.]"
 }

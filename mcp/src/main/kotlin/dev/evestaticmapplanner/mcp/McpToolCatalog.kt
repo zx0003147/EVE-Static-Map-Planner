@@ -28,11 +28,11 @@ internal data class McpToolDefinition(
 
 internal object McpToolCatalog {
     val names = listOf(
-        "search_system", "get_system_info", "calculate_normal_route", "calculate_capital_route",
+        "search_system", "get_system_info", "get_system_markers", "calculate_normal_route", "calculate_capital_route",
         "get_active_missions", "get_mission", "begin_mission", "focus_system", "show_normal_route",
         "show_capital_route", "remove_mission_route", "clear_mission_routes", "show_jump_range",
         "remove_jump_range", "clear_mission_jump_ranges", "add_mission_marker", "remove_mission_marker",
-        "clear_mission_markers", "fit_mission", "clear_mission",
+        "clear_mission_markers", "fit_mission", "clear_mission", "create_saved_marker",
     )
 
     fun definitions(client: McpMapClient): List<McpToolDefinition> = listOf(
@@ -54,6 +54,16 @@ internal object McpToolCatalog {
         ) { arguments ->
             val input = StrictArguments(arguments, setOf("systemId"), setOf("systemId"))
             client.getSystemInfo(input.positiveInt("systemId"))
+        },
+        queryTool(
+            "get_system_markers",
+            "Query the Saved Marker and current temporary AI Mission Markers for one canonical solar system ID. " +
+                "Reading the Saved Marker requires the user to enable Saved Marker access. This tool never modifies markers.",
+            schema(listOf("systemId"), "systemId" to positiveIntegerProperty()),
+            objectOutput("systemId", "savedMarker", "missionMarkers"),
+        ) { arguments ->
+            val input = StrictArguments(arguments, setOf("systemId"), setOf("systemId"))
+            client.getSystemMarkers(input.positiveInt("systemId"))
         },
         queryTool(
             "calculate_normal_route",
@@ -245,6 +255,33 @@ internal object McpToolCatalog {
             "clear_mission",
             "Clear only the specified temporary Mission. This does not clear user routes, user jump ranges, temporary or saved user markers, preferences, or Ansiblex data.",
         ) { client.clearMission(it) },
+        commandTool(
+            "create_saved_marker",
+            "Create one persistent Saved Marker after the user has explicitly requested permanent storage. " +
+                "Requires Saved Marker access in Preferences. This create-only tool never overwrites, updates, deletes, " +
+                "or clears an existing marker and cannot create tags or children.",
+            schema(
+                listOf("systemId", "color"),
+                "systemId" to positiveIntegerProperty(),
+                "color" to enumProperty(MARKER_COLORS),
+                "name" to stringProperty(120),
+                "notes" to stringProperty(1024),
+            ),
+            objectOutput("marker"),
+            false,
+        ) { arguments ->
+            val input = StrictArguments(
+                arguments,
+                setOf("systemId", "color", "name", "notes"),
+                setOf("systemId", "color"),
+            )
+            client.createSavedMarker(
+                systemId = input.positiveInt("systemId"),
+                color = input.enum("color", MARKER_COLORS),
+                name = input.optionalString("name", 120),
+                notes = input.optionalString("notes", 1024),
+            )
+        },
     ).also { check(it.map { definition -> definition.tool.name } == names) }
 
     fun register(server: Server, client: McpMapClient) {
@@ -364,7 +401,7 @@ private fun LocalControlClientResult.toMcpResult(toolName: String, listResultKey
             })
         }
         CallToolResult(
-            content = listOf(TextContent("${error.code.name}: ${error.message}")),
+            content = listOf(TextContent(McpTextFallbackFormatter.formatError(toolName, error))),
             isError = true,
             structuredContent = structured,
         )

@@ -70,15 +70,16 @@ After upgrading the map to 0.2.1 and the EVE Map Assistant Plugin to 0.2.0, remo
 codex mcp remove eve-static-map
 ```
 
-Do not add it again: Plugin 0.2.0 bundles `eve-static-map` with command `eve-map-mcp.exe`. Fully restart Codex so it inherits the updated PATH and loads the Plugin MCP. With the map closed, initialization and `tools/list` should still succeed while a map tool returns `APP_DISCONNECTED`. With the map running and AI Control enabled, perform a light end-to-end check such as search, focus, begin mission, show route, add marker, show jump range, and clear mission.
+Do not add it again: Plugin 0.3.0 bundles `eve-static-map` with command `eve-map-mcp.exe`. Fully restart Codex so it inherits the updated PATH and loads the Plugin MCP. With the map closed, initialization and `tools/list` should still succeed while a map tool returns `APP_DISCONNECTED`. With the map running and AI Control enabled, perform a light end-to-end check such as search, focus, begin mission, show route, add a temporary marker, query markers, and clear the mission.
 
 ## Fixed tool surface
 
-The server exposes exactly these 20 tools:
+The server exposes exactly these 22 tools:
 
 ```text
 search_system
 get_system_info
+get_system_markers
 calculate_normal_route
 calculate_capital_route
 get_active_missions
@@ -97,6 +98,11 @@ remove_mission_marker
 clear_mission_markers
 fit_mission
 clear_mission
+create_saved_marker
 ```
+
+`get_system_markers` aggregates the persistent Saved Marker and current session-only Mission Markers for one canonical `systemId`. `create_saved_marker` accepts only `systemId`, a supported `color`, and optional `name`/`notes`; application code always records AI provenance. Both operations use `LocalControlClient` and Control API v2. They never read storage directly, and Saved Marker access must be enabled in Preferences.
+
+Permission denial remains `CAPABILITY_DENIED`, an existing marker remains `MARKER_ALREADY_EXISTS`, and retries reuse the Control client's session-scoped idempotency key. MCP exposes no Saved Marker update, delete, clear, replace, tag, or child operation.
 
 When the app is not running or AI Control is disabled, MCP initialization and `tools/list` still work, while a map tool returns `APP_DISCONNECTED`. Session credentials remain internal to `LocalControlClient`; compatibility is determined by the discovery and handshake `protocolVersion`, `controlApiVersion`, and `instanceId`, not by exact equality of the release `appVersion` string.

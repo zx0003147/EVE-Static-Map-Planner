@@ -23,6 +23,7 @@ internal fun createMcpServer(client: McpMapClient): Server {
             ),
         ),
         instructions = "Use search_system to resolve canonical solar system IDs before map-changing calls. " +
-            "All map objects created by these tools must be Mission-owned and temporary.",
+            "Marker requests are temporary Mission markers unless the user explicitly requests permanent Saved storage. " +
+            "Saved Marker access is permission-gated and limited to read and create without overwrite.",
     ).also { server -> McpToolCatalog.register(server, client) }
 }

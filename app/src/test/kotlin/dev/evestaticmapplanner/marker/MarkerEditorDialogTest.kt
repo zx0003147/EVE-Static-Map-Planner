@@ -17,12 +17,37 @@ import androidx.compose.ui.test.runComposeUiTest
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 @OptIn(ExperimentalTestApi::class)
 class MarkerEditorDialogTest {
+    @Test
+    fun `AI-created saved marker editor shows immutable provenance metadata`() = runComposeUiTest {
+        val marker = Marker.saved(
+            1,
+            MarkerDraft.create(name = "AI staging"),
+            Instant.EPOCH,
+            Instant.EPOCH,
+            SavedMarkerCreatedBy.AI,
+        )
+        setContent {
+            MaterialTheme {
+                MarkerEditorDialog(
+                    request = MarkerEditorRequest(MarkerEditorMode.EDIT_SAVED, 1, "Jita", marker),
+                    isBusy = false,
+                    error = null,
+                    onSave = { _, _ -> },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        onNodeWithText("Created by AI").assertIsDisplayed()
+    }
+
     @Test
     fun `many tags remain reachable while save and cancel stay in the fixed dialog footer`() = runComposeUiTest {
         val marker = Marker.saved(1, MarkerDraft.create(name = "Home staging"), Instant.EPOCH, Instant.EPOCH)

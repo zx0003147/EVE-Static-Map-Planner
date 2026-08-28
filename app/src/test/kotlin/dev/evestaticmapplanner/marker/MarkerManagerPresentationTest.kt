@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.marker
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.UniversePosition
@@ -16,7 +17,7 @@ import kotlin.test.assertTrue
 
 class MarkerManagerPresentationTest {
     private val alpha = saved(1, "Home", MarkerColor.GREEN, "Quiet staging")
-    private val bravo = saved(2, "Trade", MarkerColor.BLUE, "Market")
+    private val bravo = saved(2, "Trade", MarkerColor.BLUE, "Market", SavedMarkerCreatedBy.AI)
     private val temporary = Marker.temporary(3, MarkerDraft.create(name = "Session"))
     private val names = mapOf(1 to "Amarr", 2 to "Jita", 3 to "1DQ1-A")
 
@@ -29,6 +30,8 @@ class MarkerManagerPresentationTest {
         assertTrue(presentation.rows.none { it.systemId == temporary.systemId })
         assertNull(presentation.selectedRow)
         assertFalse(presentation.selectionActionsEnabled)
+        assertEquals(null, savedMarkerProvenanceLabel(presentation.rows[0].createdBy))
+        assertEquals("Created by AI", savedMarkerProvenanceLabel(presentation.rows[1].createdBy))
     }
 
     @Test
@@ -93,11 +96,18 @@ class MarkerManagerPresentationTest {
         markersBySystemId = listOf(alpha, bravo, temporary).associateBy(Marker::systemId),
     )
 
-    private fun saved(systemId: Int, name: String, color: MarkerColor, notes: String) = Marker.saved(
+    private fun saved(
+        systemId: Int,
+        name: String,
+        color: MarkerColor,
+        notes: String,
+        createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
+    ) = Marker.saved(
         systemId,
         MarkerDraft.create(name = name, notes = notes, color = color),
         Instant.EPOCH,
         Instant.EPOCH,
+        createdBy,
     )
 
     private fun system(id: Int, name: String) = SolarSystem(

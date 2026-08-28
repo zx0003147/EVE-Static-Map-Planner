@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.test.Test
@@ -41,7 +42,7 @@ class McpProtocolTest {
             assertTrue(capabilities.tasks == null)
             assertTrue(capabilities.experimental == null)
             assertTrue(capabilities.extensions.isNullOrEmpty())
-            assertEquals(20, client.listTools().tools.size)
+            assertEquals(22, client.listTools().tools.size)
 
             val search = client.callTool("search_system", mapOf("query" to "Jita"))
             assertFalse(search.isError == true)
@@ -92,6 +93,22 @@ class McpProtocolTest {
             assertContains(range.text(), "Jump range displayed successfully.")
             assertContains(range.text(), "Overlay ID:\nrange-1")
 
+            val markers = client.callTool("get_system_markers", mapOf("systemId" to 30000142))
+            assertFalse(markers.isError == true)
+            assertEquals("Jita staging", markers.structuredContent?.get("savedMarker")?.jsonObject
+                ?.get("name")?.jsonPrimitive?.content)
+            assertContains(markers.text(), "Saved Marker (persistent):")
+            assertContains(markers.text(), "Temporary Mission Markers: 1")
+
+            val saved = client.callTool(
+                "create_saved_marker",
+                mapOf("systemId" to 30000142, "color" to "GREEN", "name" to "Jita logistics"),
+            )
+            assertFalse(saved.isError == true)
+            assertEquals("AI", saved.structuredContent?.get("marker")?.jsonObject
+                ?.get("createdBy")?.jsonPrimitive?.content)
+            assertContains(saved.text(), "Saved Marker created successfully.")
+
             val invalid = client.callTool("search_system", mapOf("query" to "Jita", "requestId" to "forbidden"))
             assertTrue(invalid.isError == true)
             assertEquals(buildJsonObject {
@@ -100,11 +117,18 @@ class McpProtocolTest {
                     put("message", "The request is invalid.")
                 })
             }, invalid.structuredContent)
-            assertEquals("INVALID_ARGUMENT: The request is invalid.", invalid.text())
+            assertContains(invalid.text(), "INVALID_ARGUMENT:")
+            assertContains(invalid.text(), "request is invalid")
 
             val unknown = client.callTool("unknown_tool", emptyMap())
             assertTrue(unknown.isError == true)
-            assertEquals(listOf("search_system", "begin_mission", "get_mission", "show_jump_range"), mapClient.calls)
+            assertEquals(
+                listOf(
+                    "search_system", "begin_mission", "get_mission", "show_jump_range",
+                    "get_system_markers", "create_saved_marker",
+                ),
+                mapClient.calls,
+            )
         } finally {
             runCatching { client.close() }
             runCatching { server.close() }
@@ -139,6 +163,47 @@ private class ProtocolMapClient : RecordingProtocolClient() {
             put("title", title)
             put("revision", 1)
         }, 1)
+    }
+
+    override suspend fun getSystemMarkers(systemId: Int): LocalControlClientResult {
+        calls += "get_system_markers"
+        return LocalControlClientResult.Success(buildJsonObject {
+            put("systemId", systemId)
+            put("savedMarker", buildJsonObject {
+                put("systemId", systemId)
+                put("name", "Jita staging")
+                put("color", "BLUE")
+                put("notes", "Persistent")
+                put("children", JsonArray(emptyList()))
+                put("createdBy", "USER")
+            })
+            put("missionMarkers", JsonArray(listOf(buildJsonObject {
+                put("missionId", "mission-1")
+                put("markerId", "marker-1")
+                put("systemId", systemId)
+                put("role", "DANGER")
+                put("color", "RED")
+            })))
+        }, null)
+    }
+
+    override suspend fun createSavedMarker(
+        systemId: Int,
+        color: String,
+        name: String?,
+        notes: String?,
+    ): LocalControlClientResult {
+        calls += "create_saved_marker"
+        return LocalControlClientResult.Success(buildJsonObject {
+            put("marker", buildJsonObject {
+                put("systemId", systemId)
+                name?.let { put("name", it) }
+                put("color", color)
+                notes?.let { put("notes", it) }
+                put("children", JsonArray(emptyList()))
+                put("createdBy", "AI")
+            })
+        }, null)
     }
 
     override suspend fun getMission(missionId: String): LocalControlClientResult {
@@ -177,11 +242,13 @@ private open class RecordingProtocolClient : McpMapClient {
 
     override suspend fun searchSystem(query: String) = unused()
     override suspend fun getSystemInfo(systemId: Int) = unused()
+    override suspend fun getSystemMarkers(systemId: Int) = unused()
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) = unused()
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) = unused()
     override suspend fun getActiveMissions() = unused()
     override suspend fun getMission(missionId: String) = unused()
     override suspend fun beginMission(title: String) = unused()
+    override suspend fun createSavedMarker(systemId: Int, color: String, name: String?, notes: String?) = unused()
     override suspend fun focusSystem(systemId: Int) = unused()
     override suspend fun showNormalRoute(missionId: String, startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) = unused()
     override suspend fun showCapitalRoute(

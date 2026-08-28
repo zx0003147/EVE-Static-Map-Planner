@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.marker
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 
 data class SavedMarkerRowPresentation(
     val systemId: Int,
@@ -10,6 +11,7 @@ data class SavedMarkerRowPresentation(
     val markerName: String?,
     val color: MarkerColor,
     val notes: String?,
+    val createdBy: SavedMarkerCreatedBy,
 )
 
 data class MarkerManagerPresentation(
@@ -59,4 +61,8 @@ private fun Marker.toRow(systemName: String) = SavedMarkerRowPresentation(
     markerName = name,
     color = color,
     notes = notes,
+    createdBy = checkNotNull(createdBy),
 )
+
+internal fun savedMarkerProvenanceLabel(createdBy: SavedMarkerCreatedBy): String? =
+    if (createdBy == SavedMarkerCreatedBy.AI) "Created by AI" else null

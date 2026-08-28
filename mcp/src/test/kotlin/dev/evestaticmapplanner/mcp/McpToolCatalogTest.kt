@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.mcp
 import dev.evestaticmapplanner.control.transport.LocalControlClientResult
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -14,12 +15,12 @@ import kotlin.test.assertTrue
 
 class McpToolCatalogTest {
     @Test
-    fun `capability surface is exactly the fixed twenty tools`() {
+    fun `capability surface is exactly the fixed twenty two tools`() {
         val client = RecordingClient()
         val definitions = McpToolCatalog.definitions(client)
         val server = createMcpServer(client)
 
-        assertEquals(20, definitions.size)
+        assertEquals(22, definitions.size)
         assertEquals(McpToolCatalog.names, definitions.map { it.tool.name })
         assertEquals(McpToolCatalog.names.toSet(), server.tools.keys)
         assertTrue(server.resources.isEmpty())
@@ -27,8 +28,16 @@ class McpToolCatalogTest {
         assertTrue(server.resourceTemplates.isEmpty())
 
         val names = definitions.joinToString(" ") { it.tool.name }.lowercase()
-        listOf("shell", "file", "sql", "db", "process", "invoke", "execute", "http", "url", "saved", "ansiblex_add", "preference")
+        listOf("shell", "file", "sql", "db", "process", "invoke", "execute", "http", "url", "ansiblex_add", "preference")
             .forEach { assertFalse(names.contains(it), it) }
+        assertEquals(
+            setOf("get_system_markers", "create_saved_marker"),
+            definitions.map { it.tool.name }.filter {
+                it == "get_system_markers" || "saved_marker" in it
+            }.toSet(),
+        )
+        listOf("update_saved_marker", "delete_saved_marker", "clear_saved_markers", "replace_saved_marker")
+            .forEach { assertFalse(it in McpToolCatalog.names, it) }
         runBlocking { server.close() }
     }
 
@@ -81,11 +90,41 @@ class McpToolCatalogTest {
         }
         Unit
     }
+
+    @Test
+    fun `Saved Marker schemas descriptions and null handling are strict`() = runBlocking {
+        val definitions = McpToolCatalog.definitions(RecordingClient()).associateBy { it.tool.name }
+        val query = definitions.getValue("get_system_markers").tool
+        assertEquals(setOf("systemId"), query.inputSchema.properties.orEmpty().keys)
+        assertEquals(listOf("systemId"), query.inputSchema.required)
+        assertTrue(query.description.orEmpty().contains("never modifies markers"))
+        assertTrue(query.description.orEmpty().contains("requires the user to enable"))
+
+        val create = definitions.getValue("create_saved_marker").tool
+        assertEquals(setOf("systemId", "color", "name", "notes"), create.inputSchema.properties.orEmpty().keys)
+        assertEquals(listOf("systemId", "color"), create.inputSchema.required)
+        assertTrue(create.description.orEmpty().contains("create-only"))
+        listOf("overwrites", "updates", "deletes", "tags", "children").forEach {
+            assertTrue(create.description.orEmpty().contains(it), it)
+        }
+
+        val invoke = definitions.getValue("create_saved_marker").invoke
+        listOf(
+            buildJsonObject { put("color", "RED") },
+            buildJsonObject { put("systemId", "30000142"); put("color", "RED") },
+            buildJsonObject { put("systemId", 30000142) },
+            buildJsonObject { put("systemId", 30000142); put("color", "BLACK") },
+            buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("name", JsonNull) },
+            buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("notes", "x".repeat(1025)) },
+            buildJsonObject { put("systemId", 30000142); put("color", "RED"); put("children", JsonNull) },
+        ).forEach { arguments -> assertFails { invoke(arguments) } }
+    }
 }
 
 private val validArguments: Map<String, Map<String, kotlinx.serialization.json.JsonElement>> = mapOf(
     "search_system" to mapOf("query" to JsonPrimitive("Jita")),
     "get_system_info" to mapOf("systemId" to JsonPrimitive(30000142)),
+    "get_system_markers" to mapOf("systemId" to JsonPrimitive(30000142)),
     "calculate_normal_route" to mapOf(
         "startSystemId" to JsonPrimitive(1), "destinationSystemId" to JsonPrimitive(2), "useAnsiblex" to JsonPrimitive(false),
     ),
@@ -118,6 +157,10 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
     "clear_mission_markers" to mapOf("missionId" to JsonPrimitive("m1")),
     "fit_mission" to mapOf("missionId" to JsonPrimitive("m1")),
     "clear_mission" to mapOf("missionId" to JsonPrimitive("m1")),
+    "create_saved_marker" to mapOf(
+        "systemId" to JsonPrimitive(30000142), "color" to JsonPrimitive("GREEN"),
+        "name" to JsonPrimitive("Staging"), "notes" to JsonPrimitive("Persistent"),
+    ),
 )
 
 private class RecordingClient : McpMapClient {
@@ -130,6 +173,7 @@ private class RecordingClient : McpMapClient {
 
     override suspend fun searchSystem(query: String) = result("search_system")
     override suspend fun getSystemInfo(systemId: Int) = result("get_system_info")
+    override suspend fun getSystemMarkers(systemId: Int) = result("get_system_markers")
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         result("calculate_normal_route")
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
@@ -137,6 +181,8 @@ private class RecordingClient : McpMapClient {
     override suspend fun getActiveMissions() = result("get_active_missions")
     override suspend fun getMission(missionId: String) = result("get_mission")
     override suspend fun beginMission(title: String) = result("begin_mission")
+    override suspend fun createSavedMarker(systemId: Int, color: String, name: String?, notes: String?) =
+        result("create_saved_marker")
     override suspend fun focusSystem(systemId: Int) = result("focus_system")
     override suspend fun showNormalRoute(missionId: String, startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         result("show_normal_route")

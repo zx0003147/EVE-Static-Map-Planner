@@ -35,6 +35,7 @@ import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import dev.evestaticmapplanner.search.SystemSearchField
@@ -87,6 +88,9 @@ fun MarkerEditorDialog(
                     .heightIn(max = markerEditorContentMaxHeight)
                     .verticalScroll(rememberScrollState()),
             ) {
+                if (request.marker?.createdBy == SavedMarkerCreatedBy.AI) {
+                    SavedMarkerProvenanceBadge(SavedMarkerCreatedBy.AI)
+                }
                 if (request.systemId != null) {
                     OutlinedTextField(
                         value = request.systemName.orEmpty(),

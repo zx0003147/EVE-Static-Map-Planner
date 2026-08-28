@@ -1,9 +1,15 @@
 package dev.evestaticmapplanner.mcp
 
 import dev.evestaticmapplanner.control.DefaultMapControlService
+import dev.evestaticmapplanner.control.ControlErrorCode
+import dev.evestaticmapplanner.control.ControlPortFailure
+import dev.evestaticmapplanner.control.DeniedSavedMarkerControlPort
 import dev.evestaticmapplanner.control.JumpPlanningPort
 import dev.evestaticmapplanner.control.MissionRenderStatePort
 import dev.evestaticmapplanner.control.RoutePlanningPort
+import dev.evestaticmapplanner.control.SavedMarkerControlPort
+import dev.evestaticmapplanner.control.SavedMarkerCreatePortRequest
+import dev.evestaticmapplanner.control.SavedMarkerSummaryDto
 import dev.evestaticmapplanner.control.SystemInfoDto
 import dev.evestaticmapplanner.control.SystemReadPort
 import dev.evestaticmapplanner.control.SystemSummaryDto
@@ -14,6 +20,7 @@ import dev.evestaticmapplanner.control.transport.LocalControlServer
 import dev.evestaticmapplanner.control.transport.SecureLocalControlDiscovery
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import io.modelcontextprotocol.kotlin.sdk.ExperimentalMcpApi
 import io.modelcontextprotocol.kotlin.sdk.client.Client
@@ -63,7 +70,7 @@ class McpProcessTest {
         val client = Client(Implementation("step-3a-process-test", "1.0"))
         try {
             client.connect(transport)
-            assertEquals(20, client.listTools().tools.size)
+            assertEquals(22, client.listTools().tools.size)
             val disconnected = client.callTool("search_system", mapOf("query" to "Jita"))
             assertTrue(disconnected.isError == true)
             assertEquals(
@@ -114,7 +121,7 @@ class McpProcessTest {
         val client = Client(Implementation("step-3b-launcher-test", "1.0"))
         try {
             client.connect(transport)
-            assertEquals(20, client.listTools().tools.size)
+            assertEquals(22, client.listTools().tools.size)
             val disconnected = client.callTool("search_system", mapOf("query" to "Jita"))
             assertTrue(disconnected.isError == true)
             assertEquals(
@@ -161,7 +168,7 @@ class McpProcessTest {
         val client = Client(Implementation("step-4d-path-launcher-test", "1.0"))
         try {
             client.connect(transport)
-            assertEquals(20, client.listTools().tools.size)
+            assertEquals(22, client.listTools().tools.size)
             val disconnected = client.callTool("search_system", mapOf("query" to "Jita"))
             assertTrue(disconnected.isError == true)
             assertEquals(
@@ -254,7 +261,8 @@ internal object McpEndToEndProbe {
             .resolve("EVE Static Map Planner")
             .resolve("control")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val service = probeService(scope)
+        val savedMarkers = ProbeSavedMarkerPort()
+        val service = probeService(scope, savedMarkers)
         val lease = (SecureLocalControlDiscovery(root).acquire() as LocalControlDiscoveryAcquisition.Acquired).lease
         val localServer = LocalControlServer(service, "0.1.2")
         localServer.start()
@@ -270,9 +278,59 @@ internal object McpEndToEndProbe {
             check(search.isError != true)
             val systems = search.structuredContent?.get("systems") as JsonArray
             check(systems.single().jsonObject.getValue("canonicalName").jsonPrimitive.content == "A")
+
+            val denied = protocolClient.callTool(
+                "create_saved_marker",
+                mapOf("systemId" to 1, "color" to "GREEN", "name" to "Staging"),
+            )
+            check(denied.isError == true)
+            check(denied.structuredContent?.get("error")?.jsonObject
+                ?.get("code")?.jsonPrimitive?.content == "CAPABILITY_DENIED")
+            check(savedMarkers.marker == null)
+
+            savedMarkers.allowed = true
+            val created = protocolClient.callTool(
+                "create_saved_marker",
+                mapOf("systemId" to 1, "color" to "GREEN", "name" to "Staging", "notes" to "Persistent"),
+            )
+            check(created.isError != true)
+            check(created.structuredContent?.get("marker")?.jsonObject
+                ?.get("createdBy")?.jsonPrimitive?.content == "AI")
+
             val mission = protocolClient.callTool("begin_mission", mapOf("title" to "E2E Mission"))
             check(mission.isError != true)
-            check(mission.structuredContent?.get("missionId")?.jsonPrimitive?.content?.isNotBlank() == true)
+            val missionId = mission.structuredContent?.get("missionId")?.jsonPrimitive?.content.orEmpty()
+            check(missionId.isNotBlank())
+            val temporary = protocolClient.callTool(
+                "add_mission_marker",
+                mapOf("missionId" to missionId, "systemId" to 1, "role" to "DANGER", "label" to "Temporary"),
+            )
+            check(temporary.isError != true)
+
+            val aggregate = protocolClient.callTool("get_system_markers", mapOf("systemId" to 1))
+            check(aggregate.isError != true)
+            check(aggregate.structuredContent?.get("savedMarker")?.jsonObject
+                ?.get("name")?.jsonPrimitive?.content == "Staging")
+            check((aggregate.structuredContent?.get("missionMarkers") as JsonArray).size == 1)
+
+            val cleared = protocolClient.callTool("clear_mission", mapOf("missionId" to missionId))
+            check(cleared.isError != true)
+            val afterCleanup = protocolClient.callTool("get_system_markers", mapOf("systemId" to 1))
+            check((afterCleanup.structuredContent?.get("missionMarkers") as JsonArray).isEmpty())
+            check(afterCleanup.structuredContent?.get("savedMarker")?.jsonObject
+                ?.get("name")?.jsonPrimitive?.content == "Staging")
+
+            val duplicate = protocolClient.callTool(
+                "create_saved_marker",
+                mapOf("systemId" to 1, "color" to "RED", "name" to "Must not overwrite"),
+            )
+            check(duplicate.isError == true)
+            check(duplicate.structuredContent?.get("error")?.jsonObject
+                ?.get("code")?.jsonPrimitive?.content == "MARKER_ALREADY_EXISTS")
+            check(savedMarkers.marker?.name == "Staging")
+            check(savedMarkers.marker?.color?.name == "GREEN")
+            check(savedMarkers.marker?.notes == "Persistent")
+            check(savedMarkers.marker?.createdBy == SavedMarkerCreatedBy.AI)
         } finally {
             runCatching { protocolClient.close() }
             runCatching { mcpServer.close() }
@@ -288,7 +346,10 @@ internal object McpEndToEndProbe {
     }
 }
 
-private fun probeService(scope: CoroutineScope): DefaultMapControlService {
+private fun probeService(
+    scope: CoroutineScope,
+    savedMarkerControlPort: SavedMarkerControlPort = DeniedSavedMarkerControlPort,
+): DefaultMapControlService {
     val system = SystemSummaryDto(1, "A", 1, 1, 0.0)
     return DefaultMapControlService(
         systemReadPort = object : SystemReadPort {
@@ -316,7 +377,43 @@ private fun probeService(scope: CoroutineScope): DefaultMapControlService {
         },
         missionRenderStatePort = MissionRenderStatePort { },
         scope = scope,
+        savedMarkerControlPort = savedMarkerControlPort,
     )
+}
+
+private class ProbeSavedMarkerPort : SavedMarkerControlPort {
+    var allowed = false
+    var marker: SavedMarkerSummaryDto? = null
+
+    override suspend fun getSystemMarker(systemId: Int): SavedMarkerSummaryDto? {
+        authorize()
+        requireSystem(systemId)
+        return marker
+    }
+
+    override suspend fun createSavedMarker(request: SavedMarkerCreatePortRequest): SavedMarkerSummaryDto {
+        authorize()
+        requireSystem(request.systemId)
+        if (marker != null) {
+            throw ControlPortFailure(ControlErrorCode.MARKER_ALREADY_EXISTS, "Saved Marker already exists")
+        }
+        return SavedMarkerSummaryDto(
+            systemId = request.systemId,
+            name = request.name,
+            color = request.color,
+            notes = request.notes,
+            children = emptyList(),
+            createdBy = SavedMarkerCreatedBy.AI,
+        ).also { marker = it }
+    }
+
+    private fun authorize() {
+        if (!allowed) throw ControlPortFailure(ControlErrorCode.CAPABILITY_DENIED, "Saved Marker access is disabled")
+    }
+
+    private fun requireSystem(systemId: Int) {
+        if (systemId != 1) throw ControlPortFailure(ControlErrorCode.SYSTEM_NOT_FOUND, "Solar system was not found")
+    }
 }
 
 private fun javaProcess(mainClass: String, localAppData: Path, secretSentinel: String): Process {

@@ -34,6 +34,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import kotlinx.coroutines.Dispatchers
@@ -355,8 +356,22 @@ private fun MarkerTableRow(
             .padding(horizontal = 10.dp, vertical = 9.dp),
     ) {
         Text(row.systemName, modifier = Modifier.weight(1.2f))
-        Text(row.markerName.orEmpty(), modifier = Modifier.weight(1.2f))
+        Column(modifier = Modifier.weight(1.2f)) {
+            Text(row.markerName.orEmpty())
+            SavedMarkerProvenanceBadge(row.createdBy)
+        }
         Text(row.color.name, color = markerColor(row.color), modifier = Modifier.weight(0.7f))
+    }
+}
+
+@Composable
+internal fun SavedMarkerProvenanceBadge(createdBy: SavedMarkerCreatedBy) {
+    savedMarkerProvenanceLabel(createdBy)?.let { label ->
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF8CC8F5),
+        )
     }
 }
 

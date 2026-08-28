@@ -142,7 +142,7 @@ The authoritative local cross-repository acceptance mechanism is Core's existing
 It requires clean `main` worktrees. The runner publishes Feature API `1.0.0` only to Core's generated test repository,
 builds the standalone Sovereignty Pack by coordinate, clean-builds Core without the Pack, runs focused Host and
 generic presentation regressions, supplies the canonical external JAR only to the explicit integration test, and
-enforces the exactly 20-tool MCP catalog. It uses fixtures/LKG data instead of live ESI and performs no remote
+enforces the exactly 22-tool MCP catalog. It uses fixtures/LKG data instead of live ESI and performs no remote
 publication.
 
 Future GitHub cross-repository CI can reproduce those stages only after the Sovereignty remote exists, Feature API is

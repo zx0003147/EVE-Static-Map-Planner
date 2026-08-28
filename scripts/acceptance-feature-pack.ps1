@@ -323,7 +323,7 @@ try {
         (Join-Path $coreRepo "app\build\test-results\test")
     )
 
-    Write-Stage "Verify the Core-owned MCP catalog remains exactly 20 tools"
+    Write-Stage "Verify the Core-owned MCP catalog remains exactly 22 tools"
     Invoke-Gradle -Repository $coreRepo -Arguments @(
         ":mcp:test",
         "--tests", "dev.evestaticmapplanner.mcp.McpToolCatalogTest"
@@ -349,7 +349,7 @@ try {
     Write-Host "Pack: sovereignty.pack 0.1.0; required API 1; publisher/name verified"
     Write-Host "Host integration: API 1; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info registered and unregistered"
     Write-Host "No-Pack: no ClassLoader, storage, Public ESI, or worker"
-    Write-Host "MCP catalog: exactly 20 tools"
+    Write-Host "MCP catalog: exactly 22 tools"
     Write-Host ("Tests: Feature API {0}, Sovereignty {1}, Core build {2}, focused {3}, integration {4}, MCP {5}" -f `
         $featureApiTests.Tests, $sovTests.Tests, $coreTests.Tests, $focusedTestSummary.Tests, $integrationTests.Tests, $mcpTests.Tests)
     Write-Host ("Gradle invocations: {0}; duration: {1:c}" -f $script:GradleInvocationCount, $script:StartedAt.Elapsed)

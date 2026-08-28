@@ -14,7 +14,7 @@ V1 intentionally excludes ESI, intel, killboards, application auto-update, signi
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
 - `feature-api`: Frozen Feature API v1 contracts and generic external Pack test fixture.
-- `mcp`: Core-owned MCP server and its 20-tool catalog.
+- `mcp`: Core-owned MCP server and its fixed 22-tool catalog, including permission-gated Saved Marker read/create.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 
 ## External Feature Packs

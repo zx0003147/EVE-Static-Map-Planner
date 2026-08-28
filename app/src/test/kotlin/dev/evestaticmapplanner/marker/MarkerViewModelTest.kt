@@ -184,6 +184,40 @@ class MarkerViewModelTest {
     }
 
     @Test
+    fun `AI provenance survives user edit child changes reload and remains user deletable`() = runTest {
+        val repository = FakeSavedMarkerRepository(
+            listOf(savedMarker(7, "AI original", SavedMarkerCreatedBy.AI)),
+        )
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val service = SavedMarkerService(repository, null, this, dispatcher)
+        val viewModel = MarkerViewModel(service, CoroutineScope(SupervisorJob() + dispatcher))
+        advanceUntilIdle()
+        assertEquals(SavedMarkerCreatedBy.AI, viewModel.state.value.markersBySystemId[7]?.createdBy)
+
+        assertTrue(viewModel.updateSaved(7, MarkerDraft.create(name = "User edited")))
+        advanceUntilIdle()
+        assertEquals(SavedMarkerCreatedBy.AI, viewModel.state.value.markersBySystemId[7]?.createdBy)
+
+        assertTrue(viewModel.addChild(7, SavedMarkerChildType.of("staging")))
+        advanceUntilIdle()
+        val childId = viewModel.state.value.childrenByParentSystemId.getValue(7).single().id
+        assertEquals(SavedMarkerCreatedBy.AI, viewModel.state.value.markersBySystemId[7]?.createdBy)
+        assertTrue(viewModel.removeChild(7, childId))
+        advanceUntilIdle()
+        assertEquals(SavedMarkerCreatedBy.AI, viewModel.state.value.markersBySystemId[7]?.createdBy)
+
+        val reloaded = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
+        advanceUntilIdle()
+        assertEquals(SavedMarkerCreatedBy.AI, reloaded.state.value.markersBySystemId[7]?.createdBy)
+        assertTrue(reloaded.removeSaved(7))
+        advanceUntilIdle()
+        assertFalse(7 in reloaded.state.value.markersBySystemId)
+    }
+
+    @Test
     fun `one marker per system is enforced for loaded saved and temporary markers`() = runTest {
         val repository = FakeSavedMarkerRepository(listOf(savedMarker(1, "Saved")))
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -392,9 +426,14 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     }
 }
 
-private fun savedMarker(systemId: Int, name: String): Marker = Marker.saved(
+private fun savedMarker(
+    systemId: Int,
+    name: String,
+    createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
+): Marker = Marker.saved(
     systemId = systemId,
     draft = MarkerDraft.create(name = name),
     createdAt = Instant.parse("2026-08-21T00:00:00Z"),
     updatedAt = Instant.parse("2026-08-21T00:00:00Z"),
+    createdBy = createdBy,
 )
