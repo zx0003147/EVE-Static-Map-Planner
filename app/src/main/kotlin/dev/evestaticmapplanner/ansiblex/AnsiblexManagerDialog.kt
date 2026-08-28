@@ -7,11 +7,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -22,6 +23,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,13 +31,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.rememberDialogState
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
+import java.awt.Dimension
 import java.nio.file.Path
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
@@ -64,13 +71,21 @@ fun AnsiblexManagerDialog(
         if (confirmation == null) onDismiss()
     }
 
-    DialogWindow(onCloseRequest = dismissManager, title = "Ansiblex Manager") {
-        Surface(
-            modifier = Modifier.width(900.dp).height(720.dp),
-            color = Color(0xFF15212D),
-            contentColor = Color(0xFFD7E6F2),
-            tonalElevation = 8.dp,
-        ) {
+    DialogWindow(
+        onCloseRequest = dismissManager,
+        title = "Ansiblex Manager",
+        state = rememberDialogState(
+            width = ANSIBLEX_MANAGER_DEFAULT_SIZE.width,
+            height = ANSIBLEX_MANAGER_DEFAULT_SIZE.height,
+        ),
+    ) {
+        val density = LocalDensity.current
+        val minimumWidthPx = with(density) { ANSIBLEX_MANAGER_MINIMUM_SIZE.width.roundToPx() }
+        val minimumHeightPx = with(density) { ANSIBLEX_MANAGER_MINIMUM_SIZE.height.roundToPx() }
+        SideEffect {
+            window.minimumSize = Dimension(minimumWidthPx, minimumHeightPx)
+        }
+        AnsiblexManagerRoot {
             Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column {
@@ -86,7 +101,13 @@ fun AnsiblexManagerDialog(
                 }
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Column(Modifier.width(390.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        Modifier
+                            .width(ANSIBLEX_MANAGER_FORM_WIDTH)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text("Import CSV / JSON", style = MaterialTheme.typography.titleMedium)
                         Row {
                             AnsiblexImportMode.entries.forEach { mode ->
@@ -185,6 +206,23 @@ fun AnsiblexManagerDialog(
         }
     }
 }
+
+@Composable
+internal fun AnsiblexManagerRoot(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxSize().testTag(ANSIBLEX_MANAGER_ROOT_TEST_TAG),
+        color = ANSIBLEX_MANAGER_BACKGROUND,
+        contentColor = Color(0xFFD7E6F2),
+        tonalElevation = 8.dp,
+        content = content,
+    )
+}
+
+internal val ANSIBLEX_MANAGER_DEFAULT_SIZE = DpSize(960.dp, 760.dp)
+internal val ANSIBLEX_MANAGER_MINIMUM_SIZE = DpSize(840.dp, 680.dp)
+internal val ANSIBLEX_MANAGER_FORM_WIDTH = 390.dp
+internal val ANSIBLEX_MANAGER_BACKGROUND = Color(0xFF15212D)
+internal const val ANSIBLEX_MANAGER_ROOT_TEST_TAG = "ansiblex-manager-root"
 
 @Composable
 internal fun AnsiblexClearConfirmationDialog(

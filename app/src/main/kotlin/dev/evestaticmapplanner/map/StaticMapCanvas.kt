@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
@@ -283,6 +284,7 @@ fun StaticMapCanvas(
     var isDragging by remember { mutableStateOf(false) }
     var isPointerGestureBlocked by remember { mutableStateOf(false) }
     var compactCardBounds by remember { mutableStateOf<Rect?>(null) }
+    var canvasSizePx by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(compactSystemInfo) {
         if (compactSystemInfo == null) compactCardBounds = null
@@ -299,7 +301,10 @@ fun StaticMapCanvas(
         modifier = Modifier
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color(0xFF09121D))
-            .onSizeChanged { onCanvasSizeChanged(MapSize(it.width.toDouble(), it.height.toDouble())) }
+            .onSizeChanged {
+                canvasSizePx = it
+                onCanvasSizeChanged(MapSize(it.width.toDouble(), it.height.toDouble()))
+            }
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 event.changes.firstOrNull()?.let { change ->
@@ -551,6 +556,7 @@ fun StaticMapCanvas(
                 .zIndex(FEATURE_OVERLAY_LEGEND_Z_INDEX),
         )
         state.contextMenu?.let { menu ->
+            var menuSizePx by remember(menu.systemId, menu.screenPosition) { mutableStateOf(IntSize.Zero) }
             Spacer(
                 Modifier
                     .fillMaxSize()
@@ -563,11 +569,13 @@ fun StaticMapCanvas(
                 modifier = Modifier
                     .zIndex(CONTEXT_MENU_Z_INDEX)
                     .offset {
-                        IntOffset(
-                            menu.screenPosition.x.toInt(),
-                            menu.screenPosition.y.toInt(),
+                        calculateContextMenuPosition(
+                            anchor = IntOffset(menu.screenPosition.x.toInt(), menu.screenPosition.y.toInt()),
+                            popupSize = menuSizePx,
+                            viewportSize = canvasSizePx,
                         )
                     }
+                    .onSizeChanged { menuSizePx = it }
                     .width(210.dp),
             ) {
                 androidx.compose.foundation.layout.Column(Modifier.padding(vertical = 4.dp)) {
@@ -636,6 +644,29 @@ internal fun Rect?.containsPoint(point: MapPoint): Boolean =
 
 internal fun Rect?.containsPoint(point: Offset): Boolean =
     this?.contains(point) == true
+
+internal fun calculateContextMenuPosition(
+    anchor: IntOffset,
+    popupSize: IntSize,
+    viewportSize: IntSize,
+): IntOffset {
+    val maxX = (viewportSize.width - popupSize.width).coerceAtLeast(0)
+    val maxY = (viewportSize.height - popupSize.height).coerceAtLeast(0)
+    val preferredX = if (anchor.x + popupSize.width <= viewportSize.width) {
+        anchor.x
+    } else {
+        anchor.x - popupSize.width
+    }
+    val preferredY = if (anchor.y + popupSize.height <= viewportSize.height) {
+        anchor.y
+    } else {
+        anchor.y - popupSize.height
+    }
+    return IntOffset(
+        x = preferredX.coerceIn(0, maxX),
+        y = preferredY.coerceIn(0, maxY),
+    )
+}
 
 private const val DRAG_SLOP_PX = 4.0
 internal const val CONTEXT_DISMISS_Z_INDEX = 9f

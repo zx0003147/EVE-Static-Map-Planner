@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -47,6 +48,7 @@ class SystemSearchFieldTest {
                     },
                     onSelect = {},
                     suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
+                    compact = true,
                 )
             }
         }
@@ -60,7 +62,7 @@ class SystemSearchFieldTest {
             textField.assertIsFocused()
         }
 
-        textField.assertTextEquals("Search system", "C-0ND2")
+        textField.assertTextEquals("C-0ND2")
         assertEquals(listOf("C", "C-", "C-0", "C-0N", "C-0ND", "C-0ND2"), queryUpdates)
         onNodeWithText("C-0ND2  ·  30000001").assertExists()
         onNodeWithText("C-J6MT  ·  30000002").assertDoesNotExist()
@@ -81,6 +83,7 @@ class SystemSearchFieldTest {
                     onValueChange = { query = it },
                     onSelect = { selected = it },
                     suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
+                    compact = true,
                 )
             }
         }
@@ -119,7 +122,16 @@ class SystemSearchFieldTest {
             }
         }
 
-        onNode(hasSetTextAction()).assertHeightIsEqualTo(COMPACT_SEARCH_FIELD_HEIGHT)
+        val field = onNodeWithTag(COMPACT_SEARCH_FIELD_TEST_TAG)
+        field.assertHeightIsEqualTo(COMPACT_SEARCH_FIELD_HEIGHT)
+        val fieldBounds = field.fetchSemanticsNode().boundsInRoot
+        val placeholderBounds = onNodeWithTag(
+            COMPACT_SEARCH_PLACEHOLDER_TEST_TAG,
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        assertTrue(placeholderBounds.top >= fieldBounds.top)
+        assertTrue(placeholderBounds.bottom <= fieldBounds.bottom)
+        assertEquals(fieldBounds.center.y, placeholderBounds.center.y, absoluteTolerance = 1f)
         assertEquals(48.dp, COMPACT_SEARCH_FIELD_HEIGHT)
     }
 
