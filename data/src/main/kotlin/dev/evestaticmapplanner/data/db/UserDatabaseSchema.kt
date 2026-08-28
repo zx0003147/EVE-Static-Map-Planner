@@ -3,7 +3,19 @@ package dev.evestaticmapplanner.data.db
 import java.sql.Connection
 
 object UserDatabaseSchema {
-    const val VERSION = 3
+    const val VERSION = 4
+
+    private val savedMarkersVersionTwoCreateStatement =
+        """
+        CREATE TABLE saved_markers (
+            system_id INTEGER PRIMARY KEY CHECK(system_id > 0),
+            name TEXT CHECK(name IS NULL OR length(trim(name)) > 0),
+            notes TEXT CHECK(notes IS NULL OR length(trim(notes)) > 0),
+            color TEXT NOT NULL CHECK(color IN ('RED', 'ORANGE', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE', 'WHITE')),
+            created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
+            updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0)
+        ) STRICT
+        """.trimIndent()
 
     internal val savedMarkersCreateStatement =
         """
@@ -13,7 +25,8 @@ object UserDatabaseSchema {
             notes TEXT CHECK(notes IS NULL OR length(trim(notes)) > 0),
             color TEXT NOT NULL CHECK(color IN ('RED', 'ORANGE', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE', 'WHITE')),
             created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
-            updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0)
+            updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0),
+            created_by TEXT NOT NULL DEFAULT 'USER' CHECK(created_by IN ('USER', 'AI'))
         ) STRICT
         """.trimIndent()
 
@@ -87,13 +100,25 @@ object UserDatabaseSchema {
         }
     }
 
-    internal fun addSavedMarkers(connection: Connection) {
-        connection.createStatement().use { it.execute(savedMarkersCreateStatement) }
+    internal fun addVersionTwoSavedMarkers(connection: Connection) {
+        connection.createStatement().use { it.execute(savedMarkersVersionTwoCreateStatement) }
     }
 
     internal fun addSavedMarkerChildren(connection: Connection) {
         connection.createStatement().use { statement ->
             savedMarkerChildrenCreateStatements.forEach(statement::execute)
+        }
+    }
+
+    internal fun addSavedMarkerProvenance(connection: Connection) {
+        connection.createStatement().use { statement ->
+            statement.execute(
+                """
+                ALTER TABLE saved_markers
+                ADD COLUMN created_by TEXT NOT NULL DEFAULT 'USER'
+                    CHECK(created_by IN ('USER', 'AI'))
+                """.trimIndent(),
+            )
         }
     }
 }

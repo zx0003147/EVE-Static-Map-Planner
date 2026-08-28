@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.data.db.UserDatabase
 import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import java.sql.SQLException
@@ -40,6 +41,7 @@ class SqliteSavedMarkerRepositoryTest {
         val loaded = SqliteSavedMarkerRepository(path).getAll()
         assertEquals(MarkerColor.entries, loaded.map { it.color })
         assertTrue(loaded.all { it.persistence == MarkerPersistence.SAVED })
+        assertTrue(loaded.all { it.createdBy == SavedMarkerCreatedBy.USER })
         assertTrue(loaded.all { it.createdAt == instant && it.updatedAt == instant })
         assertEquals("Staging", loaded.first().name)
         assertNull(loaded.first().notes)
@@ -66,10 +68,44 @@ class SqliteSavedMarkerRepositoryTest {
         assertEquals("New", updated.name)
         assertEquals("Updated", updated.notes)
         assertEquals(MarkerColor.BLUE, updated.color)
+        assertEquals(SavedMarkerCreatedBy.USER, updated.createdBy)
         assertTrue(repository.delete(42))
         assertEquals(emptyList(), repository.getAll())
         assertFailsWith<IllegalStateException> { repository.update(42, MarkerDraft.create()) }
         assertFailsWith<IllegalStateException> { repository.delete(42) }
+    }
+
+    @Test
+    fun `AI provenance persists across reload update and child mutations`() {
+        val path = createTempDirectory("saved-marker-ai-provenance").resolve("user.db")
+        val createdAt = Instant.parse("2026-08-21T01:00:00Z")
+        val updatedAt = Instant.parse("2026-08-21T02:00:00Z")
+        val repository = SqliteSavedMarkerRepository(
+            path,
+            clock = fixedClock(createdAt),
+            idGenerator = { "ai-child" },
+        )
+
+        val created = repository.create(
+            systemId = 84,
+            draft = MarkerDraft.create(name = "AI origin", notes = "Keep source", color = MarkerColor.PURPLE),
+            createdBy = SavedMarkerCreatedBy.AI,
+        )
+        assertEquals(SavedMarkerCreatedBy.AI, created.createdBy)
+        assertEquals(SavedMarkerCreatedBy.AI, SqliteSavedMarkerRepository(path).getAll().single().createdBy)
+
+        val child = repository.addChild(84, SavedMarkerChildType.of("staging"))
+        assertEquals(SavedMarkerCreatedBy.AI, repository.getAll().single().createdBy)
+        assertTrue(repository.removeChild(84, child.id))
+        assertEquals(SavedMarkerCreatedBy.AI, repository.getAll().single().createdBy)
+
+        val updated = SqliteSavedMarkerRepository(path, fixedClock(updatedAt)).update(
+            84,
+            MarkerDraft.create(name = "User edited", notes = "Still AI origin", color = MarkerColor.BLUE),
+        )
+        assertEquals(SavedMarkerCreatedBy.AI, updated.createdBy)
+        assertEquals(createdAt, updated.createdAt)
+        assertEquals(SavedMarkerCreatedBy.AI, SqliteSavedMarkerRepository(path).getAll().single().createdBy)
     }
 
     @Test
@@ -102,7 +138,7 @@ class SqliteSavedMarkerRepositoryTest {
         UserDatabase.open(path).use { connection ->
             connection.createStatement().execute("PRAGMA ignore_check_constraints = ON")
             connection.createStatement().execute(
-                "INSERT INTO saved_markers VALUES(1, NULL, NULL, 'CYAN', '2026-08-21T00:00:00Z', '2026-08-21T00:00:00Z')",
+                "INSERT INTO saved_markers VALUES(1, NULL, NULL, 'CYAN', '2026-08-21T00:00:00Z', '2026-08-21T00:00:00Z', 'USER')",
             )
         }
 
@@ -115,11 +151,26 @@ class SqliteSavedMarkerRepositoryTest {
         val repository = SqliteSavedMarkerRepository(path)
         UserDatabase.open(path).use { connection ->
             connection.createStatement().execute(
-                "INSERT INTO saved_markers VALUES(1, NULL, NULL, 'YELLOW', 'not-an-instant', '2026-08-21T00:00:00Z')",
+                "INSERT INTO saved_markers VALUES(1, NULL, NULL, 'YELLOW', 'not-an-instant', '2026-08-21T00:00:00Z', 'USER')",
             )
         }
 
         assertFails { repository.getAll() }
+    }
+
+    @Test
+    fun `load rejects unknown provenance without fallback`() {
+        val path = createTempDirectory("saved-marker-invalid-provenance").resolve("user.db")
+        val repository = SqliteSavedMarkerRepository(path)
+        UserDatabase.open(path).use { connection ->
+            connection.createStatement().execute("PRAGMA ignore_check_constraints = ON")
+            connection.createStatement().execute(
+                "INSERT INTO saved_markers VALUES(1, NULL, NULL, 'YELLOW', '2026-08-21T00:00:00Z', '2026-08-21T00:00:00Z', 'INVALID')",
+            )
+        }
+
+        val error = assertFailsWith<IllegalStateException> { repository.getAll() }
+        assertTrue(error.message.orEmpty().contains("Unknown saved marker created_by value: INVALID"))
     }
 
     @Test

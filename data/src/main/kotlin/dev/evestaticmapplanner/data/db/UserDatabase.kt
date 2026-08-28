@@ -71,11 +71,33 @@ object UserDatabase {
             when (version) {
                 1 -> migrateVersionOneToTwo(connection, path, migrationHook)
                 2 -> migrateVersionTwoToThree(connection, path, migrationHook)
+                3 -> migrateVersionThreeToFour(connection, path, migrationHook)
                 else -> throw UserDatabaseException(
                     "No migration is available from user database schema $version to ${UserDatabaseSchema.VERSION}",
                 )
             }
             version++
+        }
+    }
+
+    private fun migrateVersionThreeToFour(
+        connection: Connection,
+        path: Path,
+        migrationHook: (Connection) -> Unit,
+    ) {
+        connection.autoCommit = false
+        try {
+            UserDatabaseSchema.addSavedMarkerProvenance(connection)
+            validateContents(connection, path, 4, requiredTables(4), requiredIndexes(4))
+            migrationHook(connection)
+            connection.createStatement().use { it.execute("PRAGMA user_version = 4") }
+            validate(connection, path, expectedVersion = 4)
+            connection.commit()
+        } catch (error: Throwable) {
+            connection.rollback()
+            throw error
+        } finally {
+            connection.autoCommit = true
         }
     }
 
@@ -87,7 +109,7 @@ object UserDatabase {
         connection.autoCommit = false
         try {
             UserDatabaseSchema.addSavedMarkerChildren(connection)
-            validateContents(connection, path, requiredTables(version = 3), requiredIndexes(version = 3))
+            validateContents(connection, path, 3, requiredTables(3), requiredIndexes(3))
             migrationHook(connection)
             connection.createStatement().use { it.execute("PRAGMA user_version = 3") }
             validate(connection, path, expectedVersion = 3)
@@ -107,8 +129,8 @@ object UserDatabase {
     ) {
         connection.autoCommit = false
         try {
-            UserDatabaseSchema.addSavedMarkers(connection)
-            validateContents(connection, path, requiredTables(version = 2), requiredIndexes(version = 2))
+            UserDatabaseSchema.addVersionTwoSavedMarkers(connection)
+            validateContents(connection, path, 2, requiredTables(2), requiredIndexes(2))
             migrationHook(connection)
             connection.createStatement().use { it.execute("PRAGMA user_version = 2") }
             validate(connection, path, expectedVersion = 2)
@@ -131,6 +153,7 @@ object UserDatabase {
         validateContents(
             connection,
             path,
+            expectedVersion,
             requiredTables(expectedVersion),
             requiredIndexes(expectedVersion),
         )
@@ -139,6 +162,7 @@ object UserDatabase {
     private fun validateContents(
         connection: Connection,
         path: Path,
+        schemaVersion: Int,
         requiredTables: Set<String>,
         requiredIndexes: Set<String>,
     ) {
@@ -164,7 +188,7 @@ object UserDatabase {
         if (!actualIndexes.containsAll(requiredIndexes)) {
             throw UserDatabaseException("User database schema is incomplete: missing indexes ${requiredIndexes - actualIndexes}")
         }
-        if ("saved_markers" in requiredTables) validateSavedMarkersSchema(connection)
+        if ("saved_markers" in requiredTables) validateSavedMarkersSchema(connection, schemaVersion)
         if ("saved_marker_children" in requiredTables) validateSavedMarkerChildrenSchema(connection)
         val foreignKeyErrors = connection.createStatement().use { statement ->
             statement.executeQuery("PRAGMA foreign_key_check").use { result -> result.next() }
@@ -172,7 +196,7 @@ object UserDatabase {
         if (foreignKeyErrors) throw UserDatabaseException("User database contains invalid foreign key references: $path")
     }
 
-    private fun validateSavedMarkersSchema(connection: Connection) {
+    private fun validateSavedMarkersSchema(connection: Connection, schemaVersion: Int) {
         data class Column(val name: String, val type: String, val notNull: Boolean, val primaryKey: Boolean)
 
         val columns = connection.createStatement().use { statement ->
@@ -191,14 +215,15 @@ object UserDatabase {
                 }
             }
         }
-        val expected = listOf(
-            Column("system_id", "INTEGER", notNull = false, primaryKey = true),
-            Column("name", "TEXT", notNull = false, primaryKey = false),
-            Column("notes", "TEXT", notNull = false, primaryKey = false),
-            Column("color", "TEXT", notNull = true, primaryKey = false),
-            Column("created_at", "TEXT", notNull = true, primaryKey = false),
-            Column("updated_at", "TEXT", notNull = true, primaryKey = false),
-        )
+        val expected = buildList {
+            add(Column("system_id", "INTEGER", notNull = false, primaryKey = true))
+            add(Column("name", "TEXT", notNull = false, primaryKey = false))
+            add(Column("notes", "TEXT", notNull = false, primaryKey = false))
+            add(Column("color", "TEXT", notNull = true, primaryKey = false))
+            add(Column("created_at", "TEXT", notNull = true, primaryKey = false))
+            add(Column("updated_at", "TEXT", notNull = true, primaryKey = false))
+            if (schemaVersion >= 4) add(Column("created_by", "TEXT", notNull = true, primaryKey = false))
+        }
         if (columns != expected) throw UserDatabaseException("User database saved_markers schema is invalid")
 
         val createSql = connection.createStatement().use { statement ->
@@ -219,7 +244,11 @@ object UserDatabase {
             "'BLUE'",
             "'PURPLE'",
             "'WHITE'",
-        )
+        ) + if (schemaVersion >= 4) {
+            setOf("CREATED_BY", "DEFAULT 'USER'", "'AI'")
+        } else {
+            emptySet()
+        }
         val missing = requiredFragments.filterNot(createSql::contains)
         if (missing.isNotEmpty()) {
             throw UserDatabaseException("User database saved_markers constraints are incomplete: missing $missing")

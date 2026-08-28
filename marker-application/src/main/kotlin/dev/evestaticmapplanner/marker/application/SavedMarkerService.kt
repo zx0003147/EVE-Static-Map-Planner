@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -50,8 +51,12 @@ class SavedMarkerService(
 
     fun getAll(): List<Marker> = state.value.markersBySystemId.values.sortedBy(Marker::systemId)
 
-    suspend fun create(systemId: Int, draft: MarkerDraft): Marker = mutate { repository ->
-        val marker = withContext(ioDispatcher) { repository.create(systemId, draft) }
+    suspend fun create(
+        systemId: Int,
+        draft: MarkerDraft,
+        createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
+    ): Marker = mutate { repository ->
+        val marker = withContext(ioDispatcher) { repository.create(systemId, draft, createdBy) }
         validateSavedMarker(marker, systemId)
         val current = mutableState.value
         mutableState.value = current.copy(

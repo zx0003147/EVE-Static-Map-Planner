@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,7 +24,7 @@ import kotlin.test.assertTrue
 class SavedMarkerServiceTest {
     @Test
     fun `initial load exposes existing markers and children through authoritative state`() = runTest {
-        val existing = savedMarker(1, "Existing")
+        val existing = savedMarker(1, "Existing", SavedMarkerCreatedBy.AI)
         val repository = FakeSavedMarkerRepository(listOf(existing)).apply {
             seedChild(1, "staging")
         }
@@ -33,6 +34,7 @@ class SavedMarkerServiceTest {
         assertFalse(service.state.value.isLoading)
         assertNull(service.state.value.databaseError)
         assertEquals(existing, service.get(1))
+        assertEquals(SavedMarkerCreatedBy.AI, service.state.value.markersBySystemId[1]?.createdBy)
         assertEquals(listOf(existing), service.getAll())
         assertEquals(listOf("staging"), service.state.value.childrenByParentSystemId[1]?.map { it.type.key })
     }
@@ -44,16 +46,37 @@ class SavedMarkerServiceTest {
         advanceUntilIdle()
 
         val created = service.create(7, MarkerDraft.create(name = "Created"))
+        assertEquals(SavedMarkerCreatedBy.USER, created.createdBy)
         assertEquals(created, service.state.value.markersBySystemId[7])
         assertEquals(emptyList(), service.state.value.childrenByParentSystemId[7])
 
         val updated = service.update(7, MarkerDraft.create(name = "Updated"))
+        assertEquals(SavedMarkerCreatedBy.USER, updated.createdBy)
         assertEquals(updated, service.state.value.markersBySystemId[7])
         assertEquals("Updated", service.get(7)?.name)
 
         assertTrue(service.delete(7))
         assertFalse(7 in service.state.value.markersBySystemId)
         assertFalse(7 in service.state.value.childrenByParentSystemId)
+    }
+
+    @Test
+    fun `explicit AI create survives update child mutations and service reload`() = runTest {
+        val repository = FakeSavedMarkerRepository()
+        val originalService = service(repository)
+        advanceUntilIdle()
+
+        originalService.create(12, MarkerDraft.create(name = "AI marker"), SavedMarkerCreatedBy.AI)
+        assertEquals(SavedMarkerCreatedBy.AI, originalService.state.value.markersBySystemId[12]?.createdBy)
+
+        originalService.update(12, MarkerDraft.create(name = "Edited"))
+        val child = originalService.addChild(12, SavedMarkerChildType.of("staging"))
+        originalService.removeChild(12, child.id)
+        assertEquals(SavedMarkerCreatedBy.AI, originalService.state.value.markersBySystemId[12]?.createdBy)
+
+        val reloaded = service(repository)
+        advanceUntilIdle()
+        assertEquals(SavedMarkerCreatedBy.AI, reloaded.state.value.markersBySystemId[12]?.createdBy)
     }
 
     @Test
@@ -152,11 +175,11 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
         return markers.values.toList()
     }
 
-    override fun create(systemId: Int, draft: MarkerDraft): Marker {
+    override fun create(systemId: Int, draft: MarkerDraft, createdBy: SavedMarkerCreatedBy): Marker {
         failIf(Failure.CREATE)
         check(systemId !in markers) { "duplicate marker" }
         val instant = Instant.EPOCH.plusSeconds(++tick)
-        return Marker.saved(systemId, draft, instant, instant).also { markers[systemId] = it }
+        return Marker.saved(systemId, draft, instant, instant, createdBy).also { markers[systemId] = it }
     }
 
     override fun update(systemId: Int, draft: MarkerDraft): Marker {
@@ -167,6 +190,7 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
             draft,
             checkNotNull(current.createdAt),
             Instant.EPOCH.plusSeconds(++tick),
+            checkNotNull(current.createdBy),
         ).also { markers[systemId] = it }
     }
 
@@ -217,9 +241,14 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
     }
 }
 
-private fun savedMarker(systemId: Int, name: String): Marker = Marker.saved(
+private fun savedMarker(
+    systemId: Int,
+    name: String,
+    createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
+): Marker = Marker.saved(
     systemId = systemId,
     draft = MarkerDraft.create(name = name),
     createdAt = Instant.parse("2026-08-21T00:00:00Z"),
     updatedAt = Instant.parse("2026-08-21T00:00:00Z"),
+    createdBy = createdBy,
 )

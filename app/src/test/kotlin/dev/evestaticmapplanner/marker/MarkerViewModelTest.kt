@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
 import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import java.time.Instant
@@ -115,6 +116,7 @@ class MarkerViewModelTest {
         assertEquals("Note", edited.notes)
         assertEquals(MarkerColor.RED, edited.color)
         assertNull(edited.createdAt)
+        assertNull(edited.createdBy)
         assertTrue(viewModel.removeTemporary(10))
 
         assertEquals(0, repository.createCalls)
@@ -166,12 +168,14 @@ class MarkerViewModelTest {
         assertTrue(2 in viewModel.state.value.busySystemIds)
         advanceUntilIdle()
         assertEquals("New", viewModel.state.value.markersBySystemId[2]?.name)
+        assertEquals(SavedMarkerCreatedBy.USER, viewModel.state.value.markersBySystemId[2]?.createdBy)
         assertEquals(emptyList(), viewModel.state.value.childrenByParentSystemId[2])
 
         assertTrue(viewModel.updateSaved(2, MarkerDraft.create(name = "Edited", color = MarkerColor.BLUE)))
         assertEquals("New", viewModel.state.value.markersBySystemId[2]?.name)
         advanceUntilIdle()
         assertEquals("Edited", viewModel.state.value.markersBySystemId[2]?.name)
+        assertEquals(SavedMarkerCreatedBy.USER, viewModel.state.value.markersBySystemId[2]?.createdBy)
 
         assertTrue(viewModel.removeSaved(2))
         assertTrue(2 in viewModel.state.value.markersBySystemId)
@@ -321,12 +325,12 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
         return markers.values.toList()
     }
 
-    override fun create(systemId: Int, draft: MarkerDraft): Marker {
+    override fun create(systemId: Int, draft: MarkerDraft, createdBy: SavedMarkerCreatedBy): Marker {
         createCalls++
         if (createFailure) error("forced marker create failure")
         check(systemId !in markers) { "duplicate marker" }
         val instant = Instant.EPOCH.plusSeconds(++tick)
-        return Marker.saved(systemId, draft, instant, instant).also { markers[systemId] = it }
+        return Marker.saved(systemId, draft, instant, instant, createdBy).also { markers[systemId] = it }
     }
 
     override fun update(systemId: Int, draft: MarkerDraft): Marker {
@@ -338,6 +342,7 @@ private class FakeSavedMarkerRepository(initial: List<Marker> = emptyList()) : S
             draft,
             checkNotNull(current.createdAt),
             Instant.EPOCH.plusSeconds(++tick),
+            checkNotNull(current.createdBy),
         ).also { markers[systemId] = it }
     }
 

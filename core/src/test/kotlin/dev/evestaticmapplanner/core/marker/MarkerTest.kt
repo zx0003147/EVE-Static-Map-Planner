@@ -17,6 +17,7 @@ class MarkerTest {
         assertNull(marker.notes)
         assertNull(marker.createdAt)
         assertNull(marker.updatedAt)
+        assertNull(marker.createdBy)
     }
 
     @Test
@@ -37,6 +38,7 @@ class MarkerTest {
         assertEquals(MarkerPersistence.SAVED, marker.persistence)
         assertEquals(created, marker.createdAt)
         assertEquals(updated, marker.updatedAt)
+        assertEquals(SavedMarkerCreatedBy.USER, marker.createdBy)
         assertFailsWith<IllegalArgumentException> { Marker.temporary(0) }
         assertFailsWith<IllegalArgumentException> {
             Marker.saved(-1, MarkerDraft.create(), created, updated)

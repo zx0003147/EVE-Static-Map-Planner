@@ -4,11 +4,16 @@ import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 
 interface SavedMarkerRepository {
     fun getAll(): List<Marker>
 
-    fun create(systemId: Int, draft: MarkerDraft): Marker
+    fun create(
+        systemId: Int,
+        draft: MarkerDraft,
+        createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
+    ): Marker
 
     fun update(systemId: Int, draft: MarkerDraft): Marker
 

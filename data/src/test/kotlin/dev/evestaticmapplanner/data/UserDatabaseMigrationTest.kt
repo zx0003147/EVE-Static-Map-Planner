@@ -1,13 +1,15 @@
 package dev.evestaticmapplanner.data
 
+import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.data.db.SqliteConnectionFactory
 import dev.evestaticmapplanner.data.db.UserDatabase
 import dev.evestaticmapplanner.data.db.UserDatabaseException
 import dev.evestaticmapplanner.data.db.UserDatabaseSchema
-import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import java.nio.file.Files
 import java.sql.Connection
+import java.sql.SQLException
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -18,13 +20,13 @@ import kotlin.test.assertTrue
 
 class UserDatabaseMigrationTest {
     @Test
-    fun `fresh database creates complete strict version three schema`() {
-        val path = createTempDirectory("user-db-v3-fresh").resolve("user.db")
+    fun `fresh database creates complete strict version four schema`() {
+        val path = createTempDirectory("user-db-v4-fresh").resolve("user.db")
 
         UserDatabase.initialize(path)
 
         UserDatabase.open(path).use { connection ->
-            assertEquals(3, connection.userVersion())
+            assertEquals(4, connection.userVersion())
             assertEquals(
                 setOf("ansiblex_import_batches", "ansiblex_connections", "saved_markers", "saved_marker_children"),
                 connection.applicationTables(),
@@ -42,6 +44,7 @@ class UserDatabaseMigrationTest {
                     "color" to "TEXT",
                     "created_at" to "TEXT",
                     "updated_at" to "TEXT",
+                    "created_by" to "TEXT",
                 ),
                 columns,
             )
@@ -54,7 +57,33 @@ class UserDatabaseMigrationTest {
             assertTrue(createSql.contains("STRICT"))
             assertTrue(createSql.contains("system_id > 0"))
             MarkerColorNames.forEach { assertTrue(createSql.contains("'$it'")) }
+            listOf("'USER'", "'AI'").forEach { assertTrue(createSql.contains(it)) }
             assertTrue(connection.foreignKeys("saved_markers").isEmpty())
+
+            assertFailsWith<SQLException> {
+                connection.createStatement().execute(
+                    """
+                    INSERT INTO saved_markers(
+                        system_id, name, notes, color, created_at, updated_at, created_by
+                    ) VALUES(
+                        1, NULL, NULL, 'YELLOW',
+                        '2026-08-21T00:00:00Z', '2026-08-21T00:00:00Z', NULL
+                    )
+                    """.trimIndent(),
+                )
+            }
+            assertFailsWith<SQLException> {
+                connection.createStatement().execute(
+                    """
+                    INSERT INTO saved_markers(
+                        system_id, name, notes, color, created_at, updated_at, created_by
+                    ) VALUES(
+                        2, NULL, NULL, 'YELLOW',
+                        '2026-08-21T00:00:00Z', '2026-08-21T00:00:00Z', 'INVALID'
+                    )
+                    """.trimIndent(),
+                )
+            }
 
             val childColumns = connection.createStatement().use { statement ->
                 statement.executeQuery("PRAGMA table_info(saved_marker_children)").use { result ->
@@ -89,7 +118,7 @@ class UserDatabaseMigrationTest {
         UserDatabase.initialize(path)
 
         UserDatabase.open(path).use { connection ->
-            assertEquals(3, connection.userVersion())
+            assertEquals(4, connection.userVersion())
             assertTrue("saved_markers" in connection.applicationTables())
             assertTrue("saved_marker_children" in connection.applicationTables())
             assertEquals(0, connection.createStatement().use { statement ->
@@ -111,13 +140,14 @@ class UserDatabaseMigrationTest {
         UserDatabase.initialize(path)
 
         UserDatabase.open(path).use { connection ->
-            assertEquals(3, connection.userVersion())
+            assertEquals(4, connection.userVersion())
             assertTrue("saved_marker_children" in connection.applicationTables())
             assertEquals(0, connection.createStatement().use { statement ->
                 statement.executeQuery("SELECT COUNT(*) FROM saved_marker_children").use { it.next(); it.getInt(1) }
             })
         }
         assertEquals(before, snapshotSavedMarkers(path))
+        assertTrue(SqliteSavedMarkerRepository(path).getAll().all { it.createdBy == SavedMarkerCreatedBy.USER })
 
         val repository = SqliteSavedMarkerRepository(path, idGenerator = { "migrated-child" })
         assertEquals(emptyList(), repository.getChildren(30_000_001))
@@ -126,6 +156,72 @@ class UserDatabaseMigrationTest {
 
         assertEquals(before, snapshotSavedMarkers(path))
         assertEquals(listOf(child), SqliteSavedMarkerRepository(path).getChildren(30_000_001))
+    }
+
+    @Test
+    fun `version three migration preserves marker fields children constraints and cascade`() {
+        val path = createTempDirectory("user-db-v3-migrate").resolve("user.db")
+        SqliteConnectionFactory.open(path).use(::createVersionThreeFixture)
+        val markersBefore = snapshotSavedMarkers(path)
+        val childrenBefore = snapshotSavedMarkerChildren(path)
+
+        UserDatabase.initialize(path)
+
+        assertEquals(markersBefore, snapshotSavedMarkers(path))
+        assertEquals(childrenBefore, snapshotSavedMarkerChildren(path))
+        val migrated = SqliteSavedMarkerRepository(path).getAll()
+        assertEquals(listOf(30_000_001, 30_000_002), migrated.map { it.systemId })
+        assertTrue(migrated.all { it.createdBy == SavedMarkerCreatedBy.USER })
+
+        UserDatabase.open(path).use { connection ->
+            assertEquals(4, connection.userVersion())
+            assertEquals(
+                listOf(listOf("saved_markers", "parent_system_id", "system_id", "CASCADE")),
+                connection.childForeignKeys(),
+            )
+            val foreignKeyViolation = connection.createStatement().use { statement ->
+                statement.executeQuery("PRAGMA foreign_key_check").use { it.next() }
+            }
+            assertFalse(foreignKeyViolation)
+            assertFailsWith<SQLException> {
+                connection.createStatement().execute(
+                    """
+                    INSERT INTO saved_markers(
+                        system_id, name, notes, color, created_at, updated_at, created_by
+                    ) VALUES(
+                        30000001, 'Duplicate', NULL, 'RED',
+                        '2026-08-21T00:00:00Z', '2026-08-21T00:00:00Z', 'USER'
+                    )
+                    """.trimIndent(),
+                )
+            }
+            connection.createStatement().execute("DELETE FROM saved_markers WHERE system_id = 30000001")
+            assertEquals(
+                listOf(listOf("child-b", "30000002", "logistics", "0")),
+                connection.rows(
+                    "SELECT id, parent_system_id, type_key, order_index FROM saved_marker_children ORDER BY id",
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `version three migration failure rolls back provenance column version and marker graph`() {
+        val path = createTempDirectory("user-db-v3-rollback").resolve("user.db")
+        SqliteConnectionFactory.open(path).use(::createVersionThreeFixture)
+        val markersBefore = snapshotSavedMarkers(path)
+        val childrenBefore = snapshotSavedMarkerChildren(path)
+
+        assertFailsWith<UserDatabaseException> {
+            UserDatabase.initialize(path) { error("forced version four migration failure") }
+        }
+
+        UserDatabase.open(path).use { connection ->
+            assertEquals(3, connection.userVersion())
+            assertFalse(connection.rows("PRAGMA table_info(saved_markers)").any { it[1] == "created_by" })
+        }
+        assertEquals(markersBefore, snapshotSavedMarkers(path))
+        assertEquals(childrenBefore, snapshotSavedMarkerChildren(path))
     }
 
     @Test
@@ -184,7 +280,7 @@ class UserDatabaseMigrationTest {
     @Test
     fun `version zero database with known application table is not treated as fresh`() {
         val path = createTempDirectory("user-db-version-zero").resolve("user.db")
-        SqliteConnectionFactory.open(path).use(UserDatabaseSchema::addSavedMarkers)
+        SqliteConnectionFactory.open(path).use(UserDatabaseSchema::addVersionTwoSavedMarkers)
 
         assertFailsWith<UserDatabaseException> { UserDatabase.initialize(path) }
 
@@ -223,6 +319,13 @@ private fun snapshotSavedMarkers(path: java.nio.file.Path): List<List<String?>> 
     SqliteConnectionFactory.open(path).use { connection ->
         connection.rows(
             "SELECT system_id, name, notes, color, created_at, updated_at FROM saved_markers ORDER BY system_id",
+        )
+    }
+
+private fun snapshotSavedMarkerChildren(path: java.nio.file.Path): List<List<String?>> =
+    SqliteConnectionFactory.open(path).use { connection ->
+        connection.rows(
+            "SELECT id, parent_system_id, type_key, order_index FROM saved_marker_children ORDER BY id",
         )
     }
 
@@ -272,7 +375,7 @@ private fun Connection.childForeignKeys(): List<List<String>> = createStatement(
 
 private fun createVersionTwoFixture(connection: Connection) {
     createVersionOneFixture(connection)
-    UserDatabaseSchema.addSavedMarkers(connection)
+    UserDatabaseSchema.addVersionTwoSavedMarkers(connection)
     connection.createStatement().use { statement ->
         statement.execute(
             """
@@ -291,6 +394,20 @@ private fun createVersionTwoFixture(connection: Connection) {
             """.trimIndent(),
         )
         statement.execute("PRAGMA user_version = 2")
+    }
+}
+
+private fun createVersionThreeFixture(connection: Connection) {
+    createVersionTwoFixture(connection)
+    UserDatabaseSchema.addSavedMarkerChildren(connection)
+    connection.createStatement().use { statement ->
+        statement.execute(
+            "INSERT INTO saved_marker_children VALUES('child-a', 30000001, 'staging', 0)",
+        )
+        statement.execute(
+            "INSERT INTO saved_marker_children VALUES('child-b', 30000002, 'logistics', 0)",
+        )
+        statement.execute("PRAGMA user_version = 3")
     }
 }
 

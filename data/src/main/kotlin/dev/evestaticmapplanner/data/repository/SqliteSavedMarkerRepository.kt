@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
+import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.repository.SavedMarkerRepository
 import dev.evestaticmapplanner.data.db.UserDatabase
 import java.nio.file.Path
@@ -32,10 +33,10 @@ class SqliteSavedMarkerRepository(
         }
     }
 
-    override fun create(systemId: Int, draft: MarkerDraft): Marker {
+    override fun create(systemId: Int, draft: MarkerDraft, createdBy: SavedMarkerCreatedBy): Marker {
         require(systemId > 0) { "Marker solar system ID must be positive" }
         val now = clock.instant()
-        val marker = Marker.saved(systemId, draft, createdAt = now, updatedAt = now)
+        val marker = Marker.saved(systemId, draft, createdAt = now, updatedAt = now, createdBy = createdBy)
         UserDatabase.open(databasePath).use { connection -> connection.insertSavedMarker(marker) }
         return marker
     }
@@ -195,8 +196,8 @@ private fun Connection.insertSavedMarkerChild(child: SavedMarkerChild) {
 private fun Connection.insertSavedMarker(marker: Marker) {
     prepareStatement(
         """
-        INSERT INTO saved_markers(system_id, name, notes, color, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO saved_markers(system_id, name, notes, color, created_at, updated_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
     ).use { statement ->
         statement.setInt(1, marker.systemId)
@@ -205,6 +206,7 @@ private fun Connection.insertSavedMarker(marker: Marker) {
         statement.setString(4, marker.color.name)
         statement.setString(5, checkNotNull(marker.createdAt).toString())
         statement.setString(6, checkNotNull(marker.updatedAt).toString())
+        statement.setString(7, checkNotNull(marker.createdBy).name)
         check(statement.executeUpdate() == 1) {
             "Unable to create saved marker for solar system ${marker.systemId}"
         }
@@ -227,7 +229,12 @@ private fun ResultSet.toSavedMarker(): Marker = Marker.saved(
     ),
     createdAt = Instant.parse(getString("created_at")),
     updatedAt = Instant.parse(getString("updated_at")),
+    createdBy = decodeSavedMarkerCreatedBy(getString("created_by")),
 )
+
+private fun decodeSavedMarkerCreatedBy(value: String): SavedMarkerCreatedBy =
+    runCatching { SavedMarkerCreatedBy.valueOf(value) }
+        .getOrElse { error -> throw IllegalStateException("Unknown saved marker created_by value: $value", error) }
 
 private fun ResultSet.toSavedMarkerChild(): SavedMarkerChild = SavedMarkerChild.create(
     id = getString("id"),

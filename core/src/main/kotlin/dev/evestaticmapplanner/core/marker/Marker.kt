@@ -17,6 +17,11 @@ enum class MarkerColor {
     WHITE,
 }
 
+enum class SavedMarkerCreatedBy {
+    USER,
+    AI,
+}
+
 @ConsistentCopyVisibility
 data class MarkerDraft private constructor(
     val name: String?,
@@ -45,15 +50,16 @@ data class Marker private constructor(
     val color: MarkerColor,
     val createdAt: Instant?,
     val updatedAt: Instant?,
+    val createdBy: SavedMarkerCreatedBy?,
 ) {
     init {
         require(systemId > 0) { "Marker solar system ID must be positive" }
         when (persistence) {
-            MarkerPersistence.TEMPORARY -> require(createdAt == null && updatedAt == null) {
-                "Temporary markers cannot have persistence timestamps"
+            MarkerPersistence.TEMPORARY -> require(createdAt == null && updatedAt == null && createdBy == null) {
+                "Temporary markers cannot have persistence metadata"
             }
-            MarkerPersistence.SAVED -> require(createdAt != null && updatedAt != null) {
-                "Saved markers require creation and update timestamps"
+            MarkerPersistence.SAVED -> require(createdAt != null && updatedAt != null && createdBy != null) {
+                "Saved markers require persistence metadata"
             }
         }
     }
@@ -69,6 +75,7 @@ data class Marker private constructor(
             color = draft.color,
             createdAt = null,
             updatedAt = null,
+            createdBy = null,
         )
 
         fun saved(
@@ -76,6 +83,7 @@ data class Marker private constructor(
             draft: MarkerDraft,
             createdAt: Instant,
             updatedAt: Instant,
+            createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
         ): Marker = Marker(
             systemId = systemId,
             persistence = MarkerPersistence.SAVED,
@@ -84,6 +92,7 @@ data class Marker private constructor(
             color = draft.color,
             createdAt = createdAt,
             updatedAt = updatedAt,
+            createdBy = createdBy,
         )
     }
 }
