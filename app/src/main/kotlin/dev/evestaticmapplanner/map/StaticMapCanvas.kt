@@ -217,12 +217,18 @@ fun StaticMapCanvas(
             emphasisZoom = mapDisplayPreferences.sovereigntyLogoEmphasisZoom,
         )
     }
-    val emblemPlacements = remember(featureOverlayPresentation, transform, emblemZoomPolicy) {
+    val eligibleEmblemPlacements = remember(featureOverlayPresentation, transform, emblemZoomPolicy) {
         FeatureOverlayEmblemLod.placements(
             featureOverlayPresentation.emblemCandidates,
             transform,
             emblemZoomPolicy,
         )
+    }
+    val stableEmblemSelector = remember(featureOverlayPresentation, emblemZoomPolicy) {
+        StableFeatureOverlayEmblemSelector()
+    }
+    val emblemPlacements = remember(eligibleEmblemPlacements, viewport.zoom, stableEmblemSelector) {
+        stableEmblemSelector.select(eligibleEmblemPlacements, viewport.zoom)
     }
     val requestedEmblemReferences = remember(emblemPlacements) {
         emblemPlacements.map { it.candidate.reference }.distinctBy(PresentationEmblemReference::key)

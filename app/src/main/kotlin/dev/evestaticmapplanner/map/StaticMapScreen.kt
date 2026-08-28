@@ -328,7 +328,10 @@ private fun MapToolbar(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(
+                        horizontal = 12.dp,
+                        vertical = MAP_TOOLBAR_VERTICAL_PADDING,
+                    ),
                 ) {
                     ProjectionControls(state, viewModel)
                     Spacer(Modifier.weight(1f))
@@ -399,6 +402,7 @@ private fun GlobalSystemSearch(
         },
         modifier = Modifier.widthIn(min = GLOBAL_SEARCH_MIN_WIDTH, max = GLOBAL_SEARCH_MAX_WIDTH).fillMaxWidth(),
         suggestionsPresentation = GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION,
+        compact = true,
     )
 }
 
@@ -414,6 +418,7 @@ internal fun confirmGlobalSystemSearch(
 internal val GLOBAL_SEARCH_MIN_WIDTH = 260.dp
 internal val GLOBAL_SEARCH_MAX_WIDTH = 360.dp
 internal val MAP_TOOLBAR_SINGLE_ROW_MIN_WIDTH = 820.dp
+internal val MAP_TOOLBAR_VERTICAL_PADDING = 4.dp
 internal val GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION = SearchSuggestionsPresentation.DROPDOWN
 
 @Composable

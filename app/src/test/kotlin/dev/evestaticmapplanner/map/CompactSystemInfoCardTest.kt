@@ -1,7 +1,17 @@
 package dev.evestaticmapplanner.map
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
@@ -36,6 +46,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalTestApi::class)
 class CompactSystemInfoCardTest {
     @Test
     fun `no selection hides compact card`() {
@@ -236,10 +247,10 @@ class CompactSystemInfoCardTest {
     @Test
     fun `card is bottom end bounded and below context menu layers`() {
         assertEquals(Alignment.BottomEnd, CompactSystemInfoCardDefaults.alignment)
-        assertEquals(340, CompactSystemInfoCardDefaults.maxWidth.value.toInt())
+        assertEquals(300, CompactSystemInfoCardDefaults.maxWidth.value.toInt())
         assertEquals(420, CompactSystemInfoCardDefaults.maxHeight.value.toInt())
         assertEquals(16, CompactSystemInfoCardDefaults.margin.value.toInt())
-        assertEquals(14, CompactSystemInfoCardDefaults.contentPadding.value.toInt())
+        assertEquals(12, CompactSystemInfoCardDefaults.contentPadding.value.toInt())
         assertTrue(CompactSystemInfoCardDefaults.zIndex < CONTEXT_DISMISS_Z_INDEX)
         assertTrue(CONTEXT_DISMISS_Z_INDEX < CONTEXT_MENU_Z_INDEX)
     }
@@ -252,6 +263,37 @@ class CompactSystemInfoCardTest {
         assertFalse(bounds.containsPoint(MapPoint(99.0, 220.0)))
         assertFalse(bounds.containsPoint(MapPoint(120.0, 621.0)))
         assertFalse((null as Rect?).containsPoint(MapPoint(120.0, 220.0)))
+    }
+
+    @Test
+    fun `narrow card ellipsizes primary text on one line`() = runComposeUiTest {
+        val longSubtitle = "An intentionally very long region and constellation name that cannot fit the compact card"
+        val longValue = "An intentionally very long sovereignty owner name that must be ellipsized"
+        setContent {
+            MaterialTheme {
+                Box(Modifier.width(600.dp)) {
+                    CompactSystemInfoCard(
+                        presentation = CompactSystemInfoPresentation(
+                            selectedSystemId = 1,
+                            title = "A very long selected solar system name that cannot fit",
+                            subtitle = longSubtitle,
+                            isLoading = false,
+                            fields = listOf(CompactInfoField("Owner", longValue)),
+                            ansiblexConnections = emptyList(),
+                            jumpOverlayLabels = emptyList(),
+                            isInJumpIntersection = false,
+                            marker = null,
+                        ),
+                        onBoundsChanged = {},
+                    )
+                }
+            }
+        }
+
+        onNodeWithTag(COMPACT_SYSTEM_INFO_CARD_TEST_TAG).assertWidthIsEqualTo(300.dp)
+        val labelHeight = onNodeWithText("Owner").fetchSemanticsNode().boundsInRoot.height
+        val valueHeight = onNodeWithText(longValue).fetchSemanticsNode().boundsInRoot.height
+        assertEquals(labelHeight, valueHeight)
     }
 
     private fun selectedState(selectedSystem: SolarSystem, hoveredSystemId: Int? = null) = MapUiState(

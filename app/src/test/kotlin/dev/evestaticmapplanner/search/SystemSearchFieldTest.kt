@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.UniversePosition
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -99,6 +101,26 @@ class SystemSearchFieldTest {
         assertFalse(SYSTEM_SEARCH_POPUP_PROPERTIES.focusable)
         assertTrue(SYSTEM_SEARCH_POPUP_PROPERTIES.dismissOnClickOutside)
         assertTrue(SYSTEM_SEARCH_POPUP_PROPERTIES.dismissOnBackPress)
+    }
+
+    @Test
+    fun `compact mode changes only the requested search field height`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                SystemSearchField(
+                    value = "",
+                    label = "Search system",
+                    results = emptyList(),
+                    onValueChange = {},
+                    onSelect = {},
+                    suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
+                    compact = true,
+                )
+            }
+        }
+
+        onNode(hasSetTextAction()).assertHeightIsEqualTo(COMPACT_SEARCH_FIELD_HEIGHT)
+        assertEquals(48.dp, COMPACT_SEARCH_FIELD_HEIGHT)
     }
 
     private fun system(id: Int, name: String) = SolarSystem(

@@ -40,7 +40,7 @@ import java.nio.file.Path
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
-private enum class ClearConfirmation { IMPORTED, ALL }
+internal enum class ClearConfirmation { IMPORTED, ALL }
 
 @Composable
 fun AnsiblexManagerDialog(
@@ -56,8 +56,15 @@ fun AnsiblexManagerDialog(
     var bidirectional by remember { mutableStateOf(true) }
     var confirmation by remember { mutableStateOf<ClearConfirmation?>(null) }
     var clearAllPhrase by remember { mutableStateOf("") }
+    val dismissConfirmation = {
+        confirmation = null
+        clearAllPhrase = ""
+    }
+    val dismissManager = {
+        if (confirmation == null) onDismiss()
+    }
 
-    DialogWindow(onCloseRequest = onDismiss, title = "Ansiblex Manager") {
+    DialogWindow(onCloseRequest = dismissManager, title = "Ansiblex Manager") {
         Surface(
             modifier = Modifier.width(900.dp).height(720.dp),
             color = Color(0xFF15212D),
@@ -75,7 +82,7 @@ fun AnsiblexManagerDialog(
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) { Text("Close") }
+                    TextButton(onClick = dismissManager) { Text("Close") }
                 }
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -164,48 +171,57 @@ fun AnsiblexManagerDialog(
                 }
             }
         }
+        confirmation?.let { kind ->
+            AnsiblexClearConfirmationDialog(
+                kind = kind,
+                clearAllPhrase = clearAllPhrase,
+                onClearAllPhraseChange = { clearAllPhrase = it },
+                onConfirm = {
+                    if (kind == ClearConfirmation.ALL) viewModel.clearAll() else viewModel.clearImported()
+                    dismissConfirmation()
+                },
+                onDismiss = dismissConfirmation,
+            )
+        }
     }
+}
 
-    confirmation?.let { kind ->
-        AlertDialog(
-            onDismissRequest = {
-                confirmation = null
-                clearAllPhrase = ""
-            },
-            title = { Text(if (kind == ClearConfirmation.ALL) "Delete all Ansiblex data?" else "Delete imported Ansiblex data?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        if (kind == ClearConfirmation.ALL) {
-                            "This permanently deletes IMPORT and MANUAL connections from user.db. This cannot be undone."
-                        } else {
-                            "This deletes only source=IMPORT connections. MANUAL connections are preserved."
-                        },
-                    )
+@Composable
+internal fun AnsiblexClearConfirmationDialog(
+    kind: ClearConfirmation,
+    clearAllPhrase: String,
+    onClearAllPhraseChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (kind == ClearConfirmation.ALL) "Delete all Ansiblex data?" else "Delete imported Ansiblex data?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
                     if (kind == ClearConfirmation.ALL) {
-                        Text("Type DELETE MANUAL to confirm:", color = Color(0xFFFF8A80))
-                        OutlinedTextField(clearAllPhrase, { clearAllPhrase = it }, singleLine = true)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (kind == ClearConfirmation.ALL) viewModel.clearAll() else viewModel.clearImported()
-                        confirmation = null
-                        clearAllPhrase = ""
+                        "This permanently deletes IMPORT and MANUAL connections from user.db. This cannot be undone."
+                    } else {
+                        "This deletes only source=IMPORT connections. MANUAL connections are preserved."
                     },
-                    enabled = kind != ClearConfirmation.ALL || clearAllPhrase == "DELETE MANUAL",
-                ) { Text(if (kind == ClearConfirmation.ALL) "Delete Everything" else "Clear Imported") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    confirmation = null
-                    clearAllPhrase = ""
-                }) { Text("Cancel") }
-            },
-        )
-    }
+                )
+                if (kind == ClearConfirmation.ALL) {
+                    Text("Type DELETE MANUAL to confirm:", color = Color(0xFFFF8A80))
+                    OutlinedTextField(clearAllPhrase, onClearAllPhraseChange, singleLine = true)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = kind != ClearConfirmation.ALL || clearAllPhrase == "DELETE MANUAL",
+            ) { Text(if (kind == ClearConfirmation.ALL) "Delete Everything" else "Clear Imported") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

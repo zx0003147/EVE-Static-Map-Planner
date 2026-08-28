@@ -125,9 +125,12 @@ fun MarkerManagerWindow(
             focusSystem = onShowOnMap,
         )
     }
+    val dismissManager = {
+        if (markerManagerCanClose(editor != null, pendingDelete != null)) onDismiss()
+    }
 
     Window(
-        onCloseRequest = onDismiss,
+        onCloseRequest = dismissManager,
         title = "Marker Manager",
         state = rememberWindowState(width = 760.dp, height = 560.dp),
     ) {
@@ -211,97 +214,120 @@ fun MarkerManagerWindow(
                         onClick = { presentation.selectedRow?.let { showOnMap(it.systemId) } },
                     ) { Text("Show on Map") }
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) { Text("Close") }
+                    TextButton(onClick = dismissManager) { Text("Close") }
                 }
             }
         }
-    }
-
-    editor?.let { request ->
-        MarkerEditorDialog(
-            request = request,
-            isBusy = pendingEditorSystemId?.let { it in markerState.busySystemIds } == true,
-            error = editorLocalError ?: markerState.operationError,
-            children = request.systemId?.let { markerState.childrenByParentSystemId[it] }.orEmpty(),
-            onAddChild = { type -> request.systemId?.let { markerViewModel.addChild(it, type) } },
-            onRemoveChild = { childId -> request.systemId?.let { markerViewModel.removeChild(it, childId) } },
-            saveEnabled = editorLocalError == null,
-            systemSearch = if (request.systemId == null) {
-                MarkerEditorSystemSearch(editorSystemQuery, editorSystemResults, editorSelectedSystem)
-            } else {
-                null
-            },
-            onSystemQueryChange = { value ->
-                editorSystemQuery = value
-                editorSelectedSystem = null
-                editorLocalError = null
-            },
-            onSystemSelected = { system ->
-                editorSelectedSystem = system
-                editorSystemQuery = system.name
-                editorSystemResults = emptyList()
-                editorLocalError = markerCreationConflict(markerState.markersBySystemId[system.id])
-            },
-            onSave = { systemId, draft ->
-                val conflict = if (request.mode == MarkerEditorMode.CREATE_SAVED) {
-                    markerCreationConflict(markerState.markersBySystemId[systemId])
+        editor?.let { request ->
+            MarkerEditorDialog(
+                request = request,
+                isBusy = pendingEditorSystemId?.let { it in markerState.busySystemIds } == true,
+                error = editorLocalError ?: markerState.operationError,
+                children = request.systemId?.let { markerState.childrenByParentSystemId[it] }.orEmpty(),
+                onAddChild = { type -> request.systemId?.let { markerViewModel.addChild(it, type) } },
+                onRemoveChild = { childId -> request.systemId?.let { markerViewModel.removeChild(it, childId) } },
+                saveEnabled = editorLocalError == null,
+                systemSearch = if (request.systemId == null) {
+                    MarkerEditorSystemSearch(editorSystemQuery, editorSystemResults, editorSelectedSystem)
                 } else {
                     null
-                }
-                if (conflict != null) {
-                    editorLocalError = conflict
-                } else {
-                    val accepted = when (request.mode) {
-                        MarkerEditorMode.CREATE_SAVED -> markerViewModel.createSaved(systemId, draft)
-                        MarkerEditorMode.EDIT_SAVED -> markerViewModel.updateSaved(systemId, draft)
-                        MarkerEditorMode.EDIT_TEMPORARY -> false
+                },
+                onSystemQueryChange = { value ->
+                    editorSystemQuery = value
+                    editorSelectedSystem = null
+                    editorLocalError = null
+                },
+                onSystemSelected = { system ->
+                    editorSelectedSystem = system
+                    editorSystemQuery = system.name
+                    editorSystemResults = emptyList()
+                    editorLocalError = markerCreationConflict(markerState.markersBySystemId[system.id])
+                },
+                onSave = { systemId, draft ->
+                    val conflict = if (request.mode == MarkerEditorMode.CREATE_SAVED) {
+                        markerCreationConflict(markerState.markersBySystemId[systemId])
+                    } else {
+                        null
                     }
-                    if (accepted) {
-                        pendingEditorSystemId = systemId
-                        expectedDraft = draft
-                        editorLocalError = null
+                    if (conflict != null) {
+                        editorLocalError = conflict
+                    } else {
+                        val accepted = when (request.mode) {
+                            MarkerEditorMode.CREATE_SAVED -> markerViewModel.createSaved(systemId, draft)
+                            MarkerEditorMode.EDIT_SAVED -> markerViewModel.updateSaved(systemId, draft)
+                            MarkerEditorMode.EDIT_TEMPORARY -> false
+                        }
+                        if (accepted) {
+                            pendingEditorSystemId = systemId
+                            expectedDraft = draft
+                            editorLocalError = null
+                        }
                     }
-                }
-            },
-            onDismiss = {
-                editor = null
-                expectedDraft = null
-                pendingEditorSystemId = null
-                editorLocalError = null
-                markerViewModel.clearOperationError()
-            },
-        )
-    }
+                },
+                onDismiss = {
+                    editor = null
+                    expectedDraft = null
+                    pendingEditorSystemId = null
+                    editorLocalError = null
+                    markerViewModel.clearOperationError()
+                },
+            )
+        }
 
-    pendingDelete?.let { row ->
-        AlertDialog(
-            onDismissRequest = { if (!deleteStarted) pendingDelete = null },
-            title = { Text("Remove saved marker?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Remove saved marker from ${row.systemName}?")
-                    markerState.operationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = row.systemId !in markerState.busySystemIds,
-                    onClick = { deleteStarted = markerViewModel.removeSaved(row.systemId) },
-                ) { Text(if (row.systemId in markerState.busySystemIds) "Removing…" else "Remove") }
-            },
-            dismissButton = {
-                TextButton(
-                    enabled = row.systemId !in markerState.busySystemIds,
-                    onClick = {
-                        pendingDelete = null
-                        deleteStarted = false
-                        markerViewModel.clearOperationError()
-                    },
-                ) { Text("Cancel") }
-            },
-        )
+        pendingDelete?.let { row ->
+            SavedMarkerDeleteConfirmationDialog(
+                row = row,
+                operationError = markerState.operationError,
+                isBusy = row.systemId in markerState.busySystemIds,
+                onRemove = { deleteStarted = markerViewModel.removeSaved(row.systemId) },
+                onCancel = {
+                    pendingDelete = null
+                    deleteStarted = false
+                    markerViewModel.clearOperationError()
+                },
+                onDismissRequest = {
+                    if (!deleteStarted) pendingDelete = null
+                },
+            )
+        }
     }
 }
+
+@Composable
+internal fun SavedMarkerDeleteConfirmationDialog(
+    row: SavedMarkerRowPresentation,
+    operationError: String?,
+    isBusy: Boolean,
+    onRemove: () -> Unit,
+    onCancel: () -> Unit,
+    onDismissRequest: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("Remove saved marker?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Remove saved marker from ${row.systemName}?")
+                operationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !isBusy,
+                onClick = onRemove,
+            ) { Text(if (isBusy) "Removing…" else "Remove") }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !isBusy,
+                onClick = onCancel,
+            ) { Text("Cancel") }
+        },
+    )
+}
+
+internal fun markerManagerCanClose(editorOpen: Boolean, deleteConfirmationOpen: Boolean): Boolean =
+    !editorOpen && !deleteConfirmationOpen
 
 @Composable
 private fun MarkerTableHeader() {

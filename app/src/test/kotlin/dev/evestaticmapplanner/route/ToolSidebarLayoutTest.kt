@@ -12,6 +12,7 @@ import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.map.GLOBAL_SEARCH_MAX_WIDTH
 import dev.evestaticmapplanner.map.GLOBAL_SEARCH_MIN_WIDTH
 import dev.evestaticmapplanner.map.GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION
+import dev.evestaticmapplanner.map.MAP_TOOLBAR_VERTICAL_PADDING
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
 import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import kotlin.test.Test
@@ -130,6 +131,7 @@ class ToolSidebarLayoutTest {
         assertEquals(360, GLOBAL_SEARCH_MAX_WIDTH.value.toInt())
         assertEquals(SearchSuggestionsPresentation.DROPDOWN, GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION)
         assertEquals(270, TOOL_SIDEBAR_WIDTH.value.toInt())
+        assertEquals(4, MAP_TOOLBAR_VERTICAL_PADDING.value.toInt())
     }
 
     private fun system(id: Int, name: String) = SolarSystem(

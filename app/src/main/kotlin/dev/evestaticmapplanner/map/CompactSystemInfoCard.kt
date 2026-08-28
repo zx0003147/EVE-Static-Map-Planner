@@ -22,6 +22,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.route.RoutePlannerUiState
@@ -121,9 +123,9 @@ object CompactSystemInfoPresentationBuilder {
 internal object CompactSystemInfoCardDefaults {
     val alignment: Alignment = Alignment.BottomEnd
     val margin = 16.dp
-    val maxWidth = 340.dp
+    val maxWidth = 300.dp
     val maxHeight = 420.dp
-    val contentPadding = 14.dp
+    val contentPadding = 12.dp
     const val zIndex = 5f
 }
 
@@ -144,6 +146,7 @@ fun CompactSystemInfoCard(
             .widthIn(max = CompactSystemInfoCardDefaults.maxWidth)
             .fillMaxWidth()
             .heightIn(max = CompactSystemInfoCardDefaults.maxHeight)
+            .testTag(COMPACT_SYSTEM_INFO_CARD_TEST_TAG)
             .onGloballyPositioned { onBoundsChanged(it.boundsInParent()) },
     ) {
         Column(
@@ -156,9 +159,19 @@ fun CompactSystemInfoCard(
                 presentation.title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
             presentation.subtitle?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFAFC1D1))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFAFC1D1),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             if (presentation.isLoading) {
                 Text("Loading system details…", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
@@ -170,13 +183,26 @@ fun CompactSystemInfoCard(
             if (presentation.ansiblexConnections.isNotEmpty()) {
                 Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
                 presentation.ansiblexConnections.forEach {
-                    Text(it, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             if (presentation.jumpOverlayLabels.isNotEmpty()) {
                 Text("Jump Overlays", style = MaterialTheme.typography.labelMedium, color = Color(0xFFFFD166))
                 presentation.jumpOverlayLabels.forEach {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color(0xFFFFD166))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFFFD166),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             if (presentation.isInJumpIntersection) {
@@ -191,6 +217,9 @@ fun CompactSystemInfoCard(
                     section.title,
                     style = MaterialTheme.typography.labelMedium,
                     color = Color(0xFF9FB1C1),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 section.fields.forEach { field ->
                     CompactInfoRow(CompactInfoField(field.label, field.value))
@@ -206,11 +235,32 @@ private fun CompactMarkerSection(marker: CompactMarkerPresentation) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         Text(marker.glyph, color = markerColor(marker.color), style = MaterialTheme.typography.titleMedium)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(marker.name ?: marker.persistenceLabel, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                marker.name ?: marker.persistenceLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (marker.name != null) {
-                Text(marker.persistenceLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+                Text(
+                    marker.persistenceLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF91A2B2),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            marker.notes?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            marker.notes?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -226,18 +276,25 @@ private fun CompactInfoRow(field: CompactInfoField) {
             field.label,
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF91A2B2),
-            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(0.85f),
         )
         Text(
             field.value,
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1.15f),
         )
     }
 }
 
 private const val MAX_ANSIBLEX_DETAILS = 5
+internal const val COMPACT_SYSTEM_INFO_CARD_TEST_TAG = "compact-system-info-card"
 
 private fun Marker.toCompactPresentation() = CompactMarkerPresentation(
     glyph = if (persistence == MarkerPersistence.SAVED) "◆" else "◇",

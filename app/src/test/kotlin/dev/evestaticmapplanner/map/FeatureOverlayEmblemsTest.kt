@@ -215,10 +215,64 @@ class FeatureOverlayEmblemsTest {
     }
 
     @Test
-    fun `off-screen fixed anchor is suppressed instead of replaced`() {
-        val candidate = candidate().copy(anchor = MapPoint(2_000.0, 2_000.0))
+    fun `fixed anchor remains rendered until its actual logo rectangle fully leaves the canvas`() {
+        val currentTransform = transform(1.0)
+        val size = FeatureOverlayEmblemLod.placements(listOf(candidate()), currentTransform).single().sizePx.toDouble()
+        val partiallyVisibleAnchor = currentTransform.screenToWorld(MapPoint(-size / 2.0 + 1.0, 400.0))
+        val fullyOutsideAnchor = currentTransform.screenToWorld(MapPoint(-size / 2.0 - 1.0, 400.0))
 
-        assertTrue(FeatureOverlayEmblemLod.placements(listOf(candidate), transform(REAL_XZ_FIT_ZOOM)).isEmpty())
+        val partiallyVisible = FeatureOverlayEmblemLod.placements(
+            listOf(candidateAt("partial", partiallyVisibleAnchor)),
+            currentTransform,
+        )
+        val fullyOutside = FeatureOverlayEmblemLod.placements(
+            listOf(candidateAt("outside", fullyOutsideAnchor)),
+            currentTransform,
+        )
+
+        assertEquals(partiallyVisibleAnchor, partiallyVisible.single().anchor)
+        assertTrue(fullyOutside.isEmpty())
+    }
+
+    @Test
+    fun `continuous pan retains every still visible capped logo and zoom may recompute selection`() {
+        val initialTransform = transform(1.0, center = MapPoint(0.0, 0.0))
+        val pannedTransform = transform(1.0, center = MapPoint(100.0, 0.0))
+        val zoomedTransform = transform(0.9, center = MapPoint(100.0, 0.0))
+        val initiallyVisible = (0 until MAX_VISIBLE_EMBLEM_REQUESTS).map { index ->
+            candidateAt(
+                componentKey = "retained-$index",
+                anchor = MapPoint(-220.0 + index * 18.0, 0.0),
+                mapArea = 40_000.0 - index,
+            )
+        }
+        val enteringHighPriority = candidateAt(
+            componentKey = "entering-high-priority",
+            anchor = MapPoint(700.0, 0.0),
+            mapArea = 1_000_000.0,
+            boundaryClearance = 1_000.0,
+            halfSpan = 250.0,
+        )
+        val candidates = initiallyVisible + enteringHighPriority
+        val selector = StableFeatureOverlayEmblemSelector()
+
+        val initial = selector.select(
+            FeatureOverlayEmblemLod.placements(candidates, initialTransform),
+            initialTransform.viewport.zoom,
+        )
+        val afterPan = selector.select(
+            FeatureOverlayEmblemLod.placements(candidates, pannedTransform),
+            pannedTransform.viewport.zoom,
+        )
+
+        assertEquals(initial.map { it.candidate.componentKey }.toSet(), afterPan.map { it.candidate.componentKey }.toSet())
+        assertTrue(afterPan.none { it.candidate.componentKey == enteringHighPriority.componentKey })
+
+        val afterZoom = selector.select(
+            FeatureOverlayEmblemLod.placements(candidates, zoomedTransform),
+            zoomedTransform.viewport.zoom,
+        )
+        assertTrue(afterZoom.any { it.candidate.componentKey == enteringHighPriority.componentKey })
     }
 
     @Test
@@ -247,7 +301,7 @@ class FeatureOverlayEmblemsTest {
     }
 
     @Test
-    fun `failure is session-cached and cannot produce per-frame retry spam`() = runTest {
+    fun `exhausted loader failure is session-cached and cannot produce per-frame retry spam`() = runTest {
         var loads = 0
         val repository = PresentationEmblemAssetRepository(
             scope = backgroundScope,
@@ -321,6 +375,37 @@ class FeatureOverlayEmblemsTest {
             bounds = MapBounds(0.0, 0.0, 200.0, 200.0),
         ),
     )
+
+    private fun candidateAt(
+        componentKey: String,
+        anchor: MapPoint,
+        mapArea: Double = 40_000.0,
+        boundaryClearance: Double = 100.0,
+        halfSpan: Double = 200.0,
+    ): PresentedFeatureEmblemCandidate {
+        val bounds = MapBounds(
+            anchor.x - halfSpan,
+            anchor.y - halfSpan,
+            anchor.x + halfSpan,
+            anchor.y + halfSpan,
+        )
+        return candidate().copy(
+            componentKey = componentKey,
+            anchor = anchor,
+            bounds = bounds,
+            mapArea = mapArea,
+            boundaryClearance = boundaryClearance,
+            clipTerritory = candidate().clipTerritory.copy(
+                polygon = listOf(
+                    MapPoint(bounds.minX, bounds.minY),
+                    MapPoint(bounds.maxX, bounds.minY),
+                    MapPoint(bounds.maxX, bounds.maxY),
+                    MapPoint(bounds.minX, bounds.maxY),
+                ),
+                bounds = bounds,
+            ),
+        )
+    }
 
     private fun transform(zoom: Double, center: MapPoint = MapPoint(100.0, 100.0)) = MapTransform(
         viewport = MapViewport(center, zoom),

@@ -2,14 +2,21 @@ package dev.evestaticmapplanner.map
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import dev.evestaticmapplanner.AppDiagnostics
+import dev.evestaticmapplanner.ApplicationDirectories
 import dev.evestaticmapplanner.core.map.MapBounds
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapTransform
-import java.io.IOException
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.time.Duration
 import java.util.concurrent.CancellationException
 import kotlin.math.min
@@ -21,9 +28,12 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.jetbrains.skia.Image
 
 data class PresentationEmblemReference(
@@ -98,10 +108,9 @@ internal object FeatureOverlayEmblemLod {
         if (alpha <= 0f) return emptyList()
         val zoom = transform.viewport.zoom
         val sizeScale = 1.0 + EMBLEM_FAR_SIZE_BOOST * emphasisProgress(zoom, policy)
-        val visibleBounds = transform.visibleWorldBounds(EMBLEM_CULL_MARGIN_PX)
+        val visibleBounds = transform.visibleWorldBounds()
         return candidates.asSequence()
             .filter { it.bounds.intersects(visibleBounds) }
-            .filter { visibleBounds.contains(it.anchor) }
             .mapNotNull { candidate ->
                 val projectedArea = candidate.mapArea * zoom * zoom
                 val preferredSize = (sqrt(projectedArea) * EMBLEM_AREA_SIZE_FACTOR * sizeScale)
@@ -116,12 +125,12 @@ internal object FeatureOverlayEmblemLod {
                 if (!size.isFinite() || size < EMBLEM_MIN_RENDERED_SIZE_PX) return@mapNotNull null
                 FeatureOverlayEmblemPlacement(candidate, candidate.anchor, size.toFloat(), alpha)
             }
+            .filter { it.intersectsCanvas(transform) }
             .sortedWith(
                 compareByDescending<FeatureOverlayEmblemPlacement> {
                     it.candidate.mapArea * zoom * zoom
                 }.thenBy { it.candidate.componentKey },
             )
-            .take(MAX_VISIBLE_EMBLEM_REQUESTS)
             .toList()
     }
 
@@ -157,8 +166,69 @@ internal object FeatureOverlayEmblemLod {
     }
 }
 
+/**
+ * Keeps the capped emblem set stable while the viewport pans at one zoom level.
+ * Eligible emblems are released only after their rendered rectangle leaves the canvas;
+ * a zoom change intentionally starts a fresh priority selection.
+ */
+internal class StableFeatureOverlayEmblemSelector(
+    private val capacity: Int = MAX_VISIBLE_EMBLEM_REQUESTS,
+) {
+    private var selectedZoom: Double? = null
+    private var selectedComponentKeys = emptySet<String>()
+
+    init {
+        require(capacity > 0)
+    }
+
+    fun select(
+        eligiblePlacements: List<FeatureOverlayEmblemPlacement>,
+        zoom: Double,
+    ): List<FeatureOverlayEmblemPlacement> {
+        require(zoom.isFinite() && zoom > 0.0)
+        if (selectedZoom != zoom) {
+            selectedZoom = zoom
+            selectedComponentKeys = emptySet()
+        }
+
+        val eligibleKeys = eligiblePlacements.asSequence()
+            .map { it.candidate.componentKey }
+            .toSet()
+        val nextKeys = LinkedHashSet<String>(capacity)
+        selectedComponentKeys.forEach { key ->
+            if (key in eligibleKeys && nextKeys.size < capacity) nextKeys += key
+        }
+        eligiblePlacements.forEach { placement ->
+            if (nextKeys.size < capacity) nextKeys += placement.candidate.componentKey
+        }
+        selectedComponentKeys = nextKeys
+        return eligiblePlacements.filter { it.candidate.componentKey in nextKeys }
+    }
+}
+
+private fun FeatureOverlayEmblemPlacement.intersectsCanvas(transform: MapTransform): Boolean {
+    val center = transform.worldToScreen(anchor)
+    val renderedSize = sizePx.toInt().coerceAtLeast(1)
+    val left = (center.x - renderedSize / 2.0).toInt()
+    val top = (center.y - renderedSize / 2.0).toInt()
+    val right = left + renderedSize
+    val bottom = top + renderedSize
+    return right > 0 &&
+        left < transform.canvasSize.width &&
+        bottom > 0 &&
+        top < transform.canvasSize.height
+}
+
 internal fun interface PresentationEmblemLoader<T> {
     suspend fun load(reference: PresentationEmblemReference): T
+}
+
+internal fun interface PresentationEmblemDownloader {
+    suspend fun download(reference: PresentationEmblemReference): ByteArray
+}
+
+internal fun interface PresentationEmblemDecoder<T> {
+    fun decode(bytes: ByteArray): T
 }
 
 internal sealed interface PresentationEmblemAssetState<out T> {
@@ -228,13 +298,24 @@ internal class PresentationEmblemAssetRepository<T>(
 }
 
 internal class JdkPresentationEmblemImageLoader(
-    private val httpClient: HttpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(EMBLEM_CONNECT_TIMEOUT_SECONDS))
-        .followRedirects(HttpClient.Redirect.NORMAL)
-        .version(HttpClient.Version.HTTP_1_1)
-        .build(),
+    cacheDirectory: Path = defaultPresentationEmblemCacheDirectory(),
+    httpClient: HttpClient = defaultEmblemHttpClient(),
+    warningSink: (String, Throwable?) -> Unit = AppDiagnostics::warning,
 ) : PresentationEmblemLoader<ImageBitmap> {
-    override suspend fun load(reference: PresentationEmblemReference): ImageBitmap {
+    private val delegate = DiskCachedPresentationEmblemLoader(
+        cacheDirectory = cacheDirectory,
+        downloader = JdkPresentationEmblemDownloader(httpClient),
+        decoder = PresentationEmblemDecoder { bytes -> Image.makeFromEncoded(bytes).toComposeImageBitmap() },
+        warningSink = warningSink,
+    )
+
+    override suspend fun load(reference: PresentationEmblemReference): ImageBitmap = delegate.load(reference)
+}
+
+internal class JdkPresentationEmblemDownloader(
+    private val httpClient: HttpClient = defaultEmblemHttpClient(),
+) : PresentationEmblemDownloader {
+    override suspend fun download(reference: PresentationEmblemReference): ByteArray {
         val uri = validatedEmblemUri(reference.url)
         val request = HttpRequest.newBuilder(uri)
             .timeout(Duration.ofSeconds(EMBLEM_REQUEST_TIMEOUT_SECONDS))
@@ -242,29 +323,149 @@ internal class JdkPresentationEmblemImageLoader(
             .header("User-Agent", "EVE-Static-Map-Planner alliance-emblem/1")
             .GET()
             .build()
-        var lastNetworkFailure: IOException? = null
-        repeat(EMBLEM_NETWORK_ATTEMPTS) { attempt ->
-            try {
-                return loadImage(request)
-            } catch (failure: IOException) {
-                lastNetworkFailure = failure
-                if (attempt == EMBLEM_NETWORK_ATTEMPTS - 1) throw failure
-            }
-        }
-        throw checkNotNull(lastNetworkFailure)
+        return downloadBytes(request)
     }
 
-    private fun loadImage(request: HttpRequest): ImageBitmap {
+    private fun downloadBytes(request: HttpRequest): ByteArray {
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream())
-        val bytes = response.body().use { input ->
+        return response.body().use { input ->
             check(response.statusCode() in 200..299) { "Emblem server returned HTTP ${response.statusCode()}" }
-            input.readNBytes(MAX_EMBLEM_BYTES + 1)
+            input.readNBytes(MAX_EMBLEM_BYTES + 1).also(::validateEmblemBytes)
         }
-        check(bytes.isNotEmpty()) { "Emblem response was empty" }
-        check(bytes.size <= MAX_EMBLEM_BYTES) { "Emblem response exceeded $MAX_EMBLEM_BYTES bytes" }
-        return Image.makeFromEncoded(bytes).toComposeImageBitmap()
     }
 }
+
+internal class DiskCachedPresentationEmblemLoader<T>(
+    cacheDirectory: Path,
+    private val downloader: PresentationEmblemDownloader,
+    private val decoder: PresentationEmblemDecoder<T>,
+    private val warningSink: (String, Throwable?) -> Unit = { _, _ -> },
+    private val retryAttempts: Int = EMBLEM_NETWORK_ATTEMPTS,
+    private val retryBaseDelayMillis: Long = EMBLEM_RETRY_BASE_DELAY_MILLIS,
+    maxConcurrentDownloads: Int = EMBLEM_MAX_CONCURRENT_DOWNLOADS,
+    private val delayBeforeRetry: suspend (Long) -> Unit = { delay(it) },
+) : PresentationEmblemLoader<T> {
+    private val cacheDirectory = cacheDirectory.toAbsolutePath().normalize()
+    private val networkPermits = Semaphore(maxConcurrentDownloads)
+
+    init {
+        require(retryAttempts > 0)
+        require(retryBaseDelayMillis >= 0L)
+        require(maxConcurrentDownloads > 0)
+    }
+
+    override suspend fun load(reference: PresentationEmblemReference): T {
+        readCached(reference)?.let { return it }
+        return networkPermits.withPermit { downloadWithRetry(reference) }
+    }
+
+    private fun readCached(reference: PresentationEmblemReference): T? {
+        val cachePath = cachePath(reference)
+        if (!Files.isRegularFile(cachePath)) return null
+        return try {
+            decoder.decode(readValidatedBytes(cachePath))
+        } catch (failure: Exception) {
+            warningSink("Alliance Logo cache is invalid for ${reference.key}; downloading a fresh copy", failure)
+            runCatching { Files.deleteIfExists(cachePath) }
+                .onFailure { deleteFailure ->
+                    warningSink("Alliance Logo invalid cache could not be deleted for ${reference.key}", deleteFailure)
+                }
+            null
+        }
+    }
+
+    private suspend fun downloadWithRetry(reference: PresentationEmblemReference): T {
+        var lastFailure: Exception? = null
+        repeat(retryAttempts) { attempt ->
+            try {
+                val bytes = downloader.download(reference).also(::validateEmblemBytes)
+                val decoded = decoder.decode(bytes)
+                writeCached(reference, bytes)
+                return decoded
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                lastFailure = failure
+                val attemptNumber = attempt + 1
+                warningSink(
+                    "Alliance Logo download failed for ${reference.key} " +
+                        "(attempt $attemptNumber/$retryAttempts)",
+                    failure,
+                )
+                if (attemptNumber < retryAttempts) {
+                    delayBeforeRetry(retryDelayMillis(attemptNumber))
+                }
+            }
+        }
+        throw checkNotNull(lastFailure)
+    }
+
+    private fun writeCached(reference: PresentationEmblemReference, bytes: ByteArray) {
+        val target = cachePath(reference)
+        var temporary: Path? = null
+        try {
+            Files.createDirectories(cacheDirectory)
+            temporary = Files.createTempFile(cacheDirectory, ".${target.fileName}-", ".part")
+            Files.write(temporary, bytes)
+            try {
+                Files.move(
+                    temporary,
+                    target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } catch (failure: Exception) {
+            warningSink("Alliance Logo cache write failed for ${reference.key}", failure)
+        } finally {
+            temporary?.let { part -> runCatching { Files.deleteIfExists(part) } }
+        }
+    }
+
+    internal fun cachePath(reference: PresentationEmblemReference): Path =
+        cacheDirectory.resolve(emblemCacheFileName(reference))
+
+    private fun retryDelayMillis(failedAttemptNumber: Int): Long =
+        retryBaseDelayMillis * (1L shl (failedAttemptNumber - 1).coerceAtMost(20))
+}
+
+internal fun defaultPresentationEmblemCacheDirectory(
+    environment: Map<String, String> = System.getenv(),
+    osName: String = System.getProperty("os.name"),
+    userHome: Path = Path.of(System.getProperty("user.home")),
+): Path = ApplicationDirectories.root(environment, osName, userHome)
+    .resolve("cache")
+    .resolve("alliance-logos")
+    .toAbsolutePath()
+    .normalize()
+
+internal fun emblemCacheFileName(reference: PresentationEmblemReference): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(
+        "${reference.key}\u0000${reference.url}".toByteArray(StandardCharsets.UTF_8),
+    )
+    return digest.joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) } + ".png"
+}
+
+private fun readValidatedBytes(path: Path): ByteArray {
+    val size = Files.size(path)
+    check(size in 1..MAX_EMBLEM_BYTES.toLong()) {
+        "Emblem cache size is invalid: $size bytes"
+    }
+    return Files.readAllBytes(path).also(::validateEmblemBytes)
+}
+
+private fun validateEmblemBytes(bytes: ByteArray) {
+    check(bytes.isNotEmpty()) { "Emblem response was empty" }
+    check(bytes.size <= MAX_EMBLEM_BYTES) { "Emblem response exceeded $MAX_EMBLEM_BYTES bytes" }
+}
+
+private fun defaultEmblemHttpClient(): HttpClient = HttpClient.newBuilder()
+    .connectTimeout(Duration.ofSeconds(EMBLEM_CONNECT_TIMEOUT_SECONDS))
+    .followRedirects(HttpClient.Redirect.NORMAL)
+    .version(HttpClient.Version.HTTP_1_1)
+    .build()
 
 internal fun validatedEmblemUri(url: String): URI {
     val uri = URI.create(url)
@@ -287,11 +488,12 @@ private const val EMBLEM_FAR_SIZE_BOOST = 0.20
 private const val EMBLEM_AREA_SIZE_FACTOR = 0.70
 private const val EMBLEM_BOUNDS_SIZE_FACTOR = 0.78
 private const val EMBLEM_CLEARANCE_DIAMETER_FACTOR = 1.8
-private const val EMBLEM_CULL_MARGIN_PX = 40.0
 internal const val MAX_VISIBLE_EMBLEM_REQUESTS = 24
 internal const val EMBLEM_MEMORY_CACHE_CAPACITY = 64
 private const val EMBLEM_CONNECT_TIMEOUT_SECONDS = 12L
 private const val EMBLEM_REQUEST_TIMEOUT_SECONDS = 20L
-private const val EMBLEM_NETWORK_ATTEMPTS = 2
+internal const val EMBLEM_NETWORK_ATTEMPTS = 3
+internal const val EMBLEM_RETRY_BASE_DELAY_MILLIS = 250L
+internal const val EMBLEM_MAX_CONCURRENT_DOWNLOADS = 4
 private const val MAX_EMBLEM_BYTES = 2 * 1024 * 1024
 private const val OFFICIAL_IMAGE_HOST = "images.evetech.net"
