@@ -26,6 +26,9 @@ data class SavedMarkerState(
     val databaseError: String? = null,
 )
 
+class SavedMarkerAlreadyExistsException(systemId: Int) :
+    IllegalStateException("A saved marker already exists for solar system $systemId")
+
 class SavedMarkerService(
     private val repository: SavedMarkerRepository?,
     userDatabaseError: String?,
@@ -56,6 +59,9 @@ class SavedMarkerService(
         draft: MarkerDraft,
         createdBy: SavedMarkerCreatedBy = SavedMarkerCreatedBy.USER,
     ): Marker = mutate { repository ->
+        if (systemId in mutableState.value.markersBySystemId) {
+            throw SavedMarkerAlreadyExistsException(systemId)
+        }
         val marker = withContext(ioDispatcher) { repository.create(systemId, draft, createdBy) }
         validateSavedMarker(marker, systemId)
         val current = mutableState.value

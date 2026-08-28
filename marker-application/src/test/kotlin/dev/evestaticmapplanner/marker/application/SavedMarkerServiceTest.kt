@@ -99,11 +99,11 @@ class SavedMarkerServiceTest {
         val service = service(repository)
         advanceUntilIdle()
 
-        val error = assertFailsWith<IllegalStateException> {
+        val error = assertFailsWith<SavedMarkerAlreadyExistsException> {
             service.create(5, MarkerDraft.create(name = "Duplicate"))
         }
 
-        assertEquals("duplicate marker", error.message)
+        assertEquals("A saved marker already exists for solar system 5", error.message)
         assertEquals(original, service.state.value.markersBySystemId[5])
     }
 

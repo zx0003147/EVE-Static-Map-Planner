@@ -57,6 +57,7 @@ fun PreferencesWindow(
     overlayState: OverlayState,
     onOverlayVisibilityChange: (OverlayVisibilityPreferences) -> Unit,
     onAiControlChange: (Boolean) -> Unit,
+    onAiSavedMarkerAccessChange: (Boolean) -> Unit,
     onResetMapDisplay: () -> Unit,
     onResetMarker: () -> Unit,
     onResetAiControl: () -> Unit,
@@ -110,6 +111,7 @@ fun PreferencesWindow(
                                 aiControlStatus,
                                 aiControlError,
                                 onAiControlChange,
+                                onAiSavedMarkerAccessChange,
                                 onResetAiControl,
                             )
                             PreferencesCategory.FEATURE_PACKS -> FeaturePacksPreferencesContent(
@@ -423,10 +425,20 @@ private fun AiControlPreferencesContent(
     status: AiControlStatus,
     preferenceError: String?,
     onChange: (Boolean) -> Unit,
+    onSavedMarkerAccessChange: (Boolean) -> Unit,
     onReset: () -> Unit,
 ) {
     Text("AI Map Control", style = MaterialTheme.typography.titleMedium)
     PreferenceCheckbox("Enable AI Map Control", preferences.enabled, onCheckedChange = onChange)
+    PreferenceCheckbox(
+        "Allow AI to access saved markers",
+        preferences.savedMarkerAccessEnabled,
+        onCheckedChange = onSavedMarkerAccessChange,
+    )
+    Text(
+        "Allows AI tools to read and create saved markers. AI cannot modify or delete existing saved markers.",
+        color = Color(0xFFAAB9C7),
+    )
     Text(
         when (status) {
             AiControlStatus.Disabled -> "Disabled"

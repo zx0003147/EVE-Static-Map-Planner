@@ -19,6 +19,7 @@ data class AppPreferences(
 
 data class AiControlPreferences(
     val enabled: Boolean = false,
+    val savedMarkerAccessEnabled: Boolean = false,
 ) {
     companion object {
         val Defaults = AiControlPreferences()
@@ -194,6 +195,7 @@ class PropertiesPreferencesStore(
             ),
             aiControl = AiControlPreferences(
                 enabled = properties.safeAiControlEnabled(warningSink),
+                savedMarkerAccessEnabled = properties.safeAiSavedMarkerAccessEnabled(warningSink),
             ),
             overlayVisibility = properties.overlayVisibilityPreferences(),
         )
@@ -228,6 +230,7 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_SAVED_MARKER_GLOW_ENABLED, marker.savedMarkerAppearance.glowEnabled.toString())
                 setProperty(KEY_SAVED_MARKER_GLOW_STRENGTH, marker.savedMarkerAppearance.glowStrength.toString())
                 setProperty(KEY_AI_CONTROL_ENABLED, aiControl.enabled.toString())
+                setProperty(KEY_AI_SAVED_MARKER_ACCESS_ENABLED, aiControl.savedMarkerAccessEnabled.toString())
                 setProperty(
                     KEY_OVERLAY_DISABLED_LAYERS,
                     overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
@@ -272,6 +275,16 @@ private fun Properties.safeAiControlEnabled(warningSink: (String) -> Unit): Bool
         false
     }
 }
+
+private fun Properties.safeAiSavedMarkerAccessEnabled(warningSink: (String) -> Unit): Boolean =
+    when (getProperty(KEY_AI_SAVED_MARKER_ACCESS_ENABLED)) {
+        null, "false" -> false
+        "true" -> true
+        else -> {
+            warningSink("AI Saved Marker access preference is invalid and was disabled")
+            false
+        }
+    }
 
 private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferences {
     val disabledLayers = getProperty(KEY_OVERLAY_DISABLED_LAYERS)
@@ -323,4 +336,5 @@ private const val KEY_SAVED_MARKER_LINE_WIDTH = "marker.savedMarkerAppearance.li
 private const val KEY_SAVED_MARKER_GLOW_ENABLED = "marker.savedMarkerAppearance.glowEnabled"
 private const val KEY_SAVED_MARKER_GLOW_STRENGTH = "marker.savedMarkerAppearance.glowStrength"
 private const val KEY_AI_CONTROL_ENABLED = "aiControl.enabled"
+private const val KEY_AI_SAVED_MARKER_ACCESS_ENABLED = "aiControl.savedMarkerAccessEnabled"
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"

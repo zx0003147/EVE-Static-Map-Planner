@@ -51,6 +51,8 @@ import dev.evestaticmapplanner.map.StaticMapScreen
 import dev.evestaticmapplanner.marker.MarkerViewModel
 import dev.evestaticmapplanner.marker.MarkerManagerWindow
 import dev.evestaticmapplanner.marker.application.SavedMarkerService
+import dev.evestaticmapplanner.marker.application.AiSavedMarkerApplicationService
+import dev.evestaticmapplanner.marker.application.AiSavedMarkerPermissionPolicy
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
@@ -177,6 +179,7 @@ private fun FrameWindowScope.ReadyApplication(
         CachingStaticMapRepository(SqliteStaticMapRepository(configuration.database.path))
     }
     val searchRepository = remember(configuration) { SqliteSystemSearchRepository(configuration.database.path) }
+    val universeRepository = remember(configuration) { SqliteUniverseRepository(configuration.database.path) }
     val preferencesStore = remember(configuration) {
         PropertiesPreferencesStore(
             ApplicationDirectories.root().resolve("settings.properties"),
@@ -189,7 +192,7 @@ private fun FrameWindowScope.ReadyApplication(
     val mapViewModel = remember(configuration) {
         MapViewModel(
             staticMapRepository = staticRepository,
-            universeRepository = SqliteUniverseRepository(configuration.database.path),
+            universeRepository = universeRepository,
             focusSystemName = configuration.focusSystemName,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
             preferencesStore = preferencesStore,
@@ -200,7 +203,7 @@ private fun FrameWindowScope.ReadyApplication(
             val ansiblexRepository = SqliteAnsiblexRepository(configuration.userDatabase.path)
             val importService = AnsiblexImportService(
                 userDatabasePath = configuration.userDatabase.path,
-                universeRepository = SqliteUniverseRepository(configuration.database.path),
+                universeRepository = universeRepository,
                 searchRepository = searchRepository,
             )
             UserComponents(
@@ -239,6 +242,16 @@ private fun FrameWindowScope.ReadyApplication(
             scope = markerServiceScope,
         )
     }
+    @Suppress("UNUSED_VARIABLE")
+    val aiSavedMarkerApplicationService = remember(savedMarkerService, mapViewModel, universeRepository) {
+        AiSavedMarkerApplicationService(
+            savedMarkerService = savedMarkerService,
+            universeRepository = universeRepository,
+            permissionPolicy = AiSavedMarkerPermissionPolicy {
+                mapViewModel.state.value.appPreferences.aiControl.savedMarkerAccessEnabled
+            },
+        )
+    }
     val markerViewModel = remember(savedMarkerService) {
         MarkerViewModel(
             savedMarkerService = savedMarkerService,
@@ -267,7 +280,7 @@ private fun FrameWindowScope.ReadyApplication(
         )
         val systemReadPort = RepositorySystemReadPort(
             searchRepository,
-            SqliteUniverseRepository(configuration.database.path),
+            universeRepository,
         )
         AiMapControlLifecycleController(
             discoveryRoot = ApplicationDirectories.root().resolve("control"),
@@ -446,6 +459,17 @@ private fun FrameWindowScope.ReadyApplication(
                             AppDiagnostics.warning("AI Control preference save failed", it)
                         },
                     )
+                }
+            },
+            onAiSavedMarkerAccessChange = { enabled ->
+                uiScope.launch {
+                    aiPreferenceError = null
+                    mapViewModel.updateAiControlPreferences(
+                        mapState.appPreferences.aiControl.copy(savedMarkerAccessEnabled = enabled),
+                    ).onFailure {
+                        aiPreferenceError = "The setting could not be saved; AI Saved Marker access was not changed."
+                        AppDiagnostics.warning("AI Saved Marker access preference save failed", it)
+                    }
                 }
             },
             onResetMapDisplay = mapViewModel::resetMapDisplayPreferences,

@@ -30,6 +30,7 @@ class PreferencesStoreTest {
         assertTrue(MarkerPreferences.Defaults.savedMarkerAppearance.glowEnabled)
         assertEquals(0.5f, MarkerPreferences.Defaults.savedMarkerAppearance.glowStrength)
         assertFalse(AppPreferences.Defaults.aiControl.enabled)
+        assertFalse(AppPreferences.Defaults.aiControl.savedMarkerAccessEnabled)
     }
 
     @Test
@@ -56,7 +57,7 @@ class PreferencesStoreTest {
                     glowStrength = 0.8f,
                 ),
             ),
-            aiControl = AiControlPreferences(enabled = true),
+            aiControl = AiControlPreferences(enabled = true, savedMarkerAccessEnabled = true),
             overlayVisibility = OverlayVisibilityPreferences(
                 disabledLayers = setOf(
                     OverlayLayerKey("fixture.provider", "second"),
@@ -72,6 +73,7 @@ class PreferencesStoreTest {
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.glowEnabled=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.enabled=true" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.savedMarkerAccessEnabled=true" })
         assertTrue(Files.readString(path).lineSequence().any {
             it == "mapDisplay.sovereigntyLogoEmphasisZoom=0.85"
         })
@@ -80,8 +82,12 @@ class PreferencesStoreTest {
         })
         assertEquals(expected, PropertiesPreferencesStore(path).load())
 
-        PropertiesPreferencesStore(path).save(expected.copy(aiControl = AiControlPreferences(enabled = false)))
-        assertFalse(PropertiesPreferencesStore(path).load().aiControl.enabled)
+        PropertiesPreferencesStore(path).save(
+            expected.copy(aiControl = AiControlPreferences(enabled = false, savedMarkerAccessEnabled = false)),
+        )
+        val disabled = PropertiesPreferencesStore(path).load().aiControl
+        assertFalse(disabled.enabled)
+        assertFalse(disabled.savedMarkerAccessEnabled)
     }
 
     @Test
@@ -250,6 +256,37 @@ class PreferencesStoreTest {
     }
 
     @Test
+    fun `missing and invalid AI Saved Marker access fail safely to disabled`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(path, "settings.version=1\naiControl.enabled=true\n")
+        val oldSettings = PropertiesPreferencesStore(path).load().aiControl
+        assertTrue(oldSettings.enabled)
+        assertFalse(oldSettings.savedMarkerAccessEnabled)
+
+        val warnings = mutableListOf<String>()
+        Files.writeString(path, "settings.version=1\naiControl.savedMarkerAccessEnabled=TRUE\n")
+        val malformed = PropertiesPreferencesStore(path, warnings::add).load().aiControl
+        assertFalse(malformed.savedMarkerAccessEnabled)
+        assertEquals(listOf("AI Saved Marker access preference is invalid and was disabled"), warnings)
+    }
+
+    @Test
+    fun `AI Saved Marker access persists ON and OFF independently from AI Control`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val store = PropertiesPreferencesStore(path)
+
+        store.save(AppPreferences(aiControl = AiControlPreferences(enabled = false, savedMarkerAccessEnabled = true)))
+        val enabled = PropertiesPreferencesStore(path).load().aiControl
+        assertFalse(enabled.enabled)
+        assertTrue(enabled.savedMarkerAccessEnabled)
+
+        store.save(AppPreferences(aiControl = AiControlPreferences(enabled = true, savedMarkerAccessEnabled = false)))
+        val disabled = PropertiesPreferencesStore(path).load().aiControl
+        assertTrue(disabled.enabled)
+        assertFalse(disabled.savedMarkerAccessEnabled)
+    }
+
+    @Test
     fun `unsupported or missing settings version safely uses defaults`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         Files.writeString(path, "settings.version=2\nmapDisplay.systemZoomThreshold=12\n")
@@ -272,6 +309,7 @@ class PreferencesStoreTest {
         assertEquals(AppPreferences.Defaults, PropertiesPreferencesStore(path).load())
         assertEquals(0.75, PropertiesPreferencesStore(path).load().mapDisplay.sovereigntyLogoEmphasisZoom)
         assertFalse(PropertiesPreferencesStore(path).load().aiControl.enabled)
+        assertFalse(PropertiesPreferencesStore(path).load().aiControl.savedMarkerAccessEnabled)
     }
 
     @Test

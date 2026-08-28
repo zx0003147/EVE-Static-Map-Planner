@@ -373,13 +373,21 @@ class MapViewModelTest {
         val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
         advanceUntilIdle()
 
-        assertTrue(viewModel.updateAiControlPreferences(AiControlPreferences(enabled = true)).isSuccess)
+        assertTrue(
+            viewModel.updateAiControlPreferences(
+                AiControlPreferences(enabled = true, savedMarkerAccessEnabled = true),
+            ).isSuccess,
+        )
         assertTrue(viewModel.state.value.appPreferences.aiControl.enabled)
+        assertTrue(viewModel.state.value.appPreferences.aiControl.savedMarkerAccessEnabled)
         assertTrue(store.stored.aiControl.enabled)
+        assertTrue(store.stored.aiControl.savedMarkerAccessEnabled)
 
         assertTrue(viewModel.updateAiControlPreferences(AiControlPreferences.Defaults).isSuccess)
         assertFalse(viewModel.state.value.appPreferences.aiControl.enabled)
+        assertFalse(viewModel.state.value.appPreferences.aiControl.savedMarkerAccessEnabled)
         assertFalse(store.stored.aiControl.enabled)
+        assertFalse(store.stored.aiControl.savedMarkerAccessEnabled)
 
         assertTrue(viewModel.updateAiControlPreferences(AiControlPreferences(enabled = true)).isSuccess)
         assertTrue(viewModel.resetAllPreferences().isSuccess)
@@ -395,11 +403,15 @@ class MapViewModelTest {
         val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
         advanceUntilIdle()
 
-        val result = viewModel.updateAiControlPreferences(AiControlPreferences(enabled = true))
+        val result = viewModel.updateAiControlPreferences(
+            AiControlPreferences(enabled = true, savedMarkerAccessEnabled = true),
+        )
 
         assertTrue(result.isFailure)
         assertFalse(viewModel.state.value.appPreferences.aiControl.enabled)
+        assertFalse(viewModel.state.value.appPreferences.aiControl.savedMarkerAccessEnabled)
         assertFalse(store.stored.aiControl.enabled)
+        assertFalse(store.stored.aiControl.savedMarkerAccessEnabled)
     }
 
     @Test
