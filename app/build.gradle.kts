@@ -677,6 +677,52 @@ val portableEsiPackInstalledImageTest by tasks.registering(Test::class) {
     outputs.upToDateWhen { false }
 }
 
+val portableEsiSsoPackPreflightRuntime = rootProject.layout.buildDirectory.dir(
+    "portable-acceptance/esi-sso-runtime",
+)
+
+val preparePortableEsiSsoPackPreflightRuntime by tasks.registering(Sync::class) {
+    group = "verification"
+    description = "Prepares an isolated copy of the Portable runtime with a test-only console launcher."
+    dependsOn(verifyPortableZip)
+    val javaLauncher = File(System.getProperty("java.home"), "bin/java.exe")
+    from(portableExtractedImage.map { it.dir("runtime") })
+    from(javaLauncher) { into("bin") }
+    into(portableEsiSsoPackPreflightRuntime)
+    doFirst {
+        check(javaLauncher.isFile) { "Gradle Java launcher does not exist: $javaLauncher" }
+        check(portableExtractedImage.get().file("runtime/lib/modules").asFile.isFile) {
+            "Extracted Portable runtime module image is missing"
+        }
+    }
+}
+
+val portableEsiSsoPackPreflight by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Runs ESI Connect through the production Pack host with the extracted Portable runtime."
+    dependsOn(preparePortableEsiSsoPackPreflightRuntime, tasks.named("testClasses"))
+    val preflightClasspath = sourceSets.test.get().runtimeClasspath
+    val report = rootProject.layout.buildDirectory.file("portable-acceptance/esi-sso-pack-preflight.txt")
+    doFirst {
+        val pack = esiPackJar.orNull?.let(::file)
+            ?: error("portableEsiSsoPackPreflight requires -PesiPackJar=<canonical ESI Pack jar>")
+        check(pack.isFile) { "ESI Pack jar does not exist: ${pack.absolutePath}" }
+        commandLine(
+            portableEsiSsoPackPreflightRuntime.get().file("bin/java.exe").asFile.absolutePath,
+            "--enable-native-access=ALL-UNNAMED",
+            "-cp",
+            preflightClasspath.asPath,
+            "dev.evestaticmapplanner.featurepack.PortableEsiSsoPackPreflightKt",
+            pack.absolutePath,
+            report.get().asFile.absolutePath,
+        )
+    }
+    inputs.dir(portableEsiSsoPackPreflightRuntime)
+    inputs.file(esiPackJar)
+    outputs.file(report)
+    outputs.upToDateWhen { false }
+}
+
 val portableExternalFeaturePacksInstalledImageTest by tasks.registering(Test::class) {
     group = "verification"
     description = "Loads the real ESI and Sovereignty Packs together through the extracted Portable launcher."

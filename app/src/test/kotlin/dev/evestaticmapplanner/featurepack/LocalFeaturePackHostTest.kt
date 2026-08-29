@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.featurepack
 
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpServer
 import dev.evestaticmapplanner.feature.api.CoreVersion
 import dev.evestaticmapplanner.feature.api.FeatureApiVersions
 import dev.evestaticmapplanner.feature.api.FeaturePackContext
@@ -89,8 +91,13 @@ class LocalFeaturePackHostTest {
             )
             assertSame(String::class.java, loaded.classLoader.loadClass(String::class.java.name))
             assertSame(HttpClient::class.java, loaded.classLoader.loadClass(HttpClient::class.java.name))
+            assertSame(HttpServer::class.java, loaded.classLoader.loadClass(HttpServer::class.java.name))
+            assertSame(HttpExchange::class.java, loaded.classLoader.loadClass(HttpExchange::class.java.name))
             assertSame(DriverManager::class.java, loaded.classLoader.loadClass(DriverManager::class.java.name))
             assertSame(Unit::class.java, loaded.classLoader.loadClass(Unit::class.java.name))
+            assertFailsWith<ClassNotFoundException> {
+                loaded.classLoader.loadClass("com.sun.jna.Native")
+            }
             assertFailsWith<ClassNotFoundException> {
                 loaded.classLoader.loadClass("dev.evestaticmapplanner.core.model.SolarSystem")
             }

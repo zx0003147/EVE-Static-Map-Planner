@@ -321,7 +321,14 @@ private class SharedFeaturePackParentClassLoader(
     }
 
     private companion object {
-        val PLATFORM_PREFIXES = listOf("java.", "javax.", "jdk.", "sun.")
+        val PLATFORM_PREFIXES = listOf(
+            "java.",
+            "javax.",
+            "jdk.",
+            "sun.",
+            // Public JDK callback-server API from the jdk.httpserver module.
+            "com.sun.net.httpserver.",
+        )
         val SHARED_PREFIXES = listOf("dev.evestaticmapplanner.feature.api.", "kotlin.")
     }
 }
