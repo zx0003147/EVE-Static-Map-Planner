@@ -6,7 +6,7 @@ Repository: [zx0003147/EVE-Map-Assistant-Plugin](https://github.com/zx0003147/EV
 
 ## Gate A prerequisites
 
-- EVE Static Map Planner 0.5.0 or later is installed.
+- EVE Static Map Planner 0.6.0 or later is installed.
 - The MSI has registered its install directory on the per-user PATH.
 - Start the map and enable **Preferences > AI Control** before map operations.
 - EVE Map Assistant Plugin 0.3.0 or later is installed.
@@ -22,7 +22,7 @@ Codex   -> direct STDIO process
 
 ## Install the standalone Plugin
 
-1. Install or upgrade the map to 0.5.0 or later.
+1. Install or upgrade the map to 0.6.0 or later.
 2. Open the standalone Plugin repository.
 3. Run `codex plugin marketplace add "."`, then install with `codex plugin add eve-map-assistant@personal` or the Plugins Directory.
 4. Fully restart Codex and open a new task.
@@ -30,7 +30,7 @@ Codex   -> direct STDIO process
 
 ## Legacy Gate B migration
 
-Codex 0.149.0 gives a same-named global MCP configuration precedence over a discovered Plugin MCP. This does not create a fatal conflict, but the old registration masks the bundled command. After the 0.5.0 Map and 0.3.0 Plugin are ready, remove only the old global registration:
+Codex 0.149.0 gives a same-named global MCP configuration precedence over a discovered Plugin MCP. This does not create a fatal conflict, but the old registration masks the bundled command. After the 0.6.0 Map and 0.3.0 Plugin are ready, remove only the old global registration:
 
 ```text
 codex mcp remove eve-static-map
@@ -58,7 +58,7 @@ Plain marker requests are temporary Mission Markers. Only an explicit permanent 
 
 ## Disconnected and safety behavior
 
-If the Plugin is installed but `eve-map-mcp.exe` cannot start, install EVE Static Map Planner 0.5.0 or later and fully restart Codex. Do not search for a development launcher or fall back to a shell.
+If the Plugin is installed but `eve-map-mcp.exe` cannot start, install EVE Static Map Planner 0.6.0 or later and fully restart Codex. Do not search for a development launcher or fall back to a shell.
 
 `APP_DISCONNECTED` is different: the MCP server is running, but the map is closed or AI Control is disabled. Start the map and enable AI Control. The assistant may control temporary Mission state and permission-gated Saved Marker read/create only, including supported initial tags in a create request. It cannot update, overwrite, delete, clear, or change tags or children on an existing Saved Marker, or alter user routes, Ansiblex connections, preferences, databases, or other user-owned state.
 

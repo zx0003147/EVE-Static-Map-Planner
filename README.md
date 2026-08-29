@@ -2,9 +2,11 @@
 
 A small Kotlin/JVM desktop application for offline EVE Online static-map and route-planning workflows.
 
-The project has completed the static map, normal routing, manual Ansiblex, jump-range overlay, capital-routing, and managed SDE-update phases. Phase 8 adds a self-contained Windows x64 application image and an unsigned per-user MSI installer.
+Version 0.6.0 completes the static map, normal routing, manual Ansiblex, jump-range overlay, capital-routing,
+managed SDE updates, external Feature Packs, and the self-contained Windows x64 MSI release candidate.
 
-V1 intentionally excludes ESI, intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
+Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
+exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
 
 ## Modules
 
@@ -19,14 +21,25 @@ V1 intentionally excludes ESI, intel, killboards, application auto-update, signi
 
 ## External Feature Packs
 
-Sovereignty is a first-party external Feature Pack maintained in the external Sovereignty Pack repository
-(`EVE-Sovereignty-Pack`). Core does not contain or bundle its production implementation.
+Sovereignty and ESI are first-party external Feature Packs maintained in separate repositories. Core does not contain
+or bundle either production implementation.
 
 - Core owns the frozen Feature API v2 contract and the Feature Pack Host/runtime.
 - On Windows, Packs are installed below
   `%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\<pack-id>\pack.jar`.
 - Core validates manifest compatibility before creating a Pack ClassLoader.
 - A normal Core build and no-Pack application startup require no Sovereignty checkout or artifact.
+
+Install the optional Pack JARs at these exact paths, then enable them under Preferences → Feature Packs:
+
+```text
+%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\esi.pack\pack.jar
+%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
+```
+
+Without any Pack, the Core map, routing, databases, and updater continue to work normally. The ESI Pack adds EVE SSO,
+character location, `Set EVE Destination`, and bounded `Send to EVE` actions. Its Connect, Refresh Location, and
+Disconnect controls appear generically in the Feature Packs preferences page.
 
 See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
 
