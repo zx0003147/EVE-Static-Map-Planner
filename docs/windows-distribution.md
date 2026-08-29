@@ -107,11 +107,9 @@ property intact and deletes the complete application/data tree.
 
 `RemoveExistingProducts` remains before `CostInitialize`, so a same-version
 release-candidate replacement installs a complete new component graph instead of
-retaining unversioned files from the related product. Before that removal, WiX
-`CloseApplication` records close the GUI and both MCP launcher names, terminating
-them after a short grace period when necessary. This releases the bundled runtime
-and MCP JARs even when a Codex host is using the bridge, avoiding reboot-time file
-deletion without weakening the full-replacement semantics.
+retaining unversioned files from the related product. The GUI and MCP bridge must
+be stopped before an upgrade so Windows Installer can replace the bundled runtime
+and application files without scheduling a reboot.
 
 Compose Multiplatform 1.10.0 does not expose a working public DSL hook for its
 private jpackage resource directory. The `packageMsi` task therefore keeps

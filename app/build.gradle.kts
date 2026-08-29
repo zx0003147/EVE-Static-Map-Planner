@@ -193,18 +193,6 @@ val verifyWindowsInstallerResources by tasks.registering {
         check(mainWxs.contains("<RemoveExistingProducts Before=\"CostInitialize\" />")) {
             "The installer no longer fully replaces same-version application components."
         }
-        check(mainWxs.contains("Action=\"Wix4CloseApplications_X64\" Before=\"RemoveExistingProducts\"")) {
-            "The installer no longer releases packaged runtime files before a major upgrade."
-        }
-        listOf(
-            "EVE Static Map Planner.exe",
-            "${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}.exe",
-            "${WindowsAppImageIntegration.MCP_LAUNCHER}.exe",
-        ).forEach { launcher ->
-            check(mainWxs.contains("Target=\"$launcher\"")) {
-                "The installer does not close $launcher before replacing packaged files."
-            }
-        }
         check(mainWxs.contains("Id=\"${WindowsAppImageIntegration.PATH_COMPONENT_ID}\"")) {
             "The stable MCP PATH Component is missing from the custom main.wxs."
         }
@@ -860,20 +848,6 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(distributionAudit.installExecuteSequence.count {
             it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[1] == "UPGRADINGPRODUCTCODE"
         } == 1) { "Major-upgrade AppData preservation sequence drifted" }
-        check("Wix4CloseApplication" in distributionAudit.tables) {
-            "Final MSI contains no CloseApplication records"
-        }
-        val closeApplicationsSequence = distributionAudit.installExecuteSequence.single {
-            it[0] == "Wix4CloseApplications_X64"
-        }[2].toInt()
-        val removeExistingProductsSequence = distributionAudit.installExecuteSequence.single {
-            it[0] == "RemoveExistingProducts"
-        }[2].toInt()
-        check(closeApplicationsSequence < removeExistingProductsSequence) {
-            "Major upgrade must close packaged processes before removing the related product: " +
-                "CloseApplications=$closeApplicationsSequence, " +
-                "RemoveExistingProducts=$removeExistingProductsSequence"
-        }
         check(distributionAudit.removeFolderEx.size == 1 &&
             distributionAudit.removeFolderEx.single()[2] == "RM_RF48431AECBD69377EA800D62616352F20") {
             "Normal uninstall recursive AppData cleanup drifted: ${distributionAudit.removeFolderEx}"

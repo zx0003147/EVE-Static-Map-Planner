@@ -13,7 +13,6 @@ This release candidate finalizes Feature API 2.0.0 and the external Feature Pack
 - Encrypted Windows current-user DPAPI refresh-token persistence and automatic session restoration.
 - JDK 25 native-access configuration for Gradle, manual QA, and packaged Windows launchers.
 - Same-version replacement of discarded 0.6.0 pre-release MSIs, preventing stale Windows Installer component state from omitting the packaged JVM module image.
-- Major upgrades close the GUI and installed MCP bridge before full component replacement, avoiding locked-runtime reboot repairs.
 
 ## Install optional Packs
 
