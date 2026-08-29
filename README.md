@@ -13,7 +13,7 @@ V1 intentionally excludes ESI, intel, killboards, application auto-update, signi
 - `control-transport`: Transport-neutral control request and response contracts.
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
-- `feature-api`: Frozen Feature API v1 contracts and generic external Pack test fixture.
+- `feature-api`: Frozen Feature API v2 contracts and generic external Pack test fixture.
 - `mcp`: Core-owned MCP server and its fixed 22-tool catalog, including permission-gated Saved Marker read/create.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 
@@ -22,7 +22,7 @@ V1 intentionally excludes ESI, intel, killboards, application auto-update, signi
 Sovereignty is a first-party external Feature Pack maintained in the external Sovereignty Pack repository
 (`EVE-Sovereignty-Pack`). Core does not contain or bundle its production implementation.
 
-- Core owns the frozen Feature API v1 contract and the Feature Pack Host/runtime.
+- Core owns the frozen Feature API v2 contract and the Feature Pack Host/runtime.
 - On Windows, Packs are installed below
   `%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\<pack-id>\pack.jar`.
 - Core validates manifest compatibility before creating a Pack ClassLoader.

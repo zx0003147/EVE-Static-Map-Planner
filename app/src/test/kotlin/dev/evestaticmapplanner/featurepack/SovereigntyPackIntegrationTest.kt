@@ -28,7 +28,7 @@ class SovereigntyPackIntegrationTest {
                 jar.manifest.mainAttributes.getValue(FeaturePackJarManifest.PACK_ID),
             )
             assertEquals(
-                "1",
+                "2",
                 jar.manifest.mainAttributes.getValue(FeaturePackJarManifest.FEATURE_API_VERSION),
             )
             assertEquals(

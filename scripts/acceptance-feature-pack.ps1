@@ -346,7 +346,7 @@ try {
     Write-Host ""
     Write-Host "PASS - repeatable cross-repository Feature Pack acceptance" -ForegroundColor Green
     Write-Host "Feature API: dev.evestaticmapplanner:feature-api:2.0.0 (runtime contract 2, frozen)"
-    Write-Host "Pack: sovereignty.pack 0.1.0; required API 2; publisher/name verified"
+    Write-Host "Pack: sovereignty.pack 0.2.0; required API 2; publisher/name verified"
     Write-Host "Host integration: API 2; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info registered and unregistered"
     Write-Host "No-Pack: no ClassLoader, storage, Public ESI, or worker"
     Write-Host "MCP catalog: exactly 22 tools"
