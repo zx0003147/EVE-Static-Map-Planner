@@ -41,7 +41,7 @@
   <?endif ?>
 
   <!-- Final 0.6.0 RC identity. It intentionally replaces the discarded 0.6.0 pre-release MSI. -->
-  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="{050C3D41-224F-4558-90C1-745159869D14}" Scope="$(var.JpInstallScope)">
+  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="{D26534C4-866C-48BD-A383-CFFE1D096FCD}" Scope="$(var.JpInstallScope)">
     <SummaryInformation Manufacturer="$(var.JpAppVendor)" Description="$(var.JpAppDescription)" />
 
     <Media Id="1" Cabinet="Data.cab" EmbedCab="yes" />

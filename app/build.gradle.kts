@@ -35,7 +35,7 @@ val appVersion = providers.gradleProperty("appVersion").get()
 val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
 val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 val windowsUpgradeUuid = "502B9850-A5B0-4922-BB20-AC7FEBA590DC"
-val windowsProductUuid = "050C3D41-224F-4558-90C1-745159869D14"
+val windowsProductUuid = "D26534C4-866C-48BD-A383-CFFE1D096FCD"
 val windowsComponentNamespace = UUID.fromString(windowsUpgradeUuid)
 val historicalProductCodes = setOf(
     "{A7D6C309-9A9F-3079-A87B-1616BAD49516}", // 0.1.0
@@ -44,6 +44,7 @@ val historicalProductCodes = setOf(
     "{A9BA3E5C-BEAA-336C-830D-5663D6477EEA}", // 0.2.0
     "{47FE49EB-BDC1-3CF5-B949-C743BA3822FD}", // discarded 0.6.0 pre-release MSI
     "{29AF5999-F80D-4608-A69B-D06CF096751E}", // discarded 0.6.0 early-removal QA MSI
+    "{050C3D41-224F-4558-90C1-745159869D14}", // discarded 0.6.0 pre-commit QA MSI
 )
 val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
 val distributionNoticeFiles = files(
