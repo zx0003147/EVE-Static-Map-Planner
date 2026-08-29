@@ -40,13 +40,14 @@
     <?define JpUpgradeVersionOnlyDetectDowngrade="yes"?>
   <?endif ?>
 
-  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="$(var.JpProductCode)" Scope="$(var.JpInstallScope)">
+  <!-- Final 0.6.0 RC identity. It intentionally replaces the discarded 0.6.0 pre-release MSI. -->
+  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="{29AF5999-F80D-4608-A69B-D06CF096751E}" Scope="$(var.JpInstallScope)">
     <SummaryInformation Manufacturer="$(var.JpAppVendor)" Description="$(var.JpAppDescription)" />
 
     <Media Id="1" Cabinet="Data.cab" EmbedCab="yes" />
 
     <Upgrade Id="$(var.JpProductUpgradeCode)">
-      <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectUpgrade)" Property="JP_UPGRADABLE_FOUND" Maximum="$(var.JpAppVersion)" MigrateFeatures="yes" IncludeMaximum="$(var.JpUpgradeVersionOnlyDetectUpgrade)" />
+      <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectUpgrade)" Property="JP_UPGRADABLE_FOUND" Maximum="$(var.JpAppVersion)" MigrateFeatures="yes" IncludeMaximum="yes" />
       <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectDowngrade)" Property="JP_DOWNGRADABLE_FOUND" Minimum="$(var.JpAppVersion)" MigrateFeatures="yes" IncludeMinimum="$(var.JpUpgradeVersionOnlyDetectDowngrade)" />
     </Upgrade>
 

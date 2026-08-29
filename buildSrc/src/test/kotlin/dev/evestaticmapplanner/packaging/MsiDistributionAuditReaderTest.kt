@@ -23,7 +23,7 @@ class MsiDistributionAuditReaderTest {
                 FEATURE	DefaultFeature		Main
                 SHORTCUT	shortcut1	DesktopFolder	EVE Static Map Planner	component1	[#file1]
                 REMOVE_FILE	cleanup	component1	.package	APPDIR	1
-                UPGRADE	{UPGRADE}		0.2.0	JP_UPGRADABLE_FOUND
+                UPGRADE	{UPGRADE}		0.2.0	769	JP_UPGRADABLE_FOUND
                 INSTALL_SEQUENCE	JpSuppressRemoveFolderExDuringUpgrade	UPGRADINGPRODUCTCODE	52
                 CUSTOM_ACTION	JpSuppressRemoveFolderExDuringUpgrade	51	RM_RF${'\t'}
                 REMOVE_FOLDER_EX	remove1	component1	RM_RF	3${'\t'}
@@ -40,6 +40,7 @@ class MsiDistributionAuditReaderTest {
         assertEquals(listOf("DefaultFeature", "", "Main"), audit.features.single())
         assertEquals("EVE Map MCP Bridge.exe", audit.files.single()[2])
         assertEquals("INSTALLDIR", audit.components.single()[2])
+        assertEquals(listOf("{UPGRADE}", "", "0.2.0", "769", "JP_UPGRADABLE_FOUND"), audit.upgrades.single())
         assertEquals(
             listOf(listOf("JpEveMapMcpPathEnvironment", "=-PATH", "[~];[INSTALLDIR]", "JpEveMapMcpPath")),
             audit.environment,

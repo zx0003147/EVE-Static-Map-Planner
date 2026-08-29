@@ -100,7 +100,7 @@ object MsiDistributionAuditReader {
             features = records("FEATURE", 3),
             shortcuts = records("SHORTCUT", 5),
             removeFiles = records("REMOVE_FILE", 5),
-            upgrades = records("UPGRADE", 4),
+            upgrades = records("UPGRADE", 5),
             installExecuteSequence = records("INSTALL_SEQUENCE", 3),
             customActions = records("CUSTOM_ACTION", 4),
             removeFolderEx = records("REMOVE_FOLDER_EX", 5),
@@ -168,10 +168,10 @@ object MsiDistributionAuditReader {
             }
             ${'$'}view.Close()
 
-            ${'$'}view = ${'$'}database.OpenView('SELECT `UpgradeCode`,`VersionMin`,`VersionMax`,`ActionProperty` FROM `Upgrade`')
+            ${'$'}view = ${'$'}database.OpenView('SELECT `UpgradeCode`,`VersionMin`,`VersionMax`,`Attributes`,`ActionProperty` FROM `Upgrade`')
             ${'$'}view.Execute()
             while (${'$'}null -ne (${'$'}record = ${'$'}view.Fetch())) {
-                [Console]::Out.WriteLine("UPGRADE`t${'$'}(${'$'}record.StringData(1))`t${'$'}(${'$'}record.StringData(2))`t${'$'}(${'$'}record.StringData(3))`t${'$'}(${'$'}record.StringData(4))")
+                [Console]::Out.WriteLine("UPGRADE`t${'$'}(${'$'}record.StringData(1))`t${'$'}(${'$'}record.StringData(2))`t${'$'}(${'$'}record.StringData(3))`t${'$'}(${'$'}record.IntegerData(4))`t${'$'}(${'$'}record.StringData(5))")
             }
             ${'$'}view.Close()
 

@@ -35,12 +35,14 @@ val appVersion = providers.gradleProperty("appVersion").get()
 val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
 val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 val windowsUpgradeUuid = "502B9850-A5B0-4922-BB20-AC7FEBA590DC"
+val windowsProductUuid = "29AF5999-F80D-4608-A69B-D06CF096751E"
 val windowsComponentNamespace = UUID.fromString(windowsUpgradeUuid)
 val historicalProductCodes = setOf(
     "{A7D6C309-9A9F-3079-A87B-1616BAD49516}", // 0.1.0
     "{1984FBD7-03D9-38DD-8ECD-F58783036C95}", // 0.1.1
     "{8E5104B6-B3CA-36C7-BC65-B3401F15F421}", // 0.1.2
     "{A9BA3E5C-BEAA-336C-830D-5663D6477EEA}", // 0.2.0
+    "{47FE49EB-BDC1-3CF5-B949-C743BA3822FD}", // discarded 0.6.0 pre-release MSI
 )
 val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
 val distributionNoticeFiles = files(
@@ -177,6 +179,13 @@ val verifyWindowsInstallerResources by tasks.registering {
         }
         check(windowsUpgradeUuid == "502B9850-A5B0-4922-BB20-AC7FEBA590DC") {
             "The Windows installer UpgradeCode changed unexpectedly."
+        }
+        check(mainWxs.contains("ProductCode=\"{$windowsProductUuid}\"")) {
+            "The final 0.6.0 ProductCode drifted."
+        }
+        check(mainWxs.contains("Property=\"JP_UPGRADABLE_FOUND\"") &&
+            mainWxs.contains("IncludeMaximum=\"yes\"")) {
+            "The installer no longer replaces an older same-version release candidate."
         }
         check(mainWxs.contains("Id=\"${WindowsAppImageIntegration.PATH_COMPONENT_ID}\"")) {
             "The stable MCP PATH Component is missing from the custom main.wxs."
@@ -577,6 +586,7 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
     )
     inputs.dir(windowsInstallerResources)
     inputs.property("windowsComponentNamespace", windowsComponentNamespace.toString())
+    inputs.property("windowsProductUuid", windowsProductUuid)
     inputs.property("jpackageComponentGuidContract", JpackageComponentGuidNamespace.NAME_PREFIX)
     val applicationImage = integratedApplicationImage
     val generatedMsi = nativeComposeOutputBase.resolve("main/msi/EVE Static Map Planner-$appVersion.msi")
@@ -753,8 +763,12 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(distributionAudit.productVersion == appVersion)
         check(distributionAudit.manufacturer == "Static Map Planner Project")
         check(distributionAudit.upgradeCode.equals("{$windowsUpgradeUuid}", ignoreCase = true))
+        check(distributionAudit.productCode.equals("{$windowsProductUuid}", ignoreCase = true)) {
+            "The $appVersion ProductCode drifted: ${distributionAudit.productCode}"
+        }
         check(distributionAudit.productCode !in historicalProductCodes) {
-            "The $appVersion ProductCode reuses a historical product identity: ${distributionAudit.productCode}"
+            "The $appVersion ProductCode reuses a discarded or historical product identity: " +
+                distributionAudit.productCode
         }
         check(distributionAudit.summaryTemplate.startsWith("x64;")) {
             "Final MSI is not Windows x64: ${distributionAudit.summaryTemplate}"
@@ -818,6 +832,10 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(distributionAudit.upgrades.isNotEmpty() && distributionAudit.upgrades.all {
             it[0].equals("{$windowsUpgradeUuid}", ignoreCase = true)
         }) { "Final MSI contains an unexpected UpgradeCode row: ${distributionAudit.upgrades}" }
+        val sameVersionUpgrade = distributionAudit.upgrades.single { it[4] == "JP_UPGRADABLE_FOUND" }
+        check(sameVersionUpgrade[2] == appVersion && sameVersionUpgrade[3].toInt() and 512 != 0) {
+            "Final MSI does not replace an older same-version release candidate: $sameVersionUpgrade"
+        }
         check(distributionAudit.customActions.count {
             it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[2] == "RM_RF48431AECBD69377EA800D62616352F20"
         } == 1) { "Major-upgrade AppData cleanup suppression CustomAction drifted" }

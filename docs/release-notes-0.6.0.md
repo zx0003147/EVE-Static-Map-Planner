@@ -12,6 +12,7 @@ This release candidate finalizes Feature API 2.0.0 and the external Feature Pack
 - `Refresh Location`, `Set EVE Destination`, and `Send to EVE` product actions.
 - Encrypted Windows current-user DPAPI refresh-token persistence and automatic session restoration.
 - JDK 25 native-access configuration for Gradle, manual QA, and packaged Windows launchers.
+- Same-version replacement of discarded 0.6.0 pre-release MSIs, preventing stale Windows Installer component state from omitting the packaged JVM module image.
 
 ## Install optional Packs
 
