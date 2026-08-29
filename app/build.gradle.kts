@@ -151,6 +151,9 @@ tasks.test {
     } else {
         inputs.property("esiPackJar", externalEsiPackJar)
     }
+    if (externalSovereigntyPackJar == null || externalEsiPackJar == null) {
+        exclude("**/ExternalFeaturePacksIntegrationTest.class")
+    }
     doFirst {
         systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
         externalSovereigntyPackJar?.let { configuredPath ->

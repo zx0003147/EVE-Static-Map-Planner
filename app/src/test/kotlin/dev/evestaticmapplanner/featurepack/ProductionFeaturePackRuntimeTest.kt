@@ -65,6 +65,7 @@ class ProductionFeaturePackRuntimeTest {
             assertEquals(threadsBefore, liveNonDaemonThreadIds())
             assertEquals(featureWorkerThreadsBefore, liveFeatureWorkerThreadNames())
             assertTrue(runtime.routeActionHost.state.value.isEmpty())
+            assertTrue(runtime.packControlHost.state.value.isEmpty())
         }
 
     @Test
@@ -176,7 +177,13 @@ class ProductionFeaturePackRuntimeTest {
         .toSet()
 
     private fun liveFeatureWorkerThreadNames(): Set<String> = Thread.getAllStackTraces().keys
-        .filter { it.isAlive && (it.name.startsWith("feature-overlay-refresh") || it.name.startsWith("feature-route-action")) }
+        .filter {
+            it.isAlive && (
+                it.name.startsWith("feature-overlay-refresh") ||
+                    it.name.startsWith("feature-route-action") ||
+                    it.name.startsWith("feature-pack-control")
+                )
+        }
         .map(Thread::getName)
         .toSet()
 

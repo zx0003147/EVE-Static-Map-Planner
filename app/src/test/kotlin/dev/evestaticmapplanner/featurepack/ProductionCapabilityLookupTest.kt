@@ -22,20 +22,23 @@ import kotlin.test.assertNull
 
 class ProductionCapabilityLookupTest {
     @Test
-    fun `production context finds both V2 standard capabilities and rejects unknown or wrong type keys`() {
+    fun `production context finds all V2 standard capabilities and rejects unknown or wrong type keys`() {
         val root = Files.createTempDirectory("production-capability-")
         val overlayHost = FeatureOverlayHost()
         val routeActionHost = RouteActionHost()
+        val packControlHost = PackControlHost()
         val context = ProductionFeaturePackRuntime.productionContextFactory(
             root,
             {},
             overlayHost,
             SystemInfoHost(),
             routeActionHost,
+            packControlHost,
         ).create(descriptor("test.pack"))
         try {
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.DYNAMIC_OVERLAY))
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.ROUTE_ACTION))
+            assertNotNull(context.capabilities().find(StandardFeatureCapabilities.PACK_CONTROLS))
             assertNull(context.capabilities().find(FeatureCapabilityKey(
                 FeatureCapabilityId("unknown"),
                 RouteActionCapability::class.java,
@@ -47,6 +50,7 @@ class ProductionCapabilityLookupTest {
         } finally {
             (context as FeaturePackContextLifecycle).closeHostResources()
             routeActionHost.close()
+            packControlHost.close()
             overlayHost.close()
             root.toFile().deleteRecursively()
         }
@@ -56,14 +60,17 @@ class ProductionCapabilityLookupTest {
     fun `capability objects and registered resources remain Pack scoped`() {
         val overlayHost = FeatureOverlayHost()
         val routeActionHost = RouteActionHost()
+        val packControlHost = PackControlHost()
         try {
             val first = PackFeatureCapabilityLookup(
                 overlayHost.scopedDynamicCapability(PackId("first.pack")),
                 routeActionHost.scopedCapability(PackId("first.pack")),
+                packControlHost.scopedCapability(PackId("first.pack")),
             )
             val second = PackFeatureCapabilityLookup(
                 overlayHost.scopedDynamicCapability(PackId("second.pack")),
                 routeActionHost.scopedCapability(PackId("second.pack")),
+                packControlHost.scopedCapability(PackId("second.pack")),
             )
             val firstActions = assertNotNull(first.find(StandardFeatureCapabilities.ROUTE_ACTION))
             val secondActions = assertNotNull(second.find(StandardFeatureCapabilities.ROUTE_ACTION))
@@ -79,6 +86,7 @@ class ProductionCapabilityLookupTest {
             assertEquals(emptyList(), routeActionHost.state.value)
         } finally {
             routeActionHost.close()
+            packControlHost.close()
             overlayHost.close()
         }
     }

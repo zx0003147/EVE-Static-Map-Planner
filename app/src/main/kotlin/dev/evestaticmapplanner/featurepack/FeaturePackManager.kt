@@ -186,14 +186,21 @@ class FeaturePackManager(
     }
 }
 
-class FeaturePackManagerViewModel(private val manager: FeaturePackManager) {
+class FeaturePackManagerViewModel(
+    private val manager: FeaturePackManager,
+    private val packControlHost: PackControlHost? = null,
+) {
     val state: StateFlow<FeaturePackManagerState> = manager.state
+    internal val controlsState: StateFlow<List<PackControlUiState>> =
+        packControlHost?.state ?: MutableStateFlow(emptyList())
 
     fun refresh() = manager.refresh()
 
     fun setEnabled(packId: PackId, enabled: Boolean): Result<Unit> = manager.setEnabled(packId, enabled)
 
     fun remove(packId: PackId): Result<Unit> = manager.remove(packId)
+
+    internal fun invokeControl(key: PackControlActionKey): Boolean = packControlHost?.invoke(key) == true
 }
 
 private class FeaturePackOperationException(val failure: FeaturePackFailure) : Exception(failure.message, failure.cause)

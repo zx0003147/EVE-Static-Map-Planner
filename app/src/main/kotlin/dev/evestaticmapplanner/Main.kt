@@ -188,7 +188,7 @@ private fun FrameWindowScope.ReadyApplication(
         )
     }
     val featurePackManagerViewModel = remember(featurePackRuntime) {
-        FeaturePackManagerViewModel(featurePackRuntime.manager)
+        FeaturePackManagerViewModel(featurePackRuntime.manager, featurePackRuntime.packControlHost)
     }
     val mapViewModel = remember(configuration) {
         MapViewModel(

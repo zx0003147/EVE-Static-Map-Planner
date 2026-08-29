@@ -33,7 +33,7 @@ class EsiPackIntegrationTest {
             val attributes = jar.manifest.mainAttributes
             assertEquals("esi.pack", attributes.getValue(FeaturePackJarManifest.PACK_ID))
             assertEquals("ESI Pack", attributes.getValue(FeaturePackJarManifest.DISPLAY_NAME))
-            assertEquals("0.4.0", attributes.getValue(FeaturePackJarManifest.VERSION))
+            assertEquals("0.5.0", attributes.getValue(FeaturePackJarManifest.VERSION))
             assertEquals("EVE Static Map Planner", attributes.getValue(FeaturePackJarManifest.PUBLISHER))
             assertEquals(
                 FeatureApiVersions.current().identifier,
@@ -99,6 +99,12 @@ class EsiPackIntegrationTest {
                 assertEquals(2, actionsFor(runtime, RouteKind.NORMAL).size)
                 assertTrue(actionsFor(runtime, RouteKind.CAPITAL).isEmpty())
 
+                val controls = runtime.packControlHost.state.value.single()
+                assertEquals(PackId("esi.pack"), controls.packId)
+                assertEquals("EVE Character", controls.primaryText)
+                assertEquals("Not connected", controls.secondaryText)
+                assertEquals(listOf("connect"), controls.actions.map { it.key.actionId })
+
                 assertFalse(runtime.routeActionHost.invoke(actions.first().key, route(RouteKind.CAPITAL)))
                 actions.forEach { action ->
                     assertTrue(runtime.routeActionHost.invoke(action.key, route(RouteKind.NORMAL)))
@@ -123,6 +129,7 @@ class EsiPackIntegrationTest {
             assertTrue(events.contains("INFO:esi.pack:ESI Pack stopped"))
             assertTrue(runtime.overlayHost.state.value.layers.isEmpty())
             assertTrue(runtime.routeActionHost.state.value.isEmpty())
+            assertTrue(runtime.packControlHost.state.value.isEmpty())
             assertTrue(checkNotNull(classLoader).closed)
         }
 

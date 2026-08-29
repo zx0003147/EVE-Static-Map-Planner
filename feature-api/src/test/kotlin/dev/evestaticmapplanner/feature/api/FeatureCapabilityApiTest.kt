@@ -40,6 +40,7 @@ class FeatureCapabilityApiTest {
         assertSame(lookup, FeatureCapabilityLookup.empty())
         assertNull(lookup.find(StandardFeatureCapabilities.DYNAMIC_OVERLAY))
         assertNull(lookup.find(StandardFeatureCapabilities.ROUTE_ACTION))
+        assertNull(lookup.find(StandardFeatureCapabilities.PACK_CONTROLS))
     }
 
     @Test
@@ -60,6 +61,8 @@ class FeatureCapabilityApiTest {
         assertEquals(DynamicOverlayCapability::class.java, StandardFeatureCapabilities.DYNAMIC_OVERLAY.type)
         assertEquals(FeatureCapabilityId("route-action"), StandardFeatureCapabilities.ROUTE_ACTION.id)
         assertEquals(RouteActionCapability::class.java, StandardFeatureCapabilities.ROUTE_ACTION.type)
+        assertEquals(FeatureCapabilityId("pack-controls"), StandardFeatureCapabilities.PACK_CONTROLS.id)
+        assertEquals(PackControlCapability::class.java, StandardFeatureCapabilities.PACK_CONTROLS.type)
     }
 
     private interface FirstCapability : FeatureCapability

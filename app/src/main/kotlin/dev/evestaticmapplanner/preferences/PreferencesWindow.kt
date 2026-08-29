@@ -42,6 +42,8 @@ import dev.evestaticmapplanner.featurepack.FeaturePackInstallationState
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerItem
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeState
+import dev.evestaticmapplanner.feature.api.PackControlActionStatus
+import dev.evestaticmapplanner.feature.api.PackControlSeverity
 import dev.evestaticmapplanner.feature.api.OverlayState
 import java.util.Locale
 
@@ -253,6 +255,7 @@ private fun SovereigntyLogoEmphasisZoomPreference(
 @Composable
 private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewModel) {
     val state by viewModel.state.collectAsState()
+    val controls by viewModel.controlsState.collectAsState()
     var removePending by remember { mutableStateOf<FeaturePackManagerItem?>(null) }
     LaunchedEffect(viewModel) { viewModel.refresh() }
 
@@ -283,6 +286,44 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
             },
         )
         pack.lastError?.let { Text(it, color = Color(0xFFFFB4AB)) }
+        controls.firstOrNull { it.packId == pack.packId }?.let { control ->
+            Text("Controls", style = MaterialTheme.typography.titleSmall)
+            Text(
+                control.primaryText,
+                color = when (control.severity) {
+                    PackControlSeverity.NORMAL -> Color(0xFFD7E6F2)
+                    PackControlSeverity.WARNING -> Color(0xFFFFDDB0)
+                    PackControlSeverity.ERROR -> Color(0xFFFFB4AB)
+                },
+            )
+            control.secondaryText?.let { secondary ->
+                Text(secondary, color = Color(0xFFAAB9C7))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                control.actions.forEach { action ->
+                    TextButton(
+                        enabled = action.enabled,
+                        onClick = { viewModel.invokeControl(action.key) },
+                    ) {
+                        Text(if (control.busyActionId == action.key.actionId) "${action.label}…" else action.label)
+                    }
+                }
+            }
+            control.actions.mapNotNull { it.description }.distinct().forEach { description ->
+                Text(description, color = Color(0xFF71808D), style = MaterialTheme.typography.bodySmall)
+            }
+            control.lastMessage?.let { message ->
+                Text(
+                    message,
+                    color = if (control.lastStatus == PackControlActionStatus.FAILED) {
+                        Color(0xFFFFB4AB)
+                    } else {
+                        Color(0xFFAAB9C7)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (item.runtimeState == FeaturePackRuntimeState.ENABLED) {
                 TextButton(onClick = { viewModel.setEnabled(pack.packId, false) }) { Text("Disable") }

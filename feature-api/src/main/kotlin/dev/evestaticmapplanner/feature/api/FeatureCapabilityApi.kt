@@ -64,6 +64,11 @@ object StandardFeatureCapabilities {
         FeatureCapabilityId("route-action"),
         RouteActionCapability::class.java,
     )
+
+    val PACK_CONTROLS = FeatureCapabilityKey(
+        FeatureCapabilityId("pack-controls"),
+        PackControlCapability::class.java,
+    )
 }
 
 private object EmptyFeatureCapabilityLookup : FeatureCapabilityLookup {

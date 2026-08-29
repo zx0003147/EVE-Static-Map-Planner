@@ -4,8 +4,8 @@ Feature Packs are trusted, first-party, in-process JVM extensions for EVE Static
 Feature API, the Host/runtime, installation and management infrastructure, generic presentation, and platform test
 fixtures. Pack repositories own their data acquisition, domain behavior, and Pack-specific metadata.
 
-The external `EVE-Sovereignty-Pack` repository is the first-party reference implementation. Core contains no
-Sovereignty production module and a normal Core build does not require that repository.
+The external `EVE-Sovereignty-Pack` and `EVE-ESI-Pack` repositories are first-party implementations. Core contains no
+Pack-specific production module and a normal Core build does not require either repository.
 
 ## Contract identities and lifecycle
 
@@ -110,13 +110,14 @@ Feature API v2 adds narrow capability discovery through `FeaturePackContext.capa
 empty lookup, so existing context implementations and Packs do not need mechanical lifecycle changes. Capability
 matching uses both a canonical ID and the expected Java type; it is not a general service locator.
 
-The frozen standard keys are `dynamic-overlay` and `route-action`. Dynamic Overlay providers continue to return
+The frozen standard keys are `dynamic-overlay`, `route-action`, and `pack-controls`. Dynamic Overlay providers continue to return
 immutable display-neutral snapshots; `requestRefresh()` only signals that the Host should re-read one provider.
 Route Actions receive a defensive, immutable `RouteSnapshot` and return a synchronous display-neutral result. Neither
 contract exposes Compose, coroutines, coordinates, ViewModels, executors, Core route objects, database models, Control
-DTOs, ESI, OAuth, or HTTP client types.
+DTOs, ESI, OAuth, or HTTP client types. Pack Controls expose only a cheap synchronous status snapshot, generic action
+descriptors, safe action results, and provider-targeted `requestRefresh()`; they cannot contribute arbitrary Compose UI.
 
-The production runtime-contract-2 Host supplies both standard capabilities as Pack-scoped objects. A Dynamic Overlay
+The production runtime-contract-2 Host supplies all standard capabilities as Pack-scoped objects. A Dynamic Overlay
 registration stores one validated last-good contribution; `requestRefresh()` schedules only that provider on a
 bounded Host executor, coalesces repeated requests, retains last-good data after failures, and never polls. Static
 Overlay providers use the same cached aggregation path and are not re-snapshotted when a dynamic provider refreshes.
@@ -126,6 +127,10 @@ buttons in the normal or capital active-route panel. The Host captures an immuta
 invocation while an action is busy, and executes Pack callbacks on a bounded background executor. Success, rejection,
 and failure messages remain generic Host presentation data. Mission route snapshots are supported by the Host adapter,
 but Mission overlays currently have no interactive route panel, so Mission Route Actions are not displayed.
+
+Pack Controls are rendered under Preferences → Feature Packs. The Host executes actions on a bounded background
+executor, disables a provider's actions while one is busy, isolates snapshot/action failures, and suppresses late
+results after Pack close. A Pack without this capability retains the previous management UI unchanged.
 
 Disabling a Pack closes capability registrations before its existing System Info/Overlay registrations and before its
 ClassLoader. Pending work is cancelled where possible, late results are ignored, and shutdown uses bounded waits. An
@@ -138,8 +143,12 @@ The Pack Manager reads lightweight manifest metadata without loading Pack classe
 compatibility state, persists enablement plus the latest lifecycle error, and isolates failures per Pack. Enablement
 state is stored in `%LOCALAPPDATA%\EVE Static Map Planner\feature-pack-manager.properties`.
 
-The manager does not download, publish, or silently enable Packs. Public installation/container UX and third-party
-ecosystem policy remain deferred.
+The manager does not download, publish, or silently enable Packs. Canonical first-party Pack locations are:
+
+```text
+%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\esi.pack\pack.jar
+%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
+```
 
 ## First-party interoperability example
 
