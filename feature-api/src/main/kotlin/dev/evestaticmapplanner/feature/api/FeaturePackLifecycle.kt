@@ -23,6 +23,9 @@ interface FeaturePackContext {
     fun overlays(): OverlayRegistry
 
     fun systemInfo(): SystemInfoRegistry
+
+    /** Returns the narrow, explicitly versioned optional capabilities supported by this Host. */
+    fun capabilities(): FeatureCapabilityLookup = FeatureCapabilityLookup.empty()
 }
 
 /** The lifecycle handle returned by a successfully started Pack. */

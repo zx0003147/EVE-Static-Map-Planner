@@ -12,23 +12,23 @@ Sovereignty production module and a normal Core build does not require that repo
 Feature API runtime compatibility and build-time artifact identity are deliberately separate:
 
 ```text
-Runtime compatibility contract: EVE-Feature-API-Version: 1
+Runtime compatibility contract: EVE-Feature-API-Version: 2
 Frozen: true
-Maven artifact: dev.evestaticmapplanner:feature-api:1.0.0
+Maven artifact: dev.evestaticmapplanner:feature-api:2.0.0
 Desktop application version: independent
 ```
 
 `FeatureApiVersions.current()` is the sole runtime compatibility authority and returns
-`FeatureApiVersion("1", true)`. A Pack should consume the Maven artifact as `compileOnly` and use the same coordinate
+`FeatureApiVersion("2", true)`. A Pack should consume the Maven artifact as `compileOnly` and use the same coordinate
 for tests. The Host remains the only runtime owner of Feature API classes.
 
-Feature API v1 is restart-only. The Host discovers one `FeaturePackEntrypoint`, calls `start(context)`, and closes the
+Feature API v2 is restart-only. The Host discovers one `FeaturePackEntrypoint`, calls `start(context)`, and closes the
 returned `FeaturePackSession` when the Pack is disabled or the application shuts down. Hot installation, hot reload,
-and background-worker lifecycle contracts are not part of v1.
+and background-worker lifecycle contracts are not part of v2.
 
 ## Build artifact verification
 
-Core's normal verification publishes Feature API `1.0.0` only to the generated, ignored
+Core's normal verification publishes Feature API `2.0.0` only to the generated, ignored
 `feature-api/build/test-maven-repository`. The verification tasks inspect the artifact and compile an independent thin
 fixture Pack by Maven coordinate:
 
@@ -53,7 +53,7 @@ Every `pack.jar` must contain these standard manifest attributes:
 - `EVE-Feature-API-Version`
 
 The containing directory name must equal the Pack ID. `EVE-Feature-API-Version` must be the canonical positive decimal
-integer `1`. Missing, empty, zero, negative, non-integer, non-canonical, overflowing, or mismatched values are rejected.
+integer `2`. Missing, empty, zero, negative, non-integer, non-canonical, overflowing, or mismatched values are rejected.
 
 Core reads and validates the manifest with Host/JDK code before creating a Pack ClassLoader. Only a compatible Pack
 continues to isolated ClassLoader creation and `ServiceLoader` discovery. Invalid or incompatible Packs cannot load,
@@ -82,7 +82,7 @@ API and Kotlin runtime; Pack-private implementation classes and dependencies rem
 production image does not bundle external Pack JARs, duplicate Feature API classes, a Pack copy of Kotlin stdlib, or a
 second JVM.
 
-Feature Packs are not a JVM security sandbox. Feature API v1 is a trusted first-party boundary that limits accidental
+Feature Packs are not a JVM security sandbox. Feature API v2 is a trusted first-party boundary that limits accidental
 coupling; it does not make hostile code safe. Core internals, repositories, database connections, dependency-injection
 containers, and arbitrary application services are not exposed through the API.
 
@@ -94,7 +94,7 @@ the strict `PackRelativePath` contract. Packs must keep changing data in their o
 
 ## Overlay and System Info contributions
 
-Feature API v1 lets Packs register display-neutral Overlay and structured System Info providers. The Pack owns its
+Feature API v2 preserves the V1 display-neutral Overlay and structured System Info provider contracts. The Pack owns its
 provider IDs, layer IDs, records, labels, values, stable owner identity, and optional generic presentation metadata.
 Core owns aggregation, visibility state, rendering, territory/emblem/legend presentation, and the application UI.
 
@@ -103,6 +103,21 @@ emblem key/reference. These conventions do not teach Core about alliances or any
 presentation geometry, image loading, drawing order, and fallback behavior remain Host responsibilities.
 
 When no Pack contributes data, Overlay and System Info aggregation remain empty and Core behaves normally.
+
+## Optional capabilities and Route Actions
+
+Feature API v2 adds narrow capability discovery through `FeaturePackContext.capabilities()`. Its safe default is an
+empty lookup, so existing context implementations and Packs do not need mechanical lifecycle changes. Capability
+matching uses both a canonical ID and the expected Java type; it is not a general service locator.
+
+The frozen standard keys are `dynamic-overlay` and `route-action`. Dynamic Overlay providers continue to return
+immutable display-neutral snapshots; `requestRefresh()` only signals that the Host should re-read one provider.
+Route Actions receive a defensive, immutable `RouteSnapshot` and return a synchronous display-neutral result. Neither
+contract exposes Compose, coroutines, coordinates, ViewModels, executors, Core route objects, database models, Control
+DTOs, ESI, OAuth, or HTTP client types.
+
+Phase 1 defines contracts only. The current production Host returns the empty capability lookup and does not register
+Dynamic Overlay or Route Action Host implementations.
 
 ## Pack Manager
 
@@ -115,7 +130,7 @@ ecosystem policy remain deferred.
 
 ## First-party interoperability example
 
-Sovereignty is maintained in the external Sovereignty Pack repository and demonstrates the v1 Overlay, System Info,
+Sovereignty is maintained in the external Sovereignty Pack repository and demonstrates the preserved Overlay, System Info,
 PackStorage, manifest, and lifecycle contracts. Its PUBLIC_ESI acquisition, Last Known Good cache, ownership model,
 territory metadata, visual identity, emblem metadata, and startup freshness behavior are documented and tested in
 that repository rather than duplicated here.
@@ -139,11 +154,12 @@ The authoritative local cross-repository acceptance mechanism is Core's existing
     -SovereigntyRepo "C:\path\to\EVE-Sovereignty-Pack"
 ```
 
-It requires clean `main` worktrees. The runner publishes Feature API `1.0.0` only to Core's generated test repository,
+It requires clean `main` worktrees. The runner publishes Feature API `2.0.0` only to Core's generated test repository,
 builds the standalone Sovereignty Pack by coordinate, clean-builds Core without the Pack, runs focused Host and
 generic presentation regressions, supplies the canonical external JAR only to the explicit integration test, and
 enforces the exactly 22-tool MCP catalog. It uses fixtures/LKG data instead of live ESI and performs no remote
-publication.
+publication. The external Pack must first update only its Feature API coordinate, manifest, and version expectations
+to runtime contract 2; Feature API v2 deliberately preserves its existing business Kotlin contracts.
 
 Future GitHub cross-repository CI can reproduce those stages only after the Sovereignty remote exists, Feature API is
 published, and package/repository permissions are configured. Normal Core CI intentionally has no Sovereignty

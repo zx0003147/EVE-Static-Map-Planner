@@ -131,14 +131,14 @@ class FeaturePackManagerTest {
     }
 
     @Test
-    fun `registry and manager expose an understandable incompatible Feature API state`() =
+    fun `registry and manager expose an understandable down-level Feature API state`() =
         withTempDirectory { root ->
             rewriteFixtureJar(
                 destination = root.resolve("feature-packs/fixture.future/pack.jar"),
                 provider = STARTUP_FAILURE_PROVIDER,
                 packId = "fixture.future",
                 displayName = "Future Fixture Pack",
-                featureApiVersion = "2",
+                featureApiVersion = "1",
             )
             val manager = manager(root, mutableListOf())
 
@@ -146,9 +146,9 @@ class FeaturePackManagerTest {
             val pack = snapshot.packs.single()
 
             assertEquals(FeaturePackInstallationState.INCOMPATIBLE, pack.installationState)
-            assertEquals("2", pack.requiredFeatureApiVersion?.identifier)
-            assertTrue(pack.lastError.orEmpty().contains("requires Feature API 2"))
-            assertTrue(pack.lastError.orEmpty().contains("provides Feature API 1"))
+            assertEquals("1", pack.requiredFeatureApiVersion?.identifier)
+            assertTrue(pack.lastError.orEmpty().contains("requires Feature API 1"))
+            assertTrue(pack.lastError.orEmpty().contains("provides Feature API 2"))
             assertEquals(FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API, snapshot.failures.single().kind)
             assertEquals(FeaturePackRuntimeState.DISABLED, manager.state.value.packs.single().runtimeState)
         }
@@ -180,7 +180,7 @@ class FeaturePackManagerTest {
             provider = STARTUP_FAILURE_PROVIDER,
             packId = "fixture.future",
             displayName = "Future Fixture Pack",
-            featureApiVersion = "2",
+            featureApiVersion = "1",
         )
         stateStore(root).save(
             mapOf(
@@ -258,7 +258,7 @@ class FeaturePackManagerTest {
         provider: String,
         packId: String,
         displayName: String,
-        featureApiVersion: String = "1",
+        featureApiVersion: String = "2",
     ) {
         destination.parent.createDirectories()
         JarFile(fixtureJar.toFile()).use { source ->

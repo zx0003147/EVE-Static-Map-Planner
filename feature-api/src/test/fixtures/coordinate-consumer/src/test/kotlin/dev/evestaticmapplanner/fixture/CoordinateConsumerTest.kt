@@ -10,7 +10,7 @@ class CoordinateConsumerTest {
     fun `published Feature API is available on the independent test classpath`() {
         val version = FeatureApiVersions.current()
 
-        assertEquals("1", version.identifier)
+        assertEquals("2", version.identifier)
         assertTrue(version.frozen)
     }
 }

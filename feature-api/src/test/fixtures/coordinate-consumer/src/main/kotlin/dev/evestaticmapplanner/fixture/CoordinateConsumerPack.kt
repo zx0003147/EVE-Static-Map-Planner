@@ -15,7 +15,7 @@ import dev.evestaticmapplanner.feature.api.PackVersion
 
 class CoordinateConsumerPack : FeaturePackEntrypoint {
     init {
-        check(FeatureApiVersions.current().identifier == "1")
+        check(FeatureApiVersions.current().identifier == "2")
         check(FeatureApiVersions.current().frozen)
     }
 
@@ -27,6 +27,7 @@ class CoordinateConsumerPack : FeaturePackEntrypoint {
     )
 
     override fun start(context: FeaturePackContext): FeaturePackSession {
+        context.capabilities()
         val registration = context.overlays().register(CoordinateOverlayProvider)
         return object : FeaturePackSession {
             override fun close() = registration.close()

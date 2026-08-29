@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 
 class SovereigntyPackIntegrationTest {
     @Test
-    fun `supplied external artifact is the readable Sovereignty Pack for Feature API v1`() {
+    fun `supplied external artifact is the readable Sovereignty Pack for Feature API v2`() {
         val packJar = validatedSovereigntyPackJar()
 
         JarFile(packJar.toFile()).use { jar ->
@@ -153,7 +153,7 @@ class SovereigntyPackIntegrationTest {
             assertTrue(Files.isReadable(packJar), "External Sovereignty Pack JAR is not readable: $packJar")
             val metadata = FeaturePackJarManifest.read(packJar)
             assertEquals(PackId("sovereignty.pack"), metadata.packId)
-            assertEquals("1", metadata.requiredFeatureApiVersion.identifier)
+            assertEquals("2", metadata.requiredFeatureApiVersion.identifier)
             return packJar
         }
 

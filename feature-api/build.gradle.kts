@@ -77,7 +77,7 @@ val fixturePackJar by tasks.registering(Jar::class) {
             "EVE-Feature-Pack-Name" to "Minimal Fixture Pack",
             "EVE-Feature-Pack-Version" to "0.0.1-test",
             "EVE-Feature-Pack-Publisher" to "EVE Static Map Planner Tests",
-            "EVE-Feature-API-Version" to "1",
+            "EVE-Feature-API-Version" to "2",
         )
     }
 }
@@ -128,6 +128,7 @@ val publicationDirectory = featureApiTestRepository.map {
 val publishedBinaryJar = publicationDirectory.map { it.file("feature-api-$featureApiArtifactVersion.jar") }
 val publishedSourcesJar = publicationDirectory.map { it.file("feature-api-$featureApiArtifactVersion-sources.jar") }
 val publishedPom = publicationDirectory.map { it.file("feature-api-$featureApiArtifactVersion.pom") }
+val publishedModuleMetadata = publicationDirectory.map { it.file("feature-api-$featureApiArtifactVersion.module") }
 val publishFeatureApiToTestRepository = tasks.named(
     "publishFeatureApiPublicationToFeatureApiTestRepository",
 )
@@ -136,22 +137,28 @@ val verifyFeatureApiPublication by tasks.registering {
     group = "verification"
     description = "Verifies the coordinate-based Feature API publication in the generated test Maven repository."
     dependsOn(publishFeatureApiToTestRepository)
-    inputs.files(publishedBinaryJar, publishedSourcesJar, publishedPom)
+    inputs.files(publishedBinaryJar, publishedSourcesJar, publishedPom, publishedModuleMetadata)
 
     doLast {
         val binaryJar = publishedBinaryJar.get().asFile
         val sourcesJar = publishedSourcesJar.get().asFile
         val pom = publishedPom.get().asFile
+        val moduleMetadata = publishedModuleMetadata.get().asFile
         check(binaryJar.isFile) { "Published Feature API binary JAR is missing: $binaryJar" }
         check(sourcesJar.isFile) { "Published Feature API sources JAR is missing: $sourcesJar" }
         check(pom.isFile) { "Published Feature API POM is missing: $pom" }
+        check(moduleMetadata.isFile) { "Published Feature API Gradle module metadata is missing: $moduleMetadata" }
 
         JarFile(binaryJar).use { jar ->
             val entries = jar.entries().asSequence().map { it.name }.toList()
             val expectedClasses = setOf(
                 "dev/evestaticmapplanner/feature/api/FeatureApiVersions.class",
                 "dev/evestaticmapplanner/feature/api/FeaturePackEntrypoint.class",
+                "dev/evestaticmapplanner/feature/api/FeatureCapabilityLookup.class",
+                "dev/evestaticmapplanner/feature/api/DynamicOverlayCapability.class",
                 "dev/evestaticmapplanner/feature/api/OverlayProvider.class",
+                "dev/evestaticmapplanner/feature/api/RouteActionCapability.class",
+                "dev/evestaticmapplanner/feature/api/RouteSnapshot.class",
                 "dev/evestaticmapplanner/feature/api/SystemInfoProvider.class",
             )
             check(entries.containsAll(expectedClasses)) {
@@ -207,11 +214,18 @@ val verifyFeatureApiPublication by tasks.registering {
             "dev.evestaticmapplanner:app",
             "dev.evestaticmapplanner:core",
             "dev.evestaticmapplanner:data",
+            "dev.evestaticmapplanner:control",
+            "dev.evestaticmapplanner:control-transport",
+            "dev.evestaticmapplanner:marker-application",
             "dev.evestaticmapplanner:sde",
             "dev.evestaticmapplanner:mcp",
             "dev.evestaticmapplanner:sovereignty-pack",
             "compose",
+            "coroutines",
+            "ktor",
             "sqlite",
+            "oauth",
+            "esi",
         )
         val dependencyNodes = document.getElementsByTagName("dependency")
         val dependencies = (0 until dependencyNodes.length).asSequence()
@@ -226,6 +240,23 @@ val verifyFeatureApiPublication by tasks.registering {
         }
         check(forbiddenDependencies.isEmpty()) {
             "Published POM contains forbidden Core or Pack dependencies: $forbiddenDependencies"
+        }
+
+        val moduleMetadataText = moduleMetadata.readText()
+        check(moduleMetadataText.contains("\"group\": \"dev.evestaticmapplanner\"")) {
+            "Published Gradle module metadata has the wrong group"
+        }
+        check(moduleMetadataText.contains("\"module\": \"feature-api\"")) {
+            "Published Gradle module metadata has the wrong module"
+        }
+        check(moduleMetadataText.contains("\"version\": \"$featureApiArtifactVersion\"")) {
+            "Published Gradle module metadata has the wrong version"
+        }
+        val forbiddenModuleMetadata = forbiddenDependencyFragments.filter { fragment ->
+            moduleMetadataText.contains(fragment, ignoreCase = true)
+        }
+        check(forbiddenModuleMetadata.isEmpty()) {
+            "Published Gradle module metadata contains forbidden dependencies: $forbiddenModuleMetadata"
         }
     }
 }

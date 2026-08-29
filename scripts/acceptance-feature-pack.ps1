@@ -244,7 +244,7 @@ try {
     Write-Host "Core:        $coreBranch $coreHead"
     Write-Host "Sovereignty: $sovBranch $sovHead"
 
-    Write-Stage "Publish and verify frozen Feature API v1 in Core's generated test Maven repository"
+    Write-Stage "Publish and verify frozen Feature API v2 in Core's generated test Maven repository"
     Invoke-Gradle -Repository $coreRepo -Arguments @(
         ":feature-api:clean",
         ":feature-api:verifyFeatureApiPublication",
@@ -252,8 +252,8 @@ try {
         "--tests", "dev.evestaticmapplanner.feature.api.FeaturePackCompatibilityTest"
     )
     $featureApiRepository = Join-Path $coreRepo "feature-api\build\test-maven-repository"
-    $featureApiVersionDirectory = Join-Path $featureApiRepository "dev\evestaticmapplanner\feature-api\1.0.0"
-    foreach ($artifact in @("feature-api-1.0.0.jar", "feature-api-1.0.0-sources.jar", "feature-api-1.0.0.pom")) {
+    $featureApiVersionDirectory = Join-Path $featureApiRepository "dev\evestaticmapplanner\feature-api\2.0.0"
+    foreach ($artifact in @("feature-api-2.0.0.jar", "feature-api-2.0.0-sources.jar", "feature-api-2.0.0.pom", "feature-api-2.0.0.module")) {
         if (-not (Test-Path -LiteralPath (Join-Path $featureApiVersionDirectory $artifact) -PathType Leaf)) {
             throw "Feature API publication is missing $artifact under $featureApiVersionDirectory"
         }
@@ -345,9 +345,9 @@ try {
     $script:StartedAt.Stop()
     Write-Host ""
     Write-Host "PASS - repeatable cross-repository Feature Pack acceptance" -ForegroundColor Green
-    Write-Host "Feature API: dev.evestaticmapplanner:feature-api:1.0.0 (runtime contract 1, frozen)"
-    Write-Host "Pack: sovereignty.pack 0.1.0; required API 1; publisher/name verified"
-    Write-Host "Host integration: API 1; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info registered and unregistered"
+    Write-Host "Feature API: dev.evestaticmapplanner:feature-api:2.0.0 (runtime contract 2, frozen)"
+    Write-Host "Pack: sovereignty.pack 0.1.0; required API 2; publisher/name verified"
+    Write-Host "Host integration: API 2; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info registered and unregistered"
     Write-Host "No-Pack: no ClassLoader, storage, Public ESI, or worker"
     Write-Host "MCP catalog: exactly 22 tools"
     Write-Host ("Tests: Feature API {0}, Sovereignty {1}, Core build {2}, focused {3}, integration {4}, MCP {5}" -f `

@@ -105,12 +105,12 @@ class LocalFeaturePackHostTest {
         }
 
     @Test
-    fun `future Feature API is rejected before ClassLoader creation or Pack initialization`() =
+    fun `down-level Feature API is rejected before ClassLoader creation or Pack initialization`() =
         withTempDirectory { root ->
-            val futurePack = rewriteFixtureJar(
-                root.resolve("future-pack.jar"),
+            val downLevelPack = rewriteFixtureJar(
+                root.resolve("down-level-pack.jar"),
                 listOf(COMPATIBILITY_PROBE_PROVIDER),
-                mapOf(FeaturePackJarManifest.FEATURE_API_VERSION to "2"),
+                mapOf(FeaturePackJarManifest.FEATURE_API_VERSION to "1"),
             )
             var classLoaderCreations = 0
             val host = LocalFeaturePackHost(
@@ -125,14 +125,14 @@ class LocalFeaturePackHostTest {
             System.clearProperty(STATIC_PROBE_PROPERTY)
             System.clearProperty(CONSTRUCTOR_PROBE_PROPERTY)
             try {
-                val result = host.load(candidate(futurePack)) {
+                val result = host.load(candidate(downLevelPack)) {
                     error("An incompatible Pack must not receive a context")
                 }
 
                 val failure = assertIs<FeaturePackLoadResult.Failed>(result).failure
                 assertEquals(FeaturePackFailureKind.INCOMPATIBLE_FEATURE_API, failure.kind)
-                assertTrue(failure.message.contains("requires Feature API 2"))
-                assertTrue(failure.message.contains("provides Feature API 1"))
+                assertTrue(failure.message.contains("requires Feature API 1"))
+                assertTrue(failure.message.contains("provides Feature API 2"))
                 assertEquals(0, classLoaderCreations)
                 assertNull(System.getProperty(STATIC_PROBE_PROPERTY))
                 assertNull(System.getProperty(CONSTRUCTOR_PROBE_PROPERTY))
@@ -278,7 +278,7 @@ class LocalFeaturePackHostTest {
             val entries = jar.entries().asSequence().map { it.name }.toList()
             assertTrue(entries.contains(SERVICE_ENTRY))
             assertTrue(entries.contains("dev/evestaticmapplanner/feature/fixture/MinimalFixturePack.class"))
-            assertEquals("1", jar.manifest.mainAttributes.getValue(FeaturePackJarManifest.FEATURE_API_VERSION))
+            assertEquals("2", jar.manifest.mainAttributes.getValue(FeaturePackJarManifest.FEATURE_API_VERSION))
             assertTrue(
                 entries.filter { it.endsWith(".class") }
                     .all { it.startsWith("dev/evestaticmapplanner/feature/fixture/") },

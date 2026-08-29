@@ -40,6 +40,7 @@ class MinimalFixturePack : FeaturePackEntrypoint {
             ?.use { it.readText().trim() }
         check(resource == "fixture-resource-ok") { "Fixture Pack resource was not available through its ClassLoader" }
         context.hostInfo()
+        context.capabilities()
         context.storage().configPath(PackRelativePath("fixture.properties"))
         context.logger().log(FeaturePackLogLevel.INFO, "Fixture Pack started", null)
         val overlayRegistration = context.overlays().register(FixtureOverlayProvider)

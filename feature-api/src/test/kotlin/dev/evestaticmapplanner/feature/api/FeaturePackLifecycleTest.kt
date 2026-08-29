@@ -36,6 +36,7 @@ class FeaturePackLifecycleTest {
 
         assertEquals(listOf("INFO:started", "closed"), events)
         assertTrue(entrypoint.descriptor().packId == PackId("test.pack"))
+        assertEquals(null, context.capabilities().find(StandardFeatureCapabilities.DYNAMIC_OVERLAY))
     }
 
     private class TestContext(private val events: MutableList<String>) : FeaturePackContext {

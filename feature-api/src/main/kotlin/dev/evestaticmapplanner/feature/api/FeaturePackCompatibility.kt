@@ -46,9 +46,9 @@ class FeatureApiVersion(
     }
 }
 
-/** Current frozen v1 compatibility identity. Breaking contract changes require a new major API version. */
+/** Current frozen v2 compatibility identity. Breaking contract changes require a new major API version. */
 object FeatureApiVersions {
-    fun current(): FeatureApiVersion = FeatureApiVersion("1", true)
+    fun current(): FeatureApiVersion = FeatureApiVersion("2", true)
 }
 
 /** Minimal platform identity; no filesystem roots or environment details are exposed. */

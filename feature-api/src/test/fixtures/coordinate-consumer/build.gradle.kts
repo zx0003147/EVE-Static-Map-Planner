@@ -26,7 +26,7 @@ tasks.jar {
             "EVE-Feature-Pack-Name" to "Coordinate Consumer Fixture",
             "EVE-Feature-Pack-Version" to "0.0.1-test",
             "EVE-Feature-Pack-Publisher" to "EVE Static Map Planner Tests",
-            "EVE-Feature-API-Version" to "1",
+            "EVE-Feature-API-Version" to "2",
         )
     }
 }
@@ -47,6 +47,9 @@ val verifyThinPack by tasks.registering {
     doLast {
         JarFile(packJar.get().asFile).use { jar ->
             val entries = jar.entries().asSequence().map { it.name }.toList()
+            check(jar.manifest.mainAttributes.getValue("EVE-Feature-API-Version") == "2") {
+                "Coordinate consumer Pack manifest does not target Feature API runtime contract 2"
+            }
             check(entries.contains("dev/evestaticmapplanner/fixture/CoordinateConsumerPack.class")) {
                 "Coordinate consumer implementation is missing from pack.jar"
             }

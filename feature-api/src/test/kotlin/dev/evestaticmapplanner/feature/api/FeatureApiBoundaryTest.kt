@@ -46,7 +46,7 @@ class FeatureApiBoundaryTest {
 
         JarFile(fixtureJar.toFile()).use { jar ->
             val entries = jar.entries().asSequence().map { it.name }.toList()
-            assertEquals("1", jar.manifest.mainAttributes.getValue("EVE-Feature-API-Version"))
+            assertEquals("2", jar.manifest.mainAttributes.getValue("EVE-Feature-API-Version"))
             assertTrue(entries.contains("dev/evestaticmapplanner/feature/fixture/MinimalFixturePack.class"))
             assertFalse(entries.any { it.startsWith("dev/evestaticmapplanner/feature/api/") })
             assertFalse(entries.any { it.startsWith("kotlin/") })
@@ -95,8 +95,14 @@ class FeatureApiBoundaryTest {
             "$API_PACKAGE.CoreVersion",
             "$API_PACKAGE.FeatureApiVersion",
             "$API_PACKAGE.FeatureApiVersions",
+            "$API_PACKAGE.FeatureCapability",
+            "$API_PACKAGE.FeatureCapabilityId",
+            "$API_PACKAGE.FeatureCapabilityKey",
+            "$API_PACKAGE.FeatureCapabilityLookup",
+            "$API_PACKAGE.FeatureCapabilityLookup\$Companion",
             "$API_PACKAGE.FeaturePackCompatibility",
             "$API_PACKAGE.FeaturePackContext",
+            "$API_PACKAGE.FeaturePackContext\$DefaultImpls",
             "$API_PACKAGE.FeaturePackDescriptor",
             "$API_PACKAGE.FeaturePackEntrypoint",
             "$API_PACKAGE.FeaturePackHostInfo",
@@ -105,6 +111,8 @@ class FeatureApiBoundaryTest {
             "$API_PACKAGE.FeaturePackSession",
             "$API_PACKAGE.FeaturePackStartupException",
             "$API_PACKAGE.HostPlatform",
+            "$API_PACKAGE.DynamicOverlayCapability",
+            "$API_PACKAGE.DynamicOverlayRegistration",
             "$API_PACKAGE.OverlayEntry",
             "$API_PACKAGE.OverlayEntryVisibility",
             "$API_PACKAGE.OverlayLayer",
@@ -119,6 +127,19 @@ class FeatureApiBoundaryTest {
             "$API_PACKAGE.PackRelativePath",
             "$API_PACKAGE.PackStorage",
             "$API_PACKAGE.PackVersion",
+            "$API_PACKAGE.RouteActionCapability",
+            "$API_PACKAGE.RouteActionContext",
+            "$API_PACKAGE.RouteActionDescriptor",
+            "$API_PACKAGE.RouteActionProvider",
+            "$API_PACKAGE.RouteActionRegistration",
+            "$API_PACKAGE.RouteActionResult",
+            "$API_PACKAGE.RouteActionStatus",
+            "$API_PACKAGE.RouteIdentity",
+            "$API_PACKAGE.RouteKind",
+            "$API_PACKAGE.RouteSegment",
+            "$API_PACKAGE.RouteSegmentKind",
+            "$API_PACKAGE.RouteSnapshot",
+            "$API_PACKAGE.StandardFeatureCapabilities",
             "$API_PACKAGE.SystemInfoField",
             "$API_PACKAGE.SystemInfoProvider",
             "$API_PACKAGE.SystemInfoProviderDescriptor",
@@ -135,9 +156,13 @@ class FeatureApiBoundaryTest {
             "dev.evestaticmapplanner.core.",
             "dev.evestaticmapplanner.data.",
             "dev.evestaticmapplanner.mcp.",
+            "dev.evestaticmapplanner.marker.",
             "dev.evestaticmapplanner.sde.",
+            "io.ktor.",
             "java.sql.",
+            "java.net.http.",
             "kotlinx.coroutines.",
+            "org.sqlite.",
             "org.jetbrains.compose.",
         )
     }

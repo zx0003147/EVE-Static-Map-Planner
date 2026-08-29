@@ -7,14 +7,14 @@ permissions:
   contents: read
   packages: write
 
-# Feature API releases are immutable. Run this workflow once for 1.0.0.
+# Feature API releases are immutable. Run this workflow once for 2.0.0.
 concurrency:
-  group: publish-feature-api-1.0.0
+  group: publish-feature-api-2.0.0
   cancel-in-progress: false
 
 jobs:
   publish-feature-api:
-    name: Publish Feature API 1.0.0
+    name: Publish Feature API 2.0.0
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -36,15 +36,15 @@ jobs:
           cache-provider: basic
           validate-wrappers: true
 
-      - name: Confirm Feature API artifact version is 1.0.0
+      - name: Confirm Feature API artifact version is 2.0.0
         shell: pwsh
         run: |
           $versionEntry = Get-Content gradle.properties | Where-Object { $_ -match '^featureApiArtifactVersion=' }
-          if ($versionEntry.Count -ne 1 -or $versionEntry -ne 'featureApiArtifactVersion=1.0.0') {
-            throw "This workflow may publish only Feature API artifact version 1.0.0."
+          if ($versionEntry.Count -ne 1 -or $versionEntry -ne 'featureApiArtifactVersion=2.0.0') {
+            throw "This workflow may publish only Feature API artifact version 2.0.0."
           }
 
-      - name: Verify frozen Feature API 1.0.0
+      - name: Verify frozen Feature API 2.0.0
         shell: pwsh
         run: >-
           .\gradlew.bat --no-daemon --console=plain
@@ -52,13 +52,13 @@ jobs:
           :feature-api:verifyFeatureApiPublication
           :feature-api:verifyFeatureApiCoordinateConsumer
 
-      - name: Refuse duplicate Feature API 1.0.0 publication
+      - name: Refuse duplicate Feature API 2.0.0 publication
         shell: pwsh
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $artifactUri = "https://maven.pkg.github.com/zx0003147/EVE-Static-Map-Planner/dev/evestaticmapplanner/feature-api/1.0.0/feature-api-1.0.0.pom"
+          $artifactUri = "https://maven.pkg.github.com/zx0003147/EVE-Static-Map-Planner/dev/evestaticmapplanner/feature-api/2.0.0/feature-api-2.0.0.pom"
           $credential = "${env:GITHUB_ACTOR}:${env:GITHUB_TOKEN}"
           $authorization = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($credential))
           $response = Invoke-WebRequest `
@@ -68,13 +68,13 @@ jobs:
             -SkipHttpErrorCheck
 
           if ($response.StatusCode -eq 200) {
-            throw "Feature API 1.0.0 is already published. Release versions are immutable."
+            throw "Feature API 2.0.0 is already published. Release versions are immutable."
           }
           if ($response.StatusCode -ne 404) {
-            throw "Could not verify that Feature API 1.0.0 is unpublished (HTTP $($response.StatusCode))."
+            throw "Could not verify that Feature API 2.0.0 is unpublished (HTTP $($response.StatusCode))."
           }
 
-      - name: Publish Feature API 1.0.0 to GitHub Packages
+      - name: Publish Feature API 2.0.0 to GitHub Packages
         shell: pwsh
         env:
           GITHUB_ACTOR: ${{ github.actor }}
