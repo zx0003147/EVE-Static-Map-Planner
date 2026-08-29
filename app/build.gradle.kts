@@ -35,7 +35,7 @@ val appVersion = providers.gradleProperty("appVersion").get()
 val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
 val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 val windowsUpgradeUuid = "502B9850-A5B0-4922-BB20-AC7FEBA590DC"
-val windowsProductUuid = "29AF5999-F80D-4608-A69B-D06CF096751E"
+val windowsProductUuid = "050C3D41-224F-4558-90C1-745159869D14"
 val windowsComponentNamespace = UUID.fromString(windowsUpgradeUuid)
 val historicalProductCodes = setOf(
     "{A7D6C309-9A9F-3079-A87B-1616BAD49516}", // 0.1.0
@@ -43,6 +43,7 @@ val historicalProductCodes = setOf(
     "{8E5104B6-B3CA-36C7-BC65-B3401F15F421}", // 0.1.2
     "{A9BA3E5C-BEAA-336C-830D-5663D6477EEA}", // 0.2.0
     "{47FE49EB-BDC1-3CF5-B949-C743BA3822FD}", // discarded 0.6.0 pre-release MSI
+    "{29AF5999-F80D-4608-A69B-D06CF096751E}", // discarded 0.6.0 early-removal QA MSI
 )
 val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
 val distributionNoticeFiles = files(
@@ -186,6 +187,9 @@ val verifyWindowsInstallerResources by tasks.registering {
         check(mainWxs.contains("Property=\"JP_UPGRADABLE_FOUND\"") &&
             mainWxs.contains("IncludeMaximum=\"yes\"")) {
             "The installer no longer replaces an older same-version release candidate."
+        }
+        check(mainWxs.contains("<RemoveExistingProducts After=\"InstallFinalize\" />")) {
+            "The installer no longer preserves shared components during a same-version replacement."
         }
         check(mainWxs.contains("Id=\"${WindowsAppImageIntegration.PATH_COMPONENT_ID}\"")) {
             "The stable MCP PATH Component is missing from the custom main.wxs."
@@ -842,6 +846,17 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(distributionAudit.installExecuteSequence.count {
             it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[1] == "UPGRADINGPRODUCTCODE"
         } == 1) { "Major-upgrade AppData preservation sequence drifted" }
+        val installFinalizeSequence = distributionAudit.installExecuteSequence.single {
+            it[0] == "InstallFinalize"
+        }[2].toInt()
+        val removeExistingProductsSequence = distributionAudit.installExecuteSequence.single {
+            it[0] == "RemoveExistingProducts"
+        }[2].toInt()
+        check(removeExistingProductsSequence > installFinalizeSequence) {
+            "Major upgrade must remove the related product after InstallFinalize: " +
+                "RemoveExistingProducts=$removeExistingProductsSequence, " +
+                "InstallFinalize=$installFinalizeSequence"
+        }
         check(distributionAudit.removeFolderEx.size == 1 &&
             distributionAudit.removeFolderEx.single()[2] == "RM_RF48431AECBD69377EA800D62616352F20") {
             "Normal uninstall recursive AppData cleanup drifted: ${distributionAudit.removeFolderEx}"

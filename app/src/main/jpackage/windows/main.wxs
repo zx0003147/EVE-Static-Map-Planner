@@ -41,7 +41,7 @@
   <?endif ?>
 
   <!-- Final 0.6.0 RC identity. It intentionally replaces the discarded 0.6.0 pre-release MSI. -->
-  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="{29AF5999-F80D-4608-A69B-D06CF096751E}" Scope="$(var.JpInstallScope)">
+  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="{050C3D41-224F-4558-90C1-745159869D14}" Scope="$(var.JpInstallScope)">
     <SummaryInformation Manufacturer="$(var.JpAppVendor)" Description="$(var.JpAppDescription)" />
 
     <Media Id="1" Cabinet="Data.cab" EmbedCab="yes" />
@@ -123,7 +123,13 @@
       <?endif ?>
       <LaunchConditions Before="AppSearch" />
       <Custom Action="JpSuppressRemoveFolderExDuringUpgrade" After="AppSearch" Condition="UPGRADINGPRODUCTCODE" />
-      <RemoveExistingProducts Before="CostInitialize" />
+      <!--
+        Register the replacement before removing the related product. This keeps
+        shared component references alive when the installed MCP bridge is in use,
+        so a same-version RC replacement cannot schedule the replacement runtime
+        and MCP JARs for deletion on reboot.
+      -->
+      <RemoveExistingProducts After="InstallFinalize" />
       <Custom Action="JpFindRelatedProducts" After="FindRelatedProducts" />
     </InstallExecuteSequence>
 
