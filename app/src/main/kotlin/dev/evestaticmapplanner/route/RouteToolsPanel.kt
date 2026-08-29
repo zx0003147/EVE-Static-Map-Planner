@@ -34,6 +34,9 @@ import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.search.SystemSearchField
+import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.featurepack.RouteActionKey
+import dev.evestaticmapplanner.featurepack.RouteActionUiState
 
 internal enum class ToolSidebarSection {
     JUMP_RANGE,
@@ -58,13 +61,17 @@ internal data class ToolSidebarExpansionState(
 }
 
 @Composable
-fun RouteToolsPanel(
+internal fun RouteToolsPanel(
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
     capitalState: CapitalRouteUiState,
     capitalViewModel: CapitalRouteViewModel,
     jumpState: JumpOverlayUiState,
     jumpViewModel: JumpOverlayViewModel,
+    routeActions: List<RouteActionUiState>,
+    normalRouteSnapshot: RouteSnapshot?,
+    capitalRouteSnapshot: RouteSnapshot?,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
 ) {
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
@@ -97,7 +104,14 @@ fun RouteToolsPanel(
                         expanded = expanded,
                         onToggle = { expansionState = expansionState.toggle(section) },
                     ) {
-                        NormalRouteSectionContent(state, viewModel, onOpenAnsiblexManager)
+                        NormalRouteSectionContent(
+                            state,
+                            viewModel,
+                            routeActions,
+                            normalRouteSnapshot,
+                            onInvokeRouteAction,
+                            onOpenAnsiblexManager,
+                        )
                     }
                     ToolSidebarSection.CAPITAL_ROUTE -> CollapsibleToolSection(
                         title = "Capital Route",
@@ -105,7 +119,13 @@ fun RouteToolsPanel(
                         expanded = expanded,
                         onToggle = { expansionState = expansionState.toggle(section) },
                     ) {
-                        CapitalRouteSectionContent(capitalState, capitalViewModel)
+                        CapitalRouteSectionContent(
+                            capitalState,
+                            capitalViewModel,
+                            routeActions,
+                            capitalRouteSnapshot,
+                            onInvokeRouteAction,
+                        )
                     }
                 }
             }
@@ -203,6 +223,9 @@ private fun JumpRangeSectionContent(
 private fun NormalRouteSectionContent(
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
+    routeActions: List<RouteActionUiState>,
+    routeSnapshot: RouteSnapshot?,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -244,6 +267,7 @@ private fun NormalRouteSectionContent(
             TextButton(onClick = viewModel::clearRoute, enabled = state.routeOutcome != null) { Text("Clear") }
         }
         RouteSummary(state)
+        RouteActionButtons(routeActions, routeSnapshot, onInvokeRouteAction)
         TextButton(onClick = onOpenAnsiblexManager, enabled = state.isAnsiblexAvailable) {
             Text("Ansiblex Manager (${state.enabledAnsiblexCount}/${state.ansiblexConnections.size})")
         }
@@ -262,6 +286,9 @@ private fun NormalRouteSectionContent(
 private fun CapitalRouteSectionContent(
     state: CapitalRouteUiState,
     viewModel: CapitalRouteViewModel,
+    routeActions: List<RouteActionUiState>,
+    routeSnapshot: RouteSnapshot?,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SystemSearchField(
@@ -294,6 +321,7 @@ private fun CapitalRouteSectionContent(
             TextButton(onClick = viewModel::clear, enabled = state.outcome != null) { Text("Clear") }
         }
         CapitalRouteSummary(state)
+        RouteActionButtons(routeActions, routeSnapshot, onInvokeRouteAction)
         state.error?.let { Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall) }
         Text(
             "Validates real XYZ geometry, manual max range, and implemented static eligibility only.",

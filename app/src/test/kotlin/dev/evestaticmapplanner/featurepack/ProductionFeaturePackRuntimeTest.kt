@@ -42,6 +42,7 @@ class ProductionFeaturePackRuntimeTest {
             val packRoot = applicationRoot.resolve("feature-packs")
             val storageRoot = applicationRoot.resolve("feature-pack-storage")
             val threadsBefore = liveNonDaemonThreadIds()
+            val featureWorkerThreadsBefore = liveFeatureWorkerThreadNames()
             var classLoaderCreations = 0
             val host = LocalFeaturePackHost(
                 FeaturePackEntrypoint::class.java.classLoader,
@@ -62,6 +63,8 @@ class ProductionFeaturePackRuntimeTest {
             assertFalse(Files.exists(storageRoot))
             assertEquals(0, classLoaderCreations)
             assertEquals(threadsBefore, liveNonDaemonThreadIds())
+            assertEquals(featureWorkerThreadsBefore, liveFeatureWorkerThreadNames())
+            assertTrue(runtime.routeActionHost.state.value.isEmpty())
         }
 
     @Test
@@ -170,6 +173,11 @@ class ProductionFeaturePackRuntimeTest {
     private fun liveNonDaemonThreadIds(): Set<Long> = Thread.getAllStackTraces().keys
         .filter { it.isAlive && !it.isDaemon }
         .map(Thread::threadId)
+        .toSet()
+
+    private fun liveFeatureWorkerThreadNames(): Set<String> = Thread.getAllStackTraces().keys
+        .filter { it.isAlive && (it.name.startsWith("feature-overlay-refresh") || it.name.startsWith("feature-route-action")) }
+        .map(Thread::getName)
         .toSet()
 
     private inline fun withTempDirectory(prefix: String, block: (Path) -> Unit) {

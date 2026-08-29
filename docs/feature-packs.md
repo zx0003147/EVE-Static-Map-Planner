@@ -116,8 +116,21 @@ Route Actions receive a defensive, immutable `RouteSnapshot` and return a synchr
 contract exposes Compose, coroutines, coordinates, ViewModels, executors, Core route objects, database models, Control
 DTOs, ESI, OAuth, or HTTP client types.
 
-Phase 1 defines contracts only. The current production Host returns the empty capability lookup and does not register
-Dynamic Overlay or Route Action Host implementations.
+The production runtime-contract-2 Host supplies both standard capabilities as Pack-scoped objects. A Dynamic Overlay
+registration stores one validated last-good contribution; `requestRefresh()` schedules only that provider on a
+bounded Host executor, coalesces repeated requests, retains last-good data after failures, and never polls. Static
+Overlay providers use the same cached aggregation path and are not re-snapshotted when a dynamic provider refreshes.
+
+Route Actions are registered under Pack ID plus action ID, filtered by the active route kind, and rendered as generic
+buttons in the normal or capital active-route panel. The Host captures an immutable route snapshot, prevents duplicate
+invocation while an action is busy, and executes Pack callbacks on a bounded background executor. Success, rejection,
+and failure messages remain generic Host presentation data. Mission route snapshots are supported by the Host adapter,
+but Mission overlays currently have no interactive route panel, so Mission Route Actions are not displayed.
+
+Disabling a Pack closes capability registrations before its existing System Info/Overlay registrations and before its
+ClassLoader. Pending work is cancelled where possible, late results are ignored, and shutdown uses bounded waits. An
+empty Host starts no worker, performs no polling, and adds no UI controls. Feature API v2 contains no ESI, OAuth, token,
+character-location, or waypoint implementation.
 
 ## Pack Manager
 

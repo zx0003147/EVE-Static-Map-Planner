@@ -372,6 +372,13 @@ private fun FrameWindowScope.ReadyApplication(
     val missionState by missionMapStateStore.state.collectAsState()
     val featureOverlayState by featurePackRuntime.overlayHost.state.collectAsState()
     val systemInfoState by featurePackRuntime.systemInfoHost.state.collectAsState()
+    val routeActions by featurePackRuntime.routeActionHost.state.collectAsState()
+    val normalRouteSnapshot = remember(routeState.activeRoute, featurePackRuntime) {
+        featurePackRuntime.routeSnapshotAdapter.normal(routeState.activeRoute)
+    }
+    val capitalRouteSnapshot = remember(capitalState.activeRoute, featurePackRuntime) {
+        featurePackRuntime.routeSnapshotAdapter.capital(capitalState.activeRoute)
+    }
     LaunchedEffect(mapState.selectedSystemId, featurePackRuntime.systemInfoHost) {
         featurePackRuntime.systemInfoHost.request(mapState.selectedSystemId)
     }
@@ -424,6 +431,10 @@ private fun FrameWindowScope.ReadyApplication(
         missionState = missionState,
         featureOverlayState = visibleFeatureOverlayState,
         systemInfoState = systemInfoState,
+        routeActions = routeActions,
+        normalRouteSnapshot = normalRouteSnapshot,
+        capitalRouteSnapshot = capitalRouteSnapshot,
+        onInvokeRouteAction = featurePackRuntime.routeActionHost::invoke,
         viewModel = mapViewModel,
         routeViewModel = routeViewModel,
         jumpViewModel = jumpViewModel,

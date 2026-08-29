@@ -54,10 +54,13 @@ import dev.evestaticmapplanner.marker.MarkerViewModel
 import dev.evestaticmapplanner.control.MissionMapUiState
 import dev.evestaticmapplanner.feature.api.OverlayState
 import dev.evestaticmapplanner.feature.api.SystemInfoState
+import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.featurepack.RouteActionKey
+import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import java.nio.file.Path
 
 @Composable
-fun StaticMapScreen(
+internal fun StaticMapScreen(
     databasePath: Path,
     userDatabasePath: Path,
     state: MapUiState,
@@ -68,6 +71,10 @@ fun StaticMapScreen(
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
     systemInfoState: SystemInfoState,
+    routeActions: List<RouteActionUiState>,
+    normalRouteSnapshot: RouteSnapshot?,
+    capitalRouteSnapshot: RouteSnapshot?,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
     viewModel: MapViewModel,
     routeViewModel: RoutePlannerViewModel,
     jumpViewModel: JumpOverlayViewModel,
@@ -108,6 +115,10 @@ fun StaticMapScreen(
             jumpViewModel = jumpViewModel,
             capitalState = capitalState,
             capitalViewModel = capitalViewModel,
+            routeActions = routeActions,
+            normalRouteSnapshot = normalRouteSnapshot,
+            capitalRouteSnapshot = capitalRouteSnapshot,
+            onInvokeRouteAction = onInvokeRouteAction,
             onOpenAnsiblexManager = { showAnsiblexManager = true },
         )
         Column(Modifier.weight(1f).fillMaxHeight()) {

@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.ApplicationBuildInfo
 import dev.evestaticmapplanner.ApplicationDirectories
 import dev.evestaticmapplanner.feature.api.CoreVersion
 import dev.evestaticmapplanner.feature.api.FeatureApiVersions
+import dev.evestaticmapplanner.feature.api.FeatureCapabilityLookup
 import dev.evestaticmapplanner.feature.api.FeaturePackContext
 import dev.evestaticmapplanner.feature.api.FeaturePackDescriptor
 import dev.evestaticmapplanner.feature.api.FeaturePackHostInfo
@@ -50,12 +51,18 @@ class ProductionFeaturePackRuntime private constructor(
     val manager: FeaturePackManager,
     val overlayHost: FeatureOverlayHost,
     val systemInfoHost: SystemInfoHost,
+    val routeActionHost: RouteActionHost,
+    internal val routeSnapshotAdapter: InteractiveRouteSnapshotAdapter,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
 
     fun closeSafely(): ProductionFeaturePackCloseReport {
         if (!closed.compareAndSet(false, true)) return ProductionFeaturePackCloseReport(emptyList())
-        val failures = manager.closeSafely()
+        val failures = manager.closeSafely().toMutableList()
+        runCatching { routeActionHost.close() }
+            .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Route Action Host close failed", it) }
+        runCatching { overlayHost.close() }
+            .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Feature Overlay Host close failed", it) }
         return ProductionFeaturePackCloseReport(failures)
     }
 
@@ -72,10 +79,22 @@ class ProductionFeaturePackRuntime private constructor(
         ): ProductionFeaturePackRuntime {
             val normalizedRoot = packRoot.toAbsolutePath().normalize()
             val normalizedApplicationRoot = applicationRoot.toAbsolutePath().normalize()
-            val overlayHost = FeatureOverlayHost()
+            val overlayHost = FeatureOverlayHost { packId, providerId, operation, error ->
+                AppDiagnostics.warning(
+                    "Dynamic Overlay failed: pack=$packId provider=$providerId operation=$operation",
+                    error,
+                )
+            }
             val systemInfoHost = SystemInfoHost { providerId, error ->
                 AppDiagnostics.warning("System Info provider failed: $providerId", error)
             }
+            val routeActionHost = RouteActionHost { packId, actionId, operation, error ->
+                AppDiagnostics.warning(
+                    "Route Action failed: pack=$packId action=$actionId operation=$operation",
+                    error,
+                )
+            }
+            val routeSnapshotAdapter = InteractiveRouteSnapshotAdapter()
             val stateStore = PropertiesFeaturePackManagerStateStore(
                 normalizedApplicationRoot.resolve("feature-pack-manager.properties"),
                 AppDiagnostics::warning,
@@ -89,6 +108,7 @@ class ProductionFeaturePackRuntime private constructor(
                     eventSink,
                     overlayHost,
                     systemInfoHost,
+                    routeActionHost,
                 ),
                 host = host,
             )
@@ -98,6 +118,8 @@ class ProductionFeaturePackRuntime private constructor(
                     manager,
                     overlayHost,
                     systemInfoHost,
+                    routeActionHost,
+                    routeSnapshotAdapter,
                 )
             }
 
@@ -114,14 +136,17 @@ class ProductionFeaturePackRuntime private constructor(
                 manager,
                 overlayHost,
                 systemInfoHost,
+                routeActionHost,
+                routeSnapshotAdapter,
             )
         }
 
-        private fun productionContextFactory(
+        internal fun productionContextFactory(
             applicationRoot: Path,
             eventSink: (String) -> Unit,
             overlayHost: FeatureOverlayHost,
             systemInfoHost: SystemInfoHost,
+            routeActionHost: RouteActionHost,
         ) = FeaturePackContextFactory { descriptor ->
             ProductionFeaturePackContext(
                 applicationRoot.toAbsolutePath().normalize(),
@@ -129,6 +154,10 @@ class ProductionFeaturePackRuntime private constructor(
                 eventSink,
                 overlayHost.scopedRegistry(descriptor.packId),
                 systemInfoHost.scopedRegistry(descriptor.packId),
+                PackFeatureCapabilityLookup(
+                    overlayHost.scopedDynamicCapability(descriptor.packId),
+                    routeActionHost.scopedCapability(descriptor.packId),
+                ),
             )
         }
     }
@@ -140,6 +169,7 @@ private class ProductionFeaturePackContext(
     eventSink: (String) -> Unit,
     private val overlayRegistry: ScopedOverlayRegistry,
     private val systemInfoRegistry: ScopedSystemInfoRegistry,
+    private val capabilityLookup: PackFeatureCapabilityLookup,
 ) : FeaturePackContext, FeaturePackContextLifecycle {
     private val storage = ProductionPackStorage(
         applicationRoot.resolve("feature-pack-storage").resolve(descriptor.packId.value),
@@ -170,7 +200,10 @@ private class ProductionFeaturePackContext(
 
     override fun systemInfo(): SystemInfoRegistry = systemInfoRegistry
 
+    override fun capabilities(): FeatureCapabilityLookup = capabilityLookup
+
     override fun closeHostResources() {
+        capabilityLookup.close()
         systemInfoRegistry.close()
         overlayRegistry.close()
     }
