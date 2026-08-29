@@ -61,6 +61,7 @@ val featurePackFixture by configurations.creating {
     isCanBeResolved = true
 }
 val sovereigntyPackJar = providers.gradleProperty("sovereigntyPackJar")
+val esiPackJar = providers.gradleProperty("esiPackJar")
 
 nativeOutputDir?.let { layout.buildDirectory.set(file(it).resolve("app-build")) }
 
@@ -139,15 +140,24 @@ tasks.test {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     dependsOn(featurePackFixture)
     val externalSovereigntyPackJar = sovereigntyPackJar.orNull?.takeIf(String::isNotBlank)
+    val externalEsiPackJar = esiPackJar.orNull?.takeIf(String::isNotBlank)
     if (externalSovereigntyPackJar == null) {
         exclude("**/SovereigntyPackIntegrationTest.class")
     } else {
         inputs.property("sovereigntyPackJar", externalSovereigntyPackJar)
     }
+    if (externalEsiPackJar == null) {
+        exclude("**/EsiPackIntegrationTest.class")
+    } else {
+        inputs.property("esiPackJar", externalEsiPackJar)
+    }
     doFirst {
         systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
         externalSovereigntyPackJar?.let { configuredPath ->
             systemProperty("sovereignty.pack.jar", file(configuredPath).absolutePath)
+        }
+        externalEsiPackJar?.let { configuredPath ->
+            systemProperty("esi.pack.jar", file(configuredPath).absolutePath)
         }
     }
 }
