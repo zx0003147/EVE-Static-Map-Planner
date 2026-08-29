@@ -27,6 +27,11 @@ internal fun RouteActionButtons(
     if (visible.isEmpty()) return
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "Draft only — map and route changes stay local until you press a button below.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFFAAB9C7),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             visible.forEach { action ->
                 Button(

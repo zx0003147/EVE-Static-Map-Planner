@@ -9,7 +9,8 @@ This release candidate finalizes Feature API 2.0.0 and the external Feature Pack
 - Optional ESI Pack 0.5.0 support without any ESI-specific Core dependency.
 - EVE SSO Connect/Disconnect and current-character status under Preferences → Feature Packs.
 - Live character-location Dynamic Overlay with last-known and refresh state presentation.
-- `Refresh Location`, `Set EVE Destination`, and `Send to EVE` product actions.
+- `Refresh Location`, `Set EVE Destination`, and explicit `Send Draft to EVE` product actions.
+- Map movement, selection, and route recalculation never auto-sync to EVE.
 - Encrypted Windows current-user DPAPI refresh-token persistence and automatic session restoration.
 - JDK 25 native-access configuration for Gradle, manual QA, and packaged Windows launchers.
 - Same-version replacement of discarded 0.6.0 pre-release MSIs, preventing stale Windows Installer component state from omitting the packaged JVM module image.
@@ -28,7 +29,7 @@ Pack is installed.
 
 ## Route-action limits
 
-- `Send to EVE` supports only pure-Stargate `NORMAL` routes.
+- `Send Draft to EVE` supports only pure-Stargate `NORMAL` routes.
 - At most 10 ordered post-source anchors are sent.
 - Routes longer than 10 hops are deterministically compressed; compressed anchors are not an exact intermediate path.
 - Exact Ansiblex route sending is unsupported; use `Set EVE Destination` for the final destination instead.

@@ -52,8 +52,38 @@ class RouteActionButtonsTest {
         }
 
         onNodeWithText("Send route").assertIsDisplayed().assertIsEnabled().performClick()
+        onNodeWithText("Draft only — map and route changes stay local until you press a button below.")
+            .assertIsDisplayed()
         waitForIdle()
         assertEquals("normal-route", invoked?.identity?.value)
+    }
+
+    @Test
+    fun `route draft changes never invoke an action until the button is clicked`() = runComposeUiTest {
+        var currentSnapshot by mutableStateOf(snapshot(RouteKind.NORMAL))
+        var invocationCount = 0
+        setContent {
+            MaterialTheme {
+                RouteActionButtons(listOf(action("Send Draft to EVE")), currentSnapshot) { _, _ ->
+                    invocationCount++
+                }
+            }
+        }
+
+        currentSnapshot = RouteSnapshot(
+            RouteIdentity("changed-draft"),
+            RouteKind.NORMAL,
+            2,
+            3,
+            listOf(2, 3),
+            listOf(RouteSegment(2, 3, RouteSegmentKind.STARGATE, null)),
+        )
+        waitForIdle()
+        assertEquals(0, invocationCount)
+
+        onNodeWithText("Send Draft to EVE").performClick()
+        waitForIdle()
+        assertEquals(1, invocationCount)
     }
 
     @Test

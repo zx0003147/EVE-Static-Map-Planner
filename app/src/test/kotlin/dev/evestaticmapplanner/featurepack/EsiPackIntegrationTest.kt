@@ -92,7 +92,7 @@ class EsiPackIntegrationTest {
                     actions.map { it.key.actionId },
                 )
                 assertEquals(
-                    listOf("Send to EVE", "Set EVE Destination"),
+                    listOf("Send Draft to EVE", "Set EVE Destination"),
                     actions.map { it.label },
                 )
                 assertTrue(actions.all { it.supportedRouteKinds == setOf(RouteKind.NORMAL) })

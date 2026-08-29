@@ -38,7 +38,8 @@ Install the optional Pack JARs at these exact paths, then enable them under Pref
 ```
 
 Without any Pack, the Core map, routing, databases, and updater continue to work normally. The ESI Pack adds EVE SSO,
-character location, `Set EVE Destination`, and bounded `Send to EVE` actions. Its Connect, Refresh Location, and
+character location, `Set EVE Destination`, and bounded explicit `Send Draft to EVE` actions. Map and route edits
+remain local until one of those actions is clicked. Its Connect, Refresh Location, and
 Disconnect controls appear generically in the Feature Packs preferences page.
 
 See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
