@@ -48,6 +48,7 @@ Mutable data always uses:
 │  ├─ esi.pack\pack.jar
 │  └─ sovereignty.pack\pack.jar
 ├─ feature-pack-storage\
+├─ integration\mcp.json
 ├─ control\
 └─ logs\
 ```
@@ -111,7 +112,18 @@ PackStorage, state, and lifecycle behavior.
 ## MCP path portability
 
 The application image includes both compatibility launcher `EVE Map MCP Bridge.exe` and stable launcher
-`eve-map-mcp.exe`. There is no installer-managed PATH entry in the ZIP model.
+`eve-map-mcp.exe`. There is no installer-managed PATH entry in the ZIP model. Each packaged GUI startup publishes or
+updates the one discovery locator at:
+
+```text
+%LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json
+```
+
+A locator-aware AI plugin reads that file during session initialization or reconnect, validates schema 1 and STDIO,
+then starts its absolute `command` directly. After moving the Portable directory, start the map once to update the
+same locator and reinitialize the plugin. The locator is generated at runtime and is not included in the ZIP.
+
+Legacy/manual MCP client configuration remains tied to an absolute launcher path. For example:
 
 Register an external MCP client with an absolute launcher path, for example:
 
@@ -119,9 +131,8 @@ Register an external MCP client with an absolute launcher path, for example:
 codex mcp add eve-static-map -- "D:\Portable Apps\EVE Static Map Planner\eve-map-mcp.exe"
 ```
 
-External MCP client configuration therefore refers to the chosen extracted directory. If the directory is moved,
-deleted, or replaced by a new-version directory, update that registration to the new absolute path. This limitation
-does not affect the GUI, LocalAppData control discovery, or the launcher itself.
+If the directory is moved, deleted, or replaced by a new-version directory, update that manual registration. The map
+does not edit any external AI-client configuration. See `mcp-discovery.md` for the locator-aware plugin contract.
 
 ## Update and removal
 
@@ -130,7 +141,8 @@ To update:
 1. close EVE Static Map Planner and any MCP bridge processes;
 2. extract the new ZIP to a new directory;
 3. launch and validate the new copy;
-4. update external MCP registration if its absolute path changed;
+4. start the map so its locator reflects the new directory; update any legacy/manual MCP registration whose absolute
+   path changed;
 5. delete the old program directory.
 
 Do not overwrite a directory while its application or MCP process is running. LocalAppData is retained.

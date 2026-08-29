@@ -87,6 +87,7 @@ fun main(arguments: Array<String>) {
         AppDiagnostics.close()
         return
     }
+    McpDiscoveryStartup.maintain()
     val featurePackRuntime = ProductionFeaturePackRuntime.start()
     featurePackRuntime.startReport.failures.forEach { failure ->
         AppDiagnostics.warning("Feature Pack loading continued after ${failure.kind}: ${failure.message}", failure.cause)

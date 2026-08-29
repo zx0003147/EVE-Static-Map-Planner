@@ -14,6 +14,7 @@ This release candidate finalizes Feature API 2.0.0 and the external Feature Pack
 - Encrypted Windows current-user DPAPI refresh-token persistence and automatic session restoration.
 - JDK 25 native-access configuration for Gradle, manual QA, and packaged Windows launchers.
 - Installer-free Windows x64 Portable ZIP with a bundled JVM, complete MCP launchers, and reproducible archive order.
+- Client-neutral MCP discovery locator that follows the real Portable app-image after first run or directory moves.
 
 ## Windows installation
 

@@ -112,6 +112,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.compose.ui.test.junit4)
@@ -755,6 +756,7 @@ val portableAcceptance by tasks.registering {
     description = "Runs the self-contained Portable ZIP, fixture Pack, and MCP process acceptance gates."
     dependsOn(
         portableFeaturePackInstalledImageTest,
+        ":mcp:portableLocatorExternalConsumerTest",
         ":mcp:portableInstalledImageTest",
     )
 }

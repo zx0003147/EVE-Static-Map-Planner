@@ -88,6 +88,7 @@ class WindowsAppImageIntegrationTest {
         assertTrue(forbidden.containsAll(setOf(
             "active-instance.json",
             "active.lock",
+            "mcp.json",
             "session.key",
             "settings.properties",
             "static.db",

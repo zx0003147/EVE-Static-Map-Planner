@@ -113,9 +113,16 @@ old program directory after validation. Avoid overwriting files in a running pro
 delete the extracted directory. To remove all user data too, first Disconnect the ESI Pack if desired, then manually
 delete the LocalAppData directory.
 
-The Portable image includes `EVE Map MCP Bridge.exe` and `eve-map-mcp.exe`. External MCP clients must register the
-absolute path to the launcher in the current extracted directory. If that directory is moved or replaced, update the
-external MCP registration to the new absolute path.
+## AI / MCP integration
+
+The Portable image includes `EVE Map MCP Bridge.exe` and `eve-map-mcp.exe`. After the packaged map starts, it
+maintains the discovery locator `%LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json`; ordinary users do not
+need to edit this file. A locator-aware AI plugin reads it at session initialization or reconnect and starts the
+reported MCP command directly. After moving the Portable directory, restart the map and then reinitialize the plugin.
+
+Legacy/manual MCP registrations still store an absolute executable path. Those registrations must be updated when
+the extracted directory moves; the map does not modify Codex, DSH, Claude, or any other AI-client configuration.
+Plugin developers should use the authoritative contract in `docs/mcp-discovery.md`.
 
 See `docs/windows-distribution.md` for the Portable layout, data boundary, build process, MCP path behavior, and
 acceptance checklist.

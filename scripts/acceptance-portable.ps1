@@ -60,6 +60,38 @@ function Assert-SameSnapshot {
     }
 }
 
+function Read-And-Assert-McpLocator {
+    param(
+        [Parameter(Mandatory = $true)][string]$ApplicationDataRoot,
+        [Parameter(Mandatory = $true)][string]$ExpectedImage
+    )
+    $locatorPath = Join-Path $ApplicationDataRoot "integration\mcp.json"
+    if (-not (Test-Path -LiteralPath $locatorPath -PathType Leaf)) {
+        throw "MCP discovery locator was not created: $locatorPath"
+    }
+    $document = Get-Content -LiteralPath $locatorPath -Raw | ConvertFrom-Json
+    $fields = @($document.PSObject.Properties.Name | Sort-Object)
+    $expectedFields = @("appVersion", "command", "schemaVersion", "transport")
+    if (@(Compare-Object -ReferenceObject $expectedFields -DifferenceObject $fields).Count -ne 0) {
+        throw "MCP locator fields changed: $($fields -join ',')"
+    }
+    if ($document.schemaVersion -ne 1 -or $document.appVersion -ne "0.6.0" -or $document.transport -ne "stdio") {
+        throw "MCP locator contract values are invalid"
+    }
+    $expectedCommand = [System.IO.Path]::GetFullPath((Join-Path $ExpectedImage "eve-map-mcp.exe"))
+    $actualCommand = [System.IO.Path]::GetFullPath([string]$document.command)
+    if (-not $actualCommand.Equals($expectedCommand, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "MCP locator command mismatch: expected=$expectedCommand actual=$actualCommand"
+    }
+    if (-not (Test-Path -LiteralPath $actualCommand -PathType Leaf)) {
+        throw "MCP locator command is not a file: $actualCommand"
+    }
+    return [pscustomobject]@{
+        Path = $locatorPath
+        Command = $actualCommand
+    }
+}
+
 function Start-And-ClosePortable {
     param(
         [Parameter(Mandatory = $true)][string]$ExecutablePath,
@@ -84,6 +116,11 @@ function Start-And-ClosePortable {
 
     New-Item -ItemType Directory -Path $FakeLocalAppData -Force | Out-Null
     $startupLog = Join-Path $FakeLocalAppData "EVE Static Map Planner\logs\app-0.log"
+    $initialStartupCount = if (Test-Path -LiteralPath $startupLog -PathType Leaf) {
+        [regex]::Matches((Get-Content -LiteralPath $startupLog -Raw), "Application starting").Count
+    } else {
+        0
+    }
     $process = [System.Diagnostics.Process]::Start($startInfo)
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -94,7 +131,8 @@ function Start-And-ClosePortable {
             $process.Refresh()
             $hadWindowHandle = $process.MainWindowHandle -ne [IntPtr]::Zero
             $logReady = (Test-Path -LiteralPath $startupLog -PathType Leaf) -and
-                ((Get-Content -LiteralPath $startupLog -Raw) -match "Application starting")
+                ([regex]::Matches((Get-Content -LiteralPath $startupLog -Raw), "Application starting").Count -gt
+                    $initialStartupCount)
             if ($process.Responding -and $logReady) {
                 $startupReady = $true
                 break
@@ -133,12 +171,23 @@ function Start-And-ClosePortable {
 }
 
 $beforeFirstLaunch = Get-ProgramSnapshot -Root $applicationImage
+if (Get-ChildItem -LiteralPath $applicationImage -Recurse -File | Where-Object { $_.Name -eq "mcp.json" }) {
+    throw "Portable ZIP must not prepackage mcp.json"
+}
 $firstLaunch = Start-And-ClosePortable -ExecutablePath $executable -WorkingDirectory $unrelatedWorkingDirectory.FullName -FakeLocalAppData $localAppData
 $applicationDataRoot = Join-Path $localAppData "EVE Static Map Planner"
 if (-not (Test-Path -LiteralPath $applicationDataRoot -PathType Container)) {
     throw "First launch did not create the LocalAppData application root"
 }
+$firstLocator = Read-And-Assert-McpLocator -ApplicationDataRoot $applicationDataRoot -ExpectedImage $applicationImage
+$firstLocatorWriteTime = (Get-Item -LiteralPath $firstLocator.Path).LastWriteTimeUtc
 Assert-SameSnapshot -Before $beforeFirstLaunch -After (Get-ProgramSnapshot -Root $applicationImage)
+
+$unchangedLaunch = Start-And-ClosePortable -ExecutablePath $executable -WorkingDirectory $unrelatedWorkingDirectory.FullName -FakeLocalAppData $localAppData
+$unchangedLocator = Read-And-Assert-McpLocator -ApplicationDataRoot $applicationDataRoot -ExpectedImage $applicationImage
+if ((Get-Item -LiteralPath $unchangedLocator.Path).LastWriteTimeUtc -ne $firstLocatorWriteTime) {
+    throw "Unchanged MCP locator was rewritten"
+}
 
 $settings = Join-Path $applicationDataRoot "settings.properties"
 $userDatabase = Join-Path $applicationDataRoot "data\user.db"
@@ -158,7 +207,14 @@ $movedImage = Join-Path $movedParent.FullName "EVE Static Map Planner"
 Move-Item -LiteralPath $applicationImage -Destination $movedImage
 $movedExecutable = Join-Path $movedImage "EVE Static Map Planner.exe"
 $beforeMovedLaunch = Get-ProgramSnapshot -Root $movedImage
-$secondLaunch = Start-And-ClosePortable -ExecutablePath $movedExecutable -WorkingDirectory $unrelatedWorkingDirectory.FullName -FakeLocalAppData $localAppData
+$movedLaunch = Start-And-ClosePortable -ExecutablePath $movedExecutable -WorkingDirectory $unrelatedWorkingDirectory.FullName -FakeLocalAppData $localAppData
+$movedLocator = Read-And-Assert-McpLocator -ApplicationDataRoot $applicationDataRoot -ExpectedImage $movedImage
+if (-not $movedLocator.Path.Equals($firstLocator.Path, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Portable move created a second MCP locator instead of updating the authority file"
+}
+if ($movedLocator.Command.Equals($firstLocator.Command, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Portable move left the old MCP command in the locator"
+}
 Assert-SameSnapshot -Before $beforeMovedLaunch -After (Get-ProgramSnapshot -Root $movedImage)
 foreach ($path in $preservationHashes.Keys) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -182,9 +238,16 @@ New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
     "responsive=PASS"
     "firstWindowHandleObserved=$($firstLaunch.WindowHandleObserved)"
     "firstExitCode=$($firstLaunch.ExitCode)"
+    "locatorFirstRun=PASS"
+    "locatorPathA=$($firstLocator.Command)"
+    "locatorUnchangedNoWrite=PASS"
+    "unchangedWindowHandleObserved=$($unchangedLaunch.WindowHandleObserved)"
+    "unchangedExitCode=$($unchangedLaunch.ExitCode)"
     "movedDirectoryLaunch=PASS"
-    "secondWindowHandleObserved=$($secondLaunch.WindowHandleObserved)"
-    "secondExitCode=$($secondLaunch.ExitCode)"
+    "locatorPathB=$($movedLocator.Command)"
+    "locatorMovedUpdate=PASS"
+    "secondWindowHandleObserved=$($movedLaunch.WindowHandleObserved)"
+    "secondExitCode=$($movedLaunch.ExitCode)"
     "userDataPreservation=PASS"
     "programImageMutation=NO"
 ) | Set-Content -LiteralPath $ReportPath -Encoding UTF8

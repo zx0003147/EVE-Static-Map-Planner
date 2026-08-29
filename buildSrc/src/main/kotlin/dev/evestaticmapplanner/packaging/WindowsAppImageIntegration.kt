@@ -36,6 +36,7 @@ object WindowsAppImageIntegration {
     val forbiddenPackagedFileNames = setOf(
         "active-instance.json",
         "active.lock",
+        "mcp.json",
         "session.key",
         "settings.properties",
         "static.db",

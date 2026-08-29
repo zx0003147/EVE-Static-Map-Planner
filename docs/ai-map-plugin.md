@@ -12,6 +12,10 @@ Repository: [zx0003147/EVE-Map-Assistant-Plugin](https://github.com/zx0003147/EV
 - EVE Map Assistant Plugin 0.3.0 or later is installed.
 - Restart Codex after installing the Plugin or changing MCP registration.
 
+The current Plugin 0.3.0 workflow below is a legacy/manual absolute-path registration. The map now also publishes the
+client-neutral locator documented in `mcp-discovery.md`, but this repository does not claim that Plugin 0.3.0 consumes
+it. Locator-aware Plugin work is a separate release task.
+
 Plugin 0.3.0 bundles an `eve-static-map` STDIO definition whose command is the bare `eve-map-mcp.exe` name.
 The Portable ZIP intentionally does not add its directory to PATH, so that bare command is not automatically
 discoverable. The reliable ZIP workflow is an explicit absolute-path registration:
@@ -45,6 +49,10 @@ Codex              -> direct STDIO process
 The external MCP client stores the absolute launcher path. After moving the application directory or extracting a new
 release elsewhere, remove and recreate only `eve-static-map` with the new path, then restart Codex. Neither the
 Portable application nor Plugin changes Codex configuration automatically.
+
+A future locator-aware Plugin may instead reread `%LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json` when
+initializing or reconnecting. Restarting the moved map updates that locator; it does not repair this Plugin's current
+manual Codex registration.
 
 ## Quick checks
 

@@ -44,12 +44,17 @@ All launchers use the one bundled jlink runtime. The GUI uses the Windows GUI su
 console subsystem, start `dev.evestaticmapplanner.mcp.MainKt`, and have identical production-only classpaths under
 `app\mcp`.
 
-The ZIP does not modify PATH or external MCP-client configuration. Register the absolute path to
-`eve-map-mcp.exe` (or the compatibility launcher) in the chosen extracted directory. Moving or replacing that
-directory requires updating the external registration.
+The ZIP does not modify PATH or external MCP-client configuration. The packaged map publishes the client-neutral
+locator `%LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json`; a locator-aware plugin can read it at session
+initialization or reconnect and start the reported `eve-map-mcp.exe` directly. See `mcp-discovery.md`.
 
-The program image contains no control discovery descriptor, session key, lock, database, preferences, or other user
-state. `active-instance.json`, `session.key`, and `active.lock` are created only beneath
+The manual registration below remains supported and stores the absolute `eve-map-mcp.exe` path (or compatibility
+launcher) from the chosen extracted directory. Moving or replacing that directory requires updating the manual
+external registration.
+
+The program image contains no MCP locator, control discovery descriptor, session key, lock, database, preferences, or
+other user state. `mcp.json` is created only beneath `%LOCALAPPDATA%\EVE Static Map Planner\integration` after GUI
+startup. `active-instance.json`, `session.key`, and `active.lock` are created only beneath
 `%LOCALAPPDATA%\EVE Static Map Planner\control` after the running app enables AI Control. The bridge remains
 STDIO-only and its classpath excludes Ktor HTTP/SSE/WebSocket server runtimes.
 
@@ -86,7 +91,7 @@ succeed while a map tool returns `APP_DISCONNECTED`. With the map running and AI
 end-to-end check such as search, focus, begin mission, show route, add a temporary marker, query markers, and clear
 the mission.
 
-The registration stores an absolute external path. If the Portable directory is moved or a new release is extracted
+The manual registration stores an absolute external path. If the Portable directory is moved or a new release is extracted
 elsewhere, repeat the registration with the new launcher path.
 
 ## Fixed tool surface
