@@ -242,6 +242,59 @@ rootProject.tasks.matching { it.name == "downloadWix" || it.name == "unzipWix" }
     enabled = false
 }
 
+// Compose 1.10 creates jlink's output directory before invoking JDK 25 jlink on Windows, but jlink
+// requires the output itself to be absent. Keep the official jlink image contract while replacing
+// only that broken task action; downstream Compose/jpackage tasks continue to consume the same path.
+tasks.matching { it.name == "createRuntimeImage" }.configureEach {
+    setActions(emptyList())
+    val jlinkOutput = layout.buildDirectory.dir("compose/tmp/main/runtime")
+    outputs.dir(jlinkOutput)
+    doLast {
+        val output = jlinkOutput.get().asFile
+        val outputParent = checkNotNull(output.parentFile)
+        check(outputParent.isDirectory || outputParent.mkdirs()) { "Could not create jlink work directory: $outputParent" }
+        val jlink = File(System.getProperty("java.home"), "bin/jlink.exe")
+        check(jlink.isFile) { "jlink.exe is unavailable in the Gradle JDK: $jlink" }
+        project.delete(output)
+        check(!output.exists()) { "Could not reset Compose jlink output: $output" }
+        val arguments = listOf(
+            jlink.absolutePath,
+            "--add-modules",
+            listOf(
+                "java.base",
+                "java.desktop",
+                "java.instrument",
+                "java.logging",
+                "java.net.http",
+                "java.sql",
+                "jdk.crypto.ec",
+                "jdk.httpserver",
+                "jdk.unsupported",
+            ).joinToString(","),
+            "--strip-debug",
+            "--no-header-files",
+            "--no-man-pages",
+            "--strip-native-commands",
+            "--output",
+            output.absolutePath,
+        )
+        val logDirectory = layout.buildDirectory.dir("compose/logs/createRuntimeImage").get().asFile
+        check(logDirectory.isDirectory || logDirectory.mkdirs()) { "Could not create jlink log directory: $logDirectory" }
+        val stdout = logDirectory.resolve("jlink-out.txt")
+        val stderr = logDirectory.resolve("jlink-err.txt")
+        val process = ProcessBuilder(arguments)
+            .directory(project.projectDir)
+            .redirectOutput(stdout)
+            .redirectError(stderr)
+            .start()
+        val exitCode = process.waitFor()
+        stdout.readLines().filter(String::isNotBlank).forEach(logger::lifecycle)
+        stderr.readLines().filter(String::isNotBlank).forEach(logger::error)
+        check(exitCode == 0) { "jlink runtime-image creation failed with exit code $exitCode" }
+        check(output.resolve("lib/modules").isFile) { "jlink runtime image is incomplete: $output" }
+    }
+}
+
 tasks.matching { it.name == "createDistributable" }.configureEach {
     dependsOn(prepareUnusedComposeWixDirectory)
 }
@@ -484,6 +537,26 @@ val featurePackInstalledImageTest by tasks.registering(Test::class) {
     }
     inputs.dir(integratedApplicationImage)
     inputs.files(featurePackFixture)
+    outputs.upToDateWhen { false }
+}
+
+val esiPackInstalledImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Loads the real ESI Pack through the final Windows production launcher."
+    dependsOn(createIntegratedDistributable)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.featurepack.EsiPackInstalledImageTest")
+    systemProperty("feature.pack.installed.image", integratedApplicationImage.absolutePath)
+    doFirst {
+        val pack = esiPackJar.orNull?.let(::file)
+            ?: error("esiPackInstalledImageTest requires -PesiPackJar=<canonical ESI Pack jar>")
+        check(pack.isFile) { "ESI Pack jar does not exist: ${pack.absolutePath}" }
+        systemProperty("esi.pack.jar", pack.absolutePath)
+    }
+    inputs.dir(integratedApplicationImage)
+    inputs.file(esiPackJar)
     outputs.upToDateWhen { false }
 }
 

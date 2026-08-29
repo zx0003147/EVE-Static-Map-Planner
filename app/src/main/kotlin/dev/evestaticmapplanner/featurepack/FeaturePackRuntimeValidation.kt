@@ -20,12 +20,14 @@ object FeaturePackRuntimeValidation {
     fun run(arguments: FeaturePackRuntimeValidationArguments) {
         val events = mutableListOf<String>()
         val runtime = ProductionFeaturePackRuntime.start(eventSink = events::add)
+        val packControlPackIds = runtime.packControlHost.state.value.map { it.packId.value }
         val closed = runtime.closeSafely()
         arguments.reportPath.parent?.let(Files::createDirectories)
         Files.writeString(arguments.reportPath, buildString {
             appendLine("packRoot=${runtime.startReport.packRoot}")
             appendLine("candidateCount=${runtime.startReport.candidates.size}")
             appendLine("loadedPackIds=${runtime.startReport.loadedPackIds.joinToString(",") { it.value }}")
+            appendLine("packControlPackIds=${packControlPackIds.joinToString(",")}")
             appendLine("startupFailures=${runtime.startReport.failures.joinToString(",") { it.kind.name }}")
             appendLine("packEvents=${events.joinToString("|")}")
             appendLine("closeFailures=${closed.failures.joinToString(",") { it.kind.name }}")
