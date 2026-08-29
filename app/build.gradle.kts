@@ -35,7 +35,7 @@ val appVersion = providers.gradleProperty("appVersion").get()
 val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
 val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 val windowsUpgradeUuid = "502B9850-A5B0-4922-BB20-AC7FEBA590DC"
-val windowsProductUuid = "D26534C4-866C-48BD-A383-CFFE1D096FCD"
+val windowsProductUuid = "00771A4A-EAAA-492C-9912-5A58EF3D323E"
 val windowsComponentNamespace = UUID.fromString(windowsUpgradeUuid)
 val historicalProductCodes = setOf(
     "{A7D6C309-9A9F-3079-A87B-1616BAD49516}", // 0.1.0
@@ -45,6 +45,7 @@ val historicalProductCodes = setOf(
     "{47FE49EB-BDC1-3CF5-B949-C743BA3822FD}", // discarded 0.6.0 pre-release MSI
     "{29AF5999-F80D-4608-A69B-D06CF096751E}", // discarded 0.6.0 early-removal QA MSI
     "{050C3D41-224F-4558-90C1-745159869D14}", // discarded 0.6.0 pre-commit QA MSI
+    "{D26534C4-866C-48BD-A383-CFFE1D096FCD}", // discarded 0.6.0 late-removal QA MSI
 )
 val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
 val distributionNoticeFiles = files(
@@ -189,8 +190,20 @@ val verifyWindowsInstallerResources by tasks.registering {
             mainWxs.contains("IncludeMaximum=\"yes\"")) {
             "The installer no longer replaces an older same-version release candidate."
         }
-        check(mainWxs.contains("<RemoveExistingProducts After=\"InstallFinalize\" />")) {
-            "The installer no longer preserves shared components during a same-version replacement."
+        check(mainWxs.contains("<RemoveExistingProducts Before=\"CostInitialize\" />")) {
+            "The installer no longer fully replaces same-version application components."
+        }
+        check(mainWxs.contains("Action=\"Wix4CloseApplications_X64\" Before=\"RemoveExistingProducts\"")) {
+            "The installer no longer releases packaged runtime files before a major upgrade."
+        }
+        listOf(
+            "EVE Static Map Planner.exe",
+            "${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}.exe",
+            "${WindowsAppImageIntegration.MCP_LAUNCHER}.exe",
+        ).forEach { launcher ->
+            check(mainWxs.contains("Target=\"$launcher\"")) {
+                "The installer does not close $launcher before replacing packaged files."
+            }
         }
         check(mainWxs.contains("Id=\"${WindowsAppImageIntegration.PATH_COMPONENT_ID}\"")) {
             "The stable MCP PATH Component is missing from the custom main.wxs."
@@ -847,16 +860,19 @@ tasks.matching { it.name == "packageMsi" }.configureEach {
         check(distributionAudit.installExecuteSequence.count {
             it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[1] == "UPGRADINGPRODUCTCODE"
         } == 1) { "Major-upgrade AppData preservation sequence drifted" }
-        val installFinalizeSequence = distributionAudit.installExecuteSequence.single {
-            it[0] == "InstallFinalize"
+        check("Wix4CloseApplication" in distributionAudit.tables) {
+            "Final MSI contains no CloseApplication records"
+        }
+        val closeApplicationsSequence = distributionAudit.installExecuteSequence.single {
+            it[0] == "Wix4CloseApplications_X64"
         }[2].toInt()
         val removeExistingProductsSequence = distributionAudit.installExecuteSequence.single {
             it[0] == "RemoveExistingProducts"
         }[2].toInt()
-        check(removeExistingProductsSequence > installFinalizeSequence) {
-            "Major upgrade must remove the related product after InstallFinalize: " +
-                "RemoveExistingProducts=$removeExistingProductsSequence, " +
-                "InstallFinalize=$installFinalizeSequence"
+        check(closeApplicationsSequence < removeExistingProductsSequence) {
+            "Major upgrade must close packaged processes before removing the related product: " +
+                "CloseApplications=$closeApplicationsSequence, " +
+                "RemoveExistingProducts=$removeExistingProductsSequence"
         }
         check(distributionAudit.removeFolderEx.size == 1 &&
             distributionAudit.removeFolderEx.single()[2] == "RM_RF48431AECBD69377EA800D62616352F20") {

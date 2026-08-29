@@ -15,7 +15,8 @@
   converted from WiX 3 authoring to WiX 4, added the guarded major-upgrade
   RemoveFolderEx suppression, and added the per-user MCP PATH component.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <?ifdef JpIsSystemWide ?>
     <?define JpInstallScope="perMachine"?>
@@ -41,7 +42,7 @@
   <?endif ?>
 
   <!-- Final 0.6.0 RC identity. It intentionally replaces the discarded 0.6.0 pre-release MSI. -->
-  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="{D26534C4-866C-48BD-A383-CFFE1D096FCD}" Scope="$(var.JpInstallScope)">
+  <Package Name="$(var.JpAppName)" Language="$(var.JpProductLanguage)" Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)" UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)" Compressed="$(var.JpCompressedMsi)" ProductCode="{00771A4A-EAAA-492C-9912-5A58EF3D323E}" Scope="$(var.JpInstallScope)">
     <SummaryInformation Manufacturer="$(var.JpAppVendor)" Description="$(var.JpAppDescription)" />
 
     <Media Id="1" Cabinet="Data.cab" EmbedCab="yes" />
@@ -50,6 +51,11 @@
       <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectUpgrade)" Property="JP_UPGRADABLE_FOUND" Maximum="$(var.JpAppVersion)" MigrateFeatures="yes" IncludeMaximum="yes" />
       <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectDowngrade)" Property="JP_DOWNGRADABLE_FOUND" Minimum="$(var.JpAppVersion)" MigrateFeatures="yes" IncludeMinimum="$(var.JpUpgradeVersionOnlyDetectDowngrade)" />
     </Upgrade>
+
+    <!-- A major upgrade must release every product runtime file before the old product is removed. -->
+    <util:CloseApplication Id="JpCloseMainApplication" Target="EVE Static Map Planner.exe" CloseMessage="yes" ElevatedCloseMessage="yes" Timeout="5" TerminateProcess="0" RebootPrompt="no" />
+    <util:CloseApplication Id="JpCloseStableMcpApplication" Target="eve-map-mcp.exe" Timeout="2" TerminateProcess="0" RebootPrompt="no" />
+    <util:CloseApplication Id="JpCloseDisplayMcpApplication" Target="EVE Map MCP Bridge.exe" Timeout="2" TerminateProcess="0" RebootPrompt="no" />
 
     <?ifndef JpAllowUpgrades ?>
     <CustomAction Id="JpDisallowUpgrade" Error="!(loc.DisallowUpgradeErrorMessage)" />
@@ -123,13 +129,8 @@
       <?endif ?>
       <LaunchConditions Before="AppSearch" />
       <Custom Action="JpSuppressRemoveFolderExDuringUpgrade" After="AppSearch" Condition="UPGRADINGPRODUCTCODE" />
-      <!--
-        Register the replacement before removing the related product. This keeps
-        shared component references alive when the installed MCP bridge is in use,
-        so a same-version RC replacement cannot schedule the replacement runtime
-        and MCP JARs for deletion on reboot.
-      -->
-      <RemoveExistingProducts After="InstallFinalize" />
+      <Custom Action="Wix4CloseApplications_X64" Before="RemoveExistingProducts" />
+      <RemoveExistingProducts Before="CostInitialize" />
       <Custom Action="JpFindRelatedProducts" After="FindRelatedProducts" />
     </InstallExecuteSequence>
 

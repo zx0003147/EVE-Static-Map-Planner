@@ -105,12 +105,13 @@ installer-behavior change clears that dedicated RemoveFolderEx property after
 has no root during major-upgrade removal, while an explicit uninstall leaves the
 property intact and deletes the complete application/data tree.
 
-`RemoveExistingProducts` is sequenced after `InstallFinalize`. The replacement
-product is therefore registered before Windows Installer removes the related
-product, preserving shared component references. This matters when a Codex host
-is actively using the installed MCP bridge during a same-version release-candidate
-replacement: unchanged runtime and MCP files remain owned by the replacement and
-are not queued for deletion on reboot.
+`RemoveExistingProducts` remains before `CostInitialize`, so a same-version
+release-candidate replacement installs a complete new component graph instead of
+retaining unversioned files from the related product. Before that removal, WiX
+`CloseApplication` records close the GUI and both MCP launcher names, terminating
+them after a short grace period when necessary. This releases the bundled runtime
+and MCP JARs even when a Codex host is using the bridge, avoiding reboot-time file
+deletion without weakening the full-replacement semantics.
 
 Compose Multiplatform 1.10.0 does not expose a working public DSL hook for its
 private jpackage resource directory. The `packageMsi` task therefore keeps
