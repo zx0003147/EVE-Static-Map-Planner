@@ -67,7 +67,7 @@ On Windows, external Packs are discovered below:
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\<pack-id>\pack.jar
 ```
 
-The Feature Pack root is outside the application image and MSI installation directory. Installing a Pack therefore
+The Feature Pack root is outside the Portable application image. Installing a Pack therefore
 does not mutate application binaries. Core discovers prebuilt JARs; it does not build Pack source as part of the
 desktop application.
 

@@ -17,6 +17,8 @@ class RuntimeConfigurationTest {
         assertTrue(build.contains("\"jdk.httpserver\""))
         assertTrue(build.contains("createIntegratedDistributable"))
         assertTrue(build.contains("WindowsAppImageIntegration.audit"))
-        assertTrue(build.contains("\":mcp:installedImageTest\""))
+        assertTrue(build.contains("packagePortableZip"))
+        assertTrue(build.contains("verifyPortableZip"))
+        assertTrue(build.contains("\":mcp:portableInstalledImageTest\""))
     }
 }

@@ -3,7 +3,7 @@
 A small Kotlin/JVM desktop application for offline EVE Online static-map and route-planning workflows.
 
 Version 0.6.0 completes the static map, normal routing, manual Ansiblex, jump-range overlay, capital-routing,
-managed SDE updates, external Feature Packs, and the self-contained Windows x64 MSI release candidate.
+managed SDE updates, external Feature Packs, and the self-contained Windows x64 Portable ZIP release.
 
 Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
 exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
@@ -44,7 +44,7 @@ Disconnect controls appear generically in the Feature Packs preferences page.
 
 See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
 
-## Requirements
+## Development requirements
 
 - JDK 25
 
@@ -74,22 +74,51 @@ The separate user database resolves through `--user-database`, `eve.user.databas
 
 ## Windows x64 distribution
 
-The self-contained application image includes its own Java runtime:
+The official Windows distribution is the installer-free Portable ZIP:
 
-```powershell
-.\gradlew.bat :app:createDistributable
-.\gradlew.bat :app:runDistributable
+```text
+EVE-Static-Map-Planner-0.6.0-Windows-x64.zip
 ```
 
-Building the unsigned MSI additionally requires WiX Toolset 4.0.6 on the build machine:
+Download and extract the complete ZIP, then open:
 
-```powershell
-.\gradlew.bat :app:packageMsi
+```text
+EVE Static Map Planner\EVE Static Map Planner.exe
 ```
 
-Generated native-distribution files remain under `app/build/compose/binaries`. The installer never packages or replaces `static.db`, `user.db`, or update state under `%LOCALAPPDATA%\EVE Static Map Planner` during installation or upgrade. Uninstall intentionally removes the application together with that local data root, including managed static data, user/Ansiblex data, updater state, and logs.
+Do not move or copy only the EXE; the adjacent `app` and `runtime` directories are required. No Java installation,
+MSI, Windows Installer, Start Menu entry, desktop shortcut, or uninstall entry is required or created.
 
-See `docs/windows-distribution.md` for the stable installer identity, data boundary, build environment, and acceptance checklist.
+To build and audit the same ZIP from source:
+
+```powershell
+.\gradlew.bat --no-daemon --console=plain :app:verifyPortableZip
+```
+
+The final artifact, checksum, audit, and release manifest are written under `build\release`. Packaging reuses the
+verified Compose/jpackage application image and includes its own Java runtime; WiX is not required.
+
+This is an installer-free application distribution, not a mode that stores user data beside the EXE. Mutable data
+always remains under:
+
+```text
+%LOCALAPPDATA%\EVE Static Map Planner
+```
+
+That includes managed `static.db`, `user.db`, settings, logs, ESI credential storage, and external Feature Packs.
+Moving, copying, replacing, or deleting the extracted program directory does not move or delete this data.
+
+To update, close the app and any MCP bridge processes, extract the new ZIP to a new directory, run it, and remove the
+old program directory after validation. Avoid overwriting files in a running program directory. To remove the app,
+delete the extracted directory. To remove all user data too, first Disconnect the ESI Pack if desired, then manually
+delete the LocalAppData directory.
+
+The Portable image includes `EVE Map MCP Bridge.exe` and `eve-map-mcp.exe`. External MCP clients must register the
+absolute path to the launcher in the current extracted directory. If that directory is moved or replaced, update the
+external MCP registration to the new absolute path.
+
+See `docs/windows-distribution.md` for the Portable layout, data boundary, build process, MCP path behavior, and
+acceptance checklist.
 
 ### Public distribution branding review
 

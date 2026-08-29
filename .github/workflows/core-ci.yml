@@ -70,6 +70,10 @@ jobs:
           :mcp:test
           --tests dev.evestaticmapplanner.mcp.McpToolCatalogTest
 
-      - name: Build all Core modules without MSI
+      - name: Build all Core modules
         shell: pwsh
         run: .\gradlew.bat --no-daemon --console=plain build
+
+      - name: Build and audit Windows Portable ZIP
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon --console=plain :app:portableAcceptance

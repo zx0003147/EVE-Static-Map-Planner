@@ -202,3 +202,35 @@ val installedImageTest by tasks.registering(Test::class) {
     inputs.file(integratedApplicationImage.resolve("eve-map-mcp.exe"))
     outputs.upToDateWhen { false }
 }
+
+val portableInstalledImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs MCP process tests against the launcher extracted from the final Portable ZIP."
+    dependsOn(":app:verifyPortableZip")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.mcp.McpProcessTest")
+    val portableImage = rootProject.layout.buildDirectory.dir(
+        "portable-acceptance/Portable QA With Spaces/EVE Static Map Planner",
+    )
+    doFirst {
+        systemProperty(
+            "eve.mcp.launcher.path",
+            portableImage.get().file("EVE Map MCP Bridge.exe").asFile.absolutePath,
+        )
+        systemProperty(
+            "eve.mcp.stable.launcher.path",
+            portableImage.get().file("eve-map-mcp.exe").asFile.absolutePath,
+        )
+        val pathEnvironmentKey = System.getenv().keys.firstOrNull {
+            it.equals("PATH", ignoreCase = true)
+        } ?: "Path"
+        environment(
+            pathEnvironmentKey,
+            portableImage.get().asFile.absolutePath + ";" + System.getenv(pathEnvironmentKey).orEmpty(),
+        )
+    }
+    inputs.dir(portableImage)
+    outputs.upToDateWhen { false }
+}

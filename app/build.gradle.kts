@@ -1,14 +1,11 @@
-import dev.evestaticmapplanner.packaging.JpackageComponentGuidNamespace
-import dev.evestaticmapplanner.packaging.MsiComponentTableReader
-import dev.evestaticmapplanner.packaging.MsiDistributionAuditReader
-import dev.evestaticmapplanner.packaging.MsiLegacyPackageCleanupReader
+import dev.evestaticmapplanner.packaging.PortableDistributionAudit
 import dev.evestaticmapplanner.packaging.WindowsAppImageIntegration
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.bundling.Zip
 import org.gradle.api.tasks.testing.Test
 import java.io.File
 import java.nio.charset.Charset
-import java.util.UUID
 import java.util.jar.JarFile
 
 plugins {
@@ -34,20 +31,6 @@ fun propertyValue(value: String): String = value
 val appVersion = providers.gradleProperty("appVersion").get()
 val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
 val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
-val windowsUpgradeUuid = "502B9850-A5B0-4922-BB20-AC7FEBA590DC"
-val windowsProductUuid = "00771A4A-EAAA-492C-9912-5A58EF3D323E"
-val windowsComponentNamespace = UUID.fromString(windowsUpgradeUuid)
-val historicalProductCodes = setOf(
-    "{A7D6C309-9A9F-3079-A87B-1616BAD49516}", // 0.1.0
-    "{1984FBD7-03D9-38DD-8ECD-F58783036C95}", // 0.1.1
-    "{8E5104B6-B3CA-36C7-BC65-B3401F15F421}", // 0.1.2
-    "{A9BA3E5C-BEAA-336C-830D-5663D6477EEA}", // 0.2.0
-    "{47FE49EB-BDC1-3CF5-B949-C743BA3822FD}", // discarded 0.6.0 pre-release MSI
-    "{29AF5999-F80D-4608-A69B-D06CF096751E}", // discarded 0.6.0 early-removal QA MSI
-    "{050C3D41-224F-4558-90C1-745159869D14}", // discarded 0.6.0 pre-commit QA MSI
-    "{D26534C4-866C-48BD-A383-CFFE1D096FCD}", // discarded 0.6.0 late-removal QA MSI
-)
-val windowsInstallerResources = layout.projectDirectory.dir("src/main/jpackage/windows")
 val distributionNoticeFiles = files(
     rootProject.file("NOTICE.md"),
     rootProject.file("THIRD-PARTY-NOTICES.md"),
@@ -170,42 +153,6 @@ tasks.test {
     }
 }
 
-val verifyWindowsInstallerResources by tasks.registering {
-    inputs.file(windowsInstallerResources.file("main.wxs"))
-    doLast {
-        val mainWxs = windowsInstallerResources.file("main.wxs").asFile.readText()
-        check(mainWxs.contains("Property=\"RM_RF48431AECBD69377EA800D62616352F20\" Value=\"\"")) {
-            "The jpackage RemoveFolderEx path property is not cleared by the custom main.wxs."
-        }
-        check(mainWxs.contains("After=\"AppSearch\" Condition=\"UPGRADINGPRODUCTCODE\"")) {
-            "The custom main.wxs does not guard recursive cleanup during a major upgrade."
-        }
-        check(windowsUpgradeUuid == "502B9850-A5B0-4922-BB20-AC7FEBA590DC") {
-            "The Windows installer UpgradeCode changed unexpectedly."
-        }
-        check(mainWxs.contains("ProductCode=\"{$windowsProductUuid}\"")) {
-            "The final 0.6.0 ProductCode drifted."
-        }
-        check(mainWxs.contains("Property=\"JP_UPGRADABLE_FOUND\"") &&
-            mainWxs.contains("IncludeMaximum=\"yes\"")) {
-            "The installer no longer replaces an older same-version release candidate."
-        }
-        check(mainWxs.contains("<RemoveExistingProducts Before=\"CostInitialize\" />")) {
-            "The installer no longer fully replaces same-version application components."
-        }
-        check(mainWxs.contains("Id=\"${WindowsAppImageIntegration.PATH_COMPONENT_ID}\"")) {
-            "The stable MCP PATH Component is missing from the custom main.wxs."
-        }
-        check(mainWxs.contains("Guid=\"${WindowsAppImageIntegration.PATH_COMPONENT_GUID}\"")) {
-            "The stable MCP PATH Component GUID drifted."
-        }
-        check(mainWxs.contains(
-            "<Environment Id=\"${WindowsAppImageIntegration.PATH_ENVIRONMENT_ID}\" Name=\"PATH\" " +
-                "Value=\"[INSTALLDIR]\" Action=\"set\" Part=\"last\" System=\"no\" Permanent=\"no\" />",
-        )) { "The per-user MSI PATH authoring drifted." }
-    }
-}
-
 kotlin {
     jvmToolchain(25)
 }
@@ -216,7 +163,6 @@ compose.desktop {
         jvmArgs("--enable-native-access=ALL-UNNAMED")
         nativeDistributions {
             nativeOutputDir?.let { outputBaseDir.set(file(it).resolve("compose")) }
-            targetFormats(TargetFormat.Msi)
             packageName = "EVE Static Map Planner"
             packageVersion = appVersion
             description = "Unofficial static map and route planning tool for EVE Online."
@@ -233,20 +179,14 @@ compose.desktop {
             windows {
                 iconFile.set(project.file("src/main/resources/icons/app-icon.ico"))
                 console = false
-                dirChooser = false
-                perUserInstall = true
-                menu = true
-                menuGroup = "EVE Static Map Planner"
-                shortcut = true
-                upgradeUuid = windowsUpgradeUuid
             }
         }
     }
 }
 
-// Compose 1.10.0 validates its private WiX 3 directory even for an app-image,
-// while the project uses the system WiX 4 tool only in the custom MSI pipeline.
-// Keep the unused Compose tasks disabled and satisfy only the directory input.
+// Compose 1.10.0 validates its private WiX 3 directory even for an app-image.
+// Portable packaging never invokes WiX; keep the unused downloader tasks disabled
+// and satisfy only the plugin's directory input.
 val prepareUnusedComposeWixDirectory by rootProject.tasks.registering {
     doLast {
         rootProject.layout.buildDirectory.dir("wix311").get().asFile.mkdirs()
@@ -575,315 +515,200 @@ val esiPackInstalledImageTest by tasks.registering(Test::class) {
     outputs.upToDateWhen { false }
 }
 
-// Compose 1.10.0 always appends its private --resource-dir after freeArgs. Keep
-// its public packageMsi task and app-image prerequisites, but replace the final
-// invocation with a two-pass jpackage pipeline. Pass 1 is a non-release probe;
-// pass 2 adopts a generated bundle.wxf whose effective Component GUIDs are
-// deterministically namespaced by the fixed UpgradeCode.
-tasks.matching { it.name == "packageMsi" }.configureEach {
-    setActions(emptyList())
+val portableArchiveName = PortableDistributionAudit.archiveFileName(appVersion)
+val portableReleaseDirectory = rootProject.layout.buildDirectory.dir("release")
+val portableArchiveFile = portableReleaseDirectory.map { it.file(portableArchiveName) }
+val portableExtractionRoot = rootProject.layout.buildDirectory.dir(
+    "portable-acceptance/Portable QA With Spaces",
+)
+val portableExtractedImage = portableExtractionRoot.map {
+    it.dir(PortableDistributionAudit.ROOT_DIRECTORY)
+}
+
+val packagePortableZip by tasks.registering(Zip::class) {
+    group = "distribution"
+    description = "Packages the verified self-contained Windows x64 application image as a Portable ZIP."
     dependsOn(
         createIntegratedDistributable,
         verifyFeaturePackPackaging,
-        featurePackInstalledImageTest,
-        verifyWindowsInstallerResources,
         ":mcp:analyzeProductionRuntimeModules",
-        ":mcp:installedImageTest",
     )
-    inputs.dir(windowsInstallerResources)
-    inputs.property("windowsComponentNamespace", windowsComponentNamespace.toString())
-    inputs.property("windowsProductUuid", windowsProductUuid)
-    inputs.property("jpackageComponentGuidContract", JpackageComponentGuidNamespace.NAME_PREFIX)
-    val applicationImage = integratedApplicationImage
-    val generatedMsi = nativeComposeOutputBase.resolve("main/msi/EVE Static Map Planner-$appVersion.msi")
-    val componentGuidBuildRoot = layout.buildDirectory.dir("jpackage/component-guid").get().asFile
-    val probeRoot = componentGuidBuildRoot.resolve("probe")
-    val probeTemp = probeRoot.resolve("temp")
-    val probeDest = probeRoot.resolve("out")
-    val finalTemp = componentGuidBuildRoot.resolve("final-temp")
-    val packagingLogs = componentGuidBuildRoot.resolve("logs")
-    val generatedWindowsResources = layout.buildDirectory.dir("generated/jpackage/windows").get().asFile
-    val generatedBundle = generatedWindowsResources.resolve("bundle.wxf")
-    val componentMappingCsv = componentGuidBuildRoot.resolve("component-guid-mapping.csv")
-    inputs.dir(applicationImage)
-    outputs.files(generatedMsi, generatedBundle, componentMappingCsv)
-    outputs.upToDateWhen { false }
-    doLast {
+    archiveFileName.set(portableArchiveName)
+    destinationDirectory.set(portableReleaseDirectory)
+    from(integratedApplicationImage) {
+        into(PortableDistributionAudit.ROOT_DIRECTORY)
+    }
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    isReproducibleFileOrder = true
+    isPreserveFileTimestamps = false
+    doFirst {
         check(System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
-            "The MSI can only be packaged on Windows."
+            "The Windows Portable ZIP can only be packaged on Windows."
         }
-        check(System.getProperty("java.runtime.version").startsWith("25.0.4+7")) {
-            "jpackage Component GUID contract was audited for JDK 25.0.4+7 only; " +
-                "found ${System.getProperty("java.runtime.version")}. Perform the documented JDK drift audit."
+        check(integratedApplicationImage.isDirectory) {
+            "Missing integrated application image: $integratedApplicationImage"
         }
-        check(applicationImage.isDirectory) { "Missing Compose application image: $applicationImage" }
+    }
+}
 
-        val executable = File(System.getProperty("java.home"), "bin/jpackage.exe")
-        check(executable.isFile) { "jpackage.exe is not available in the Gradle JDK: $executable" }
+val verifyPortableZip by tasks.registering {
+    group = "verification"
+    description = "Audits and extracts the final Portable ZIP, then verifies the extracted app-image."
+    dependsOn(packagePortableZip)
+    val auditFile = portableReleaseDirectory.map { it.file("portable-audit-0.6.0.txt") }
+    val checksumFile = portableReleaseDirectory.map { it.file("$portableArchiveName.sha256") }
+    val manifestFile = portableReleaseDirectory.map { it.file("release-manifest-0.6.0.txt") }
+    outputs.files(auditFile, checksumFile, manifestFile)
+    outputs.dir(portableExtractionRoot)
+    outputs.upToDateWhen { false }
 
-        val buildRoot = layout.buildDirectory.get().asFile.canonicalFile
-        fun resetBuildOutput(directory: File) {
-            val target = directory.canonicalFile
-            check(target != buildRoot && target.toPath().startsWith(buildRoot.toPath())) {
-                "Refusing to reset packaging output outside the app build directory: $target"
-            }
-            project.delete(target)
-            check(target.mkdirs()) { "Could not create packaging output directory: $target" }
+    doLast {
+        val zip = portableArchiveFile.get().asFile.toPath()
+        val expectedMcpJars = mcpInstalledLibraries.get().asFile.listFiles()
+            ?.filter { it.isFile && it.extension.equals("jar", ignoreCase = true) }
+            ?.map(File::getName)
+            ?.toSet()
+            .orEmpty()
+        val archiveAudit = PortableDistributionAudit.audit(zip, appVersion, expectedMcpJars)
+
+        val extractionRoot = portableExtractionRoot.get().asFile
+        val rootBuildDirectory = rootProject.layout.buildDirectory.get().asFile.canonicalFile
+        val extractionTarget = extractionRoot.canonicalFile
+        check(extractionTarget != rootBuildDirectory && extractionTarget.toPath().startsWith(rootBuildDirectory.toPath())) {
+            "Refusing to reset Portable extraction outside the root build directory: $extractionTarget"
         }
-
-        fun jpackageArguments(destination: File, temporaryDirectory: File, resourceDirectory: File): List<String> = listOf(
-            executable.absolutePath,
-            "--type", "msi",
-            "--app-image", applicationImage.absolutePath,
-            "--dest", destination.absolutePath,
-            "--temp", temporaryDirectory.absolutePath,
-            "--resource-dir", resourceDirectory.absolutePath,
-            "--name", "EVE Static Map Planner",
-            "--description", "Unofficial static map and route planning tool for EVE Online.",
-            "--app-version", appVersion,
-            "--vendor", "Static Map Planner Project",
-            "--win-per-user-install",
-            "--win-shortcut",
-            "--win-menu",
-            "--win-menu-group", "EVE Static Map Planner",
-            "--win-upgrade-uuid", windowsUpgradeUuid,
-            "--verbose",
-        )
-
-        val processCharset = Charset.forName(System.getProperty("native.encoding", "UTF-8"))
-        fun runJpackage(label: String, arguments: List<String>): String {
-            val stdoutFile = packagingLogs.resolve("$label-jpackage-out.log")
-            val stderrFile = packagingLogs.resolve("$label-jpackage-err.log")
-            packagingLogs.mkdirs()
-            packagingLogs.resolve("$label-jpackage-command.txt").writeText(
-                arguments.joinToString(System.lineSeparator()) { argument ->
-                    if (argument.any(Char::isWhitespace)) "\"$argument\"" else argument
-                } + System.lineSeparator(),
-            )
-            val process = ProcessBuilder(arguments)
-                .directory(project.projectDir)
-                .redirectOutput(stdoutFile)
-                .redirectError(stderrFile)
-                .start()
-            val exitCode = process.waitFor()
-            val stdout = stdoutFile.readText(processCharset)
-            val stderr = stderrFile.readText(processCharset)
-            stdout.lineSequence().filter(String::isNotBlank).forEach(logger::lifecycle)
-            stderr.lineSequence().filter(String::isNotBlank).forEach(logger::error)
-            check(exitCode == 0) { "$label jpackage invocation failed with exit code $exitCode" }
-            return stdout + System.lineSeparator() + stderr
+        rootProject.delete(extractionTarget)
+        rootProject.copy {
+            from(rootProject.zipTree(zip.toFile()))
+            into(extractionTarget)
         }
 
-        resetBuildOutput(componentGuidBuildRoot)
-        check(probeTemp.mkdirs() && probeDest.mkdirs() && finalTemp.mkdirs() && packagingLogs.mkdirs()) {
-            "Could not create two-pass jpackage directories under $componentGuidBuildRoot"
+        val extractedImage = portableExtractedImage.get().asFile
+        val jimage = File(System.getProperty("java.home"), "bin/jimage.exe")
+        val imageAudit = WindowsAppImageIntegration.audit(
+            extractedImage.toPath(),
+            expectedMcpJars,
+            jimage.toPath(),
+        )
+        val extractedFiles = extractedImage.walkTopDown().count(File::isFile)
+        check(extractedFiles == archiveAudit.fileCount) {
+            "Extracted file count drift: archive=${archiveAudit.fileCount}, extracted=$extractedFiles"
         }
+        check(extractedImage.walkTopDown().none { path ->
+            path.isFile && path.name.lowercase() in WindowsAppImageIntegration.forbiddenPackagedFileNames
+        }) { "Extracted application image contains mutable user data" }
 
-        val probeLog = runJpackage(
-            "probe",
-            jpackageArguments(probeDest, probeTemp, windowsInstallerResources.asFile),
+        val checksumLine = "${archiveAudit.sha256}  $portableArchiveName"
+        checksumFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(checksumLine + System.lineSeparator(), Charsets.UTF_8)
+        }
+        manifestFile.get().asFile.writeText(
+            buildString {
+                appendLine("EVE Static Map Planner release 0.6.0")
+                appendLine("main_artifact=$portableArchiveName")
+                appendLine("main_size_bytes=${zip.toFile().length()}")
+                appendLine("main_uncompressed_size_bytes=${archiveAudit.uncompressedSize}")
+                appendLine("main_file_count=${archiveAudit.fileCount}")
+                appendLine("main_sha256=${archiveAudit.sha256}")
+                appendLine("esi_pack_version=0.5.0")
+                appendLine("sovereignty_pack_version=0.2.0")
+                appendLine("feature_api_version=2.0.0")
+                appendLine("msi_artifact=REMOVED")
+            },
+            Charsets.UTF_8,
         )
-        val probeMsi = probeDest.resolve("EVE Static Map Planner-$appVersion.msi")
-        val probeBundle = probeTemp.resolve("config/bundle.wxf")
-        check(probeMsi.isFile) { "Probe MSI was not created: $probeMsi" }
-        check(probeBundle.isFile) { "Probe bundle.wxf was not retained: $probeBundle" }
-        check(Regex("main\\.wxs", RegexOption.IGNORE_CASE).findAll(probeLog).count() >= 3) {
-            "Probe verbose log does not prove custom main.wxs adoption"
-        }
-
-        val probeComponents = MsiComponentTableReader.read(probeMsi.toPath())
-        val generatedProbeComponents = probeComponents - WindowsAppImageIntegration.PATH_COMPONENT_ID
-        check(probeComponents[WindowsAppImageIntegration.PATH_COMPONENT_ID]
-            ?.equals(WindowsAppImageIntegration.PATH_COMPONENT_GUID, ignoreCase = true) == true) {
-            "Probe MSI stable MCP PATH Component is missing or has an unexpected GUID"
-        }
-        resetBuildOutput(generatedWindowsResources)
-        windowsInstallerResources.asFile.copyRecursively(generatedWindowsResources, overwrite = true)
-        val transformResult = JpackageComponentGuidNamespace.transform(
-            sourceBundle = probeBundle.toPath(),
-            probeComponents = generatedProbeComponents,
-            outputBundle = generatedBundle.toPath(),
-            namespace = windowsComponentNamespace,
-            excludedShortcutLauncherNames = setOf(
-                WindowsAppImageIntegration.MCP_LAUNCHER,
-                WindowsAppImageIntegration.STABLE_MCP_LAUNCHER,
-            ),
+        auditFile.get().asFile.writeText(
+            buildString {
+                appendLine("archive=$portableArchiveName")
+                appendLine("compressedBytes=${zip.toFile().length()}")
+                appendLine("uncompressedBytes=${archiveAudit.uncompressedSize}")
+                appendLine("files=${archiveAudit.fileCount}")
+                appendLine("sha256=${archiveAudit.sha256}")
+                appendLine("launchers=${imageAudit.launcherNames.sorted().joinToString(",")}")
+                appendLine("runtimeModulesFile=${imageAudit.runtimeModuleFiles.single()}")
+                appendLine("runtimeModules=${imageAudit.runtimeModules.joinToString(",")}")
+                appendLine("mcpJars=${archiveAudit.mcpJarNames.size}")
+            },
+            Charsets.UTF_8,
         )
-        componentMappingCsv.writeText(buildString {
-            appendLine("componentId,effectiveOriginalGuid,namespacedGuid")
-            for (mapping in transformResult.mappings.values.sortedBy { it.componentId }) {
-                appendLine("${mapping.componentId},${mapping.effectiveOriginalGuid},${mapping.namespacedGuid}")
-            }
-        })
-        check(
-            transformResult.componentCount + transformResult.removedShortcutComponentIds.size + 1 ==
-                probeComponents.size,
-        ) {
-            "Transformed Component count plus excluded MCP shortcut Components does not match probe MSI"
-        }
-
-        generatedMsi.parentFile.mkdirs()
-        check(!generatedMsi.exists() || generatedMsi.delete()) { "Could not replace MSI: $generatedMsi" }
-        val finalLog = runJpackage(
-            "final",
-            jpackageArguments(generatedMsi.parentFile, finalTemp, generatedWindowsResources),
-        )
-        check(generatedMsi.isFile) { "Namespaced MSI was not created: $generatedMsi" }
-        check(Regex("main\\.wxs", RegexOption.IGNORE_CASE).findAll(finalLog).count() >= 3) {
-            "Final verbose log does not prove custom main.wxs adoption"
-        }
-        check(Regex("bundle\\.wxf", RegexOption.IGNORE_CASE).findAll(finalLog).count() >= 3) {
-            "Final verbose log does not prove custom bundle.wxf adoption"
-        }
-        val finalComponents = MsiComponentTableReader.read(generatedMsi.toPath())
-        check(finalComponents[WindowsAppImageIntegration.PATH_COMPONENT_ID]
-            ?.equals(WindowsAppImageIntegration.PATH_COMPONENT_GUID, ignoreCase = true) == true) {
-            "Final MSI stable MCP PATH Component is missing or has an unexpected GUID"
-        }
-        JpackageComponentGuidNamespace.verifyFinalComponents(
-            finalComponents - WindowsAppImageIntegration.PATH_COMPONENT_ID,
-            transformResult,
-        )
-        val legacyCleanup = MsiLegacyPackageCleanupReader.verify(
-            generatedMsi.toPath(),
-            transformResult.legacyPackageCleanupComponentId,
-        )
-        val distributionAudit = MsiDistributionAuditReader.read(generatedMsi.toPath())
-        val requiredTables = setOf(
-            "Property",
-            "File",
-            "Component",
-            "Feature",
-            "Shortcut",
-            "RemoveFile",
-            "Upgrade",
-            "InstallExecuteSequence",
-            "CustomAction",
-            "Wix4RemoveFolderEx",
-            "Environment",
-        )
-        check(distributionAudit.tables.containsAll(requiredTables)) {
-            "Final MSI is missing required audit tables: ${requiredTables - distributionAudit.tables}"
-        }
-        check(distributionAudit.productName == WindowsAppImageIntegration.MAIN_LAUNCHER)
-        check(distributionAudit.productVersion == appVersion)
-        check(distributionAudit.manufacturer == "Static Map Planner Project")
-        check(distributionAudit.upgradeCode.equals("{$windowsUpgradeUuid}", ignoreCase = true))
-        check(distributionAudit.productCode.equals("{$windowsProductUuid}", ignoreCase = true)) {
-            "The $appVersion ProductCode drifted: ${distributionAudit.productCode}"
-        }
-        check(distributionAudit.productCode !in historicalProductCodes) {
-            "The $appVersion ProductCode reuses a discarded or historical product identity: " +
-                distributionAudit.productCode
-        }
-        check(distributionAudit.summaryTemplate.startsWith("x64;")) {
-            "Final MSI is not Windows x64: ${distributionAudit.summaryTemplate}"
-        }
-        check(distributionAudit.features.size == 1) {
-            "Final MSI must contain one product Feature, found ${distributionAudit.features.size}"
-        }
-        fun longMsiName(name: String): String = name.substringAfter('|', name)
-        val filesByLongName = distributionAudit.files.associateBy { longMsiName(it[2]) }
-        check(filesByLongName.containsKey("${WindowsAppImageIntegration.MAIN_LAUNCHER}.exe")) {
-            "Final MSI does not contain the main launcher"
-        }
-        val mcpLauncherFile = filesByLongName["${WindowsAppImageIntegration.MCP_LAUNCHER}.exe"]
-            ?: error("Final MSI does not contain the MCP launcher")
-        check(filesByLongName.containsKey("${WindowsAppImageIntegration.MCP_LAUNCHER}.cfg")) {
-            "Final MSI does not contain the MCP launcher config"
-        }
-        val stableMcpLauncherFile = filesByLongName["${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}.exe"]
-            ?: error("Final MSI does not contain the stable MCP launcher")
-        check(filesByLongName.containsKey("${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}.cfg")) {
-            "Final MSI does not contain the stable MCP launcher config"
-        }
-        val mcpLauncherComponent = distributionAudit.components.single { it[0] == mcpLauncherFile[1] }
-        val mcpLauncherDirectory = distributionAudit.directories.single { it[0] == mcpLauncherComponent[2] }
-        check(longMsiName(mcpLauncherDirectory[2]) == WindowsAppImageIntegration.MAIN_LAUNCHER) {
-            "MCP launcher is not installed at the product install root: $mcpLauncherDirectory"
-        }
-        val stableMcpLauncherComponent = distributionAudit.components.single { it[0] == stableMcpLauncherFile[1] }
-        val stableMcpLauncherDirectory = distributionAudit.directories.single {
-            it[0] == stableMcpLauncherComponent[2]
-        }
-        check(longMsiName(stableMcpLauncherDirectory[2]) == WindowsAppImageIntegration.MAIN_LAUNCHER) {
-            "Stable MCP launcher is not installed at the product install root: $stableMcpLauncherDirectory"
-        }
-        val forbiddenFileRows = distributionAudit.files.filter {
-            longMsiName(it[2]).lowercase() in WindowsAppImageIntegration.forbiddenPackagedFileNames
-        }
-        check(forbiddenFileRows.isEmpty()) { "Final MSI contains runtime/user data: $forbiddenFileRows" }
-        check(distributionAudit.files.none { longMsiName(it[2]).equals("pack.jar", ignoreCase = true) }) {
-            "Final MSI contains an external Feature Pack JAR"
-        }
-        check(distributionAudit.files.none { longMsiName(it[2]).contains("ktor", ignoreCase = true) }) {
-            "Final MSI contains a Ktor runtime"
-        }
-        val shortcutNames = distributionAudit.shortcuts.map { longMsiName(it[2]) }
-        check(shortcutNames.isNotEmpty() && shortcutNames.all {
-            it == WindowsAppImageIntegration.MAIN_LAUNCHER
-        }) { "Only the desktop application may receive shortcuts: $shortcutNames" }
-        check(distributionAudit.environment == listOf(listOf(
-            WindowsAppImageIntegration.PATH_ENVIRONMENT_ID,
-            "=-PATH",
-            "[~];[INSTALLDIR]",
-            WindowsAppImageIntegration.PATH_COMPONENT_ID,
-        ))) { "Per-user PATH Environment row drifted: ${distributionAudit.environment}" }
-        check(distributionAudit.installExecuteSequence.count { it[0] == "WriteEnvironmentStrings" } == 1) {
-            "MSI must schedule WriteEnvironmentStrings exactly once"
-        }
-        check(distributionAudit.installExecuteSequence.count { it[0] == "RemoveEnvironmentStrings" } == 1) {
-            "MSI must schedule RemoveEnvironmentStrings exactly once"
-        }
-        check(distributionAudit.upgrades.isNotEmpty() && distributionAudit.upgrades.all {
-            it[0].equals("{$windowsUpgradeUuid}", ignoreCase = true)
-        }) { "Final MSI contains an unexpected UpgradeCode row: ${distributionAudit.upgrades}" }
-        val sameVersionUpgrade = distributionAudit.upgrades.single { it[4] == "JP_UPGRADABLE_FOUND" }
-        check(sameVersionUpgrade[2] == appVersion && sameVersionUpgrade[3].toInt() and 512 != 0) {
-            "Final MSI does not replace an older same-version release candidate: $sameVersionUpgrade"
-        }
-        check(distributionAudit.customActions.count {
-            it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[2] == "RM_RF48431AECBD69377EA800D62616352F20"
-        } == 1) { "Major-upgrade AppData cleanup suppression CustomAction drifted" }
-        check(distributionAudit.installExecuteSequence.count {
-            it[0] == "JpSuppressRemoveFolderExDuringUpgrade" && it[1] == "UPGRADINGPRODUCTCODE"
-        } == 1) { "Major-upgrade AppData preservation sequence drifted" }
-        check(distributionAudit.removeFolderEx.size == 1 &&
-            distributionAudit.removeFolderEx.single()[2] == "RM_RF48431AECBD69377EA800D62616352F20") {
-            "Normal uninstall recursive AppData cleanup drifted: ${distributionAudit.removeFolderEx}"
-        }
-        JpackageComponentGuidNamespace.assertOnlyExpectedChanges(
-            probeBundle.toPath(),
-            generatedBundle.toPath(),
-            excludedShortcutLauncherNames = setOf(
-                WindowsAppImageIntegration.MCP_LAUNCHER,
-                WindowsAppImageIntegration.STABLE_MCP_LAUNCHER,
-            ),
-        )
-        componentGuidBuildRoot.resolve("msi-audit.txt").writeText(buildString {
-            appendLine("productName=${distributionAudit.productName}")
-            appendLine("productVersion=${distributionAudit.productVersion}")
-            appendLine("productCode=${distributionAudit.productCode}")
-            appendLine("upgradeCode=${distributionAudit.upgradeCode}")
-            appendLine("manufacturer=${distributionAudit.manufacturer}")
-            appendLine("architecture=${distributionAudit.summaryTemplate}")
-            appendLine("installScope=perUser")
-            appendLine("featureCount=${distributionAudit.features.size}")
-            appendLine("componentCount=${finalComponents.size}")
-            appendLine("fileCount=${distributionAudit.files.size}")
-            appendLine("shortcutCount=${distributionAudit.shortcuts.size}")
-            appendLine("mcpLauncherDirectory=${mcpLauncherComponent[2]}")
-            appendLine("stableMcpLauncherDirectory=${stableMcpLauncherComponent[2]}")
-            appendLine("pathEnvironmentRows=${distributionAudit.environment.size}")
-            appendLine("runtimeCount=1")
-        })
         logger.lifecycle(
-            "Namespaced MSI verified: components=${transformResult.componentCount}, " +
-                "explicit=${transformResult.explicitGuidCount}, added=${transformResult.addedGuidCount}, " +
-                "excludedMcpShortcutComponents=${transformResult.removedShortcutComponentIds.size}, " +
-                "legacyPackageCleanup=${legacyCleanup.componentId}@${legacyCleanup.directoryId}, " +
-                "namespace=$windowsUpgradeUuid, productCode=${distributionAudit.productCode}, " +
-                "files=${distributionAudit.files.size}, shortcuts=${distributionAudit.shortcuts.size}",
+            "Portable ZIP verified: files=${archiveAudit.fileCount}, " +
+                "compressed=${zip.toFile().length()}, uncompressed=${archiveAudit.uncompressedSize}, " +
+                "sha256=${archiveAudit.sha256}",
         )
     }
+}
+
+val portableFeaturePackInstalledImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Loads an external fixture Pack through the extracted Portable launcher."
+    dependsOn(verifyPortableZip, featurePackFixture)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.featurepack.FeaturePackInstalledImageTest")
+    doFirst {
+        systemProperty("feature.pack.installed.image", portableExtractedImage.get().asFile.absolutePath)
+        systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
+    }
+    inputs.dir(portableExtractedImage)
+    inputs.files(featurePackFixture)
+    outputs.upToDateWhen { false }
+}
+
+val portableEsiPackInstalledImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Loads the real ESI Pack through the extracted Portable launcher."
+    dependsOn(verifyPortableZip)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.featurepack.EsiPackInstalledImageTest")
+    doFirst {
+        val pack = esiPackJar.orNull?.let(::file)
+            ?: error("portableEsiPackInstalledImageTest requires -PesiPackJar=<canonical ESI Pack jar>")
+        check(pack.isFile) { "ESI Pack jar does not exist: ${pack.absolutePath}" }
+        systemProperty("feature.pack.installed.image", portableExtractedImage.get().asFile.absolutePath)
+        systemProperty("esi.pack.jar", pack.absolutePath)
+    }
+    inputs.dir(portableExtractedImage)
+    inputs.file(esiPackJar)
+    outputs.upToDateWhen { false }
+}
+
+val portableExternalFeaturePacksInstalledImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Loads the real ESI and Sovereignty Packs together through the extracted Portable launcher."
+    dependsOn(verifyPortableZip)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching(
+        "dev.evestaticmapplanner.featurepack.PortableExternalFeaturePacksInstalledImageTest",
+    )
+    doFirst {
+        val esiPack = esiPackJar.orNull?.let(::file)
+            ?: error("portableExternalFeaturePacksInstalledImageTest requires -PesiPackJar=<pack.jar>")
+        val sovereigntyPack = sovereigntyPackJar.orNull?.let(::file)
+            ?: error("portableExternalFeaturePacksInstalledImageTest requires -PsovereigntyPackJar=<pack.jar>")
+        check(esiPack.isFile) { "ESI Pack jar does not exist: ${esiPack.absolutePath}" }
+        check(sovereigntyPack.isFile) { "Sovereignty Pack jar does not exist: ${sovereigntyPack.absolutePath}" }
+        systemProperty("feature.pack.installed.image", portableExtractedImage.get().asFile.absolutePath)
+        systemProperty("esi.pack.jar", esiPack.absolutePath)
+        systemProperty("sovereignty.pack.jar", sovereigntyPack.absolutePath)
+    }
+    inputs.dir(portableExtractedImage)
+    inputs.file(esiPackJar)
+    inputs.file(sovereigntyPackJar)
+    outputs.upToDateWhen { false }
+}
+
+val portableAcceptance by tasks.registering {
+    group = "verification"
+    description = "Runs the self-contained Portable ZIP, fixture Pack, and MCP process acceptance gates."
+    dependsOn(
+        portableFeaturePackInstalledImageTest,
+        ":mcp:portableInstalledImageTest",
+    )
 }

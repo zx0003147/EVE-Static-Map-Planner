@@ -95,17 +95,6 @@ class WindowsAppImageIntegrationTest {
         )))
     }
 
-    @Test
-    fun `PATH component GUID is stable in the installer namespace`() {
-        val namespace = java.util.UUID.fromString("502B9850-A5B0-4922-BB20-AC7FEBA590DC")
-        assertEquals(
-            WindowsAppImageIntegration.PATH_COMPONENT_GUID,
-            JpackageComponentGuidNamespace.formatMsiGuid(
-                JpackageComponentGuidNamespace.uuidV5(namespace, "installer-component-v1:per-user-path"),
-            ),
-        )
-    }
-
     private fun writePeStub(path: java.nio.file.Path, subsystem: Int) {
         val bytes = ByteArray(512)
         bytes[0] = 'M'.code.toByte()

@@ -20,9 +20,6 @@ object WindowsAppImageIntegration {
     const val MCP_LAUNCHER = "EVE Map MCP Bridge"
     const val STABLE_MCP_LAUNCHER = "eve-map-mcp"
     const val MCP_MAIN_CLASS = "dev.evestaticmapplanner.mcp.MainKt"
-    const val PATH_COMPONENT_ID = "JpEveMapMcpPath"
-    const val PATH_ENVIRONMENT_ID = "JpEveMapMcpPathEnvironment"
-    const val PATH_COMPONENT_GUID = "{44EBD78B-F3BB-5167-85E4-BD330EB5F4DF}"
     const val WINDOWS_GUI_SUBSYSTEM = 2
     const val WINDOWS_CONSOLE_SUBSYSTEM = 3
 

@@ -13,11 +13,21 @@ This release candidate finalizes Feature API 2.0.0 and the external Feature Pack
 - Map movement, selection, and route recalculation never auto-sync to EVE.
 - Encrypted Windows current-user DPAPI refresh-token persistence and automatic session restoration.
 - JDK 25 native-access configuration for Gradle, manual QA, and packaged Windows launchers.
-- Same-version replacement of discarded 0.6.0 pre-release MSIs, preventing stale Windows Installer component state from omitting the packaged JVM module image.
+- Installer-free Windows x64 Portable ZIP with a bundled JVM, complete MCP launchers, and reproducible archive order.
+
+## Windows installation
+
+Download `EVE-Static-Map-Planner-0.6.0-Windows-x64.zip`, extract the complete archive, and open
+`EVE Static Map Planner.exe` inside the extracted `EVE Static Map Planner` directory. Do not copy only the EXE.
+No installer or system Java is required.
+
+User data and Feature Packs remain under `%LOCALAPPDATA%\EVE Static Map Planner`; they are not stored in the
+Portable program directory. Moving to a future ZIP release therefore does not reset settings, databases, Pack state,
+or ESI credential storage.
 
 ## Install optional Packs
 
-Install the 0.6.0 MSI, then place each optional artifact at its canonical per-user path:
+After running the Portable application once, place each optional artifact at its canonical per-user path:
 
 ```text
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\esi.pack\pack.jar
@@ -35,4 +45,5 @@ Pack is installed.
 - Exact Ansiblex route sending is unsupported; use `Set EVE Destination` for the final destination instead.
 - Capital and mission routes are unsupported by these ESI actions.
 
-This release candidate is not remotely published or tagged. Final publication remains gated on packaged-app manual QA.
+This release candidate is not remotely published or tagged. Final publication remains gated on Portable product
+manual QA, including real EVE SSO, Location, explicit route sending, restart restoration, and Disconnect.

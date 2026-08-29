@@ -4,39 +4,47 @@ EVE Map Assistant is a separately distributed Codex Plugin and Skill for EVE Sta
 
 Repository: [zx0003147/EVE-Map-Assistant-Plugin](https://github.com/zx0003147/EVE-Map-Assistant-Plugin)
 
-## Gate A prerequisites
+## Portable prerequisites
 
-- EVE Static Map Planner 0.6.0 or later is installed.
-- The MSI has registered its install directory on the per-user PATH.
+- EVE Static Map Planner 0.6.0 or later is extracted as a complete Portable application directory.
+- The external MCP client registration points to that directory's absolute `eve-map-mcp.exe` path.
 - Start the map and enable **Preferences > AI Control** before map operations.
 - EVE Map Assistant Plugin 0.3.0 or later is installed.
-- Fully restart Codex after installing or upgrading the map so the new process inherits PATH.
+- Restart Codex after installing the Plugin or changing MCP registration.
 
-Plugin 0.3.0 bundles an `eve-static-map` local STDIO definition whose command is `eve-map-mcp.exe`. The command resolves through Windows PATH and starts `dev.evestaticmapplanner.mcp.MainKt` directly. It does not use a shell, absolute path, Windows username, control port, or credential. Normal installation no longer uses `codex mcp add`.
+Plugin 0.3.0 bundles an `eve-static-map` STDIO definition whose command is the bare `eve-map-mcp.exe` name.
+The Portable ZIP intentionally does not add its directory to PATH, so that bare command is not automatically
+discoverable. The reliable ZIP workflow is an explicit absolute-path registration:
+
+```powershell
+codex mcp remove eve-static-map
+codex mcp add eve-static-map -- "D:\Portable Apps\EVE Static Map Planner\eve-map-mcp.exe"
+```
+
+Codex gives a same-named explicit MCP configuration precedence over the Plugin definition. The registration contains
+only the launcher path; the per-session control secret and port remain discovered securely through LocalAppData.
 
 ```text
-Map MSI -> stable eve-map-mcp.exe + per-user PATH
-Plugin  -> bundled eve-static-map definition + Skill
-Codex   -> direct STDIO process
+Portable app image -> bundled eve-map-mcp.exe
+Explicit MCP config -> absolute launcher path
+Plugin             -> Skill and safe operating contract
+Codex              -> direct STDIO process
 ```
 
 ## Install the standalone Plugin
 
-1. Install or upgrade the map to 0.6.0 or later.
-2. Open the standalone Plugin repository.
-3. Run `codex plugin marketplace add "."`, then install with `codex plugin add eve-map-assistant@personal` or the Plugins Directory.
-4. Fully restart Codex and open a new task.
-5. Use `@EVE Map Assistant`.
+1. Extract the complete EVE Static Map Planner 0.6.0-or-later ZIP.
+2. Register the absolute `eve-map-mcp.exe` path as shown above.
+3. Open the standalone Plugin repository.
+4. Run `codex plugin marketplace add "."`, then install with `codex plugin add eve-map-assistant@personal` or the Plugins Directory.
+5. Fully restart Codex and open a new task.
+6. Use `@EVE Map Assistant`.
 
-## Legacy Gate B migration
+## Moving or updating the Portable directory
 
-Codex 0.149.0 gives a same-named global MCP configuration precedence over a discovered Plugin MCP. This does not create a fatal conflict, but the old registration masks the bundled command. After the 0.6.0 Map and 0.3.0 Plugin are ready, remove only the old global registration:
-
-```text
-codex mcp remove eve-static-map
-```
-
-Do not run another `codex mcp add`. Neither the Map installer nor Plugin changes Codex configuration automatically.
+The external MCP client stores the absolute launcher path. After moving the application directory or extracting a new
+release elsewhere, remove and recreate only `eve-static-map` with the new path, then restart Codex. Neither the
+Portable application nor Plugin changes Codex configuration automatically.
 
 ## Quick checks
 
@@ -58,10 +66,13 @@ Plain marker requests are temporary Mission Markers. Only an explicit permanent 
 
 ## Disconnected and safety behavior
 
-If the Plugin is installed but `eve-map-mcp.exe` cannot start, install EVE Static Map Planner 0.6.0 or later and fully restart Codex. Do not search for a development launcher or fall back to a shell.
+If the Plugin is installed but `eve-map-mcp.exe` cannot start, verify the explicit MCP registration points to the
+current extracted Portable directory and fully restart Codex. Do not fall back to a shell command.
 
 `APP_DISCONNECTED` is different: the MCP server is running, but the map is closed or AI Control is disabled. Start the map and enable AI Control. The assistant may control temporary Mission state and permission-gated Saved Marker read/create only, including supported initial tags in a create request. It cannot update, overwrite, delete, clear, or change tags or children on an existing Saved Marker, or alter user routes, Ansiblex connections, preferences, databases, or other user-owned state.
 
-The map repository continues to validate the application, Control API, launcher, MSI, and fixed 22-tool server contract. The Plugin repository validates the manifest, Skill, bundled `.mcp.json`, marketplace, and safe behavior contract.
+The map repository continues to validate the application, Control API, Portable launchers/ZIP, and fixed 22-tool
+server contract. The Plugin repository validates the manifest, Skill, bundled `.mcp.json`, marketplace, and safe
+behavior contract.
 
 Official references: [Package your plugin](https://developers.openai.com/plugins/build/plugins), [Build skills](https://developers.openai.com/plugins/build/skills), and [Model Context Protocol](https://learn.chatgpt.com/docs/extend/mcp).
