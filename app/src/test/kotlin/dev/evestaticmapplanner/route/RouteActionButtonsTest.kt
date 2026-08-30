@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.route
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +15,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.feature.api.PackId
 import dev.evestaticmapplanner.feature.api.RouteActionStatus
 import dev.evestaticmapplanner.feature.api.RouteIdentity
@@ -27,6 +31,8 @@ import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.math.abs
 
 @OptIn(ExperimentalTestApi::class)
 class RouteActionButtonsTest {
@@ -158,6 +164,44 @@ class RouteActionButtonsTest {
 
         onNodeWithText("90000002 (disconnected / unavailable)").assertIsDisplayed()
         onNodeWithText("Send Draft to EVE").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `narrow route actions stack selector buttons and result at equal full width`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                Box(Modifier.width(220.dp)) {
+                    RouteActionButtons(
+                        actions = listOf(
+                            action("Send Draft to EVE", id = "send", targetSelector = targetSelector()),
+                            action(
+                                "Set EVE Destination",
+                                id = "destination",
+                                targetSelector = targetSelector(),
+                                status = RouteActionStatus.REJECTED,
+                                message = "Destination was rejected",
+                            ),
+                        ),
+                        snapshot = snapshot(RouteKind.NORMAL),
+                        selectedTargetIds = mapOf("test.pack:eve-character" to "90000001"),
+                    ) { _, _, _ -> }
+                }
+            }
+        }
+
+        val label = onNodeWithText("EVE Character").fetchSemanticsNode().boundsInRoot
+        val selector = onNodeWithText("Pandogodzilla").fetchSemanticsNode().boundsInRoot
+        val send = onNodeWithText("Send Draft to EVE").fetchSemanticsNode().boundsInRoot
+        val destination = onNodeWithText("Set EVE Destination").fetchSemanticsNode().boundsInRoot
+        val result = onNodeWithText("Rejected: Destination was rejected").fetchSemanticsNode().boundsInRoot
+
+        assertTrue(label.bottom <= selector.top)
+        assertTrue(selector.bottom <= send.top)
+        assertTrue(send.bottom <= destination.top)
+        assertTrue(destination.bottom <= result.top)
+        assertTrue(abs(selector.width - send.width) < 1f)
+        assertTrue(abs(send.width - destination.width) < 1f)
+        assertTrue(send.height < 70f && destination.height < 70f, "route action labels wrapped excessively")
     }
 
     private fun action(

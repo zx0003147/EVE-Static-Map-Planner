@@ -2,7 +2,6 @@ package dev.evestaticmapplanner.route
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -52,7 +51,7 @@ internal fun RouteActionButtons(
                 onSelect = { onSelectTarget(selectorKey, it) },
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             visible.forEach { action ->
                 val selectedTarget = action.targetSelector?.let { selector ->
                     selectedTargetIds[routeActionTargetSelectionKey(action)]?.let(::RouteActionTargetId)
@@ -61,6 +60,7 @@ internal fun RouteActionButtons(
                 Button(
                     enabled = !action.busy && (action.targetSelector == null || selectedTarget != null),
                     onClick = { onInvoke(action.key, snapshot, selectedTarget) },
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (action.busy) "${action.label}…" else action.label)
                 }
@@ -105,10 +105,11 @@ private fun RouteActionTargetSelector(
     val selected = selector.options.firstOrNull { it.id.value == selectedTargetId }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(selector.label, style = MaterialTheme.typography.labelMedium, color = Color(0xFFD7E6F2))
-        androidx.compose.foundation.layout.Box {
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth()) {
             OutlinedButton(
                 onClick = { expanded = true },
                 enabled = selector.options.any { it.available },
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
                     when {

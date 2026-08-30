@@ -45,10 +45,70 @@ class PlanningViewCoordinatorTest {
         val second = coordinator.createView()
 
         assertTrue(coordinator.renameView(second, " Scout "))
+        assertFalse(coordinator.renameView(second, "   "))
         assertFalse(coordinator.renameView(PlanningViewId("view-1"), "scout"))
         assertTrue(coordinator.deleteView(second))
         assertFalse(coordinator.deleteView(PlanningViewId("view-1")))
         assertEquals("View 1", coordinator.state.value.currentView.label)
+    }
+
+    @Test
+    fun `rename preserves stable id routes and selected ESI target`() {
+        val id = PlanningViewId("stable-id")
+        val normalSnapshot = NormalRoutePlanningSnapshot(10, 20, useAnsiblex = true, calculated = true)
+        val capitalSnapshot = CapitalRoutePlanningSnapshot(30, 40, "7.5", calculated = true)
+        val coordinator = PlanningViewCoordinator(
+            NormalPort(),
+            CapitalPort(),
+            initialState = PlanningViewsState(
+                views = listOf(PlanningView(
+                    id = id,
+                    label = "Original",
+                    normalRoute = normalSnapshot,
+                    capitalRoute = capitalSnapshot,
+                    selectedRouteActionTargets = mapOf("esi-character" to "90000001"),
+                )),
+                currentViewId = id,
+            ),
+        )
+
+        assertTrue(coordinator.renameView(id, " Renamed "))
+        assertEquals(
+            PlanningView(
+                id = id,
+                label = "Renamed",
+                normalRoute = normalSnapshot,
+                capitalRoute = capitalSnapshot,
+                selectedRouteActionTargets = mapOf("esi-character" to "90000001"),
+            ),
+            coordinator.state.value.currentView,
+        )
+    }
+
+    @Test
+    fun `delete keeps non-current selection and current deletion prefers right then left`() {
+        val ids = (1..3).map { PlanningViewId("view-$it") }
+        fun coordinator(current: PlanningViewId) = PlanningViewCoordinator(
+            NormalPort(),
+            CapitalPort(),
+            initialState = PlanningViewsState(
+                ids.mapIndexed { index, id -> PlanningView(id, "View ${index + 1}") },
+                current,
+            ),
+        )
+
+        coordinator(ids[1]).also {
+            assertTrue(it.deleteView(ids[0]))
+            assertEquals(ids[1], it.state.value.currentViewId)
+        }
+        coordinator(ids[1]).also {
+            assertTrue(it.deleteView(ids[1]))
+            assertEquals(ids[2], it.state.value.currentViewId)
+        }
+        coordinator(ids[2]).also {
+            assertTrue(it.deleteView(ids[2]))
+            assertEquals(ids[1], it.state.value.currentViewId)
+        }
     }
 
     @Test

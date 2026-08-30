@@ -20,6 +20,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -40,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.map.MapProjectionId
@@ -72,6 +75,7 @@ import dev.evestaticmapplanner.feature.api.RouteActionTargetId
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.view.PlanningViewCoordinator
+import dev.evestaticmapplanner.view.PlanningView
 import dev.evestaticmapplanner.view.PlanningViewId
 import dev.evestaticmapplanner.view.PlanningViewsState
 import java.nio.file.Path
@@ -353,8 +357,6 @@ private fun MapToolbar(
     planningViewCoordinator: PlanningViewCoordinator,
 ) {
     var renameViewId by remember { mutableStateOf<PlanningViewId?>(null) }
-    var renameText by remember { mutableStateOf("") }
-    var renameError by remember { mutableStateOf<String?>(null) }
     MapToolbarContent(
         projectionId = state.projectionId,
         fitEnabled = state.scene != null,
@@ -362,38 +364,51 @@ private fun MapToolbar(
         onSwitchProjection = viewModel::switchProjection,
         onSwitchView = planningViewCoordinator::switchView,
         onCreateView = planningViewCoordinator::createView,
-        onRenameView = { view ->
-            renameViewId = view.id
-            renameText = view.label
-            renameError = null
-        },
+        onRenameView = { view -> renameViewId = view.id },
         onDeleteView = planningViewCoordinator::deleteView,
         onFitMap = viewModel::fitMap,
     )
     renameViewId?.let { id ->
-        AlertDialog(
-            onDismissRequest = { renameViewId = null },
-            title = { Text("Rename View") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = renameText,
-                        onValueChange = { renameText = it; renameError = null },
-                        label = { Text("View name") },
-                        singleLine = true,
-                    )
-                    renameError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (planningViewCoordinator.renameView(id, renameText)) renameViewId = null
-                    else renameError = "View names must be non-empty and unique."
-                }) { Text("Rename") }
-            },
-            dismissButton = { TextButton(onClick = { renameViewId = null }) { Text("Cancel") } },
-        )
+        planningViewsState.views.firstOrNull { it.id == id }?.let { view ->
+            ViewRenameDialog(
+                view = view,
+                onRename = planningViewCoordinator::renameView,
+                onDismiss = { renameViewId = null },
+            )
+        }
     }
+}
+
+@Composable
+internal fun ViewRenameDialog(
+    view: PlanningView,
+    onRename: (PlanningViewId, String) -> Boolean,
+    onDismiss: () -> Unit,
+) {
+    var renameText by remember(view.id) { mutableStateOf(view.label) }
+    var renameError by remember(view.id) { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename View") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it; renameError = null },
+                    label = { Text("View name") },
+                    singleLine = true,
+                )
+                renameError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (onRename(view.id, renameText)) onDismiss()
+                else renameError = "View names must be non-empty and unique."
+            }) { Text("Rename") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -404,7 +419,7 @@ internal fun MapToolbarContent(
     onSwitchProjection: (MapProjectionId) -> Unit,
     onSwitchView: (PlanningViewId) -> Boolean,
     onCreateView: () -> PlanningViewId,
-    onRenameView: (dev.evestaticmapplanner.view.PlanningView) -> Unit,
+    onRenameView: (PlanningView) -> Unit,
     onDeleteView: (PlanningViewId) -> Boolean,
     onFitMap: () -> Unit,
     viewScrollState: ScrollState? = null,
@@ -454,12 +469,13 @@ internal fun ViewStrip(
     state: PlanningViewsState,
     onSwitch: (PlanningViewId) -> Boolean,
     onCreate: () -> PlanningViewId,
-    onRename: (dev.evestaticmapplanner.view.PlanningView) -> Unit,
+    onRename: (PlanningView) -> Unit,
     onDelete: (PlanningViewId) -> Boolean,
     scrollState: ScrollState? = null,
     modifier: Modifier = Modifier,
 ) {
     val scroll = scrollState ?: rememberScrollState()
+    var contextMenuViewId by remember { mutableStateOf<PlanningViewId?>(null) }
     Row(
         modifier = modifier
             .horizontalScroll(scroll)
@@ -471,16 +487,38 @@ internal fun ViewStrip(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         state.views.forEach { view ->
-            if (view.id == state.currentViewId) {
-                CompactToolbarButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
-                CompactToolbarTextButton(onClick = { onRename(view) }, action = true) { Text("✎") }
-                CompactToolbarTextButton(
-                    onClick = { onDelete(view.id) },
-                    enabled = state.views.size > 1,
-                    action = true,
-                ) { Text("×") }
-            } else {
-                CompactToolbarTextButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
+            Box(
+                Modifier.onPointerEvent(PointerEventType.Press) { event ->
+                    if (event.buttons.isSecondaryPressed) {
+                        contextMenuViewId = view.id
+                    }
+                },
+            ) {
+                if (view.id == state.currentViewId) {
+                    CompactToolbarButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
+                } else {
+                    CompactToolbarTextButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
+                }
+                DropdownMenu(
+                    expanded = contextMenuViewId == view.id,
+                    onDismissRequest = { contextMenuViewId = null },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = {
+                            contextMenuViewId = null
+                            onRename(view)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        enabled = state.views.size > 1,
+                        onClick = {
+                            contextMenuViewId = null
+                            onDelete(view.id)
+                        },
+                    )
+                }
             }
         }
         CompactToolbarTextButton(onClick = { onCreate() }, action = true) { Text("+") }
