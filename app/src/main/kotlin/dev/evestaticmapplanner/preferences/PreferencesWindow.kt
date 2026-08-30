@@ -42,6 +42,8 @@ import dev.evestaticmapplanner.featurepack.FeaturePackInstallationState
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerItem
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeState
+import dev.evestaticmapplanner.featurepack.PackControlActionKey
+import dev.evestaticmapplanner.featurepack.PackControlActionUiState
 import dev.evestaticmapplanner.feature.api.PackControlActionStatus
 import dev.evestaticmapplanner.feature.api.PackControlSeverity
 import dev.evestaticmapplanner.feature.api.OverlayState
@@ -299,16 +301,7 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
             control.secondaryText?.let { secondary ->
                 Text(secondary, color = Color(0xFFAAB9C7))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                control.actions.forEach { action ->
-                    TextButton(
-                        enabled = action.enabled,
-                        onClick = { viewModel.invokeControl(action.key) },
-                    ) {
-                        Text(if (control.busyActionId == action.key.actionId) "${action.label}…" else action.label)
-                    }
-                }
-            }
+            PackControlActionList(control.actions, control.busyActionId, viewModel::invokeControl)
             control.actions.mapNotNull { it.description }.distinct().forEach { description ->
                 Text(description, color = Color(0xFF71808D), style = MaterialTheme.typography.bodySmall)
             }
@@ -350,6 +343,24 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
             },
             dismissButton = { TextButton(onClick = { removePending = null }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+internal fun PackControlActionList(
+    actions: List<PackControlActionUiState>,
+    busyActionId: String?,
+    onInvoke: (PackControlActionKey) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        actions.forEach { action ->
+            TextButton(
+                enabled = action.enabled,
+                onClick = { onInvoke(action.key) },
+            ) {
+                Text(if (busyActionId == action.key.actionId) "${action.label}…" else action.label)
+            }
+        }
     }
 }
 

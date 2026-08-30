@@ -20,6 +20,7 @@ import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.feature.api.OverlayEntryVisibility
+import dev.evestaticmapplanner.feature.api.OverlayImage
 import dev.evestaticmapplanner.feature.api.OverlayState
 import org.jetbrains.skia.Image
 
@@ -42,13 +43,11 @@ internal fun presentOverlaySystemMarkers(
         if (entry.visibility != OverlayEntryVisibility.VISIBLE) return@mapNotNull null
         val node = scene.nodesById[entry.systemId]?.position?.let(transform::worldToScreen)?.toOffset()
             ?: return@mapNotNull null
-        val images = marker.images.mapNotNull { image ->
-            runCatching { Image.makeFromEncoded(image.content).toComposeImageBitmap() }.getOrNull()
-        }
+        val images = decodeOverlaySystemMarkerImages(marker.images)
         if (images.isEmpty()) return@mapNotNull null
         PresentedOverlaySystemMarker(
             entry.systemId,
-            Offset(node.x, node.y - PIN_CENTER_OFFSET_PX),
+            Offset(node.x, node.y - OverlaySystemMarkerVisuals.CENTER_TO_NODE_PX),
             node,
             images,
             marker.overflowCount,
@@ -63,7 +62,11 @@ internal fun hitTestOverlaySystemMarker(
 ): PresentedOverlaySystemMarker? = markers.asReversed().firstOrNull { marker ->
     val dx = marker.center.x - point.x
     val dy = marker.center.y - point.y
-    dx * dx + dy * dy <= PIN_HIT_RADIUS_PX * PIN_HIT_RADIUS_PX
+    dx * dx + dy * dy <= OverlaySystemMarkerVisuals.HIT_RADIUS_PX * OverlaySystemMarkerVisuals.HIT_RADIUS_PX
+}
+
+internal fun decodeOverlaySystemMarkerImages(images: List<OverlayImage>): List<ImageBitmap> = images.mapNotNull { image ->
+    runCatching { Image.makeFromEncoded(image.content).toComposeImageBitmap() }.getOrNull()
 }
 
 internal fun DrawScope.drawOverlaySystemMarkers(
@@ -74,18 +77,18 @@ internal fun DrawScope.drawOverlaySystemMarkers(
 }
 
 private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMarker, textMeasurer: TextMeasurer) {
-    val radius = PIN_RADIUS_PX
-    val shadowCenter = marker.center + Offset(0f, 3f)
+    val radius = OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX
+    val shadowCenter = marker.center + Offset(0f, OverlaySystemMarkerVisuals.SHADOW_OFFSET_PX)
     val pinPath = Path().apply {
-        moveTo(marker.center.x - 8f, marker.center.y + radius - 3f)
+        moveTo(marker.center.x - 4f, marker.center.y + radius)
         lineTo(marker.node.x, marker.node.y)
-        lineTo(marker.center.x + 8f, marker.center.y + radius - 3f)
+        lineTo(marker.center.x + 4f, marker.center.y + radius)
         close()
     }
     drawPath(pinPath, Color(0x73000000))
-    drawCircle(Color(0x66000000), radius + 4f, shadowCenter)
+    drawCircle(Color(0x66000000), radius + OverlaySystemMarkerVisuals.SHADOW_RADIUS_EXTRA_PX, shadowCenter)
     drawPath(pinPath, Color(0xFF24364B))
-    drawCircle(Color(0xFF24364B), radius + 3f, marker.center)
+    drawCircle(Color(0xFF24364B), radius + OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX, marker.center)
 
     val count = marker.images.size
     marker.images.forEachIndexed { index, image ->
@@ -111,20 +114,39 @@ private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMark
             )
         }
     }
-    drawCircle(Color(0xFFE6F4FF), radius + 1f, marker.center, style = Stroke(2.5f))
-    drawCircle(Color(0x66FFFFFF), radius - 4f, marker.center + Offset(-3f, -4f), style = Stroke(1.5f))
+    drawCircle(
+        Color(0xFFE6F4FF),
+        radius + OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX / 2f,
+        marker.center,
+        style = Stroke(OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX),
+    )
+    drawCircle(
+        Color(0x66FFFFFF),
+        radius - 3f,
+        marker.center + Offset(-1.5f, -2f),
+        style = Stroke(OverlaySystemMarkerVisuals.HIGHLIGHT_WIDTH_PX),
+    )
 
     if (marker.overflowCount > 0) {
-        val badgeCenter = marker.center + Offset(radius - 2f, -radius + 3f)
-        drawCircle(Color(0xFF0B1724), 10f, badgeCenter)
-        drawCircle(Color.White, 10f, badgeCenter, style = Stroke(1f))
-        val text = textMeasurer.measure("+${marker.overflowCount}", TextStyle(Color.White, 9.sp))
+        val badgeCenter = marker.center + Offset(radius - 1f, -radius + 2f)
+        drawCircle(Color(0xFF0B1724), 6f, badgeCenter)
+        drawCircle(Color.White, 6f, badgeCenter, style = Stroke(1f))
+        val text = textMeasurer.measure("+${marker.overflowCount}", TextStyle(Color.White, 7.sp))
         drawText(text, topLeft = badgeCenter - Offset(text.size.width / 2f, text.size.height / 2f))
     }
 }
 
 private fun dev.evestaticmapplanner.core.map.MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())
 
-private const val PIN_RADIUS_PX = 22f
-private const val PIN_HIT_RADIUS_PX = 27f
-private const val PIN_CENTER_OFFSET_PX = 34f
+internal object OverlaySystemMarkerVisuals {
+    const val PORTRAIT_DIAMETER_PX = 20f
+    const val PORTRAIT_RADIUS_PX = PORTRAIT_DIAMETER_PX / 2f
+    const val OUTER_BORDER_WIDTH_PX = 1.5f
+    const val HIGHLIGHT_WIDTH_PX = 1f
+    const val SHADOW_RADIUS_EXTRA_PX = 2f
+    const val SHADOW_OFFSET_PX = 2f
+    const val CENTER_TO_NODE_PX = 15f
+    const val PIN_TIP_HEIGHT_PX = CENTER_TO_NODE_PX - PORTRAIT_RADIUS_PX
+    const val TOTAL_HEIGHT_PX = CENTER_TO_NODE_PX + PORTRAIT_RADIUS_PX + OUTER_BORDER_WIDTH_PX
+    const val HIT_RADIUS_PX = 12f
+}
