@@ -15,6 +15,11 @@ This release candidate finalizes Feature API 2.0.0 and the external Feature Pack
 - JDK 25 native-access configuration for Gradle, manual QA, and packaged Windows launchers.
 - Installer-free Windows x64 Portable ZIP with a bundled JVM, complete MCP launchers, and reproducible archive order.
 - Client-neutral MCP discovery locator that follows the real Portable app-image after first run or directory moves.
+- In-process localhost Streamable HTTP MCP at `http://127.0.0.1:27892/mcp`, bound only to IPv4 loopback.
+- Dual HTTP and STDIO transports backed by the same canonical 22-tool catalog and Control transport.
+- EVE Map Assistant 0.5.0 integration with no PATH, absolute launcher path, or Portable move re-registration.
+- Existing static-universe map, search, normal and capital routing, manual Ansiblex, multiple jump-range overlays,
+  route visualization, marker workflows, zoom/pan/selection, and System Info improvements from the completed V1 work.
 
 ## Windows installation
 
@@ -46,5 +51,16 @@ Pack is installed.
 - Exact Ansiblex route sending is unsupported; use `Set EVE Destination` for the final destination instead.
 - Capital and mission routes are unsupported by these ESI actions.
 
-This release candidate is not remotely published or tagged. Final publication remains gated on Portable product
-manual QA, including real EVE SSO, Location, explicit route sending, restart restoration, and Disconnect.
+## Compatibility and limitations
+
+- Requires Feature API runtime contract 2; external Pack artifact compatibility is Feature API 2.0.0.
+- Compatible optional Packs are ESI Pack 0.5.0 and Sovereignty Pack 0.2.0.
+- Compatible Codex integration is EVE Map Assistant Plugin 0.5.0 using localhost HTTP MCP.
+- The Map must be running with AI Control enabled for Plugin tool calls.
+- HTTP transport targets the supported 2025-series Streamable HTTP contract in Kotlin MCP SDK 0.14.0; migration to
+  MCP 2026-07-28 remains deferred until supported by the official Kotlin SDK.
+- Windows x64 Portable ZIP is the only release distribution; MSI is retired.
+
+The localhost HTTP MCP, Portable move behavior, Map restarts, EVE SSO, Location, explicit route sending, session
+restoration, Disconnect, and Plugin natural-language workflows have completed human acceptance. This release
+candidate is not remotely published or tagged.

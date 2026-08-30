@@ -109,19 +109,24 @@ Feature Packs remain separate release artifacts and are never placed in the main
 Feature API runtime 2 / artifact 2.0.0 is unchanged. ESI Pack 0.5.0 and Sovereignty Pack 0.2.0 keep their existing
 PackStorage, state, and lifecycle behavior.
 
-## MCP path portability
+## MCP portability
 
-The application image includes both compatibility launcher `EVE Map MCP Bridge.exe` and stable launcher
-`eve-map-mcp.exe`. There is no installer-managed PATH entry in the ZIP model. Each packaged GUI startup publishes or
-updates the one discovery locator at:
+Codex users should use EVE Map Assistant 0.5.0, which connects to the fixed localhost HTTP endpoint hosted by the
+running Map at `http://127.0.0.1:27892/mcp`. It requires no PATH entry, absolute executable path, or manual MCP
+registration. Moving the complete Portable directory does not change the Plugin configuration: restart the Map and
+open a new Codex task.
+
+The application image also includes compatibility launcher `EVE Map MCP Bridge.exe` and stable launcher
+`eve-map-mcp.exe` for supported STDIO integrations. Each packaged GUI startup publishes or updates the discovery
+locator at:
 
 ```text
 %LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json
 ```
 
-A locator-aware AI plugin reads that file during session initialization or reconnect, validates schema 1 and STDIO,
-then starts its absolute `command` directly. After moving the Portable directory, start the map once to update the
-same locator and reinitialize the plugin. The locator is generated at runtime and is not included in the ZIP.
+A locator-aware STDIO client can read that file during session initialization or reconnect, validate schema 1, and
+start its absolute `command` directly. After moving the Portable directory, start the map once to update the same
+locator. The locator is generated at runtime and is not included in the ZIP.
 
 Legacy/manual MCP client configuration remains tied to an absolute launcher path. For example:
 
@@ -141,8 +146,8 @@ To update:
 1. close EVE Static Map Planner and any MCP bridge processes;
 2. extract the new ZIP to a new directory;
 3. launch and validate the new copy;
-4. start the map so its locator reflects the new directory; update any legacy/manual MCP registration whose absolute
-   path changed;
+4. start the map so its HTTP host is available and its STDIO locator reflects the new directory; update only a
+   legacy/manual STDIO registration whose absolute path changed;
 5. delete the old program directory.
 
 Do not overwrite a directory while its application or MCP process is running. LocalAppData is retained.
