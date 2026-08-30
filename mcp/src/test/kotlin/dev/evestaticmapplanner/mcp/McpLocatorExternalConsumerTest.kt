@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class McpLocatorExternalConsumerTest {
     @Test
-    fun `external consumer launches exact twenty two tool MCP directly from generated locator`() = runBlocking {
+    fun `external consumer launches exact twenty eight tool MCP directly from generated locator`() = runBlocking {
         val imageProperty = System.getProperty(PORTABLE_IMAGE_PROPERTY)
         assumeTrue(imageProperty != null, "Runs only against the final extracted Portable image")
         val applicationImage = Path.of(imageProperty).toAbsolutePath().normalize()
@@ -47,7 +47,7 @@ class McpLocatorExternalConsumerTest {
         val document = Json.parseToJsonElement(Files.readString(locator)).jsonObject
         assertEquals(setOf("schemaVersion", "appVersion", "transport", "command"), document.keys)
         assertEquals(1, document.getValue("schemaVersion").jsonPrimitive.content.toInt())
-        assertEquals("0.6.0", document.getValue("appVersion").jsonPrimitive.content)
+        assertEquals("1.0.0", document.getValue("appVersion").jsonPrimitive.content)
         assertEquals("stdio", document.getValue("transport").jsonPrimitive.content)
         val command = Path.of(document.getValue("command").jsonPrimitive.content).toAbsolutePath().normalize()
         assertEquals(applicationImage.resolve("eve-map-mcp.exe"), command)

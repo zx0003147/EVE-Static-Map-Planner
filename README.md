@@ -2,8 +2,8 @@
 
 A small Kotlin/JVM desktop application for offline EVE Online static-map and route-planning workflows.
 
-Version 0.6.0 completes the static map, normal routing, manual Ansiblex, jump-range overlay, capital-routing,
-managed SDE updates, external Feature Packs, and the self-contained Windows x64 Portable ZIP release.
+Version 1.0.0 adds isolated Planning Views, View-aware AI Missions, and the generic contracts needed for
+multi-character ESI targets and image-based system markers, while preserving the existing routing engines.
 
 Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
 exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
@@ -38,9 +38,10 @@ Install the optional Pack JARs at these exact paths, then enable them under Pref
 ```
 
 Without any Pack, the Core map, routing, databases, and updater continue to work normally. The ESI Pack adds EVE SSO,
-character location, `Set EVE Destination`, and bounded explicit `Send Draft to EVE` actions. Map and route edits
-remain local until one of those actions is clicked. Its Connect, Refresh Location, and
-Disconnect controls appear generically in the Feature Packs preferences page.
+multi-character location portraits, `Set EVE Destination`, and bounded explicit `Send Draft to EVE` actions. Each
+View stores one selected route-action target; both ESI actions share that selection and never auto-fallback after a
+disconnect. Map and route edits remain local until one of those actions is clicked. Add Character, Refresh Locations,
+and per-character Disconnect controls appear generically in the Feature Packs preferences page.
 
 See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
 
@@ -70,14 +71,14 @@ For manual acceptance, an exact system name and isolated user database can be su
 
 Database resolution order is `--database`, the `eve.static.database` JVM property, `EVE_STATIC_DB`, then the platform application-data path. Without an explicit override, a missing managed database opens Static Data Setup so the application can download and build the latest official SDE.
 
-The separate user database resolves through `--user-database`, `eve.user.database`, `EVE_USER_DB`, then `%LOCALAPPDATA%\EVE Static Map Planner\data\user.db` on Windows. A missing `user.db` is created with schema version 4. An existing damaged or newer database is never deleted or silently rebuilt; the application keeps the static map and Stargate-only routing available while disabling Ansiblex and saved markers.
+The separate user database resolves through `--user-database`, `eve.user.database`, `EVE_USER_DB`, then `%LOCALAPPDATA%\EVE Static Map Planner\data\user.db` on Windows. A missing `user.db` is created with schema version 5. An existing damaged or newer database is never deleted or silently rebuilt; the application keeps the static map and Stargate-only routing available while disabling user-data features.
 
 ## Windows x64 distribution
 
 The official Windows distribution is the installer-free Portable ZIP:
 
 ```text
-EVE-Static-Map-Planner-0.6.0-Windows-x64.zip
+EVE-Static-Map-Planner-1.0.0-Windows-x64.zip
 ```
 
 Download and extract the complete ZIP, then open:

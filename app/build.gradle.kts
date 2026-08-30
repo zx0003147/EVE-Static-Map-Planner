@@ -562,9 +562,9 @@ val verifyPortableZip by tasks.registering {
     group = "verification"
     description = "Audits and extracts the final Portable ZIP, then verifies the extracted app-image."
     dependsOn(packagePortableZip)
-    val auditFile = portableReleaseDirectory.map { it.file("portable-audit-0.6.0.txt") }
+    val auditFile = portableReleaseDirectory.map { it.file("portable-audit-$appVersion.txt") }
     val checksumFile = portableReleaseDirectory.map { it.file("$portableArchiveName.sha256") }
-    val manifestFile = portableReleaseDirectory.map { it.file("release-manifest-0.6.0.txt") }
+    val manifestFile = portableReleaseDirectory.map { it.file("release-manifest-$appVersion.txt") }
     outputs.files(auditFile, checksumFile, manifestFile)
     outputs.dir(portableExtractionRoot)
     outputs.upToDateWhen { false }
@@ -612,13 +612,13 @@ val verifyPortableZip by tasks.registering {
         }
         manifestFile.get().asFile.writeText(
             buildString {
-                appendLine("EVE Static Map Planner release 0.6.0")
+                appendLine("EVE Static Map Planner release $appVersion")
                 appendLine("main_artifact=$portableArchiveName")
                 appendLine("main_size_bytes=${zip.toFile().length()}")
                 appendLine("main_uncompressed_size_bytes=${archiveAudit.uncompressedSize}")
                 appendLine("main_file_count=${archiveAudit.fileCount}")
                 appendLine("main_sha256=${archiveAudit.sha256}")
-                appendLine("esi_pack_version=0.5.0")
+                appendLine("esi_pack_version=1.0.0")
                 appendLine("sovereignty_pack_version=0.2.0")
                 appendLine("feature_api_version=2.0.0")
                 appendLine("msi_artifact=REMOVED")
@@ -687,7 +687,7 @@ val portableHttpMcpResourceTest by tasks.registering(Test::class) {
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform()
     filter.includeTestsMatching("dev.evestaticmapplanner.PortableHttpMcpResourceTest")
-    val report = rootProject.layout.buildDirectory.file("release/http-mcp-resource-0.6.0.txt")
+    val report = rootProject.layout.buildDirectory.file("release/http-mcp-resource-$appVersion.txt")
     doFirst {
         systemProperty("eve.http.mcp.resource.portable.image", portableExtractedImage.get().asFile.absolutePath)
         systemProperty("eve.http.mcp.resource.report", report.get().asFile.absolutePath)

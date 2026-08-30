@@ -91,7 +91,7 @@ class PortableHttpMcpInstalledImageTest {
             val client = Client(Implementation("portable-http-acceptance", "1.0"))
             try {
                 client.connect(StreamableHttpClientTransport(http, ENDPOINT))
-                assertEquals(22, client.listTools().tools.size)
+                assertEquals(28, client.listTools().tools.size)
                 val search = client.callTool("search_system", mapOf("query" to "Jita"))
                 assertFalse(search.isError == true)
                 val systems = search.structuredContent?.get("systems") as JsonArray
@@ -175,7 +175,7 @@ class PortableHttpMcpResourceTest {
         try {
             waitForPort(connected)
             client.connect(StreamableHttpClientTransport(http, ENDPOINT))
-            assertEquals(22, client.listTools().tools.size)
+            assertEquals(28, client.listTools().tools.size)
             samples += sample("C_ONE_CLIENT_CONNECTED", connected)
         } finally {
             runCatching { client.close() }
@@ -187,7 +187,7 @@ class PortableHttpMcpResourceTest {
         val idleSample = samples[1]
         val connectedSample = samples[2]
         val report = buildString {
-            appendLine("EVE Static Map Planner 0.6.0 localhost HTTP MCP resource acceptance")
+            appendLine("EVE Static Map Planner 1.0.0 localhost HTTP MCP resource acceptance")
             appendLine("stable_window_seconds=5")
             samples.forEach { appendLine(it.encode()) }
             appendLine("http_idle_working_set_delta=${idleSample.workingSetBytes - baseline.workingSetBytes}")

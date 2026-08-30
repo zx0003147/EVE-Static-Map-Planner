@@ -192,7 +192,7 @@ internal fun StaticMapScreen(
                             viewModel.dismissContextMenu()
                         },
                         onContextMarkerAction = { systemId, action ->
-                            val systemName = state.scene?.nodesById?.get(systemId)?.system?.name ?: "System $systemId"
+                            val systemName = state.scene.nodesById[systemId]?.system?.name ?: "System $systemId"
                             val marker = markerState.markersBySystemId[systemId]
                             when (action) {
                                 MarkerContextAction.ADD_TEMPORARY -> markerViewModel.addTemporary(systemId)

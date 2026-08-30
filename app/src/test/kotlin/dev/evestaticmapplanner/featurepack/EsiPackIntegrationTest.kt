@@ -8,13 +8,11 @@ import dev.evestaticmapplanner.feature.api.RouteKind
 import dev.evestaticmapplanner.feature.api.RouteSegment
 import dev.evestaticmapplanner.feature.api.RouteSegmentKind
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
-import dev.evestaticmapplanner.feature.api.RouteActionStatus
 import java.net.URL
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.ServiceLoader
-import java.util.concurrent.TimeUnit
 import java.util.jar.JarFile
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
@@ -33,7 +31,7 @@ class EsiPackIntegrationTest {
             val attributes = jar.manifest.mainAttributes
             assertEquals("esi.pack", attributes.getValue(FeaturePackJarManifest.PACK_ID))
             assertEquals("ESI Pack", attributes.getValue(FeaturePackJarManifest.DISPLAY_NAME))
-            assertEquals("0.5.0", attributes.getValue(FeaturePackJarManifest.VERSION))
+            assertEquals("1.0.0", attributes.getValue(FeaturePackJarManifest.VERSION))
             assertEquals("EVE Static Map Planner", attributes.getValue(FeaturePackJarManifest.PUBLISHER))
             assertEquals(
                 FeatureApiVersions.current().identifier,
@@ -52,7 +50,7 @@ class EsiPackIntegrationTest {
     }
 
     @Test
-    fun `real Host loads both capabilities rejects route action and tears down cleanly`() =
+    fun `real Host loads multi-character capabilities disables untargeted actions and tears down cleanly`() =
         withTempDirectory { root ->
             val packRoot = root.resolve("feature-packs")
             val destination = packRoot.resolve("esi.pack/pack.jar")
@@ -98,28 +96,21 @@ class EsiPackIntegrationTest {
                 assertTrue(actions.all { it.supportedRouteKinds == setOf(RouteKind.NORMAL) })
                 assertEquals(2, actionsFor(runtime, RouteKind.NORMAL).size)
                 assertTrue(actionsFor(runtime, RouteKind.CAPITAL).isEmpty())
+                assertTrue(actions.all { it.targetSelector?.label == "EVE Character" })
+                assertTrue(actions.all { it.targetSelector?.options?.isEmpty() == true })
+                assertTrue(actions.none { it.enabled })
 
                 val controls = runtime.packControlHost.state.value.single()
                 assertEquals(PackId("esi.pack"), controls.packId)
-                assertEquals("EVE Character", controls.primaryText)
-                assertEquals("Not connected", controls.secondaryText)
-                assertEquals(listOf("connect"), controls.actions.map { it.key.actionId })
+                assertEquals("Connected Characters (0)", controls.primaryText)
+                assertEquals("No connected characters", controls.secondaryText)
+                assertEquals(listOf("add-character"), controls.actions.map { it.key.actionId })
 
                 assertFalse(runtime.routeActionHost.invoke(actions.first().key, route(RouteKind.CAPITAL)))
                 actions.forEach { action ->
-                    assertTrue(runtime.routeActionHost.invoke(action.key, route(RouteKind.NORMAL)))
-                    await {
-                        runtime.routeActionHost.state.value
-                            .first { it.key == action.key }
-                            .lastStatus == RouteActionStatus.REJECTED
-                    }
+                    assertFalse(runtime.routeActionHost.invoke(action.key, route(RouteKind.NORMAL)))
                 }
-                assertTrue(
-                    runtime.routeActionHost.state.value.all {
-                        it.lastStatus == RouteActionStatus.REJECTED &&
-                            it.lastMessage == "No EVE character is connected."
-                    },
-                )
+                assertTrue(runtime.routeActionHost.state.value.all { it.lastStatus == null })
 
                 assertFalse(Files.exists(root.resolve("feature-pack-storage/esi.pack")))
             } finally {
@@ -157,14 +148,6 @@ class EsiPackIntegrationTest {
             orderedSystemIds = systems,
             orderedSegments = segments,
         )
-    }
-
-    private fun await(condition: () -> Boolean) {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-        while (!condition()) {
-            check(System.nanoTime() < deadline) { "Timed out waiting for ESI Pack Route Action result" }
-            Thread.sleep(10)
-        }
     }
 
     private inline fun withTempDirectory(block: (Path) -> Unit) {

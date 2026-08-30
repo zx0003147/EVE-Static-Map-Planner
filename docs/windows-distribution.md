@@ -1,9 +1,9 @@
 # Windows x64 Portable ZIP distribution
 
-EVE Static Map Planner 0.6.0 is distributed for Windows x64 only as:
+EVE Static Map Planner 1.0.0 is distributed for Windows x64 only as:
 
 ```text
-EVE-Static-Map-Planner-0.6.0-Windows-x64.zip
+EVE-Static-Map-Planner-1.0.0-Windows-x64.zip
 ```
 
 The previous MSI release path is retired. The release does not require WiX, Windows Installer, a system JDK, registry
@@ -19,7 +19,7 @@ EVE Static Map Planner\
 ├─ EVE Map MCP Bridge.exe
 ├─ eve-map-mcp.exe
 ├─ app\
-│  ├─ app-0.6.0-<hash>.jar
+│  ├─ app-1.0.0-<hash>.jar
 │  ├─ feature-api-2.0.0-<hash>.jar
 │  ├─ mcp\
 │  └─ packaged resources and runtime dependencies
@@ -83,10 +83,10 @@ Outputs are placed under:
 
 ```text
 build\release\
-├─ EVE-Static-Map-Planner-0.6.0-Windows-x64.zip
-├─ EVE-Static-Map-Planner-0.6.0-Windows-x64.zip.sha256
-├─ portable-audit-0.6.0.txt
-└─ release-manifest-0.6.0.txt
+├─ EVE-Static-Map-Planner-1.0.0-Windows-x64.zip
+├─ EVE-Static-Map-Planner-1.0.0-Windows-x64.zip.sha256
+├─ portable-audit-1.0.0.txt
+└─ release-manifest-1.0.0.txt
 ```
 
 No third-party archive dependency is used.
@@ -106,7 +106,7 @@ Feature Packs remain separate release artifacts and are never placed in the main
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
 ```
 
-Feature API runtime 2 / artifact 2.0.0 is unchanged. ESI Pack 0.5.0 and Sovereignty Pack 0.2.0 keep their existing
+Feature API runtime 2 / artifact 2.0.0 is frozen. ESI Pack 1.0.0 and Sovereignty Pack 0.2.0 keep their independent
 PackStorage, state, and lifecycle behavior.
 
 ## MCP portability

@@ -8,7 +8,7 @@ Repository: [zx0003147/EVE-Map-Assistant-Plugin](https://github.com/zx0003147/EV
 
 ## Requirements
 
-- Extract EVE Static Map Planner 0.6.0 or later as a complete Portable application directory.
+- Extract EVE Static Map Planner 1.0.0 or later as a complete Portable application directory.
 - Start the map and enable **Preferences > AI Control** before map operations.
 - Install or enable EVE Map Assistant Plugin 0.5.0.
 - Open a new Codex task after installing or updating the Plugin.
