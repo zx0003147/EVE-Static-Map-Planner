@@ -16,13 +16,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    dependsOn(tasks.compileTestKotlin)
-    testClassesDirs = files(layout.buildDirectory.dir("classes/kotlin/test"))
-    classpath = project.files(
-        testClassesDirs,
-        sourceSets.main.get().output,
-        configurations.testRuntimeClasspath.get(),
-    )
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
 }
 
 kotlin {
