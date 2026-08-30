@@ -241,6 +241,9 @@ fun StaticMapCanvas(
     val presentedFeatureEmblems = remember(emblemPlacements, emblemAssetStates) {
         FeatureOverlayEmblemLod.readyEmblems(emblemPlacements, emblemAssetStates)
     }
+    val presentedOverlaySystemMarkers = remember(featureOverlayState, scene, transform) {
+        presentOverlaySystemMarkers(featureOverlayState, scene, transform)
+    }
     val markerOffsetPx = with(density) { 10.dp.toPx().toDouble() }
     val childOrbitRadiusPx = with(density) {
         savedMarkerChildOrbitRadiusDp(savedMarkerAppearance.ringRadiusDp).dp.toPx().toDouble()
@@ -249,6 +252,7 @@ fun StaticMapCanvas(
     val childCorridorRadiusPx = with(density) { 7.dp.toPx().toDouble() }
     var activeMarkerInteractionSystemId by remember { mutableStateOf<Int?>(null) }
     var hoveredSavedMarkerChild by remember { mutableStateOf<PresentedSavedMarkerChild?>(null) }
+    var hoveredOverlaySystemMarker by remember { mutableStateOf<PresentedOverlaySystemMarker?>(null) }
     val expandedMarkerSystemIds = buildSet {
         state.hoveredSystemId?.let(::add)
         state.selectedSystemId?.let(::add)
@@ -293,6 +297,7 @@ fun StaticMapCanvas(
     LaunchedEffect(scene, viewport, state.canvasSize) {
         activeMarkerInteractionSystemId = null
         hoveredSavedMarkerChild = null
+        hoveredOverlaySystemMarker = null
         withFrameNanos { }
         onFirstMapDisplayed()
     }
@@ -316,6 +321,13 @@ fun StaticMapCanvas(
                 if (state.contextMenu != null) return@onPointerEvent
                 val awtEvent = event.awtEventOrNull
                 val point = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
+                if (hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, point) != null) {
+                    isPointerGestureBlocked = true
+                    pressedAt = null
+                    lastDragPosition = null
+                    isDragging = false
+                    return@onPointerEvent
+                }
                 if (compactCardBounds.containsPoint(point)) {
                     isPointerGestureBlocked = true
                     pressedAt = null
@@ -354,6 +366,15 @@ fun StaticMapCanvas(
                         lastDragPosition = point
                     }
                 } else {
+                    val overlayMarkerHit = hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, point)
+                    if (overlayMarkerHit != null) {
+                        hoveredOverlaySystemMarker = overlayMarkerHit
+                        activeMarkerInteractionSystemId = null
+                        hoveredSavedMarkerChild = null
+                        onHoverExit()
+                        return@onPointerEvent
+                    }
+                    hoveredOverlaySystemMarker = null
                     val markerHit = hitTestSavedMarkerInteraction(
                         markers = presentedMarkers,
                         point = point,
@@ -377,6 +398,7 @@ fun StaticMapCanvas(
                 isDragging = false
                 activeMarkerInteractionSystemId = null
                 hoveredSavedMarkerChild = null
+                hoveredOverlaySystemMarker = null
                 onHoverExit()
             }
             .onPointerEvent(PointerEventType.Release) { event ->
@@ -504,6 +526,11 @@ fun StaticMapCanvas(
                 }
             }
         }
+        if (presentedOverlaySystemMarkers.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.FEATURE_SYSTEM_MARKER)) {
+                drawOverlaySystemMarkers(presentedOverlaySystemMarkers, textMeasurer)
+            }
+        }
         Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.SELECTED_SYSTEM_FOCUS)) {
             with(MapRenderer) {
                 drawInteraction(
@@ -533,6 +560,22 @@ fun StaticMapCanvas(
             ) {
                 Text(
                     child.visual.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(7.dp),
+                )
+            }
+        }
+        hoveredOverlaySystemMarker?.takeIf { it.tooltipLines.isNotEmpty() }?.let { marker ->
+            Surface(
+                color = androidx.compose.ui.graphics.Color(0xF21B2A37),
+                contentColor = androidx.compose.ui.graphics.Color(0xFFF1F5F8),
+                shadowElevation = 6.dp,
+                modifier = Modifier
+                    .zIndex(SAVED_MARKER_TOOLTIP_Z_INDEX)
+                    .offset { IntOffset(marker.center.x.toInt() + 28, marker.center.y.toInt() - 16) },
+            ) {
+                Text(
+                    marker.tooltipLines.joinToString("\n"),
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(7.dp),
                 )
@@ -681,6 +724,7 @@ internal object StaticMapVisualLayerOrder {
     const val ROUTE = 3f
     const val ROUTE_FOCUS = 3.5f
     const val SAVED_MARKER = 4f
+    const val FEATURE_SYSTEM_MARKER = 4.5f
     const val SELECTED_SYSTEM_FOCUS = 5f
 }
 
