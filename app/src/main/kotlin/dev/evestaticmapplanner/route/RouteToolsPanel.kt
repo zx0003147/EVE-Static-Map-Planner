@@ -35,6 +35,7 @@ import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.search.SystemSearchField
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.feature.api.RouteActionTargetId
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
@@ -72,7 +73,9 @@ internal fun RouteToolsPanel(
     routeActions: List<RouteActionUiState>,
     normalRouteSnapshot: RouteSnapshot?,
     capitalRouteSnapshot: RouteSnapshot?,
-    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
+    selectedRouteActionTargets: Map<String, String>,
+    onSelectRouteActionTarget: (String, String?) -> Unit,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
     onFocusSystem: (Int) -> Unit,
 ) {
@@ -124,6 +127,8 @@ internal fun RouteToolsPanel(
                             viewModel,
                             routeActions,
                             normalRouteSnapshot,
+                            selectedRouteActionTargets,
+                            onSelectRouteActionTarget,
                             onInvokeRouteAction,
                             onOpenAnsiblexManager,
                         )
@@ -139,6 +144,8 @@ internal fun RouteToolsPanel(
                             capitalViewModel,
                             routeActions,
                             capitalRouteSnapshot,
+                            selectedRouteActionTargets,
+                            onSelectRouteActionTarget,
                             onInvokeRouteAction,
                         )
                     }
@@ -241,7 +248,9 @@ private fun NormalRouteSectionContent(
     viewModel: RoutePlannerViewModel,
     routeActions: List<RouteActionUiState>,
     routeSnapshot: RouteSnapshot?,
-    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
+    selectedRouteActionTargets: Map<String, String>,
+    onSelectRouteActionTarget: (String, String?) -> Unit,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -283,7 +292,13 @@ private fun NormalRouteSectionContent(
             TextButton(onClick = viewModel::clearRoute, enabled = state.routeOutcome != null) { Text("Clear") }
         }
         RouteSummary(state)
-        RouteActionButtons(routeActions, routeSnapshot, onInvokeRouteAction)
+        RouteActionButtons(
+            routeActions,
+            routeSnapshot,
+            selectedRouteActionTargets,
+            onSelectRouteActionTarget,
+            onInvokeRouteAction,
+        )
         TextButton(onClick = onOpenAnsiblexManager, enabled = state.isAnsiblexAvailable) {
             Text("Ansiblex Manager (${state.enabledAnsiblexCount}/${state.ansiblexConnections.size})")
         }
@@ -304,7 +319,9 @@ private fun CapitalRouteSectionContent(
     viewModel: CapitalRouteViewModel,
     routeActions: List<RouteActionUiState>,
     routeSnapshot: RouteSnapshot?,
-    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
+    selectedRouteActionTargets: Map<String, String>,
+    onSelectRouteActionTarget: (String, String?) -> Unit,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SystemSearchField(
@@ -337,7 +354,13 @@ private fun CapitalRouteSectionContent(
             TextButton(onClick = viewModel::clear, enabled = state.outcome != null) { Text("Clear") }
         }
         CapitalRouteSummary(state)
-        RouteActionButtons(routeActions, routeSnapshot, onInvokeRouteAction)
+        RouteActionButtons(
+            routeActions,
+            routeSnapshot,
+            selectedRouteActionTargets,
+            onSelectRouteActionTarget,
+            onInvokeRouteAction,
+        )
         state.error?.let { Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall) }
         Text(
             "Validates real XYZ geometry, manual max range, and implemented static eligibility only.",

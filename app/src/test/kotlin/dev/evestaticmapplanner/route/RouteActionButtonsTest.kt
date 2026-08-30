@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import dev.evestaticmapplanner.feature.api.PackId
@@ -18,6 +20,9 @@ import dev.evestaticmapplanner.feature.api.RouteKind
 import dev.evestaticmapplanner.feature.api.RouteSegment
 import dev.evestaticmapplanner.feature.api.RouteSegmentKind
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.feature.api.RouteActionTargetId
+import dev.evestaticmapplanner.feature.api.RouteActionTargetOption
+import dev.evestaticmapplanner.feature.api.RouteActionTargetSnapshot
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import kotlin.test.Test
@@ -32,7 +37,7 @@ class RouteActionButtonsTest {
                 RouteActionButtons(
                     listOf(action("Capital only", setOf(RouteKind.CAPITAL))),
                     snapshot(RouteKind.NORMAL),
-                ) { _, _ -> }
+                ) { _, _, _ -> }
             }
         }
 
@@ -45,7 +50,7 @@ class RouteActionButtonsTest {
         var invoked: RouteSnapshot? = null
         setContent {
             MaterialTheme {
-                RouteActionButtons(listOf(action("Send route")), snapshot(RouteKind.NORMAL)) { _, route ->
+                RouteActionButtons(listOf(action("Send route")), snapshot(RouteKind.NORMAL)) { _, route, _ ->
                     invoked = route
                 }
             }
@@ -64,7 +69,7 @@ class RouteActionButtonsTest {
         var invocationCount = 0
         setContent {
             MaterialTheme {
-                RouteActionButtons(listOf(action("Send Draft to EVE")), currentSnapshot) { _, _ ->
+                RouteActionButtons(listOf(action("Send Draft to EVE")), currentSnapshot) { _, _, _ ->
                     invocationCount++
                 }
             }
@@ -91,7 +96,7 @@ class RouteActionButtonsTest {
         var actions by mutableStateOf(listOf(action("Send route", busy = true)))
         setContent {
             MaterialTheme {
-                RouteActionButtons(actions, snapshot(RouteKind.NORMAL)) { _, _ -> }
+                RouteActionButtons(actions, snapshot(RouteKind.NORMAL)) { _, _, _ -> }
             }
         }
 
@@ -111,20 +116,73 @@ class RouteActionButtonsTest {
         onNodeWithText("Failed: Unable to send").assertDoesNotExist()
     }
 
+    @Test
+    fun `shared target selector appears once and passes the explicit selection`() = runComposeUiTest {
+        var selectedTargets by mutableStateOf(emptyMap<String, String>())
+        var invokedTarget: RouteActionTargetId? = null
+        val selector = targetSelector()
+        setContent {
+            MaterialTheme {
+                RouteActionButtons(
+                    actions = listOf(
+                        action("Send Draft to EVE", id = "send", targetSelector = selector),
+                        action("Set EVE Destination", id = "destination", targetSelector = selector),
+                    ),
+                    snapshot = snapshot(RouteKind.NORMAL),
+                    selectedTargetIds = selectedTargets,
+                    onSelectTarget = { key, value -> selectedTargets = selectedTargets + (key to checkNotNull(value)) },
+                ) { _, _, target -> invokedTarget = target }
+            }
+        }
+
+        onAllNodesWithText("EVE Character").assertCountEquals(1)
+        onNodeWithText("Send Draft to EVE").assertIsNotEnabled()
+        onNodeWithText("Select…").performClick()
+        onNodeWithText("Pandogodzilla").performClick()
+        onNodeWithText("Send Draft to EVE").assertIsEnabled().performClick()
+        waitForIdle()
+        assertEquals(RouteActionTargetId("90000001"), invokedTarget)
+    }
+
+    @Test
+    fun `disconnected persisted target stays visible and does not fall back`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                RouteActionButtons(
+                    actions = listOf(action("Send Draft to EVE", targetSelector = targetSelector())),
+                    snapshot = snapshot(RouteKind.NORMAL),
+                    selectedTargetIds = mapOf("test.pack:eve-character" to "90000002"),
+                ) { _, _, _ -> error("Unavailable target must not invoke") }
+            }
+        }
+
+        onNodeWithText("90000002 (disconnected / unavailable)").assertIsDisplayed()
+        onNodeWithText("Send Draft to EVE").assertIsNotEnabled()
+    }
+
     private fun action(
         label: String,
         kinds: Set<RouteKind> = setOf(RouteKind.NORMAL),
         busy: Boolean = false,
         status: RouteActionStatus? = null,
         message: String? = null,
+        id: String = "send",
+        targetSelector: RouteActionTargetSnapshot? = null,
     ) = RouteActionUiState(
-        RouteActionKey(PackId("test.pack"), "send"),
+        RouteActionKey(PackId("test.pack"), id),
         label,
         null,
         kinds,
         busy,
         status,
         message,
+        targetSelector,
+    )
+
+    private fun targetSelector() = RouteActionTargetSnapshot(
+        "eve-character",
+        "EVE Character",
+        listOf(RouteActionTargetOption(RouteActionTargetId("90000001"), "Pandogodzilla")),
     )
 
     private fun snapshot(kind: RouteKind) = RouteSnapshot(

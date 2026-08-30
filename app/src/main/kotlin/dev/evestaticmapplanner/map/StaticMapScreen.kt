@@ -61,6 +61,7 @@ import dev.evestaticmapplanner.control.MissionMapUiState
 import dev.evestaticmapplanner.feature.api.OverlayState
 import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.feature.api.RouteActionTargetId
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.view.PlanningViewCoordinator
@@ -84,7 +85,7 @@ internal fun StaticMapScreen(
     routeActions: List<RouteActionUiState>,
     normalRouteSnapshot: RouteSnapshot?,
     capitalRouteSnapshot: RouteSnapshot?,
-    onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
+    onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     viewModel: MapViewModel,
     routeViewModel: RoutePlannerViewModel,
     jumpViewModel: JumpOverlayViewModel,
@@ -128,6 +129,8 @@ internal fun StaticMapScreen(
             routeActions = routeActions,
             normalRouteSnapshot = normalRouteSnapshot,
             capitalRouteSnapshot = capitalRouteSnapshot,
+            selectedRouteActionTargets = planningViewsState.currentView.selectedRouteActionTargets,
+            onSelectRouteActionTarget = planningViewCoordinator::selectRouteActionTarget,
             onInvokeRouteAction = onInvokeRouteAction,
             onOpenAnsiblexManager = { showAnsiblexManager = true },
             onFocusSystem = viewModel::selectAndFocusSystem,

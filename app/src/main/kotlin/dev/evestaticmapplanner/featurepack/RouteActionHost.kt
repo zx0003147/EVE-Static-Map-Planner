@@ -146,7 +146,11 @@ class RouteActionHost(
     private fun requestTargetRefresh(key: RouteActionKey) {
         val hosted = synchronized(this) {
             val current = actions[key] ?: return
-            if (current.closed || current.targetRefreshBusy) return
+            if (current.closed) return
+            if (current.targetRefreshBusy) {
+                current.targetRefreshPending = true
+                return
+            }
             current.targetRefreshBusy = true
             current
         }
@@ -159,15 +163,29 @@ class RouteActionHost(
     }
 
     private fun refreshTargets(hosted: HostedAction) {
-        val refreshed = runCatching { hosted.provider.targets().also { validateTargetSelector(hosted.descriptor, it) } }
-        synchronized(this) {
-            hosted.targetRefreshBusy = false
-            if (!hosted.closed && actions[hosted.key] === hosted) {
-                refreshed.onSuccess { hosted.targetSelector = it }
-                publishState()
+        while (true) {
+            val refreshed = runCatching {
+                hosted.provider.targets().also { validateTargetSelector(hosted.descriptor, it) }
             }
+            val repeat = synchronized(this) {
+                if (hosted.closed || actions[hosted.key] !== hosted) {
+                    hosted.targetRefreshBusy = false
+                    false
+                } else {
+                    refreshed.onSuccess { hosted.targetSelector = it }
+                    publishState()
+                    if (hosted.targetRefreshPending) {
+                        hosted.targetRefreshPending = false
+                        true
+                    } else {
+                        hosted.targetRefreshBusy = false
+                        false
+                    }
+                }
+            }
+            refreshed.exceptionOrNull()?.let { reportFailure(hosted, "refresh-targets", it) }
+            if (!repeat) return
         }
-        refreshed.exceptionOrNull()?.let { reportFailure(hosted, "refresh-targets", it) }
     }
 
     private fun unregister(key: RouteActionKey) {
@@ -247,6 +265,7 @@ class RouteActionHost(
         var invocation: ActionInvocation? = null
         var closed = false
         var targetRefreshBusy = false
+        var targetRefreshPending = false
     }
 
     private class ActionInvocation {
