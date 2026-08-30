@@ -10,6 +10,7 @@ import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.map.MAP_TOOLBAR_VERTICAL_PADDING
+import dev.evestaticmapplanner.map.MAP_TOOLBAR_BUTTON_HEIGHT
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -125,7 +126,8 @@ class ToolSidebarLayoutTest {
     fun `global search is permanently identified at the top of the sidebar`() {
         assertEquals("Search system...", SIDEBAR_SEARCH_LABEL)
         assertEquals(270, TOOL_SIDEBAR_WIDTH.value.toInt())
-        assertEquals(4, MAP_TOOLBAR_VERTICAL_PADDING.value.toInt())
+        assertEquals(2, MAP_TOOLBAR_VERTICAL_PADDING.value.toInt())
+        assertEquals(36, MAP_TOOLBAR_BUTTON_HEIGHT.value.toInt())
     }
 
     private fun system(id: Int, name: String) = SolarSystem(

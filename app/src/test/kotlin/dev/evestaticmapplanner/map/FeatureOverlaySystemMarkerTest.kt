@@ -36,8 +36,8 @@ import dev.evestaticmapplanner.feature.api.OverlaySystemMarker
 import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.jetbrains.skia.Surface
 
 @OptIn(ExperimentalTestApi::class)
@@ -60,8 +60,9 @@ class FeatureOverlaySystemMarkerTest {
     @Test
     fun `portrait marker remains twenty pixel class for one to four images`() {
         assertEquals(20f, OverlaySystemMarkerVisuals.PORTRAIT_DIAMETER_PX)
-        assertEquals(1.5f, OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX)
+        assertEquals(1f, OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX)
         assertEquals(1f, OverlaySystemMarkerVisuals.HIGHLIGHT_WIDTH_PX)
+        assertEquals(1f, OverlaySystemMarkerVisuals.SEPARATOR_WIDTH_PX)
         assertEquals(2f, OverlaySystemMarkerVisuals.SHADOW_RADIUS_EXTRA_PX)
         assertEquals(5f, OverlaySystemMarkerVisuals.PIN_TIP_HEIGHT_PX)
         assertTrue(OverlaySystemMarkerVisuals.TOTAL_HEIGHT_PX in 26f..28f)
@@ -77,10 +78,53 @@ class FeatureOverlaySystemMarkerTest {
             )
             assertEquals(15f, marker.node.y - marker.center.y)
             assertEquals(20f, OverlaySystemMarkerVisuals.PORTRAIT_DIAMETER_PX)
-            assertEquals(
-                androidx.compose.ui.geometry.Rect(70f, 75f, 90f, 95f),
-                overlaySystemMarkerPortraitRect(marker),
+            val geometry = overlaySystemMarkerGeometry(marker)
+            assertEquals(androidx.compose.ui.geometry.Rect(70f, 75f, 90f, 95f), geometry.portraitRect)
+            assertEquals(marker.center.x, geometry.portraitRect.center.x)
+            assertEquals(marker.center.x, (geometry.pinBaseLeft.x + geometry.pinBaseRight.x) / 2f)
+            assertEquals(marker.node, geometry.pinTip)
+        }
+    }
+
+    @Test
+    fun `fractional projected anchors keep portrait pin and node on one exact vertical axis`() {
+        (1..4).forEach { count ->
+            val marker = PresentedOverlaySystemMarker(
+                systemId = count,
+                center = Offset(40.5f, 24.5f),
+                node = Offset(40.5f, 39.5f),
+                images = List(count) { ImageBitmap(1, 1) },
+                overflowCount = 0,
+                tooltipLines = emptyList(),
             )
+            val geometry = overlaySystemMarkerGeometry(marker)
+
+            assertEquals(40.5f, geometry.portraitRect.center.x)
+            assertEquals(40.5f, (geometry.pinBaseLeft.x + geometry.pinBaseRight.x) / 2f)
+            assertEquals(40.5f, geometry.pinTip.x)
+        }
+    }
+
+    @Test
+    fun `same-system separators stay within the portrait circle`() {
+        (2..4).forEach { count ->
+            val marker = PresentedOverlaySystemMarker(
+                systemId = count,
+                center = Offset(50f, 50f),
+                node = Offset(50f, 65f),
+                images = List(count) { ImageBitmap(1, 1) },
+                overflowCount = 0,
+                tooltipLines = emptyList(),
+            )
+            val segments = overlaySystemMarkerSeparatorSegments(marker)
+
+            assertEquals(count, segments.size)
+            segments.forEach { (start, end) ->
+                assertEquals(marker.center, start)
+                val dx = end.x - marker.center.x
+                val dy = end.y - marker.center.y
+                assertTrue(dx * dx + dy * dy <= 100.001f)
+            }
         }
     }
 
@@ -186,7 +230,53 @@ class FeatureOverlaySystemMarkerTest {
             }
             assertEquals((0..index).toSet(), seen, "marker ${index + 1} must show every portrait sector")
             assertEquals(TEST_BACKGROUND, pixels[(marker.center.x + 9f).toInt(), (marker.center.y - 9f).toInt()])
+            if (index > 0) {
+                overlaySystemMarkerSeparatorSegments(marker).forEach { (start, end) ->
+                    val sampleX = ((start.x + end.x) / 2f).toInt()
+                    val sampleY = ((start.y + end.y) / 2f).toInt()
+                    val separatorVisible = (sampleY - 1..sampleY + 1).any { y ->
+                        (sampleX - 1..sampleX + 1).any { x ->
+                            val pixel = pixels[x, y]
+                            pixel.red > 0.35f && pixel.green > 0.35f && pixel.blue > 0.35f
+                        }
+                    }
+                    assertTrue(separatorVisible, "marker ${index + 1} separator must be visible near $sampleX,$sampleY")
+                }
+            }
         }
+    }
+
+    @Test
+    fun `fractional portrait destination has no horizontal pixel drift`() = runComposeUiTest {
+        val marker = PresentedOverlaySystemMarker(
+            systemId = 42,
+            center = Offset(40.5f, 30f),
+            node = Offset(40.5f, 45f),
+            images = listOf(solidImage(0xFFFF0000.toInt())),
+            overflowCount = 0,
+            tooltipLines = emptyList(),
+        )
+        setContent {
+            val textMeasurer = rememberTextMeasurer()
+            Canvas(Modifier.size(81.dp, 60.dp).background(TEST_BACKGROUND).testTag(CANVAS_TAG)) {
+                drawOverlaySystemMarkers(listOf(marker), textMeasurer)
+            }
+        }
+
+        val pixels = onNodeWithTag(CANVAS_TAG).captureToImage().toPixelMap()
+        var totalWeight = 0f
+        var weightedX = 0f
+        for (y in 21..39) for (x in 31..50) {
+            val pixel = pixels[x, y]
+            val weight = (pixel.red - maxOf(pixel.green, pixel.blue)).coerceAtLeast(0f)
+            totalWeight += weight
+            weightedX += x * weight
+        }
+        val centroidX = weightedX / totalWeight
+        assertTrue(
+            kotlin.math.abs((centroidX + 0.5f) - marker.center.x) < 0.35f,
+            "portrait pixel-center centroid drifted to ${centroidX + 0.5f}",
+        )
     }
 
     @Test

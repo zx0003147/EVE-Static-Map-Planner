@@ -5,16 +5,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -22,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -348,28 +355,21 @@ private fun MapToolbar(
     var renameViewId by remember { mutableStateOf<PlanningViewId?>(null) }
     var renameText by remember { mutableStateOf("") }
     var renameError by remember { mutableStateOf<String?>(null) }
-    Surface(color = Color(0xFF121D28), contentColor = Color(0xFFD7E6F2)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = MAP_TOOLBAR_VERTICAL_PADDING),
-        ) {
-            ProjectionControls(state, viewModel)
-            ViewStrip(
-                state = planningViewsState,
-                onSwitch = planningViewCoordinator::switchView,
-                onCreate = planningViewCoordinator::createView,
-                onRename = { view ->
-                    renameViewId = view.id
-                    renameText = view.label
-                    renameError = null
-                },
-                onDelete = planningViewCoordinator::deleteView,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = viewModel::fitMap, enabled = state.scene != null) { Text("Fit Map") }
-        }
-    }
+    MapToolbarContent(
+        projectionId = state.projectionId,
+        fitEnabled = state.scene != null,
+        planningViewsState = planningViewsState,
+        onSwitchProjection = viewModel::switchProjection,
+        onSwitchView = planningViewCoordinator::switchView,
+        onCreateView = planningViewCoordinator::createView,
+        onRenameView = { view ->
+            renameViewId = view.id
+            renameText = view.label
+            renameError = null
+        },
+        onDeleteView = planningViewCoordinator::deleteView,
+        onFitMap = viewModel::fitMap,
+    )
     renameViewId?.let { id ->
         AlertDialog(
             onDismissRequest = { renameViewId = null },
@@ -397,51 +397,130 @@ private fun MapToolbar(
 }
 
 @Composable
+internal fun MapToolbarContent(
+    projectionId: MapProjectionId,
+    fitEnabled: Boolean,
+    planningViewsState: PlanningViewsState,
+    onSwitchProjection: (MapProjectionId) -> Unit,
+    onSwitchView: (PlanningViewId) -> Boolean,
+    onCreateView: () -> PlanningViewId,
+    onRenameView: (dev.evestaticmapplanner.view.PlanningView) -> Unit,
+    onDeleteView: (PlanningViewId) -> Boolean,
+    onFitMap: () -> Unit,
+    viewScrollState: ScrollState? = null,
+    modifier: Modifier = Modifier,
+) {
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides MAP_TOOLBAR_BUTTON_HEIGHT) {
+        Surface(modifier = modifier, color = Color(0xFF121D28), contentColor = Color(0xFFD7E6F2)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = MAP_TOOLBAR_VERTICAL_PADDING),
+            ) {
+                ProjectionControls(projectionId, onSwitchProjection)
+                ViewStrip(
+                    state = planningViewsState,
+                    onSwitch = onSwitchView,
+                    onCreate = onCreateView,
+                    onRename = onRenameView,
+                    onDelete = onDeleteView,
+                    scrollState = viewScrollState,
+                    modifier = Modifier.weight(1f),
+                )
+                CompactToolbarTextButton(onClick = onFitMap, enabled = fitEnabled) { Text("Fit Map") }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProjectionControls(
-    state: MapUiState,
-    viewModel: MapViewModel,
+    projectionId: MapProjectionId,
+    onSwitchProjection: (MapProjectionId) -> Unit,
 ) {
     MapProjectionId.entries.forEach { projection ->
-        if (projection == state.projectionId) {
-            Button(onClick = {}, enabled = false) { Text(projection.displayName) }
+        if (projection == projectionId) {
+            CompactToolbarButton(onClick = {}, enabled = false) { Text(projection.displayName) }
         } else {
-            TextButton(onClick = { viewModel.switchProjection(projection) }) { Text(projection.displayName) }
+            CompactToolbarTextButton(onClick = { onSwitchProjection(projection) }) { Text(projection.displayName) }
         }
     }
 }
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun ViewStrip(
+internal fun ViewStrip(
     state: PlanningViewsState,
     onSwitch: (PlanningViewId) -> Boolean,
     onCreate: () -> PlanningViewId,
     onRename: (dev.evestaticmapplanner.view.PlanningView) -> Unit,
     onDelete: (PlanningViewId) -> Boolean,
+    scrollState: ScrollState? = null,
     modifier: Modifier = Modifier,
 ) {
-    val scroll = rememberScrollState()
+    val scroll = scrollState ?: rememberScrollState()
     Row(
         modifier = modifier
             .horizontalScroll(scroll)
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                if (delta != 0f) scroll.dispatchRawDelta(delta * VIEW_SCROLL_MULTIPLIER)
+                dispatchViewWheelScroll(scroll, delta)
             },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         state.views.forEach { view ->
             if (view.id == state.currentViewId) {
-                Button(onClick = { onSwitch(view.id) }) { Text(view.label) }
-                TextButton(onClick = { onRename(view) }) { Text("✎") }
-                TextButton(onClick = { onDelete(view.id) }, enabled = state.views.size > 1) { Text("×") }
+                CompactToolbarButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
+                CompactToolbarTextButton(onClick = { onRename(view) }, action = true) { Text("✎") }
+                CompactToolbarTextButton(
+                    onClick = { onDelete(view.id) },
+                    enabled = state.views.size > 1,
+                    action = true,
+                ) { Text("×") }
             } else {
-                TextButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
+                CompactToolbarTextButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
             }
         }
-        TextButton(onClick = { onCreate() }) { Text("+") }
+        CompactToolbarTextButton(onClick = { onCreate() }, action = true) { Text("+") }
     }
+}
+
+internal fun dispatchViewWheelScroll(scroll: ScrollState, verticalDelta: Float): Float =
+    if (verticalDelta == 0f) 0f else scroll.dispatchRawDelta(verticalDelta * VIEW_SCROLL_MULTIPLIER)
+
+@Composable
+private fun CompactToolbarButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.height(MAP_TOOLBAR_BUTTON_HEIGHT),
+        contentPadding = MAP_TOOLBAR_CONTENT_PADDING,
+        content = content,
+    )
+}
+
+@Composable
+private fun CompactToolbarTextButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    action: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .then(if (action) Modifier.width(MAP_TOOLBAR_ACTION_BUTTON_WIDTH) else Modifier)
+            .height(MAP_TOOLBAR_BUTTON_HEIGHT),
+        contentPadding = MAP_TOOLBAR_CONTENT_PADDING,
+        content = content,
+    )
 }
 
 internal fun confirmGlobalSystemSearch(
@@ -453,7 +532,11 @@ internal fun confirmGlobalSystemSearch(
     focusSystem(system.id)
 }
 
-internal val MAP_TOOLBAR_VERTICAL_PADDING = 4.dp
+internal val MAP_TOOLBAR_VERTICAL_PADDING = 2.dp
+internal val MAP_TOOLBAR_BUTTON_HEIGHT = 36.dp
+internal val MAP_TOOLBAR_ACTION_BUTTON_WIDTH = 36.dp
+internal val MAP_TOOLBAR_EXPECTED_HEIGHT = MAP_TOOLBAR_BUTTON_HEIGHT + MAP_TOOLBAR_VERTICAL_PADDING * 2
+private val MAP_TOOLBAR_CONTENT_PADDING = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
 internal const val VIEW_SCROLL_MULTIPLIER = 48f
 
 @Composable
