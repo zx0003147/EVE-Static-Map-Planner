@@ -15,6 +15,8 @@ class FeatureApiV1PreservationTest {
             val constructors = type.declaredConstructors
                 .filter { Modifier.isPublic(it.modifiers) && !it.isSynthetic }
                 .mapTo(sortedSetOf(), ::constructorSignature)
+                .minus(APPROVED_V2_CONSTRUCTOR_ADDITIONS[typeName].orEmpty())
+                .toSortedSet()
             val methods = type.declaredMethods
                 .filter { Modifier.isPublic(it.modifiers) && !it.isSynthetic && !it.isBridge }
                 .mapTo(sortedSetOf(), ::methodSignature)
@@ -237,6 +239,13 @@ class FeatureApiV1PreservationTest {
 
         val APPROVED_V2_METHOD_ADDITIONS = mapOf(
             "$API.FeaturePackContext" to setOf("capabilities():$API.FeatureCapabilityLookup"),
+            "$API.OverlayEntry" to setOf("getSystemMarker():$API.OverlaySystemMarker"),
+        )
+
+        val APPROVED_V2_CONSTRUCTOR_ADDITIONS = mapOf(
+            "$API.OverlayEntry" to setOf(
+                "($STRING,int,$STRING,$STRING,$STRING,$API.OverlayEntryVisibility,$API.OverlaySystemMarker)",
+            ),
         )
 
         fun valueObjectMethods() = setOf(

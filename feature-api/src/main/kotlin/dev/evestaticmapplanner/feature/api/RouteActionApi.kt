@@ -89,8 +89,54 @@ class RouteSnapshot(
     }
 }
 
+/** Opaque Pack-owned identity for one selectable Route Action target. */
+class RouteActionTargetId(val value: String) {
+    init {
+        RouteActionValidation.validateText("Route action target ID", value, 256)
+    }
+
+    override fun equals(other: Any?): Boolean = other is RouteActionTargetId && value == other.value
+
+    override fun hashCode(): Int = value.hashCode()
+
+    override fun toString(): String = value
+}
+
+/** One generic target exposed by a Pack for a group of Route Actions. */
+class RouteActionTargetOption(
+    val id: RouteActionTargetId,
+    val label: String,
+    val description: String? = null,
+    val available: Boolean = true,
+) {
+    init {
+        RouteActionValidation.validateText("Route action target label", label, 120)
+        RouteActionValidation.validateOptionalText("Route action target description", description, 240)
+    }
+}
+
+/** Immutable target choices for one selector shared by one or more Route Actions. */
+class RouteActionTargetSnapshot(
+    val selectorId: String,
+    val label: String,
+    options: List<RouteActionTargetOption>,
+) {
+    val options: List<RouteActionTargetOption> = Collections.unmodifiableList(ArrayList(options))
+
+    init {
+        RouteActionValidation.validateId("Route action target selector ID", selectorId)
+        RouteActionValidation.validateText("Route action target selector label", label, 100)
+        require(this.options.map { it.id }.distinct().size == this.options.size) {
+            "Route action target IDs must be unique within a selector"
+        }
+    }
+}
+
 /** Minimal execution context for one Route Action invocation. */
-class RouteActionContext(val route: RouteSnapshot)
+class RouteActionContext(
+    val route: RouteSnapshot,
+    val targetId: RouteActionTargetId? = null,
+)
 
 /** Stable, display-neutral metadata for one Route Action. */
 class RouteActionDescriptor(
@@ -98,6 +144,7 @@ class RouteActionDescriptor(
     val label: String,
     val description: String?,
     supportedRouteKinds: Set<RouteKind>,
+    val targetSelectorId: String? = null,
 ) {
     val supportedRouteKinds: Set<RouteKind> = Collections.unmodifiableSet(LinkedHashSet(supportedRouteKinds))
 
@@ -105,6 +152,7 @@ class RouteActionDescriptor(
         RouteActionValidation.validateId("Route action ID", id)
         RouteActionValidation.validateText("Route action label", label, 100)
         RouteActionValidation.validateOptionalText("Route action description", description, 240)
+        targetSelectorId?.let { RouteActionValidation.validateId("Route action target selector ID", it) }
         require(this.supportedRouteKinds.isNotEmpty()) { "Route action must support at least one route kind" }
     }
 }
@@ -112,6 +160,9 @@ class RouteActionDescriptor(
 /** Pack-owned synchronous source of one display-neutral route action. */
 interface RouteActionProvider {
     fun descriptor(): RouteActionDescriptor
+
+    /** Returns current generic targets, or null when this action has no selectable target. */
+    fun targets(): RouteActionTargetSnapshot? = null
 
     fun execute(context: RouteActionContext): RouteActionResult
 }
@@ -123,6 +174,9 @@ interface RouteActionCapability : FeatureCapability {
 
 /** Idempotent lifetime handle for one Route Action provider registration. */
 interface RouteActionRegistration : AutoCloseable {
+    /** Signals that [RouteActionProvider.targets] may have changed. */
+    fun requestTargetRefresh()
+
     override fun close()
 }
 

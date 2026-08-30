@@ -45,6 +45,20 @@ class OverlayApiTest {
         assertFailsWith<IllegalArgumentException> { OverlayEntry("status", 0) }
     }
 
+    @Test
+    fun `system image marker copies image bytes and validates generic tooltip`() {
+        val source = byteArrayOf(1, 2, 3)
+        val image = OverlayImage("image/png", source)
+        source[0] = 9
+        val marker = OverlaySystemMarker(listOf(image), overflowCount = 2, tooltipLines = listOf("Pilot · 42"))
+
+        assertEquals(listOf<Byte>(1, 2, 3), image.content.toList())
+        assertEquals(2, marker.overflowCount)
+        assertEquals(listOf("Pilot · 42"), marker.tooltipLines)
+        assertFailsWith<IllegalArgumentException> { OverlayImage("image/gif", byteArrayOf(1)) }
+        assertFailsWith<IllegalArgumentException> { OverlaySystemMarker(emptyList()) }
+    }
+
     private fun fixtureProvider() = object : OverlayProvider {
         override fun descriptor() = OverlayProviderDescriptor("test.provider", "Test Provider")
 

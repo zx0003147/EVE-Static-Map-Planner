@@ -112,7 +112,10 @@ matching uses both a canonical ID and the expected Java type; it is not a genera
 
 The frozen standard keys are `dynamic-overlay`, `route-action`, and `pack-controls`. Dynamic Overlay providers continue to return
 immutable display-neutral snapshots; `requestRefresh()` only signals that the Host should re-read one provider.
-Route Actions receive a defensive, immutable `RouteSnapshot` and return a synchronous display-neutral result. Neither
+Overlay entries may optionally carry a bounded generic image marker anchored to a system; Packs own image acquisition and
+caching while the Host owns decoding, sector composition, pin rendering, and hover presentation. Route Actions receive a
+defensive, immutable `RouteSnapshot`, may expose a shared generic target selector, and return a synchronous display-neutral result.
+Selected target IDs are opaque Pack-owned values and remain Host-persisted planning state. Neither
 contract exposes Compose, coroutines, coordinates, ViewModels, executors, Core route objects, database models, Control
 DTOs, ESI, OAuth, or HTTP client types. Pack Controls expose only a cheap synchronous status snapshot, generic action
 descriptors, safe action results, and provider-targeted `requestRefresh()`; they cannot contribute arbitrary Compose UI.

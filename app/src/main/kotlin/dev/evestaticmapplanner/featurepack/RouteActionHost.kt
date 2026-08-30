@@ -8,6 +8,8 @@ import dev.evestaticmapplanner.feature.api.RouteActionProvider
 import dev.evestaticmapplanner.feature.api.RouteActionRegistration
 import dev.evestaticmapplanner.feature.api.RouteActionResult
 import dev.evestaticmapplanner.feature.api.RouteActionStatus
+import dev.evestaticmapplanner.feature.api.RouteActionTargetId
+import dev.evestaticmapplanner.feature.api.RouteActionTargetSnapshot
 import dev.evestaticmapplanner.feature.api.RouteKind
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
 import java.util.concurrent.ArrayBlockingQueue
@@ -31,8 +33,9 @@ internal data class RouteActionUiState(
     val busy: Boolean = false,
     val lastStatus: RouteActionStatus? = null,
     val lastMessage: String? = null,
+    val targetSelector: RouteActionTargetSnapshot? = null,
 ) {
-    val enabled: Boolean get() = !busy
+    val enabled: Boolean get() = !busy && (targetSelector == null || targetSelector.options.any { it.available })
 }
 
 /** Host-private registry, execution boundary, and presentation state for Pack Route Actions. */
@@ -62,18 +65,27 @@ class RouteActionHost(
     internal fun register(packId: PackId, provider: RouteActionProvider): RouteActionRegistration {
         check(!closed) { "Route Action Host is closed" }
         val descriptor = provider.descriptor()
+        val targetSelector = provider.targets().also { validateTargetSelector(descriptor, it) }
         val key = RouteActionKey(packId, descriptor.id)
         require(key !in actions) { "Route Action ID is already registered for Feature Pack $packId: ${descriptor.id}" }
-        actions[key] = HostedAction(key, descriptor, provider)
+        actions[key] = HostedAction(key, descriptor, provider, targetSelector)
         publishState()
-        return HostRouteActionRegistration { unregister(key) }
+        return HostRouteActionRegistration(
+            refresh = { requestTargetRefresh(key) },
+            unregister = { unregister(key) },
+        )
     }
 
     /** Captures [snapshot] before scheduling and never executes Pack code on the caller thread. */
-    internal fun invoke(key: RouteActionKey, snapshot: RouteSnapshot): Boolean {
+    internal fun invoke(
+        key: RouteActionKey,
+        snapshot: RouteSnapshot,
+        targetId: RouteActionTargetId? = null,
+    ): Boolean {
         synchronized(this) {
             val hosted = actions[key] ?: return false
             if (hosted.closed || hosted.busy || snapshot.kind !in hosted.descriptor.supportedRouteKinds) return false
+            if (!isValidTarget(hosted, targetId)) return false
             hosted.busy = true
             hosted.lastStatus = null
             hosted.lastMessage = null
@@ -81,7 +93,7 @@ class RouteActionHost(
             val invocation = ActionInvocation()
             hosted.invocation = invocation
             try {
-                invocation.future = executor.submit { execute(hosted, snapshot, invocation) }
+                invocation.future = executor.submit { execute(hosted, snapshot, targetId, invocation) }
             } catch (error: RejectedExecutionException) {
                 hosted.invocation = null
                 hosted.busy = false
@@ -95,7 +107,12 @@ class RouteActionHost(
         }
     }
 
-    private fun execute(hosted: HostedAction, snapshot: RouteSnapshot, invocation: ActionInvocation) {
+    private fun execute(
+        hosted: HostedAction,
+        snapshot: RouteSnapshot,
+        targetId: RouteActionTargetId?,
+        invocation: ActionInvocation,
+    ) {
         invocation.started.set(true)
         val shouldRun = synchronized(this) {
             !hosted.closed && actions[hosted.key] === hosted && hosted.invocation === invocation
@@ -106,7 +123,7 @@ class RouteActionHost(
         }
 
         val result = try {
-            checkNotNull(hosted.provider.execute(RouteActionContext(snapshot))) {
+            checkNotNull(hosted.provider.execute(RouteActionContext(snapshot, targetId))) {
                 "Route Action provider returned a null result"
             }
         } catch (error: Throwable) {
@@ -124,6 +141,33 @@ class RouteActionHost(
             }
         }
         invocation.completed.countDown()
+    }
+
+    private fun requestTargetRefresh(key: RouteActionKey) {
+        val hosted = synchronized(this) {
+            val current = actions[key] ?: return
+            if (current.closed || current.targetRefreshBusy) return
+            current.targetRefreshBusy = true
+            current
+        }
+        try {
+            executor.submit { refreshTargets(hosted) }
+        } catch (error: RejectedExecutionException) {
+            synchronized(this) { hosted.targetRefreshBusy = false }
+            reportFailure(hosted, "refresh-targets-schedule", error)
+        }
+    }
+
+    private fun refreshTargets(hosted: HostedAction) {
+        val refreshed = runCatching { hosted.provider.targets().also { validateTargetSelector(hosted.descriptor, it) } }
+        synchronized(this) {
+            hosted.targetRefreshBusy = false
+            if (!hosted.closed && actions[hosted.key] === hosted) {
+                refreshed.onSuccess { hosted.targetSelector = it }
+                publishState()
+            }
+        }
+        refreshed.exceptionOrNull()?.let { reportFailure(hosted, "refresh-targets", it) }
     }
 
     private fun unregister(key: RouteActionKey) {
@@ -158,6 +202,7 @@ class RouteActionHost(
                 label = hosted.descriptor.label,
                 description = hosted.descriptor.description,
                 supportedRouteKinds = hosted.descriptor.supportedRouteKinds,
+                targetSelector = hosted.targetSelector,
                 busy = hosted.busy,
                 lastStatus = hosted.lastStatus,
                 lastMessage = hosted.lastMessage,
@@ -194,18 +239,35 @@ class RouteActionHost(
         val key: RouteActionKey,
         val descriptor: RouteActionDescriptor,
         val provider: RouteActionProvider,
+        var targetSelector: RouteActionTargetSnapshot?,
     ) {
         var busy = false
         var lastStatus: RouteActionStatus? = null
         var lastMessage: String? = null
         var invocation: ActionInvocation? = null
         var closed = false
+        var targetRefreshBusy = false
     }
 
     private class ActionInvocation {
         val started = AtomicBoolean(false)
         val completed = CountDownLatch(1)
         @Volatile var future: Future<*>? = null
+    }
+
+    private fun validateTargetSelector(
+        descriptor: RouteActionDescriptor,
+        snapshot: RouteActionTargetSnapshot?,
+    ) {
+        require(descriptor.targetSelectorId == snapshot?.selectorId) {
+            "Route Action target snapshot must match its descriptor selector ID"
+        }
+    }
+
+    private fun isValidTarget(hosted: HostedAction, targetId: RouteActionTargetId?): Boolean {
+        val selector = hosted.targetSelector ?: return targetId == null && hosted.descriptor.targetSelectorId == null
+        val selected = targetId ?: return false
+        return selector.options.any { it.id == selected && it.available }
     }
 
     private companion object {
@@ -229,10 +291,13 @@ internal class ScopedRouteActionCapability(
         check(!closed) { "Route Action capability is closed for Feature Pack $packId" }
         lateinit var scoped: RouteActionRegistration
         val delegate = host.register(packId, provider)
-        scoped = HostRouteActionRegistration {
-            delegate.close()
-            synchronized(this) { registrations.remove(scoped) }
-        }
+        scoped = HostRouteActionRegistration(
+            refresh = delegate::requestTargetRefresh,
+            unregister = {
+                delegate.close()
+                synchronized(this) { registrations.remove(scoped) }
+            },
+        )
         registrations += scoped
         return scoped
     }
@@ -247,9 +312,14 @@ internal class ScopedRouteActionCapability(
 }
 
 private class HostRouteActionRegistration(
+    private val refresh: () -> Unit,
     private val unregister: () -> Unit,
 ) : RouteActionRegistration {
     private val closed = AtomicBoolean(false)
+
+    override fun requestTargetRefresh() {
+        if (!closed.get()) refresh()
+    }
 
     override fun close() {
         if (closed.compareAndSet(false, true)) unregister()

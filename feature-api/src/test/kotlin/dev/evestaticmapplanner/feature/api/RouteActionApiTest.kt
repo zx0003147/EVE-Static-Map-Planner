@@ -141,6 +141,33 @@ class RouteActionApiTest {
     }
 
     @Test
+    fun `route action target snapshots are generic validated and immutable`() {
+        val options = mutableListOf(
+            RouteActionTargetOption(RouteActionTargetId("42"), "Primary", "Available target"),
+            RouteActionTargetOption(RouteActionTargetId("84"), "Secondary", available = false),
+        )
+        val snapshot = RouteActionTargetSnapshot("send-target", "Target", options)
+        options.clear()
+
+        assertEquals(listOf("42", "84"), snapshot.options.map { it.id.value })
+        assertFailsWith<UnsupportedOperationException> {
+            @Suppress("UNCHECKED_CAST")
+            (snapshot.options as MutableList<RouteActionTargetOption>).clear()
+        }
+        assertFailsWith<IllegalArgumentException> {
+            RouteActionTargetSnapshot(
+                "send-target",
+                "Target",
+                listOf(
+                    RouteActionTargetOption(RouteActionTargetId("42"), "One"),
+                    RouteActionTargetOption(RouteActionTargetId("42"), "Two"),
+                ),
+            )
+        }
+        assertFailsWith<IllegalArgumentException> { RouteActionTargetId(" ") }
+    }
+
+    @Test
     fun `route action result validates optional message`() {
         assertNull(RouteActionResult(RouteActionStatus.SUCCEEDED, null).message)
         assertEquals("Not applicable", RouteActionResult(RouteActionStatus.REJECTED, "Not applicable").message)
@@ -170,6 +197,10 @@ class RouteActionApiTest {
             }
         }
         val registration = object : RouteActionRegistration {
+            override fun requestTargetRefresh() {
+                events += "refresh"
+            }
+
             override fun close() {
                 events += "closed"
             }
@@ -187,8 +218,9 @@ class RouteActionApiTest {
         val returned = capability.register(provider)
         assertIs<AutoCloseable>(returned)
         assertEquals(RouteActionStatus.SUCCEEDED, provider.execute(context).status)
+        returned.requestTargetRefresh()
         returned.close()
 
-        assertEquals(listOf("route", "closed"), events)
+        assertEquals(listOf("route", "refresh", "closed"), events)
     }
 }

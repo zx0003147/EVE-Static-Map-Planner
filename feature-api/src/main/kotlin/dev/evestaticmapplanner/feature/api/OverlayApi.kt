@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.feature.api
 
+import java.util.Collections
+
 /** Pack-owned identity for one source of map overlay information. */
 class OverlayProviderDescriptor(
     val id: String,
@@ -32,6 +34,46 @@ enum class OverlayEntryVisibility {
     HIDDEN,
 }
 
+/** Immutable encoded image content supplied by a Pack for generic Host rendering. */
+class OverlayImage(
+    val mediaType: String,
+    content: ByteArray,
+) {
+    private val bytes = content.copyOf()
+
+    val content: ByteArray
+        get() = bytes.copyOf()
+
+    init {
+        require(mediaType in SUPPORTED_MEDIA_TYPES) { "Overlay image media type is unsupported" }
+        require(bytes.size in 1..MAX_IMAGE_BYTES) { "Overlay image content must be between 1 and $MAX_IMAGE_BYTES bytes" }
+    }
+
+    private companion object {
+        const val MAX_IMAGE_BYTES = 1_048_576
+        val SUPPORTED_MEDIA_TYPES = setOf("image/png", "image/jpeg", "image/webp")
+    }
+}
+
+/** Generic, non-interactive image marker anchored to one system node. */
+class OverlaySystemMarker(
+    images: List<OverlayImage>,
+    val overflowCount: Int = 0,
+    tooltipLines: List<String> = emptyList(),
+) {
+    val images: List<OverlayImage> = Collections.unmodifiableList(ArrayList(images))
+    val tooltipLines: List<String> = Collections.unmodifiableList(ArrayList(tooltipLines))
+
+    init {
+        require(this.images.size in 1..4) { "System marker must contain between one and four images" }
+        require(overflowCount >= 0) { "System marker overflow count must not be negative" }
+        require(this.tooltipLines.size <= 20) { "System marker tooltip must not exceed 20 lines" }
+        this.tooltipLines.forEach {
+            OverlayValidation.validateText("System marker tooltip line", it, 160, optional = false)
+        }
+    }
+}
+
 /** Information associated with one solar system and one provider-defined layer. */
 class OverlayEntry(
     val layerId: String,
@@ -40,7 +82,18 @@ class OverlayEntry(
     val subtitle: String? = null,
     val value: String? = null,
     val visibility: OverlayEntryVisibility = OverlayEntryVisibility.VISIBLE,
+    val systemMarker: OverlaySystemMarker? = null,
 ) {
+    /** Preserves the complete Feature API v1 constructor ABI. */
+    constructor(
+        layerId: String,
+        systemId: Int,
+        title: String?,
+        subtitle: String?,
+        value: String?,
+        visibility: OverlayEntryVisibility,
+    ) : this(layerId, systemId, title, subtitle, value, visibility, null)
+
     init {
         OverlayValidation.validateId("Overlay entry layer ID", layerId)
         require(systemId > 0) { "Overlay entry system ID must be positive" }

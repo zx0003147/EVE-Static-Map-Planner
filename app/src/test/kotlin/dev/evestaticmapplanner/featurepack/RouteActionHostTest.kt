@@ -9,6 +9,9 @@ import dev.evestaticmapplanner.feature.api.RouteActionStatus
 import dev.evestaticmapplanner.feature.api.RouteIdentity
 import dev.evestaticmapplanner.feature.api.RouteKind
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.feature.api.RouteActionTargetId
+import dev.evestaticmapplanner.feature.api.RouteActionTargetOption
+import dev.evestaticmapplanner.feature.api.RouteActionTargetSnapshot
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -205,6 +208,43 @@ class RouteActionHostTest {
         assertTrue(host.state.value.isEmpty())
     }
 
+    @Test
+    fun `shared generic target is validated passed and refreshable`() {
+        RouteActionHost().use { host ->
+            val selected = AtomicReference<RouteActionTargetId?>()
+            val targets = AtomicReference(targets(available = true))
+            val provider = object : RouteActionProvider {
+                override fun descriptor() = RouteActionDescriptor(
+                    "send",
+                    "Send",
+                    null,
+                    setOf(RouteKind.NORMAL),
+                    targetSelectorId = "send-target",
+                )
+
+                override fun targets(): RouteActionTargetSnapshot = targets.get()
+
+                override fun execute(context: RouteActionContext): RouteActionResult {
+                    selected.set(context.targetId)
+                    return RouteActionResult(RouteActionStatus.SUCCEEDED, null)
+                }
+            }
+            val registration = host.scopedCapability(PackId("test.pack")).register(provider)
+            val key = host.state.value.single().key
+            val targetId = RouteActionTargetId("42")
+
+            assertFalse(host.invoke(key, snapshot(RouteKind.NORMAL)))
+            assertTrue(host.invoke(key, snapshot(RouteKind.NORMAL), targetId))
+            await { host.state.value.single().lastStatus == RouteActionStatus.SUCCEEDED }
+            assertEquals(targetId, selected.get())
+
+            targets.set(targets(available = false))
+            registration.requestTargetRefresh()
+            await { host.state.value.single().targetSelector?.options?.single()?.available == false }
+            assertFalse(host.invoke(key, snapshot(RouteKind.NORMAL), targetId))
+        }
+    }
+
     private fun provider(
         id: String,
         kinds: Set<RouteKind>,
@@ -232,6 +272,12 @@ class RouteActionHostTest {
             },
             if (kind == RouteKind.CAPITAL || kind == RouteKind.MISSION_CAPITAL) 1.0 else null,
         )),
+    )
+
+    private fun targets(available: Boolean) = RouteActionTargetSnapshot(
+        "send-target",
+        "Target",
+        listOf(RouteActionTargetOption(RouteActionTargetId("42"), "Primary", available = available)),
     )
 
     private fun await(timeoutMillis: Long = 2_000, condition: () -> Boolean) {
