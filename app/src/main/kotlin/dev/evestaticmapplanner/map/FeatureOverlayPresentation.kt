@@ -247,6 +247,14 @@ private fun collectInput(state: OverlayState, scene: ProjectedMapScene): Territo
         }
         visibleEntries.forEach { entry ->
             val metadata = parsePresentationMetadata(entry.value)
+            if (
+                metadata.markerOnly || (
+                    entry.systemMarker != null &&
+                    metadata.color == null &&
+                    metadata.ownerKey == null &&
+                    metadata.emblemReference == null
+                )
+            ) return@forEach
             val ownerKey = metadata.ownerKey
                 ?: entry.title?.lowercase(Locale.ROOT)
                 ?: entry.value?.lowercase(Locale.ROOT)
@@ -1075,19 +1083,21 @@ private fun parsePresentationMetadata(value: String?): PresentationMetadata {
     var ownerKey: String? = null
     var emblemKey: String? = null
     var emblemUrl: String? = null
+    var markerOnly = false
     value?.split(';')?.forEach { token ->
         val colorMatch = PRESENTATION_COLOR_PATTERN.matchEntire(token)
         if (colorMatch != null) color = Color(colorMatch.groupValues[1].toLong(16))
         if (token.startsWith(OWNER_KEY_PREFIX)) ownerKey = token.removePrefix(OWNER_KEY_PREFIX).takeIf(String::isNotBlank)
         if (token.startsWith(EMBLEM_KEY_PREFIX)) emblemKey = token.removePrefix(EMBLEM_KEY_PREFIX).takeIf(String::isNotBlank)
         if (token.startsWith(EMBLEM_URL_PREFIX)) emblemUrl = token.removePrefix(EMBLEM_URL_PREFIX).takeIf(String::isNotBlank)
+        if (token == MARKER_ONLY_PRESENTATION_VALUE) markerOnly = true
     }
     val emblemReference = if (emblemKey != null && emblemUrl != null) {
         PresentationEmblemReference(emblemKey, emblemUrl)
     } else {
         null
     }
-    return PresentationMetadata(color, ownerKey, emblemReference)
+    return PresentationMetadata(color, ownerKey, emblemReference, markerOnly)
 }
 
 internal val DEFAULT_FEATURE_OVERLAY_COLOR = Color(0xFF8EA8BD)
@@ -1095,11 +1105,13 @@ private val PRESENTATION_COLOR_PATTERN = Regex("presentation-color:#([0-9A-Fa-f]
 private const val OWNER_KEY_PREFIX = "owner-key:"
 private const val EMBLEM_KEY_PREFIX = "presentation-emblem-key:"
 private const val EMBLEM_URL_PREFIX = "presentation-emblem-url:"
+internal const val MARKER_ONLY_PRESENTATION_VALUE = "presentation-kind:system-marker"
 
 private data class PresentationMetadata(
     val color: Color?,
     val ownerKey: String?,
     val emblemReference: PresentationEmblemReference?,
+    val markerOnly: Boolean,
 )
 
 private data class TerritoryInput(

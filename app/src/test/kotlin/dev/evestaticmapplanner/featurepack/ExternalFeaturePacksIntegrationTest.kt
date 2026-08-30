@@ -53,7 +53,7 @@ class ExternalFeaturePacksIntegrationTest {
                 val fields = runtime.systemInfoHost.request(30004759).sections.single().fields.associate { it.key to it.value }
                 assertEquals("Cached Alliance", fields["owner"])
                 assertEquals(listOf(PackId("esi.pack")), runtime.packControlHost.state.value.map { it.packId })
-                assertEquals("Not connected", runtime.packControlHost.state.value.single().secondaryText)
+                assertEquals("No connected characters", runtime.packControlHost.state.value.single().secondaryText)
                 assertEquals(setOf("esi.pack"), runtime.routeActionHost.state.value.map { it.key.packId.value }.toSet())
                 assertFalse(liveThreads().any { it.name == "eve-esi-location" })
                 assertFalse(events.any { it.contains("attempting one startup refresh", ignoreCase = true) })

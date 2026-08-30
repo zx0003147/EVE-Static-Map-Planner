@@ -23,6 +23,7 @@ import dev.evestaticmapplanner.feature.api.OverlayEntryVisibility
 import dev.evestaticmapplanner.feature.api.OverlayImage
 import dev.evestaticmapplanner.feature.api.OverlayState
 import org.jetbrains.skia.Image
+import kotlin.math.min
 
 internal data class PresentedOverlaySystemMarker(
     val systemId: Int,
@@ -78,6 +79,7 @@ internal fun DrawScope.drawOverlaySystemMarkers(
 
 private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMarker, textMeasurer: TextMeasurer) {
     val radius = OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX
+    val portraitRect = overlaySystemMarkerPortraitRect(marker)
     val shadowCenter = marker.center + Offset(0f, OverlaySystemMarkerVisuals.SHADOW_OFFSET_PX)
     val pinPath = Path().apply {
         moveTo(marker.center.x - 4f, marker.center.y + radius)
@@ -92,23 +94,23 @@ private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMark
 
     val count = marker.images.size
     marker.images.forEachIndexed { index, image ->
-        val sweep = 360f / count
-        val sector = Path().apply {
-            moveTo(marker.center.x, marker.center.y)
-            arcTo(
-                Rect(marker.center.x - radius, marker.center.y - radius, marker.center.x + radius, marker.center.y + radius),
-                -90f + sweep * index,
-                sweep,
-                false,
-            )
-            close()
+        val clip = if (count == 1) {
+            Path().apply { addOval(portraitRect) }
+        } else {
+            val sweep = 360f / count
+            Path().apply {
+                moveTo(marker.center.x, marker.center.y)
+                arcTo(portraitRect, -90f + sweep * index, sweep, false)
+                close()
+            }
         }
-        clipPath(sector) {
+        val crop = centeredSquareCrop(image)
+        clipPath(clip) {
             drawImage(
                 image = image,
-                srcOffset = IntOffset.Zero,
-                srcSize = IntSize(image.width, image.height),
-                dstOffset = IntOffset((marker.center.x - radius).toInt(), (marker.center.y - radius).toInt()),
+                srcOffset = crop.first,
+                srcSize = crop.second,
+                dstOffset = IntOffset(portraitRect.left.toInt(), portraitRect.top.toInt()),
                 dstSize = IntSize((radius * 2).toInt(), (radius * 2).toInt()),
                 filterQuality = FilterQuality.High,
             )
@@ -134,6 +136,21 @@ private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMark
         val text = textMeasurer.measure("+${marker.overflowCount}", TextStyle(Color.White, 7.sp))
         drawText(text, topLeft = badgeCenter - Offset(text.size.width / 2f, text.size.height / 2f))
     }
+}
+
+internal fun overlaySystemMarkerPortraitRect(marker: PresentedOverlaySystemMarker): Rect {
+    val radius = OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX
+    return Rect(
+        marker.center.x - radius,
+        marker.center.y - radius,
+        marker.center.x + radius,
+        marker.center.y + radius,
+    )
+}
+
+internal fun centeredSquareCrop(image: ImageBitmap): Pair<IntOffset, IntSize> {
+    val side = min(image.width, image.height)
+    return IntOffset((image.width - side) / 2, (image.height - side) / 2) to IntSize(side, side)
 }
 
 private fun dev.evestaticmapplanner.core.map.MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())

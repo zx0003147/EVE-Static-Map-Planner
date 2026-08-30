@@ -16,7 +16,9 @@ import dev.evestaticmapplanner.feature.api.OverlayEntryVisibility
 import dev.evestaticmapplanner.feature.api.OverlayLayer
 import dev.evestaticmapplanner.feature.api.OverlayLayerState
 import dev.evestaticmapplanner.feature.api.OverlayProviderDescriptor
+import dev.evestaticmapplanner.feature.api.OverlayImage
 import dev.evestaticmapplanner.feature.api.OverlayState
+import dev.evestaticmapplanner.feature.api.OverlaySystemMarker
 import kotlin.math.floor
 import kotlin.math.sqrt
 import kotlin.test.Test
@@ -26,6 +28,41 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class FeatureOverlayPresentationTest {
+    @Test
+    fun `marker-only loading and ready entries never create territory rectangles`() {
+        val loadingEntry = OverlayEntry(
+            layerId = "current-location",
+            systemId = A1,
+            title = "Character One",
+            value = MARKER_ONLY_PRESENTATION_VALUE,
+        )
+        val readyEntry = OverlayEntry(
+            layerId = "current-location",
+            systemId = A1,
+            title = "Character One",
+            value = MARKER_ONLY_PRESENTATION_VALUE,
+            systemMarker = OverlaySystemMarker(listOf(OverlayImage("image/png", byteArrayOf(1)))),
+        )
+
+        listOf(loadingEntry, readyEntry).forEach { entry ->
+            val presentation = FeatureOverlayPresentationBuilder.build(state(listOf(entry)), scene())
+            assertTrue(presentation.territories.isEmpty())
+            assertTrue(presentation.legendSections.isEmpty())
+        }
+    }
+
+    @Test
+    fun `image marker without territory metadata stays out of political presentation`() {
+        val entry = OverlayEntry(
+            layerId = "current-location",
+            systemId = A1,
+            title = "Character One",
+            systemMarker = OverlaySystemMarker(listOf(OverlayImage("image/png", byteArrayOf(1)))),
+        )
+
+        assertTrue(FeatureOverlayPresentationBuilder.build(state(listOf(entry)), scene()).territories.isEmpty())
+    }
+
     @Test
     fun `nearby same-owner groups merge across a small layout gap`() {
         val presentation = FeatureOverlayPresentationBuilder.build(
