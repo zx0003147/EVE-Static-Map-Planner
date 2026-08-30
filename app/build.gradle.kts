@@ -1,3 +1,4 @@
+import dev.evestaticmapplanner.packaging.LauncherRuntimeCompatibility
 import dev.evestaticmapplanner.packaging.PortableDistributionAudit
 import dev.evestaticmapplanner.packaging.WindowsAppImageIntegration
 import org.gradle.api.artifacts.VersionCatalogsExtension
@@ -280,10 +281,7 @@ val createIntegratedDistributable by tasks.registering {
         check(System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
             "The integrated application image can only be created on Windows."
         }
-        check(System.getProperty("java.runtime.version").startsWith("25.0.4+7")) {
-            "The integrated launcher contract was audited for JDK 25.0.4+7 only; " +
-                "found ${System.getProperty("java.runtime.version")}."
-        }
+        LauncherRuntimeCompatibility.requireSupported(System.getProperty("java.runtime.version"))
         check(composeApplicationImage.isDirectory) { "Missing Compose application image: $composeApplicationImage" }
         val composeAppDirectory = composeApplicationImage.resolve("app")
         val composeMainConfig = composeAppDirectory.resolve("EVE Static Map Planner.cfg")
