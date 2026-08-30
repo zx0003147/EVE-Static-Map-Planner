@@ -18,6 +18,7 @@ class ApplicationShutdownCoordinatorTest {
         try {
             runBlocking {
                 val coordinator = ApplicationShutdownCoordinator(
+                    shutdownLocalhostMcp = { events += "localhost-mcp" },
                     shutdownAiControl = {
                         withContext(Dispatchers.Default) {
                             withContext(ui) { events += "mission-clear" }
@@ -44,7 +45,15 @@ class ApplicationShutdownCoordinatorTest {
         }
 
         assertEquals(
-            listOf("mission-clear", "ai-control", "resource-1", "resource-2", "diagnostics", "exit"),
+            listOf(
+                "localhost-mcp",
+                "mission-clear",
+                "ai-control",
+                "resource-1",
+                "resource-2",
+                "diagnostics",
+                "exit",
+            ),
             events,
         )
     }
@@ -54,6 +63,7 @@ class ApplicationShutdownCoordinatorTest {
         val events = mutableListOf<String>()
         val warnings = mutableListOf<String>()
         val coordinator = ApplicationShutdownCoordinator(
+            shutdownLocalhostMcp = { error("MCP failure") },
             shutdownAiControl = { error("AI failure") },
             resourceClosers = listOf(
                 { error("resource failure") },
@@ -68,7 +78,11 @@ class ApplicationShutdownCoordinatorTest {
 
         assertEquals(listOf("remaining-resource", "diagnostics", "exit"), events)
         assertEquals(
-            listOf("Application shutdown failed: AI Control", "Application shutdown failed: application resource 1"),
+            listOf(
+                "Application shutdown failed: Localhost MCP",
+                "Application shutdown failed: AI Control",
+                "Application shutdown failed: application resource 1",
+            ),
             warnings,
         )
     }

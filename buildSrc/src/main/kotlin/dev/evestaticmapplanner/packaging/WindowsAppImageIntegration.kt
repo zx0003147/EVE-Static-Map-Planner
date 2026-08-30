@@ -157,9 +157,6 @@ object WindowsAppImageIntegration {
             Files.isRegularFile(path) && path.fileName.toString().lowercase() in forbiddenPackagedFileNames
         }
         require(forbidden.isEmpty()) { "Runtime/user data was packaged: $forbidden" }
-        require(allPaths.none { it.fileName.toString().contains("ktor", ignoreCase = true) }) {
-            "Ktor runtime was packaged"
-        }
         val runtimeDirectories = allPaths.filter {
             Files.isDirectory(it) && it.fileName.toString().equals("runtime", ignoreCase = true)
         }

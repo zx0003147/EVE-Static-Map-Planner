@@ -28,6 +28,7 @@ class WindowsAppImageIntegrationTest {
         )
         assertFalse(config.contains("compose", ignoreCase = true))
         assertFalse(config.contains("sqlite", ignoreCase = true))
+        assertFalse(config.contains("ktor", ignoreCase = true))
     }
 
     @Test

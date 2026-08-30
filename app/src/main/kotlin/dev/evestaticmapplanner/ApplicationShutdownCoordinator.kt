@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class ApplicationShutdownCoordinator(
+    private val shutdownLocalhostMcp: suspend () -> Unit,
     private val shutdownAiControl: suspend () -> Unit,
     private val resourceClosers: List<() -> Unit>,
     private val closeDiagnostics: () -> Unit,
@@ -20,6 +21,7 @@ internal class ApplicationShutdownCoordinator(
     suspend fun shutdown() = withContext(NonCancellable) {
         mutation.withLock {
             if (shutdownComplete) return@withLock
+            bestEffortSuspend("Localhost MCP") { shutdownLocalhostMcp() }
             bestEffortSuspend("AI Control") { shutdownAiControl() }
             closeOwnedResources()
             bestEffort("diagnostics") { closeDiagnostics() }

@@ -1,14 +1,54 @@
-# AI Map MCP launcher
+# AI Map MCP transports
 
-The `mcp` module is a local STDIO-only bridge between Codex and a running EVE Static Map Planner instance:
+EVE Static Map Planner exposes the same fixed 22-tool MCP server through two local transports:
 
 ```text
-Codex -> Plugin bundled MCP -> eve-map-mcp.exe
-      -> secure per-session discovery -> authenticated 127.0.0.1 HTTP
-      -> Map Control API -> temporary Mission state
+Streamable HTTP client -> http://127.0.0.1:27892/mcp -> MCP server in the Map JVM
+STDIO client          -> eve-map-mcp.exe             -> standalone MCP bridge
+                                                        |
+                                                        v
+                              secure discovery -> authenticated Map Control API
 ```
 
-The bridge does not start the desktop app, enable AI Control, accept a port or secret, or expose shell, file, SQL, generic HTTP, preferences, saved-marker, or Ansiblex mutation capabilities.
+Streamable HTTP is the recommended generic integration and the preferred transport for the EVE Map Assistant Codex
+Plugin. The HTTP listener is owned by the running Map process; it does not launch a second JVM and remains independent
+of the Plugin. STDIO remains supported for existing integrations and locator-aware clients. Both transports construct
+the canonical server through `createMcpServer`, use `LocalMcpMapClient`, and therefore keep Control discovery,
+authentication, idempotency, permissions, and error mapping unchanged.
+
+The current HTTP compatibility target is Kotlin MCP SDK 0.14.0 and its 2025-series Streamable HTTP implementation.
+This is not a claim of full MCP 2026-07-28 transport compliance. A future migration is gated on upgrading to an
+official Kotlin SDK release that supports that protocol version; no private compatibility protocol is implemented.
+
+## Localhost Streamable HTTP
+
+The production endpoint is fixed:
+
+```text
+http://127.0.0.1:27892/mcp
+```
+
+The listener binds only IPv4 loopback. It starts after the map scene and Control lifecycle have initialized, but a
+Control preference disabled state does not prevent MCP initialize or `tools/list`; tool calls return
+`APP_DISCONNECTED`. A port conflict is nonfatal to the GUI: the first Map instance retains the endpoint and a later
+instance records it as unavailable without choosing a fallback port.
+
+The host is stateless at the Streamable HTTP layer and accepts at most eight concurrent requests. It limits request
+bodies to 64 KiB, preserves the Control transport's 1 MiB response bound, applies a 60-second request/tool timeout,
+and configures CIO idle connection cleanup for ten minutes. Ktor CIO 3.4.3 does not expose an independent server
+header/read timeout setting, so the requested ten-second header/read target is not represented by a fabricated API.
+CIO uses its own connection parsing defaults; after routing begins, MCP request and tool handling is bounded to 60
+seconds, while idle connections are cleaned up after ten minutes.
+
+Requests must use the exact `Host: 127.0.0.1:27892` authority. An absent `Origin` is accepted; every present `Origin`
+is rejected with 403. The endpoint does not emit CORS allow headers, rejects `OPTIONS`, and has no bearer token because
+it exposes only the existing MCP-to-Control adapter on loopback. Control credentials never appear in HTTP responses
+or logs.
+
+On shutdown the Map stops HTTP first, then Control, then repositories and UI resources. This cancels active requests,
+releases port 27892, and prevents the HTTP adapter from outliving its authenticated Control hop.
+
+## STDIO launcher (still supported)
 
 ## Build the Windows launcher
 
@@ -44,11 +84,11 @@ All launchers use the one bundled jlink runtime. The GUI uses the Windows GUI su
 console subsystem, start `dev.evestaticmapplanner.mcp.MainKt`, and have identical production-only classpaths under
 `app\mcp`.
 
-The ZIP does not modify PATH or external MCP-client configuration. The packaged map publishes the client-neutral
+The ZIP does not modify PATH or external MCP-client configuration. The packaged map publishes the STDIO
 locator `%LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json`; a locator-aware plugin can read it at session
 initialization or reconnect and start the reported `eve-map-mcp.exe` directly. See `mcp-discovery.md`.
 
-The manual registration below remains supported and stores the absolute `eve-map-mcp.exe` path (or compatibility
+Codex users should prefer the HTTP Plugin. The manual STDIO registration below remains supported and stores the absolute `eve-map-mcp.exe` path (or compatibility
 launcher) from the chosen extracted directory. Moving or replacing that directory requires updating the manual
 external registration.
 
@@ -56,9 +96,10 @@ The program image contains no MCP locator, control discovery descriptor, session
 other user state. `mcp.json` is created only beneath `%LOCALAPPDATA%\EVE Static Map Planner\integration` after GUI
 startup. `active-instance.json`, `session.key`, and `active.lock` are created only beneath
 `%LOCALAPPDATA%\EVE Static Map Planner\control` after the running app enables AI Control. The bridge remains
-STDIO-only and its classpath excludes Ktor HTTP/SSE/WebSocket server runtimes.
+STDIO-only and its dedicated classpath excludes Ktor HTTP/SSE/WebSocket server runtimes; Ktor CIO is carried only by
+the GUI classpath for the in-process localhost host.
 
-## Register an extracted launcher
+## Register an extracted STDIO launcher
 
 Register either a development image or extracted Portable image with the official Codex CLI:
 
@@ -76,7 +117,7 @@ To remove only this registration:
 codex mcp remove eve-static-map
 ```
 
-## Portable MCP registration
+## Portable STDIO registration
 
 Register the stable launcher from the directory you actually extracted:
 

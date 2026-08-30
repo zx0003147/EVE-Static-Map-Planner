@@ -115,12 +115,19 @@ delete the LocalAppData directory.
 
 ## AI / MCP integration
 
-The Portable image includes `EVE Map MCP Bridge.exe` and `eve-map-mcp.exe`. After the packaged map starts, it
-maintains the discovery locator `%LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json`; ordinary users do not
-need to edit this file. A locator-aware AI plugin reads it at session initialization or reconnect and starts the
-reported MCP command directly. After moving the Portable directory, restart the map and then reinitialize the plugin.
+The recommended generic integration is Streamable HTTP at `http://127.0.0.1:27892/mcp`. The server runs inside the
+Map JVM, binds only IPv4 loopback, and exposes the same fixed 22 tools as the existing bridge. The EVE Map Assistant
+Codex Plugin prefers this HTTP endpoint, so moving the Portable directory does not change Plugin configuration: stop
+the Map, move the directory, restart the Map, and open a new Codex task.
 
-Legacy/manual MCP registrations still store an absolute executable path. Those registrations must be updated when
+Current HTTP compatibility is Kotlin MCP SDK 0.14.0 / 2025-series Streamable HTTP, not full MCP 2026-07-28. That
+protocol migration is deferred until it is supported by an official Kotlin SDK release.
+
+STDIO remains supported. The Portable image includes `EVE Map MCP Bridge.exe` and `eve-map-mcp.exe`, and the packaged
+Map maintains `%LOCALAPPDATA%\EVE Static Map Planner\integration\mcp.json` for locator-aware clients. Ordinary users
+do not need to edit this file.
+
+Legacy/manual STDIO registrations still store an absolute executable path. Those registrations must be updated when
 the extracted directory moves; the map does not modify Codex, DSH, Claude, or any other AI-client configuration.
 Plugin developers should use the authoritative contract in `docs/mcp-discovery.md`.
 

@@ -107,16 +107,24 @@ dependencies {
     implementation(project(":data"))
     implementation(project(":feature-api"))
     implementation(project(":marker-application"))
+    implementation(project(":mcp"))
     implementation(project(":sde"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.cio)
+    implementation(libs.ktor.server.content.negotiation)
+    implementation(libs.ktor.server.sse)
+    implementation(libs.ktor.serialization.kotlinx.json)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mcp.kotlin.client)
+    testImplementation(libs.ktor.client.cio)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     add(
         featurePackFixture.name,
@@ -658,6 +666,39 @@ val portableFeaturePackInstalledImageTest by tasks.registering(Test::class) {
     outputs.upToDateWhen { false }
 }
 
+val portableHttpMcpInstalledImageTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs localhost Streamable HTTP MCP through the moved Portable GUI and a fresh profile."
+    dependsOn(verifyPortableZip)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.PortableHttpMcpInstalledImageTest")
+    doFirst {
+        systemProperty("eve.http.mcp.portable.image", portableExtractedImage.get().asFile.absolutePath)
+    }
+    inputs.dir(portableExtractedImage)
+    outputs.upToDateWhen { false }
+}
+
+val portableHttpMcpResourceTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Measures Portable Map resources with HTTP unavailable, idle, and one connected client."
+    dependsOn(verifyPortableZip)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    filter.includeTestsMatching("dev.evestaticmapplanner.PortableHttpMcpResourceTest")
+    val report = rootProject.layout.buildDirectory.file("release/http-mcp-resource-0.6.0.txt")
+    doFirst {
+        systemProperty("eve.http.mcp.resource.portable.image", portableExtractedImage.get().asFile.absolutePath)
+        systemProperty("eve.http.mcp.resource.report", report.get().asFile.absolutePath)
+    }
+    inputs.dir(portableExtractedImage)
+    outputs.file(report)
+    outputs.upToDateWhen { false }
+}
+
 val portableEsiPackInstalledImageTest by tasks.registering(Test::class) {
     group = "verification"
     description = "Loads the real ESI Pack through the extracted Portable launcher."
@@ -756,6 +797,8 @@ val portableAcceptance by tasks.registering {
     description = "Runs the self-contained Portable ZIP, fixture Pack, and MCP process acceptance gates."
     dependsOn(
         portableFeaturePackInstalledImageTest,
+        portableHttpMcpInstalledImageTest,
+        portableHttpMcpResourceTest,
         ":mcp:portableLocatorExternalConsumerTest",
         ":mcp:portableInstalledImageTest",
     )

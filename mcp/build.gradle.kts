@@ -17,11 +17,17 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.mcp.kotlin.server) {
-        // The bridge is stdio-only. The official server artifact also publishes
-        // optional Ktor HTTP/SSE/WebSocket dependencies, which are deliberately
-        // kept off this module's production classpath.
+        // Keep the SDK's broad optional Ktor surface off the production classpath.
+        // The localhost host below declares only the CIO/HTTP pieces it uses.
         exclude(group = "io.ktor")
     }
+    // HTTP classes live in this shared module, but Ktor is supplied only by the GUI.
+    // Keeping it compile-only preserves the lean standalone STDIO distribution.
+    compileOnly(libs.ktor.server.core)
+    compileOnly(libs.ktor.server.cio)
+    compileOnly(libs.ktor.server.content.negotiation)
+    compileOnly(libs.ktor.server.sse)
+    compileOnly(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlin.logging)
     runtimeOnly(libs.slf4j.nop)
 
@@ -31,6 +37,12 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mcp.kotlin.client)
     testImplementation(libs.mcp.kotlin.testing)
+    testImplementation(libs.ktor.server.core)
+    testImplementation(libs.ktor.server.cio)
+    testImplementation(libs.ktor.server.content.negotiation)
+    testImplementation(libs.ktor.server.sse)
+    testImplementation(libs.ktor.serialization.kotlinx.json)
+    testImplementation(libs.ktor.client.cio)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

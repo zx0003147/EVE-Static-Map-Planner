@@ -54,6 +54,7 @@ import dev.evestaticmapplanner.marker.MarkerManagerWindow
 import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerApplicationService
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerPermissionPolicy
+import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
@@ -311,6 +312,9 @@ private fun FrameWindowScope.ReadyApplication(
             },
         )
     }
+    val localhostMcpHost = remember(configuration) {
+        LocalhostMcpHost.create(AppLocalhostMcpDiagnostics)
+    }
 
     val updaterScope = remember(configuration) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     val updaterService = remember(configuration) {
@@ -330,6 +334,7 @@ private fun FrameWindowScope.ReadyApplication(
 
     val shutdownCoordinator = remember(
         controlLifecycle,
+        localhostMcpHost,
         mapViewModel,
         routeViewModel,
         jumpViewModel,
@@ -339,6 +344,7 @@ private fun FrameWindowScope.ReadyApplication(
         staticDataViewModel,
     ) {
         ApplicationShutdownCoordinator(
+            shutdownLocalhostMcp = localhostMcpHost::shutdown,
             shutdownAiControl = controlLifecycle::shutdown,
             resourceClosers = listOf(
                 mapViewModel::close,
@@ -395,9 +401,10 @@ private fun FrameWindowScope.ReadyApplication(
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
     var aiPreferenceError by remember { mutableStateOf<String?>(null) }
     val aiControlReady = !mapState.isLoading && mapState.scene != null && !mapState.canvasSize.isEmpty
-    LaunchedEffect(aiControlReady, mapState.appPreferences.aiControl.enabled, exitRequested) {
+    LaunchedEffect(aiControlReady, mapState.appPreferences.aiControl.enabled, exitRequested, localhostMcpHost) {
         if (!exitRequested && aiControlReady) {
             controlLifecycle.setEnabled(mapState.appPreferences.aiControl.enabled)
+            localhostMcpHost.start()
         }
     }
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {

@@ -237,7 +237,7 @@ private class ProtocolMapClient : RecordingProtocolClient() {
     }
 }
 
-private open class RecordingProtocolClient : McpMapClient {
+internal open class RecordingProtocolClient : McpMapClient {
     private fun unused(): LocalControlClientResult =
         LocalControlClientResult.Success(JsonObject(mapOf("unused" to JsonPrimitive(true))), null)
 
