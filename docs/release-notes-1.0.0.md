@@ -6,7 +6,8 @@ Ansiblex, or capital-routing engines.
 ## Planning Views
 
 - The top map bar now keeps `Official 2D` and `Real X-Z` fixed beside a horizontally scrollable View strip.
-- Views have stable internal IDs, unique editable labels, create/rename/switch/close controls, and a one-View minimum.
+- Views have stable internal IDs, unique editable labels, a compact create control, right-click Rename/Delete actions,
+  and a one-View minimum.
 - Each View restores its own user normal route, user capital route, AI Missions, and generic Route Action target.
 - Projection, static data, Saved Markers, Feature Packs, sovereignty, connected characters, and all character locations
   remain global.
@@ -48,8 +49,7 @@ Ansiblex, or capital-routing engines.
 - EVE Map Assistant Plugin: `0.5.0` (fixed localhost HTTP configuration unchanged)
 - Windows x64 Portable ZIP remains the only Core distribution; Feature Pack JARs remain separate.
 
-This candidate is intentionally not pushed, tagged, or published. Passing automated acceptance means it is ready for
-human product QA: exercise in-session View lifecycle/restoration, verify restart returns to blank `View 1`, test multiple
-real EVE logins and locations, shared portrait pins, per-View character selection, both explicit waypoint actions, persisted
-character restoration, and individual Disconnect before
-creating the final Git tag and GitHub releases.
+This candidate is intentionally not pushed, tagged, or published. Automated regression and the required human product
+QA have passed. The cross-View behavior after disconnecting one selected character is covered by automation; manual QA
+for that specific case was skipped by the user and is not a release blocker for this candidate. The validated source
+and artifact set is ready for source migration before any final Git tag or GitHub release is created.
