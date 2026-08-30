@@ -49,11 +49,13 @@ class CapitalRouteViewModelTest {
         val snapshot = viewModel.planningSnapshot()
         viewModel.restorePlanningSnapshot(CapitalRoutePlanningSnapshot())
         viewModel.restorePlanningSnapshot(snapshot)
-        advanceUntilIdle()
+        // Restoring a View is deliberately synchronous: the form and route overlay must
+        // represent the same View before switchView returns, without another scheduler tick.
         assertEquals(30_000_001, viewModel.state.value.selectedFrom?.id)
         assertEquals(30_000_003, viewModel.state.value.selectedTo?.id)
         assertEquals("5", viewModel.state.value.manualRangeText)
         assertEquals(2, viewModel.state.value.activeRoute?.totalJumps)
+        assertEquals(listOf("A", "B", "C"), viewModel.state.value.routeSystemNames)
     }
 }
 

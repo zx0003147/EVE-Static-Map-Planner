@@ -1,9 +1,7 @@
 package dev.evestaticmapplanner.control
 
 import kotlinx.coroutines.CoroutineScope
-import dev.evestaticmapplanner.control.mission.InMemoryOnlyMissionRepository
 import dev.evestaticmapplanner.control.mission.MissionRegistry
-import dev.evestaticmapplanner.control.mission.MissionRepository
 
 class AppMapControlCoordinator(
     systemReadPort: SystemReadPort,
@@ -13,7 +11,6 @@ class AppMapControlCoordinator(
     missionRenderStatePort: MissionRenderStatePort,
     savedMarkerControlPort: SavedMarkerControlPort,
     planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
-    missionRepository: MissionRepository = InMemoryOnlyMissionRepository,
     scope: CoroutineScope,
     private val service: DefaultMapControlService = DefaultMapControlService(
         systemReadPort = systemReadPort,
@@ -23,7 +20,7 @@ class AppMapControlCoordinator(
         missionRenderStatePort = missionRenderStatePort,
         savedMarkerControlPort = savedMarkerControlPort,
         planningViewControlPort = planningViewControlPort,
-        registry = MissionRegistry(repository = missionRepository),
+        registry = MissionRegistry(),
         scope = scope,
     ),
 ) : MapControlService by service, AutoCloseable {

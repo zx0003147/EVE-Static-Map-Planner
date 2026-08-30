@@ -12,11 +12,8 @@ import java.util.UUID
 class MissionRegistry(
     private val now: () -> Instant = Instant::now,
     private val newId: () -> String = { UUID.randomUUID().toString() },
-    private val repository: MissionRepository = InMemoryOnlyMissionRepository,
 ) {
-    private val missions = linkedMapOf<MissionId, Mission>().apply {
-        repository.load().take(ControlLimits.MAX_ACTIVE_MISSIONS).forEach { put(it.missionId, it) }
-    }
+    private val missions = linkedMapOf<MissionId, Mission>()
 
     @Synchronized
     fun begin(title: String, viewId: String = "view-1"): Mission {
@@ -26,7 +23,6 @@ class MissionRegistry(
         val id = MissionId(newId())
         val mission = Mission(id, title, now(), 1, emptyList(), emptyList(), emptyList(), emptySet(), viewId)
         missions[id] = mission
-        persist()
         return mission
     }
 
@@ -143,7 +139,6 @@ class MissionRegistry(
     fun clearMission(missionId: MissionId): Mission {
         val mission = get(missionId)
         missions.remove(missionId)
-        persist()
         return mission
     }
 
@@ -177,21 +172,18 @@ class MissionRegistry(
 
     private fun replace(mission: Mission): Mission {
         missions[mission.missionId] = mission
-        persist()
         return mission
     }
 
     @Synchronized
     fun clearView(viewId: String) {
-        if (missions.entries.removeIf { it.value.viewId == viewId }) persist()
+        missions.entries.removeIf { it.value.viewId == viewId }
     }
 
     @Synchronized
     fun retainViews(viewIds: Set<String>) {
-        if (missions.entries.removeIf { it.value.viewId !in viewIds }) persist()
+        missions.entries.removeIf { it.value.viewId !in viewIds }
     }
-
-    private fun persist() = repository.save(missions.values.toList())
 }
 
 class MissionRegistryFailure(

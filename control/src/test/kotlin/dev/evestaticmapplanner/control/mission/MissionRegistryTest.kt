@@ -36,6 +36,17 @@ class MissionRegistryTest {
     }
 
     @Test
+    fun `missions work during a session and recreation starts empty`() {
+        val activeSession = registry()
+        val mission = activeSession.begin("Session plan", viewId = "view-2")
+        activeSession.addMarker(mission.missionId, 42, MissionMarkerRole.RALLY, null, null, null)
+        assertEquals(1, activeSession.active("view-2").size)
+
+        val restartedSession = registry()
+        assertTrue(restartedSession.active().isEmpty())
+    }
+
+    @Test
     fun `active mission and per-resource limits are enforced`() {
         val registry = registry()
         repeat(ControlLimits.MAX_ACTIVE_MISSIONS) { registry.begin("Mission $it") }

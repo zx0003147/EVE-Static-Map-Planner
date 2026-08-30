@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class MissionMapStateStoreTest {
     @Test
-    fun `switching View filters global persisted Mission pool`() = runTest {
+    fun `switching View filters the in-session Mission pool`() = runTest {
         val store = MissionMapStateStore(UnconfinedTestDispatcher(testScheduler))
         fun mission(id: String, viewId: String) = Mission(
             MissionId(id), id, Instant.EPOCH, 1, emptyList(), emptyList(), emptyList(), emptySet(), viewId,

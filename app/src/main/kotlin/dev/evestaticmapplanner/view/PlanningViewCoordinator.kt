@@ -4,9 +4,6 @@ import dev.evestaticmapplanner.capital.CapitalRoutePlanningPort
 import dev.evestaticmapplanner.capital.CapitalRoutePlanningSnapshot
 import dev.evestaticmapplanner.route.NormalRoutePlanningPort
 import dev.evestaticmapplanner.route.NormalRoutePlanningSnapshot
-import dev.evestaticmapplanner.data.view.PlanningViewRecord
-import dev.evestaticmapplanner.data.view.PlanningViewRepository
-import dev.evestaticmapplanner.data.view.PlanningViewsRecord
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,12 +42,9 @@ class PlanningViewCoordinator(
     private val normalRoute: NormalRoutePlanningPort,
     private val capitalRoute: CapitalRoutePlanningPort,
     private val newId: () -> PlanningViewId = { PlanningViewId(UUID.randomUUID().toString()) },
-    private val repository: PlanningViewRepository? = null,
     initialState: PlanningViewsState? = null,
 ) {
-    private val mutableState = MutableStateFlow(
-        initialState ?: repository?.load()?.toState() ?: DEFAULT_STATE,
-    )
+    private val mutableState = MutableStateFlow(initialState ?: DEFAULT_STATE)
     val state: StateFlow<PlanningViewsState> = mutableState.asStateFlow()
 
     init {
@@ -68,9 +62,8 @@ class PlanningViewCoordinator(
             throw IllegalArgumentException("View label already exists")
         }
         val view = PlanningView(newId(), label)
-        mutableState.value = PlanningViewsState(current.views + view, view.id)
         restore(view)
-        persist()
+        mutableState.value = PlanningViewsState(current.views + view, view.id)
         return view.id
     }
 
@@ -81,9 +74,8 @@ class PlanningViewCoordinator(
         captureCurrent()
         val current = mutableState.value
         val target = current.views.single { it.id == id }
-        mutableState.value = current.copy(currentViewId = id)
         restore(target)
-        persist()
+        mutableState.value = current.copy(currentViewId = id)
         return true
     }
 
@@ -96,7 +88,6 @@ class PlanningViewCoordinator(
         mutableState.value = current.copy(
             views = current.views.map { if (it.id == id) it.copy(label = label) else it },
         )
-        persist()
         return true
     }
 
@@ -113,9 +104,9 @@ class PlanningViewCoordinator(
         } else {
             current.currentViewId
         }
-        mutableState.value = PlanningViewsState(remaining, nextId)
-        if (id == current.currentViewId) restore(mutableState.value.currentView)
-        persist()
+        val nextState = PlanningViewsState(remaining, nextId)
+        if (id == current.currentViewId) restore(nextState.currentView)
+        mutableState.value = nextState
         return true
     }
 
@@ -134,7 +125,6 @@ class PlanningViewCoordinator(
                 }
             },
         )
-        persist()
     }
 
     private fun restore(view: PlanningView) {
@@ -157,7 +147,6 @@ class PlanningViewCoordinator(
                 )
             },
         )
-        persist()
     }
 
     private fun nextDefaultLabel(views: List<PlanningView>): String {
@@ -168,52 +157,6 @@ class PlanningViewCoordinator(
 
     private fun normalizeLabel(value: String): String? = value.trim()
         .takeIf { it.isNotEmpty() && it.length <= 80 && it.none(Char::isISOControl) }
-
-    private fun persist() {
-        repository?.save(mutableState.value.toRecord())
-    }
-
-    private fun PlanningViewsRecord.toState() = PlanningViewsState(
-        views = views.map { record ->
-            PlanningView(
-                id = PlanningViewId(record.id),
-                label = record.label,
-                normalRoute = NormalRoutePlanningSnapshot(
-                    record.normalFromSystemId,
-                    record.normalToSystemId,
-                    record.normalUseAnsiblex,
-                    record.normalCalculated,
-                ),
-                capitalRoute = CapitalRoutePlanningSnapshot(
-                    record.capitalFromSystemId,
-                    record.capitalToSystemId,
-                    record.capitalRangeText,
-                    record.capitalCalculated,
-                ),
-                selectedRouteActionTargets = record.selectedRouteActionTargets,
-            )
-        },
-        currentViewId = PlanningViewId(currentViewId),
-    )
-
-    private fun PlanningViewsState.toRecord() = PlanningViewsRecord(
-        views = views.map { view ->
-            PlanningViewRecord(
-                id = view.id.value,
-                label = view.label,
-                normalFromSystemId = view.normalRoute.fromSystemId,
-                normalToSystemId = view.normalRoute.toSystemId,
-                normalUseAnsiblex = view.normalRoute.useAnsiblex,
-                normalCalculated = view.normalRoute.calculated,
-                capitalFromSystemId = view.capitalRoute.fromSystemId,
-                capitalToSystemId = view.capitalRoute.toSystemId,
-                capitalRangeText = view.capitalRoute.manualRangeText,
-                capitalCalculated = view.capitalRoute.calculated,
-                selectedRouteActionTargets = view.selectedRouteActionTargets,
-            )
-        },
-        currentViewId = currentViewId.value,
-    )
 
     private companion object {
         val DEFAULT_STATE = PlanningViewsState(

@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.route.CapitalRouteEngine
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
+import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,9 @@ data class CapitalRoutePlanningSnapshot(
     val toSystemId: Int? = null,
     val manualRangeText: String = "5",
     val calculated: Boolean = false,
+    val outcome: CapitalRouteOutcome? = null,
+    val activeRoute: CapitalRouteResult? = null,
+    val routeSystemNames: List<String> = emptyList(),
 )
 
 interface CapitalRoutePlanningPort {
@@ -146,6 +150,9 @@ class CapitalRouteViewModel(
             toSystemId = current.selectedTo?.id,
             manualRangeText = current.manualRangeText,
             calculated = current.outcome != null,
+            outcome = current.outcome,
+            activeRoute = current.activeRoute,
+            routeSystemNames = current.routeSystemNames,
         )
     }
 
@@ -199,12 +206,11 @@ class CapitalRouteViewModel(
                 fromResults = emptyList(),
                 toResults = emptyList(),
                 manualRangeText = snapshot.manualRangeText,
-                outcome = null,
-                activeRoute = null,
-                routeSystemNames = emptyList(),
+                outcome = snapshot.outcome,
+                activeRoute = snapshot.activeRoute,
+                routeSystemNames = snapshot.routeSystemNames,
                 error = null,
             )
         }
-        if (snapshot.calculated && from != null && to != null) calculate()
     }
 }

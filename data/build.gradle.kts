@@ -5,7 +5,6 @@ plugins {
 
 dependencies {
     implementation(project(":core"))
-    implementation(project(":control"))
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.commons.csv)

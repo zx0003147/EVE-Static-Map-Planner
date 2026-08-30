@@ -43,7 +43,7 @@ fun main(arguments: Array<String>) {
             "ESI Pack did not load through the production host"
         }
         val controls = runtime.packControlHost.state.value.single { it.packId == PackId("esi.pack") }
-        val connect = controls.actions.single { it.key.actionId == "connect" }
+        val connect = controls.actions.single { it.key.actionId in setOf("add-character", "connect") }
         invoked = runtime.packControlHost.invoke(connect.key)
         check(invoked) { "Production Pack Control Host rejected the ESI Connect action" }
 

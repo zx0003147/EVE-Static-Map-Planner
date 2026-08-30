@@ -30,7 +30,6 @@ class UserDatabaseMigrationTest {
             assertEquals(
                 setOf(
                     "ansiblex_import_batches", "ansiblex_connections", "saved_markers", "saved_marker_children",
-                    "planning_views", "ai_missions",
                 ),
                 connection.applicationTables(),
             )
@@ -106,6 +105,13 @@ class UserDatabaseMigrationTest {
                 listOf(listOf("saved_markers", "parent_system_id", "system_id", "CASCADE")),
                 connection.childForeignKeys(),
             )
+        }
+
+        UserDatabase.initialize(path)
+        UserDatabase.open(path).use { connection ->
+            assertEquals(4, connection.userVersion())
+            assertFalse("planning_views" in connection.applicationTables())
+            assertFalse("ai_missions" in connection.applicationTables())
         }
     }
 
@@ -266,12 +272,12 @@ class UserDatabaseMigrationTest {
     }
 
     @Test
-    fun `too-new database is rejected byte-for-byte without mutation`() {
+    fun `RC-only schema five fixture is rejected byte-for-byte without becoming a release migration`() {
         val path = createTempDirectory("user-db-too-new").resolve("user.db")
         SqliteConnectionFactory.open(path).use { connection ->
-            connection.createStatement().execute("CREATE TABLE future_data(value TEXT) STRICT")
-            connection.createStatement().execute("INSERT INTO future_data VALUES('keep')")
-            connection.createStatement().execute("PRAGMA user_version = 99")
+            connection.createStatement().execute("CREATE TABLE planning_views(value TEXT) STRICT")
+            connection.createStatement().execute("INSERT INTO planning_views VALUES('keep')")
+            connection.createStatement().execute("PRAGMA user_version = 5")
         }
         val before = Files.readAllBytes(path)
 

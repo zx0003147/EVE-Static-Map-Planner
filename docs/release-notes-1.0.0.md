@@ -10,7 +10,8 @@ Ansiblex, or capital-routing engines.
 - Each View restores its own user normal route, user capital route, AI Missions, and generic Route Action target.
 - Projection, static data, Saved Markers, Feature Packs, sovereignty, connected characters, and all character locations
   remain global.
-- `user.db` schema 5 persists View order/current selection, route drafts, AI Mission ownership, and selected target IDs.
+- Views and their route drafts, AI Missions, ownership, and selected target IDs are session-only. Restart always opens
+  one blank `View 1`; `user.db` remains at stable schema 4.
 
 ## AI and localhost HTTP MCP
 
@@ -48,6 +49,7 @@ Ansiblex, or capital-routing engines.
 - Windows x64 Portable ZIP remains the only Core distribution; Feature Pack JARs remain separate.
 
 This candidate is intentionally not pushed, tagged, or published. Passing automated acceptance means it is ready for
-human product QA: exercise View lifecycle/restoration, multiple real EVE logins and locations, shared portrait pins,
-per-View character selection, both explicit waypoint actions, restart restoration, and individual Disconnect before
+human product QA: exercise in-session View lifecycle/restoration, verify restart returns to blank `View 1`, test multiple
+real EVE logins and locations, shared portrait pins, per-View character selection, both explicit waypoint actions, persisted
+character restoration, and individual Disconnect before
 creating the final Git tag and GitHub releases.
