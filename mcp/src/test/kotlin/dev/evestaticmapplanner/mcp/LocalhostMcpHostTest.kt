@@ -39,6 +39,15 @@ import kotlin.time.measureTime
 @OptIn(ExperimentalMcpApi::class)
 class LocalhostMcpHostTest {
     @Test
+    fun `production endpoint is fixed to IPv4 loopback port 27892`() {
+        val configuration = LocalhostMcpHostConfiguration()
+
+        assertEquals(27892, configuration.port)
+        assertEquals(LocalhostMcpHost.ENDPOINT, configuration.endpoint)
+        assertEquals("http://127.0.0.1:27892/mcp", configuration.endpoint)
+    }
+
+    @Test
     fun `official client initializes lists exactly 22 tools and calls search over stateless HTTP`(): Unit = runBlocking {
         withOfficialClientHost { port, client ->
             val httpToolNames = client.listTools().tools.map { it.name }
@@ -211,8 +220,8 @@ class LocalhostMcpHostTest {
     }
 
     @Test
-    fun `fixed port conflict is nonfatal and a second map remains running`(): Unit = runBlocking {
-        val port = 27892
+    fun `port conflict is nonfatal and a second map remains running`(): Unit = runBlocking {
+        val port = availablePort()
         ServerSocket(port, 1, java.net.InetAddress.getByName("127.0.0.1")).use {
             val occupiedHost = testHost(port)
             occupiedHost.start()
