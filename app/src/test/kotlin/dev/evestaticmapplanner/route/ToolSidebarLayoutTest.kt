@@ -9,12 +9,8 @@ import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
-import dev.evestaticmapplanner.map.GLOBAL_SEARCH_MAX_WIDTH
-import dev.evestaticmapplanner.map.GLOBAL_SEARCH_MIN_WIDTH
-import dev.evestaticmapplanner.map.GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION
 import dev.evestaticmapplanner.map.MAP_TOOLBAR_VERTICAL_PADDING
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
-import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -126,10 +122,8 @@ class ToolSidebarLayoutTest {
     }
 
     @Test
-    fun `global search uses bounded toolbar width and popup suggestions`() {
-        assertEquals(260, GLOBAL_SEARCH_MIN_WIDTH.value.toInt())
-        assertEquals(360, GLOBAL_SEARCH_MAX_WIDTH.value.toInt())
-        assertEquals(SearchSuggestionsPresentation.DROPDOWN, GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION)
+    fun `global search is permanently identified at the top of the sidebar`() {
+        assertEquals("Search system...", SIDEBAR_SEARCH_LABEL)
         assertEquals(270, TOOL_SIDEBAR_WIDTH.value.toInt())
         assertEquals(4, MAP_TOOLBAR_VERTICAL_PADDING.value.toInt())
     }

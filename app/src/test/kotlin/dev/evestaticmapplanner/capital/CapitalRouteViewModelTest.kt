@@ -45,6 +45,15 @@ class CapitalRouteViewModelTest {
         assertEquals(2, viewModel.state.value.activeRoute?.totalJumps)
         assertEquals(listOf("A", "B", "C"), viewModel.state.value.routeSystemNames)
         assertTrue(viewModel.state.value.activeRoute!!.legs.all { it.distanceLy <= 5.0 })
+
+        val snapshot = viewModel.planningSnapshot()
+        viewModel.restorePlanningSnapshot(CapitalRoutePlanningSnapshot())
+        viewModel.restorePlanningSnapshot(snapshot)
+        advanceUntilIdle()
+        assertEquals(30_000_001, viewModel.state.value.selectedFrom?.id)
+        assertEquals(30_000_003, viewModel.state.value.selectedTo?.id)
+        assertEquals("5", viewModel.state.value.manualRangeText)
+        assertEquals(2, viewModel.state.value.activeRoute?.totalJumps)
     }
 }
 

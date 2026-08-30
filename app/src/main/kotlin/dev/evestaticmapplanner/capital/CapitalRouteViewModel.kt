@@ -21,6 +21,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class CapitalRoutePlanningSnapshot(
+    val fromSystemId: Int? = null,
+    val toSystemId: Int? = null,
+    val manualRangeText: String = "5",
+    val calculated: Boolean = false,
+)
+
+interface CapitalRoutePlanningPort {
+    fun planningSnapshot(): CapitalRoutePlanningSnapshot
+    fun restorePlanningSnapshot(snapshot: CapitalRoutePlanningSnapshot)
+}
+
 class CapitalRouteViewModel(
     private val staticMapRepository: StaticMapRepository,
     private val searchRepository: SystemSearchRepository,
@@ -28,13 +40,15 @@ class CapitalRouteViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val calculationDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val searchDebounceMillis: Long = 180,
-) {
+) : CapitalRoutePlanningPort {
     private val mutableState = MutableStateFlow(CapitalRouteUiState())
     val state: StateFlow<CapitalRouteUiState> = mutableState.asStateFlow()
     private var systemsById: Map<Int, SolarSystem> = emptyMap()
     private var engine: CapitalRouteEngine? = null
     private var fromSearchJob: Job? = null
     private var toSearchJob: Job? = null
+    private var pendingPlanningSnapshot: CapitalRoutePlanningSnapshot? = null
+    private var calculationGeneration = 0L
 
     init {
         scope.launch {
@@ -45,6 +59,10 @@ class CapitalRouteViewModel(
                         CapitalJumpCandidateProvider(UniformGridSystemPositionIndex(data.systems)),
                     )
                     mutableState.update { it.copy(isLoading = false) }
+                    pendingPlanningSnapshot?.let {
+                        pendingPlanningSnapshot = null
+                        applyPlanningSnapshot(it)
+                    }
                 }
                 .onFailure { error ->
                     mutableState.update { it.copy(isLoading = false, error = error.message ?: "Unable to load capital route data") }
@@ -83,6 +101,7 @@ class CapitalRouteViewModel(
     }
 
     fun calculate() {
+        val generation = ++calculationGeneration
         val current = mutableState.value
         val from = current.selectedFrom ?: return
         val to = current.selectedTo ?: return
@@ -99,6 +118,7 @@ class CapitalRouteViewModel(
         mutableState.update { it.copy(isCalculating = true, error = null, outcome = null, activeRoute = null) }
         scope.launch {
             val outcome = withContext(calculationDispatcher) { routeEngine.calculate(from.id, to.id, profile) }
+            if (generation != calculationGeneration) return@launch
             val route = when (outcome) {
                 is CapitalRouteOutcome.Found -> outcome.route
                 is CapitalRouteOutcome.SameSystem -> outcome.route
@@ -116,7 +136,43 @@ class CapitalRouteViewModel(
     }
 
     fun clear() {
+        calculationGeneration++
         mutableState.update { it.copy(outcome = null, activeRoute = null, routeSystemNames = emptyList(), error = null) }
+    }
+
+    override fun planningSnapshot(): CapitalRoutePlanningSnapshot = mutableState.value.let { current ->
+        CapitalRoutePlanningSnapshot(
+            fromSystemId = current.selectedFrom?.id,
+            toSystemId = current.selectedTo?.id,
+            manualRangeText = current.manualRangeText,
+            calculated = current.outcome != null,
+        )
+    }
+
+    override fun restorePlanningSnapshot(snapshot: CapitalRoutePlanningSnapshot) {
+        calculationGeneration++
+        fromSearchJob?.cancel()
+        toSearchJob?.cancel()
+        if (systemsById.isEmpty() || engine == null) {
+            pendingPlanningSnapshot = snapshot
+            mutableState.update {
+                it.copy(
+                    fromQuery = "",
+                    toQuery = "",
+                    selectedFrom = null,
+                    selectedTo = null,
+                    fromResults = emptyList(),
+                    toResults = emptyList(),
+                    manualRangeText = snapshot.manualRangeText,
+                    outcome = null,
+                    activeRoute = null,
+                    routeSystemNames = emptyList(),
+                    error = null,
+                )
+            }
+            return
+        }
+        applyPlanningSnapshot(snapshot)
     }
 
     fun close() = scope.cancel()
@@ -128,5 +184,27 @@ class CapitalRouteViewModel(
         }
         delay(searchDebounceMillis)
         publish(withContext(ioDispatcher) { searchRepository.searchSystems(query, 20) })
+    }
+
+    private fun applyPlanningSnapshot(snapshot: CapitalRoutePlanningSnapshot) {
+        val from = snapshot.fromSystemId?.let(systemsById::get)
+        val to = snapshot.toSystemId?.let(systemsById::get)
+        mutableState.update {
+            it.copy(
+                isCalculating = false,
+                fromQuery = from?.name.orEmpty(),
+                toQuery = to?.name.orEmpty(),
+                selectedFrom = from,
+                selectedTo = to,
+                fromResults = emptyList(),
+                toResults = emptyList(),
+                manualRangeText = snapshot.manualRangeText,
+                outcome = null,
+                activeRoute = null,
+                routeSystemNames = emptyList(),
+                error = null,
+            )
+        }
+        if (snapshot.calculated && from != null && to != null) calculate()
     }
 }

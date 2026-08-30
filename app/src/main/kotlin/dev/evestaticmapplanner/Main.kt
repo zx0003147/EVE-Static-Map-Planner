@@ -73,6 +73,7 @@ import dev.evestaticmapplanner.sde.update.SdeUpdateService
 import dev.evestaticmapplanner.staticdata.StaticDataBootstrapScreen
 import dev.evestaticmapplanner.staticdata.StaticDataManagerDialog
 import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
+import dev.evestaticmapplanner.view.PlanningViewCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -274,6 +275,9 @@ private fun FrameWindowScope.ReadyApplication(
             CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
+    val planningViewCoordinator = remember(routeViewModel, capitalViewModel) {
+        PlanningViewCoordinator(routeViewModel, capitalViewModel)
+    }
     val missionMapStateStore = remember(configuration) { MissionMapStateStore() }
     val controlLifecycle = remember(configuration) {
         val planningPorts = ExistingPlanningPorts(
@@ -375,6 +379,7 @@ private fun FrameWindowScope.ReadyApplication(
     val routeState by routeViewModel.state.collectAsState()
     val jumpState by jumpViewModel.state.collectAsState()
     val capitalState by capitalViewModel.state.collectAsState()
+    val planningViewsState by planningViewCoordinator.state.collectAsState()
     val markerState by markerViewModel.state.collectAsState()
     val missionState by missionMapStateStore.state.collectAsState()
     val featureOverlayState by featurePackRuntime.overlayHost.state.collectAsState()
@@ -427,6 +432,9 @@ private fun FrameWindowScope.ReadyApplication(
         Menu("Preferences") {
             Item("Preferences…", onClick = { showPreferences = true })
         }
+        Menu("Static Data") {
+            Item("Static Data…", enabled = !showStaticData, onClick = { showStaticData = true })
+        }
     }
     StaticMapScreen(
         databasePath = configuration.database.path,
@@ -435,6 +443,7 @@ private fun FrameWindowScope.ReadyApplication(
         routeState = routeState,
         jumpState = jumpState,
         capitalState = capitalState,
+        planningViewsState = planningViewsState,
         markerState = markerState,
         missionState = missionState,
         featureOverlayState = visibleFeatureOverlayState,
@@ -447,9 +456,9 @@ private fun FrameWindowScope.ReadyApplication(
         routeViewModel = routeViewModel,
         jumpViewModel = jumpViewModel,
         capitalViewModel = capitalViewModel,
+        planningViewCoordinator = planningViewCoordinator,
         markerViewModel = markerViewModel,
         suppressMarkerOperationErrorDialog = showMarkerManager,
-        onOpenStaticDataManager = { showStaticData = true },
     )
     if (showStaticData) {
         StaticDataManagerDialog(staticDataState, staticDataViewModel) { showStaticData = false }

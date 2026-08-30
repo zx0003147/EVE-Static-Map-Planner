@@ -37,6 +37,7 @@ import dev.evestaticmapplanner.search.SystemSearchField
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
+import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
 
 internal enum class ToolSidebarSection {
     JUMP_RANGE,
@@ -73,6 +74,7 @@ internal fun RouteToolsPanel(
     capitalRouteSnapshot: RouteSnapshot?,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
+    onFocusSystem: (Int) -> Unit,
 ) {
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
     Surface(
@@ -80,11 +82,24 @@ internal fun RouteToolsPanel(
         contentColor = Color(0xFFD7E6F2),
         modifier = Modifier.width(TOOL_SIDEBAR_WIDTH).fillMaxHeight(),
     ) {
-        Column(
-            Modifier.padding(14.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            TOOL_SIDEBAR_SECTION_ORDER.forEachIndexed { index, section ->
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SystemSearchField(
+                value = state.systemQuery,
+                label = SIDEBAR_SEARCH_LABEL,
+                results = state.systemResults,
+                onValueChange = viewModel::updateSystemQuery,
+                onSelect = { system ->
+                    confirmGlobalSystemSearch(system, viewModel::selectSystemSearch, onFocusSystem)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                compact = true,
+            )
+            HorizontalDivider(color = Color(0xFF314252))
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TOOL_SIDEBAR_SECTION_ORDER.forEachIndexed { index, section ->
                 if (index > 0) HorizontalDivider(color = Color(0xFF314252))
                 val expanded = expansionState.isExpanded(section)
                 when (section) {
@@ -127,6 +142,7 @@ internal fun RouteToolsPanel(
                             onInvokeRouteAction,
                         )
                     }
+                }
                 }
             }
         }
@@ -342,6 +358,7 @@ private fun CapitalRouteSectionContent(
 }
 
 internal val TOOL_SIDEBAR_WIDTH = 270.dp
+internal const val SIDEBAR_SEARCH_LABEL = "Search system..."
 
 @Composable
 private fun RouteSummary(state: RoutePlannerUiState) {

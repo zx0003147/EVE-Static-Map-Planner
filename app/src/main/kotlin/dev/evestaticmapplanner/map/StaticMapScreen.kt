@@ -12,11 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,9 +28,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
@@ -57,6 +63,9 @@ import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
+import dev.evestaticmapplanner.view.PlanningViewCoordinator
+import dev.evestaticmapplanner.view.PlanningViewId
+import dev.evestaticmapplanner.view.PlanningViewsState
 import java.nio.file.Path
 
 @Composable
@@ -67,6 +76,7 @@ internal fun StaticMapScreen(
     routeState: RoutePlannerUiState,
     jumpState: JumpOverlayUiState,
     capitalState: CapitalRouteUiState,
+    planningViewsState: PlanningViewsState,
     markerState: MarkerUiState,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
@@ -79,9 +89,9 @@ internal fun StaticMapScreen(
     routeViewModel: RoutePlannerViewModel,
     jumpViewModel: JumpOverlayViewModel,
     capitalViewModel: CapitalRouteViewModel,
+    planningViewCoordinator: PlanningViewCoordinator,
     markerViewModel: MarkerViewModel,
     suppressMarkerOperationErrorDialog: Boolean = false,
-    onOpenStaticDataManager: () -> Unit,
 ) {
     var showAnsiblexManager by remember { mutableStateOf(false) }
     var markerEditor by remember { mutableStateOf<MarkerEditorRequest?>(null) }
@@ -120,14 +130,14 @@ internal fun StaticMapScreen(
             capitalRouteSnapshot = capitalRouteSnapshot,
             onInvokeRouteAction = onInvokeRouteAction,
             onOpenAnsiblexManager = { showAnsiblexManager = true },
+            onFocusSystem = viewModel::selectAndFocusSystem,
         )
         Column(Modifier.weight(1f).fillMaxHeight()) {
             MapToolbar(
                 state = state,
-                routeState = routeState,
+                planningViewsState = planningViewsState,
                 viewModel = viewModel,
-                routeViewModel = routeViewModel,
-                onOpenStaticDataManager = onOpenStaticDataManager,
+                planningViewCoordinator = planningViewCoordinator,
             )
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
@@ -328,53 +338,58 @@ internal fun StaticMapScreen(
 @Composable
 private fun MapToolbar(
     state: MapUiState,
-    routeState: RoutePlannerUiState,
+    planningViewsState: PlanningViewsState,
     viewModel: MapViewModel,
-    routeViewModel: RoutePlannerViewModel,
-    onOpenStaticDataManager: () -> Unit,
+    planningViewCoordinator: PlanningViewCoordinator,
 ) {
+    var renameViewId by remember { mutableStateOf<PlanningViewId?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var renameError by remember { mutableStateOf<String?>(null) }
     Surface(color = Color(0xFF121D28), contentColor = Color(0xFFD7E6F2)) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            if (maxWidth >= MAP_TOOLBAR_SINGLE_ROW_MIN_WIDTH) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(
-                        horizontal = 12.dp,
-                        vertical = MAP_TOOLBAR_VERTICAL_PADDING,
-                    ),
-                ) {
-                    ProjectionControls(state, viewModel)
-                    Spacer(Modifier.weight(1f))
-                    GlobalSystemSearch(routeState, routeViewModel, viewModel)
-                    TextButton(onClick = onOpenStaticDataManager) { Text("Static Data") }
-                    TextButton(onClick = viewModel::fitMap, enabled = state.scene != null) { Text("Fit Map") }
-                }
-            } else {
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        ProjectionControls(state, viewModel)
-                    }
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                        GlobalSystemSearch(routeState, routeViewModel, viewModel)
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        TextButton(onClick = onOpenStaticDataManager) { Text("Static Data") }
-                        TextButton(onClick = viewModel::fitMap, enabled = state.scene != null) { Text("Fit Map") }
-                    }
-                }
-            }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = MAP_TOOLBAR_VERTICAL_PADDING),
+        ) {
+            ProjectionControls(state, viewModel)
+            ViewStrip(
+                state = planningViewsState,
+                onSwitch = planningViewCoordinator::switchView,
+                onCreate = planningViewCoordinator::createView,
+                onRename = { view ->
+                    renameViewId = view.id
+                    renameText = view.label
+                    renameError = null
+                },
+                onDelete = planningViewCoordinator::deleteView,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = viewModel::fitMap, enabled = state.scene != null) { Text("Fit Map") }
         }
+    }
+    renameViewId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { renameViewId = null },
+            title = { Text("Rename View") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it; renameError = null },
+                        label = { Text("View name") },
+                        singleLine = true,
+                    )
+                    renameError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (planningViewCoordinator.renameView(id, renameText)) renameViewId = null
+                    else renameError = "View names must be non-empty and unique."
+                }) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { renameViewId = null }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -383,7 +398,6 @@ private fun ProjectionControls(
     state: MapUiState,
     viewModel: MapViewModel,
 ) {
-    Text("Projection", style = MaterialTheme.typography.labelLarge)
     MapProjectionId.entries.forEach { projection ->
         if (projection == state.projectionId) {
             Button(onClick = {}, enabled = false) { Text(projection.displayName) }
@@ -394,27 +408,37 @@ private fun ProjectionControls(
 }
 
 @Composable
-private fun GlobalSystemSearch(
-    state: RoutePlannerUiState,
-    routeViewModel: RoutePlannerViewModel,
-    mapViewModel: MapViewModel,
+@OptIn(ExperimentalComposeUiApi::class)
+private fun ViewStrip(
+    state: PlanningViewsState,
+    onSwitch: (PlanningViewId) -> Boolean,
+    onCreate: () -> PlanningViewId,
+    onRename: (dev.evestaticmapplanner.view.PlanningView) -> Unit,
+    onDelete: (PlanningViewId) -> Boolean,
+    modifier: Modifier = Modifier,
 ) {
-    SystemSearchField(
-        value = state.systemQuery,
-        label = "Search system",
-        results = state.systemResults,
-        onValueChange = routeViewModel::updateSystemQuery,
-        onSelect = { system ->
-            confirmGlobalSystemSearch(
-                system = system,
-                updateSearchSelection = routeViewModel::selectSystemSearch,
-                focusSystem = mapViewModel::selectAndFocusSystem,
-            )
-        },
-        modifier = Modifier.widthIn(min = GLOBAL_SEARCH_MIN_WIDTH, max = GLOBAL_SEARCH_MAX_WIDTH).fillMaxWidth(),
-        suggestionsPresentation = GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION,
-        compact = true,
-    )
+    val scroll = rememberScrollState()
+    Row(
+        modifier = modifier
+            .horizontalScroll(scroll)
+            .onPointerEvent(PointerEventType.Scroll) { event ->
+                val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                if (delta != 0f) scroll.dispatchRawDelta(delta * VIEW_SCROLL_MULTIPLIER)
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        state.views.forEach { view ->
+            if (view.id == state.currentViewId) {
+                Button(onClick = { onSwitch(view.id) }) { Text(view.label) }
+                TextButton(onClick = { onRename(view) }) { Text("✎") }
+                TextButton(onClick = { onDelete(view.id) }, enabled = state.views.size > 1) { Text("×") }
+            } else {
+                TextButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
+            }
+        }
+        TextButton(onClick = { onCreate() }) { Text("+") }
+    }
 }
 
 internal fun confirmGlobalSystemSearch(
@@ -426,11 +450,8 @@ internal fun confirmGlobalSystemSearch(
     focusSystem(system.id)
 }
 
-internal val GLOBAL_SEARCH_MIN_WIDTH = 260.dp
-internal val GLOBAL_SEARCH_MAX_WIDTH = 360.dp
-internal val MAP_TOOLBAR_SINGLE_ROW_MIN_WIDTH = 820.dp
 internal val MAP_TOOLBAR_VERTICAL_PADDING = 4.dp
-internal val GLOBAL_SEARCH_SUGGESTIONS_PRESENTATION = SearchSuggestionsPresentation.DROPDOWN
+internal const val VIEW_SCROLL_MULTIPLIER = 48f
 
 @Composable
 private fun CenterMessage(message: String) {

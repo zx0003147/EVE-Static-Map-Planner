@@ -86,6 +86,28 @@ class RoutePlannerViewModelTest {
     }
 
     @Test
+    fun `planning snapshot restores endpoints options and active route`() = runTest {
+        val fixture = Fixture(withShortcut = true)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.setUseAnsiblex(true)
+        viewModel.calculateRoute()
+        val snapshot = viewModel.planningSnapshot()
+
+        viewModel.restorePlanningSnapshot(NormalRoutePlanningSnapshot())
+        assertNull(viewModel.state.value.activeRoute)
+        viewModel.restorePlanningSnapshot(snapshot)
+
+        assertEquals(1, viewModel.state.value.selectedFrom?.id)
+        assertEquals(4, viewModel.state.value.selectedTo?.id)
+        assertTrue(viewModel.state.value.useAnsiblex)
+        assertEquals(1, viewModel.state.value.activeRoute?.totalJumps)
+    }
+
+    @Test
     fun `user database failure keeps Stargate routing and disables Ansiblex`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)

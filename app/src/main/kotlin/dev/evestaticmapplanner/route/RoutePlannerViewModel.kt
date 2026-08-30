@@ -28,6 +28,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
 
+data class NormalRoutePlanningSnapshot(
+    val fromSystemId: Int? = null,
+    val toSystemId: Int? = null,
+    val useAnsiblex: Boolean = false,
+    val calculated: Boolean = false,
+)
+
+interface NormalRoutePlanningPort {
+    fun planningSnapshot(): NormalRoutePlanningSnapshot
+    fun restorePlanningSnapshot(snapshot: NormalRoutePlanningSnapshot)
+}
+
 class RoutePlannerViewModel(
     private val staticMapRepository: StaticMapRepository,
     private val searchRepository: SystemSearchRepository,
@@ -38,7 +50,7 @@ class RoutePlannerViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val searchDebounceMillis: Long = 180,
     private val routeEngine: NormalRouteEngine = NormalRouteEngine(),
-) {
+) : NormalRoutePlanningPort {
     private val mutableState = MutableStateFlow(RoutePlannerUiState(userDatabaseError = userDatabaseError))
     val state: StateFlow<RoutePlannerUiState> = mutableState.asStateFlow()
 
@@ -48,6 +60,7 @@ class RoutePlannerViewModel(
     private var systemSearchJob: Job? = null
     private var fromSearchJob: Job? = null
     private var toSearchJob: Job? = null
+    private var pendingPlanningSnapshot: NormalRoutePlanningSnapshot? = null
 
     init {
         load()
@@ -138,6 +151,39 @@ class RoutePlannerViewModel(
 
     fun clearRoute() {
         mutableState.update { it.copy(routeOutcome = null, activeRoute = null, routeSystemNames = emptyList()) }
+    }
+
+    override fun planningSnapshot(): NormalRoutePlanningSnapshot = mutableState.value.let { current ->
+        NormalRoutePlanningSnapshot(
+            fromSystemId = current.selectedFrom?.id,
+            toSystemId = current.selectedTo?.id,
+            useAnsiblex = current.useAnsiblex,
+            calculated = current.routeOutcome != null,
+        )
+    }
+
+    override fun restorePlanningSnapshot(snapshot: NormalRoutePlanningSnapshot) {
+        systemSearchJob?.cancel()
+        fromSearchJob?.cancel()
+        toSearchJob?.cancel()
+        if (systemsById.isEmpty() || graph == null) {
+            pendingPlanningSnapshot = snapshot
+            mutableState.update {
+                it.copy(
+                    fromQuery = "",
+                    toQuery = "",
+                    selectedFrom = null,
+                    selectedTo = null,
+                    fromResults = emptyList(),
+                    toResults = emptyList(),
+                    routeOutcome = null,
+                    activeRoute = null,
+                    routeSystemNames = emptyList(),
+                )
+            }
+            return
+        }
+        applyPlanningSnapshot(snapshot)
     }
 
     fun setImportMode(mode: AnsiblexImportMode) {
@@ -254,10 +300,34 @@ class RoutePlannerViewModel(
                         ansiblexConnections = if (graphResult.isSuccess) ansiblex else emptyList(),
                     )
                 }
+                pendingPlanningSnapshot?.let {
+                    pendingPlanningSnapshot = null
+                    applyPlanningSnapshot(it)
+                }
             }.onFailure { error ->
                 mutableState.update { it.copy(isLoading = false, error = error.message ?: "Unable to load route graph") }
             }
         }
+    }
+
+    private fun applyPlanningSnapshot(snapshot: NormalRoutePlanningSnapshot) {
+        val from = snapshot.fromSystemId?.let(systemsById::get)
+        val to = snapshot.toSystemId?.let(systemsById::get)
+        mutableState.update {
+            it.copy(
+                fromQuery = from?.name.orEmpty(),
+                toQuery = to?.name.orEmpty(),
+                selectedFrom = from,
+                selectedTo = to,
+                fromResults = emptyList(),
+                toResults = emptyList(),
+                useAnsiblex = snapshot.useAnsiblex && it.isAnsiblexAvailable,
+                routeOutcome = null,
+                activeRoute = null,
+                routeSystemNames = emptyList(),
+            )
+        }
+        if (snapshot.calculated && from != null && to != null) calculateRoute()
     }
 
     private fun scheduleSearch(query: String, publish: (List<SolarSystem>) -> Unit): Job = scope.launch {
