@@ -20,7 +20,14 @@ object FeaturePackRuntimeValidation {
     fun run(arguments: FeaturePackRuntimeValidationArguments) {
         val events = mutableListOf<String>()
         val runtime = ProductionFeaturePackRuntime.start(eventSink = events::add)
-        val packControlPackIds = runtime.packControlHost.state.value.map { it.packId.value }
+        val packControls = runtime.packControlHost.state.value
+        val packControlPackIds = packControls.map { it.packId.value }
+        val unavailablePackControlIds = packControls.filter {
+            it.primaryText == "Feature Pack controls unavailable"
+        }.map { it.packId.value }
+        val packControlActionIds = packControls.flatMap { control ->
+            control.actions.map { action -> "${control.packId.value}:${action.key.actionId}" }
+        }
         val closed = runtime.closeSafely()
         arguments.reportPath.parent?.let(Files::createDirectories)
         Files.writeString(arguments.reportPath, buildString {
@@ -28,6 +35,8 @@ object FeaturePackRuntimeValidation {
             appendLine("candidateCount=${runtime.startReport.candidates.size}")
             appendLine("loadedPackIds=${runtime.startReport.loadedPackIds.joinToString(",") { it.value }}")
             appendLine("packControlPackIds=${packControlPackIds.joinToString(",")}")
+            appendLine("packControlUnavailablePackIds=${unavailablePackControlIds.joinToString(",")}")
+            appendLine("packControlActionIds=${packControlActionIds.joinToString(",")}")
             appendLine("startupFailures=${runtime.startReport.failures.joinToString(",") { it.kind.name }}")
             appendLine("packEvents=${events.joinToString("|")}")
             appendLine("closeFailures=${closed.failures.joinToString(",") { it.kind.name }}")

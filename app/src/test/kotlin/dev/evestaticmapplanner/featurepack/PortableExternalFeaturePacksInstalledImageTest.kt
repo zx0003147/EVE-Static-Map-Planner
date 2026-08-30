@@ -74,8 +74,12 @@ class PortableExternalFeaturePacksInstalledImageTest {
                     .substringAfter('=').split(',').filter(String::isNotBlank).toSet(),
             )
             assertTrue(validation.contains("packControlPackIds=esi.pack"))
-            assertTrue(validation.contains("startupFailures="))
-            assertTrue(validation.contains("closeFailures="))
+            assertTrue(validation.contains("packControlUnavailablePackIds=\n"))
+            assertTrue(validation.lineSequence().single { it.startsWith("packControlActionIds=") }
+                .contains("esi.pack:add-character"))
+            assertEquals("startupFailures=", validation.lineSequence().single { it.startsWith("startupFailures=") })
+            assertEquals("closeFailures=", validation.lineSequence().single { it.startsWith("closeFailures=") })
+            assertFalse(validation.contains("Pack Control failed"))
             val output = Files.readString(stdout) + Files.readString(stderr)
             assertFalse(output.contains("restricted method", ignoreCase = true))
         } finally {

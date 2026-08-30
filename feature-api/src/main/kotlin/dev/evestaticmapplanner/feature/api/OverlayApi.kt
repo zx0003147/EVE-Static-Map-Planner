@@ -84,7 +84,7 @@ class OverlayEntry(
     val visibility: OverlayEntryVisibility = OverlayEntryVisibility.VISIBLE,
     val systemMarker: OverlaySystemMarker? = null,
 ) {
-    /** Preserves the complete Feature API v1 constructor ABI. */
+    /** Preserves the direct six-argument JVM constructor used by callers that supplied every v1 argument. */
     constructor(
         layerId: String,
         systemId: Int,
