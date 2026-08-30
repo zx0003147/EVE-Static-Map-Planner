@@ -699,6 +699,12 @@ val portableHttpMcpResourceTest by tasks.registering(Test::class) {
     outputs.upToDateWhen { false }
 }
 
+portableHttpMcpResourceTest.configure {
+    // Both acceptance tasks intentionally exercise the fixed production port. Gradle project parallelism must not
+    // let their separate Portable Map processes compete for 127.0.0.1:27892.
+    mustRunAfter(portableHttpMcpInstalledImageTest)
+}
+
 val portableEsiPackInstalledImageTest by tasks.registering(Test::class) {
     group = "verification"
     description = "Loads the real ESI Pack through the extracted Portable launcher."

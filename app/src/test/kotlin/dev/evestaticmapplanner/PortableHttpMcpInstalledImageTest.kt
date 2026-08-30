@@ -102,8 +102,7 @@ class PortableHttpMcpInstalledImageTest {
                 http.close()
             }
         } finally {
-            if (process.isAlive) process.destroyForcibly()
-            assertTrue(process.waitFor(15, TimeUnit.SECONDS), "Portable GUI process did not exit")
+            stopProcessTree(process, "Portable GUI")
         }
     }
 
@@ -280,8 +279,7 @@ class PortableHttpMcpResourceTest {
     }
 
     private fun stopMap(process: Process) {
-        if (process.isAlive) process.destroyForcibly()
-        assertTrue(process.waitFor(15, TimeUnit.SECONDS), "Portable Map did not exit")
+        stopProcessTree(process, "Portable Map")
     }
 
     private companion object {
@@ -290,6 +288,21 @@ class PortableHttpMcpResourceTest {
         const val PORT = 27892
         const val ENDPOINT = "http://127.0.0.1:27892/mcp"
     }
+}
+
+private fun stopProcessTree(process: Process, label: String) {
+    val descendants = process.toHandle().descendants().toList().asReversed()
+    descendants.forEach { handle -> if (handle.isAlive) handle.destroyForcibly() }
+    if (process.isAlive) process.destroyForcibly()
+    assertTrue(process.waitFor(15, TimeUnit.SECONDS), "$label launcher did not exit")
+
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+    while (descendants.any(ProcessHandle::isAlive) && System.nanoTime() < deadline) {
+        descendants.forEach { handle -> if (handle.isAlive) handle.destroyForcibly() }
+        Thread.sleep(50)
+    }
+    val survivingPids = descendants.filter(ProcessHandle::isAlive).map(ProcessHandle::pid)
+    assertTrue(survivingPids.isEmpty(), "$label child processes did not exit: $survivingPids")
 }
 
 private data class ResourceSample(
