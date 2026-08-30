@@ -72,11 +72,33 @@ object UserDatabase {
                 1 -> migrateVersionOneToTwo(connection, path, migrationHook)
                 2 -> migrateVersionTwoToThree(connection, path, migrationHook)
                 3 -> migrateVersionThreeToFour(connection, path, migrationHook)
+                4 -> migrateVersionFourToFive(connection, path, migrationHook)
                 else -> throw UserDatabaseException(
                     "No migration is available from user database schema $version to ${UserDatabaseSchema.VERSION}",
                 )
             }
             version++
+        }
+    }
+
+    private fun migrateVersionFourToFive(
+        connection: Connection,
+        path: Path,
+        migrationHook: (Connection) -> Unit,
+    ) {
+        connection.autoCommit = false
+        try {
+            UserDatabaseSchema.addPlanningViews(connection)
+            validateContents(connection, path, 5, requiredTables(5), requiredIndexes(5))
+            migrationHook(connection)
+            connection.createStatement().use { it.execute("PRAGMA user_version = 5") }
+            validate(connection, path, expectedVersion = 5)
+            connection.commit()
+        } catch (error: Throwable) {
+            connection.rollback()
+            throw error
+        } finally {
+            connection.autoCommit = true
         }
     }
 
@@ -190,6 +212,8 @@ object UserDatabase {
         }
         if ("saved_markers" in requiredTables) validateSavedMarkersSchema(connection, schemaVersion)
         if ("saved_marker_children" in requiredTables) validateSavedMarkerChildrenSchema(connection)
+        if ("planning_views" in requiredTables) validatePlanningViewsSchema(connection)
+        if ("ai_missions" in requiredTables) validateAiMissionsSchema(connection)
         val foreignKeyErrors = connection.createStatement().use { statement ->
             statement.executeQuery("PRAGMA foreign_key_check").use { result -> result.next() }
         }
@@ -336,6 +360,40 @@ object UserDatabase {
         }
     }
 
+    private fun validatePlanningViewsSchema(connection: Connection) {
+        val columns = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA table_info(planning_views)").use { result ->
+                buildList { while (result.next()) add(result.getString("name")) }
+            }
+        }
+        val expected = listOf(
+            "id", "label", "order_index", "is_current",
+            "normal_from_system_id", "normal_to_system_id", "normal_use_ansiblex", "normal_calculated",
+            "capital_from_system_id", "capital_to_system_id", "capital_range_text", "capital_calculated",
+            "selected_route_action_targets_json",
+        )
+        if (columns != expected) throw UserDatabaseException("User database planning_views schema is invalid")
+        val indexes = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA index_list(planning_views)").use { result ->
+                buildSet { while (result.next()) result.getString("name")?.let(::add) }
+            }
+        }
+        if ("idx_planning_views_current" !in indexes) {
+            throw UserDatabaseException("User database planning_views current-view constraint is missing")
+        }
+    }
+
+    private fun validateAiMissionsSchema(connection: Connection) {
+        val columns = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA table_info(ai_missions)").use { result ->
+                buildList { while (result.next()) add(result.getString("name")) }
+            }
+        }
+        if (columns != listOf("mission_id", "view_id", "order_index", "payload_json")) {
+            throw UserDatabaseException("User database ai_missions schema is invalid")
+        }
+    }
+
     private fun Connection.userVersion(): Int = createStatement().use { statement ->
         statement.executeQuery("PRAGMA user_version").use { result ->
             check(result.next())
@@ -356,6 +414,7 @@ object UserDatabase {
         if (version >= 1) addAll(setOf("ansiblex_connections", "ansiblex_import_batches"))
         if (version >= 2) add("saved_markers")
         if (version >= 3) add("saved_marker_children")
+        if (version >= 5) addAll(setOf("planning_views", "ai_missions"))
     }
 
     private fun requiredIndexes(version: Int): Set<String> = if (version >= 1) {

@@ -63,6 +63,28 @@ interface ViewportControlPort {
     suspend fun fitSystems(systemIds: Set<Int>): ViewportOperationOutcome
 }
 
+interface PlanningViewControlPort {
+    suspend fun listViews(): List<PlanningViewDto>
+    suspend fun currentView(): PlanningViewDto
+    suspend fun createView(label: String?): PlanningViewDto
+    suspend fun renameView(viewId: String, label: String): PlanningViewDto
+    suspend fun switchView(viewId: String): PlanningViewDto
+    suspend fun deleteView(viewId: String): PlanningViewDto
+}
+
+/** Compatibility fallback for hosts that have not yet exposed multiple Views. */
+object SinglePlanningViewControlPort : PlanningViewControlPort {
+    private val view = PlanningViewDto("view-1", "View 1", true)
+    override suspend fun listViews() = listOf(view)
+    override suspend fun currentView() = view
+    override suspend fun createView(label: String?) = unsupported()
+    override suspend fun renameView(viewId: String, label: String) = unsupported()
+    override suspend fun switchView(viewId: String) = if (viewId == view.viewId) view else missing()
+    override suspend fun deleteView(viewId: String) = unsupported()
+    private fun unsupported(): Nothing = throw ControlPortFailure(ControlErrorCode.INVALID_ARGUMENT, "This host does not support multiple Views")
+    private fun missing(): Nothing = throw ControlPortFailure(ControlErrorCode.NOT_FOUND, "View was not found")
+}
+
 fun interface MissionRenderStatePort {
     suspend fun publish(missions: List<Mission>)
 }

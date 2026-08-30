@@ -10,6 +10,7 @@ import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteResult
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
@@ -22,10 +23,18 @@ class DefaultMapControlService(
     scope: CoroutineScope,
     private val registry: MissionRegistry = MissionRegistry(),
     private val savedMarkerControlPort: SavedMarkerControlPort = DeniedSavedMarkerControlPort,
+    private val planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
 ) : MapControlService, AutoCloseable {
     private val dispatcher = MapControlCommandDispatcher(scope)
     private val idempotency = IdempotencyCache()
     private val expensiveQueries = Semaphore(ControlLimits.MAX_CONCURRENT_EXPENSIVE_QUERIES)
+
+    init {
+        scope.launch {
+            registry.retainViews(planningViewControlPort.listViews().mapTo(mutableSetOf(), PlanningViewDto::viewId))
+            publishMissions()
+        }
+    }
 
     override suspend fun searchSystems(request: SearchSystemsRequest): ControlResult<List<SystemSummaryDto>> =
         query(request.requestId) {
@@ -48,7 +57,7 @@ class DefaultMapControlService(
             validateRequestId(request.requestId)
             validateSystemId(request.systemId)
             val savedMarker = savedMarkerControlPort.getSystemMarker(request.systemId)
-            val missionMarkers = registry.active()
+            val missionMarkers = registry.active(planningViewControlPort.currentView().viewId)
                 .flatMap(Mission::markers)
                 .filter { it.systemId == request.systemId }
                 .map { marker ->
@@ -94,10 +103,20 @@ class DefaultMapControlService(
             }
         }
 
+    override suspend fun listViews(request: ListViewsRequest): ControlResult<List<PlanningViewDto>> = query(request.requestId) {
+        validateRequestId(request.requestId)
+        planningViewControlPort.listViews()
+    }
+
+    override suspend fun getCurrentView(request: GetCurrentViewRequest): ControlResult<PlanningViewDto> = query(request.requestId) {
+        validateRequestId(request.requestId)
+        planningViewControlPort.currentView()
+    }
+
     override suspend fun getActiveMissions(request: GetActiveMissionsRequest): ControlResult<List<MissionSummaryDto>> =
         query(request.requestId) {
             validateRequestId(request.requestId)
-            registry.active().map(Mission::toSummary)
+            registry.active(resolveViewId(request.viewId)).map(Mission::toSummary)
         }
 
     override suspend fun getMission(request: GetMissionRequest): ControlResult<Mission> = query(request.requestId) {
@@ -108,12 +127,45 @@ class DefaultMapControlService(
     override suspend fun beginMission(command: BeginMissionCommand): ControlResult<MissionSummaryDto> = mutation(
         "beginMission",
         command,
-        listOf(command.title),
+        listOf(command.title, command.viewId),
     ) {
         validateText("title", command.title, ControlLimits.MAX_TITLE_CODE_POINTS, allowBlank = false)
-        val mission = registry.begin(command.title.trim())
+        val mission = registry.begin(command.title.trim(), resolveViewId(command.viewId))
         publishMissions()
         success(command.requestId, mission.toSummary(), mission.revision)
+    }
+
+    override suspend fun createView(command: CreateViewCommand): ControlResult<PlanningViewDto> = mutation(
+        "createView", command, listOf(command.label),
+    ) {
+        validateOptionalText("label", command.label, ControlLimits.MAX_LABEL_CODE_POINTS)
+        val view = planningViewControlPort.createView(command.label)
+        publishMissions()
+        success(command.requestId, view)
+    }
+
+    override suspend fun renameView(command: RenameViewCommand): ControlResult<PlanningViewDto> = mutation(
+        "renameView", command, listOf(command.viewId, command.label),
+    ) {
+        validateText("label", command.label, ControlLimits.MAX_LABEL_CODE_POINTS, allowBlank = false)
+        success(command.requestId, planningViewControlPort.renameView(command.viewId, command.label.trim()))
+    }
+
+    override suspend fun switchView(command: SwitchViewCommand): ControlResult<PlanningViewDto> = mutation(
+        "switchView", command, listOf(command.viewId),
+    ) {
+        val view = planningViewControlPort.switchView(command.viewId)
+        publishMissions()
+        success(command.requestId, view)
+    }
+
+    override suspend fun deleteView(command: DeleteViewCommand): ControlResult<PlanningViewDto> = mutation(
+        "deleteView", command, listOf(command.viewId),
+    ) {
+        val view = planningViewControlPort.deleteView(command.viewId)
+        registry.clearView(command.viewId)
+        publishMissions()
+        success(command.requestId, view)
     }
 
     override suspend fun createSavedMarker(
@@ -368,6 +420,13 @@ class DefaultMapControlService(
 
     private suspend fun publishMissions() = missionRenderStatePort.publish(registry.active())
 
+    private suspend fun resolveViewId(requested: String?): String {
+        if (requested == null) return planningViewControlPort.currentView().viewId
+        validateText("viewId", requested, ControlLimits.MAX_LABEL_CODE_POINTS, allowBlank = false)
+        return planningViewControlPort.listViews().firstOrNull { it.viewId == requested }?.viewId
+            ?: throw ControlFailure(ControlErrorCode.NOT_FOUND, "View was not found")
+    }
+
     private fun ensureRouteCapacity(missionId: dev.evestaticmapplanner.control.mission.MissionId) {
         if (registry.get(missionId).routes.size >= ControlLimits.MAX_ROUTES_PER_MISSION) {
             limit("The mission route limit has been reached")
@@ -459,6 +518,7 @@ private fun Mission.toSummary() = MissionSummaryDto(
     jumpRanges.size,
     markers.size,
     referencedSystemIds.size,
+    viewId,
 )
 
 private fun <T> success(requestId: String, value: T, revision: Long? = null): ControlResult.Success<T> =

@@ -71,7 +71,7 @@ class McpProcessTest {
         val client = Client(Implementation("step-3a-process-test", "1.0"))
         try {
             client.connect(transport)
-            assertEquals(22, client.listTools().tools.size)
+            assertEquals(28, client.listTools().tools.size)
             val disconnected = client.callTool("search_system", mapOf("query" to "Jita"))
             assertTrue(disconnected.isError == true)
             assertEquals(
@@ -122,7 +122,7 @@ class McpProcessTest {
         val client = Client(Implementation("step-3b-launcher-test", "1.0"))
         try {
             client.connect(transport)
-            assertEquals(22, client.listTools().tools.size)
+            assertEquals(28, client.listTools().tools.size)
             val disconnected = client.callTool("search_system", mapOf("query" to "Jita"))
             assertTrue(disconnected.isError == true)
             assertEquals(
@@ -169,7 +169,7 @@ class McpProcessTest {
         val client = Client(Implementation("step-4d-path-launcher-test", "1.0"))
         try {
             client.connect(transport)
-            assertEquals(22, client.listTools().tools.size)
+            assertEquals(28, client.listTools().tools.size)
             val disconnected = client.callTool("search_system", mapOf("query" to "Jita"))
             assertTrue(disconnected.isError == true)
             assertEquals(

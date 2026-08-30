@@ -16,7 +16,7 @@ exclude intel, killboards, application auto-update, signing, Microsoft Store/MSI
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
 - `feature-api`: Frozen Feature API v2 contracts and generic external Pack test fixture.
-- `mcp`: Core-owned MCP server and its fixed 22-tool catalog, including permission-gated Saved Marker read/create.
+- `mcp`: Core-owned MCP server and its fixed 28-tool catalog, including View control and permission-gated Saved Marker read/create.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 
 ## External Feature Packs
@@ -116,7 +116,7 @@ delete the LocalAppData directory.
 ## AI / MCP integration
 
 The recommended generic integration is Streamable HTTP at `http://127.0.0.1:27892/mcp`. The server runs inside the
-Map JVM, binds only IPv4 loopback, and exposes the same fixed 22 tools as the existing bridge. The EVE Map Assistant
+Map JVM, binds only IPv4 loopback, and exposes the same fixed 28 tools as the existing bridge. The EVE Map Assistant
 Codex Plugin prefers this HTTP endpoint, so moving the Portable directory does not change Plugin configuration: stop
 the Map, move the directory, restart the Map, and open a new Codex task.
 

@@ -99,7 +99,7 @@ class AiSavedMarkerConcurrencyIntegrationTest {
             assertEquals(persisted, savedMarkerService.state.value.markersBySystemId[1])
             assertTrue(persisted.createdBy == SavedMarkerCreatedBy.USER || persisted.createdBy == SavedMarkerCreatedBy.AI)
             assertEquals(if (persisted.createdBy == SavedMarkerCreatedBy.USER) "UI" else "AI", persisted.name)
-            assertEquals(4, UserDatabase.open(database).use { connection ->
+            assertEquals(dev.evestaticmapplanner.data.db.UserDatabaseSchema.VERSION, UserDatabase.open(database).use { connection ->
                 connection.createStatement().use { statement ->
                     statement.executeQuery("PRAGMA user_version").use { result ->
                         check(result.next())

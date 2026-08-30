@@ -130,8 +130,19 @@ class LocalControlClient internal constructor(
         }
     }
 
-    suspend fun getActiveMissions(): LocalControlClientResult = query(LocalControlOperation.ACTIVE_MISSIONS) { requestId ->
+    suspend fun listViews(): LocalControlClientResult = query(LocalControlOperation.LIST_VIEWS) { requestId ->
         buildJsonObject { put("requestId", requestId) }
+    }
+
+    suspend fun getCurrentView(): LocalControlClientResult = query(LocalControlOperation.CURRENT_VIEW) { requestId ->
+        buildJsonObject { put("requestId", requestId) }
+    }
+
+    suspend fun getActiveMissions(viewId: String? = null): LocalControlClientResult = query(LocalControlOperation.ACTIVE_MISSIONS) { requestId ->
+        buildJsonObject {
+            put("requestId", requestId)
+            if (viewId != null) put("viewId", viewId)
+        }
     }
 
     suspend fun getMission(missionId: String): LocalControlClientResult = query(LocalControlOperation.MISSION) { requestId ->
@@ -141,8 +152,27 @@ class LocalControlClient internal constructor(
         }
     }
 
-    suspend fun beginMission(title: String): LocalControlClientResult = mutation(LocalControlOperation.BEGIN_MISSION) { ids ->
-        ids.body { put("title", title) }
+    suspend fun beginMission(title: String, viewId: String? = null): LocalControlClientResult = mutation(LocalControlOperation.BEGIN_MISSION) { ids ->
+        ids.body {
+            put("title", title)
+            if (viewId != null) put("viewId", viewId)
+        }
+    }
+
+    suspend fun createView(label: String?): LocalControlClientResult = mutation(LocalControlOperation.CREATE_VIEW) { ids ->
+        ids.body { if (label != null) put("label", label) }
+    }
+
+    suspend fun renameView(viewId: String, label: String): LocalControlClientResult = mutation(LocalControlOperation.RENAME_VIEW) { ids ->
+        ids.body { put("viewId", viewId); put("label", label) }
+    }
+
+    suspend fun switchView(viewId: String): LocalControlClientResult = mutation(LocalControlOperation.SWITCH_VIEW) { ids ->
+        ids.body { put("viewId", viewId) }
+    }
+
+    suspend fun deleteView(viewId: String): LocalControlClientResult = mutation(LocalControlOperation.DELETE_VIEW) { ids ->
+        ids.body { put("viewId", viewId) }
     }
 
     suspend fun createSavedMarker(

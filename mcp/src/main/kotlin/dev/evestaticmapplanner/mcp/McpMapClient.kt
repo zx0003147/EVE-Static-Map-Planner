@@ -9,9 +9,17 @@ internal interface McpMapClient : AutoCloseable {
     suspend fun getSystemMarkers(systemId: Int): LocalControlClientResult
     suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean): LocalControlClientResult
     suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double): LocalControlClientResult
+    suspend fun listViews(): LocalControlClientResult = unsupportedViewClientResult()
+    suspend fun getCurrentView(): LocalControlClientResult = unsupportedViewClientResult()
     suspend fun getActiveMissions(): LocalControlClientResult
+    suspend fun getActiveMissions(viewId: String?): LocalControlClientResult = getActiveMissions()
     suspend fun getMission(missionId: String): LocalControlClientResult
     suspend fun beginMission(title: String): LocalControlClientResult
+    suspend fun beginMission(title: String, viewId: String?): LocalControlClientResult = beginMission(title)
+    suspend fun createView(label: String?): LocalControlClientResult = unsupportedViewClientResult()
+    suspend fun renameView(viewId: String, label: String): LocalControlClientResult = unsupportedViewClientResult()
+    suspend fun switchView(viewId: String): LocalControlClientResult = unsupportedViewClientResult()
+    suspend fun deleteView(viewId: String): LocalControlClientResult = unsupportedViewClientResult()
     suspend fun createSavedMarker(
         systemId: Int,
         color: String,
@@ -66,9 +74,17 @@ internal class LocalMcpMapClient(
         client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
         client.calculateCapitalRoute(startSystemId, destinationSystemId, effectiveRangeLy)
+    override suspend fun listViews() = client.listViews()
+    override suspend fun getCurrentView() = client.getCurrentView()
     override suspend fun getActiveMissions() = client.getActiveMissions()
+    override suspend fun getActiveMissions(viewId: String?) = client.getActiveMissions(viewId)
     override suspend fun getMission(missionId: String) = client.getMission(missionId)
     override suspend fun beginMission(title: String) = client.beginMission(title)
+    override suspend fun beginMission(title: String, viewId: String?) = client.beginMission(title, viewId)
+    override suspend fun createView(label: String?) = client.createView(label)
+    override suspend fun renameView(viewId: String, label: String) = client.renameView(viewId, label)
+    override suspend fun switchView(viewId: String) = client.switchView(viewId)
+    override suspend fun deleteView(viewId: String) = client.deleteView(viewId)
     override suspend fun createSavedMarker(
         systemId: Int,
         color: String,
@@ -111,3 +127,10 @@ internal class LocalMcpMapClient(
     override suspend fun clearMission(missionId: String) = client.clearMission(missionId)
     override fun close() = client.close()
 }
+
+private fun unsupportedViewClientResult() = LocalControlClientResult.Failure(
+    dev.evestaticmapplanner.control.transport.LocalControlClientError(
+        dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.INVALID_ARGUMENT,
+        "Planning Views are not supported by this client",
+    ),
+)

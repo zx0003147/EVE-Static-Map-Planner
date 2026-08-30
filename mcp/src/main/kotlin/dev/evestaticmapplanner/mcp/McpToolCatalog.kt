@@ -30,6 +30,7 @@ internal data class McpToolDefinition(
 internal object McpToolCatalog {
     val names = listOf(
         "search_system", "get_system_info", "get_system_markers", "calculate_normal_route", "calculate_capital_route",
+        "list_views", "get_current_view", "create_view", "rename_view", "switch_view", "delete_view",
         "get_active_missions", "get_mission", "begin_mission", "focus_system", "show_normal_route",
         "show_capital_route", "remove_mission_route", "clear_mission_routes", "show_jump_range",
         "remove_jump_range", "clear_mission_jump_ranges", "add_mission_marker", "remove_mission_marker",
@@ -93,14 +94,73 @@ internal object McpToolCatalog {
             )
         },
         queryTool(
-            "get_active_missions",
-            "List temporary AI Missions in the current AI Map Control session. This does not change the map.",
+            "list_views",
+            "List every planning View with its stable ID, editable label, and current status.",
             schema(emptyList()),
+            schema(listOf("views"), "views" to arrayProperty()),
+            "views",
+        ) { arguments ->
+            StrictArguments(arguments, emptySet(), emptySet())
+            client.listViews()
+        },
+        queryTool(
+            "get_current_view",
+            "Return the planning View currently displayed by the map.",
+            schema(emptyList()),
+            objectOutput("viewId", "label", "current"),
+        ) { arguments ->
+            StrictArguments(arguments, emptySet(), emptySet())
+            client.getCurrentView()
+        },
+        commandTool(
+            "create_view",
+            "Create and switch to a new planning View. The optional label must be unique.",
+            schema(emptyList(), "label" to stringProperty(120)),
+            objectOutput("viewId", "label", "current"),
+            false,
+        ) { arguments ->
+            val input = StrictArguments(arguments, setOf("label"), emptySet())
+            client.createView(input.optionalString("label", 120))
+        },
+        commandTool(
+            "rename_view",
+            "Rename a planning View identified by stable View ID. Labels are unique.",
+            schema(listOf("viewId", "label"), "viewId" to stringProperty(120), "label" to stringProperty(120)),
+            objectOutput("viewId", "label", "current"),
+            false,
+        ) { arguments ->
+            val input = StrictArguments(arguments, setOf("viewId", "label"), setOf("viewId", "label"))
+            client.renameView(input.string("viewId", 120), input.string("label", 120))
+        },
+        commandTool(
+            "switch_view",
+            "Switch the displayed planning View using its stable View ID.",
+            schema(listOf("viewId"), "viewId" to stringProperty(120)),
+            objectOutput("viewId", "label", "current"),
+            false,
+        ) { arguments ->
+            val input = StrictArguments(arguments, setOf("viewId"), setOf("viewId"))
+            client.switchView(input.string("viewId", 120))
+        },
+        commandTool(
+            "delete_view",
+            "Delete a planning View using its stable View ID. The last View cannot be deleted.",
+            schema(listOf("viewId"), "viewId" to stringProperty(120)),
+            objectOutput("viewId", "label", "current"),
+            false,
+        ) { arguments ->
+            val input = StrictArguments(arguments, setOf("viewId"), setOf("viewId"))
+            client.deleteView(input.string("viewId", 120))
+        },
+        queryTool(
+            "get_active_missions",
+            "List temporary AI Missions for a View. If viewId is omitted, use the currently displayed View.",
+            schema(emptyList(), "viewId" to stringProperty(120)),
             schema(listOf("missions"), "missions" to arrayProperty()),
             "missions",
         ) { arguments ->
-            StrictArguments(arguments, emptySet(), emptySet())
-            client.getActiveMissions()
+            val input = StrictArguments(arguments, setOf("viewId"), emptySet())
+            client.getActiveMissions(input.optionalString("viewId", 120))
         },
         queryTool(
             "get_mission",
@@ -113,13 +173,13 @@ internal object McpToolCatalog {
         },
         commandTool(
             "begin_mission",
-            "Begin a temporary AI Mission. The Mission disappears when AI Map Control or the app session ends.",
-            schema(listOf("title"), "title" to stringProperty(120)),
+            "Begin an AI Mission in a View. If viewId is omitted, use the currently displayed View.",
+            schema(listOf("title"), "title" to stringProperty(120), "viewId" to stringProperty(120)),
             objectOutput("missionId", "title", "revision"),
             false,
         ) { arguments ->
-            val input = StrictArguments(arguments, setOf("title"), setOf("title"))
-            client.beginMission(input.string("title", 120))
+            val input = StrictArguments(arguments, setOf("title", "viewId"), setOf("title"))
+            client.beginMission(input.string("title", 120), input.optionalString("viewId", 120))
         },
         commandTool(
             "focus_system",

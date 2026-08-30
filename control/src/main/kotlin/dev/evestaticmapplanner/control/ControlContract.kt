@@ -99,6 +99,13 @@ data class MissionSummaryDto(
     val jumpRangeCount: Int,
     val markerCount: Int,
     val referencedSystemCount: Int,
+    val viewId: String = "view-1",
+)
+
+data class PlanningViewDto(
+    val viewId: String,
+    val label: String,
+    val current: Boolean,
 )
 
 data class MissionRouteReceipt(
@@ -195,13 +202,37 @@ data class CalculateCapitalRouteRequest(
     val destinationSystemId: Int,
     val effectiveRangeLy: Double,
 ) : QueryRequest
-data class GetActiveMissionsRequest(override val requestId: String) : QueryRequest
+data class ListViewsRequest(override val requestId: String) : QueryRequest
+data class GetCurrentViewRequest(override val requestId: String) : QueryRequest
+data class GetActiveMissionsRequest(override val requestId: String, val viewId: String? = null) : QueryRequest
 data class GetMissionRequest(override val requestId: String, val missionId: MissionId) : QueryRequest
 
 data class BeginMissionCommand(
     override val requestId: String,
     override val idempotencyKey: String,
     val title: String,
+    val viewId: String? = null,
+) : MutationCommand
+data class CreateViewCommand(
+    override val requestId: String,
+    override val idempotencyKey: String,
+    val label: String? = null,
+) : MutationCommand
+data class RenameViewCommand(
+    override val requestId: String,
+    override val idempotencyKey: String,
+    val viewId: String,
+    val label: String,
+) : MutationCommand
+data class SwitchViewCommand(
+    override val requestId: String,
+    override val idempotencyKey: String,
+    val viewId: String,
+) : MutationCommand
+data class DeleteViewCommand(
+    override val requestId: String,
+    override val idempotencyKey: String,
+    val viewId: String,
 ) : MutationCommand
 data class CreateSavedMarkerCommand(
     override val requestId: String,

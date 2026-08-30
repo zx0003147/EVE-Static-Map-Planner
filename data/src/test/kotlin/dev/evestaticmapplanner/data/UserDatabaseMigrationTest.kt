@@ -20,15 +20,18 @@ import kotlin.test.assertTrue
 
 class UserDatabaseMigrationTest {
     @Test
-    fun `fresh database creates complete strict version four schema`() {
+    fun `fresh database creates complete strict current schema`() {
         val path = createTempDirectory("user-db-v4-fresh").resolve("user.db")
 
         UserDatabase.initialize(path)
 
         UserDatabase.open(path).use { connection ->
-            assertEquals(4, connection.userVersion())
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
             assertEquals(
-                setOf("ansiblex_import_batches", "ansiblex_connections", "saved_markers", "saved_marker_children"),
+                setOf(
+                    "ansiblex_import_batches", "ansiblex_connections", "saved_markers", "saved_marker_children",
+                    "planning_views", "ai_missions",
+                ),
                 connection.applicationTables(),
             )
             val columns = connection.createStatement().use { statement ->
@@ -118,7 +121,7 @@ class UserDatabaseMigrationTest {
         UserDatabase.initialize(path)
 
         UserDatabase.open(path).use { connection ->
-            assertEquals(4, connection.userVersion())
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
             assertTrue("saved_markers" in connection.applicationTables())
             assertTrue("saved_marker_children" in connection.applicationTables())
             assertEquals(0, connection.createStatement().use { statement ->
@@ -140,7 +143,7 @@ class UserDatabaseMigrationTest {
         UserDatabase.initialize(path)
 
         UserDatabase.open(path).use { connection ->
-            assertEquals(4, connection.userVersion())
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
             assertTrue("saved_marker_children" in connection.applicationTables())
             assertEquals(0, connection.createStatement().use { statement ->
                 statement.executeQuery("SELECT COUNT(*) FROM saved_marker_children").use { it.next(); it.getInt(1) }
@@ -174,7 +177,7 @@ class UserDatabaseMigrationTest {
         assertTrue(migrated.all { it.createdBy == SavedMarkerCreatedBy.USER })
 
         UserDatabase.open(path).use { connection ->
-            assertEquals(4, connection.userVersion())
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
             assertEquals(
                 listOf(listOf("saved_markers", "parent_system_id", "system_id", "CASCADE")),
                 connection.childForeignKeys(),

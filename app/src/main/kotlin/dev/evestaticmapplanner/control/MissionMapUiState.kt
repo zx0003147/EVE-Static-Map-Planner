@@ -23,9 +23,22 @@ class MissionMapStateStore(
     private val commitDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : MissionRenderStatePort {
     private val mutableState = MutableStateFlow(MissionMapUiState())
+    private var allMissions: List<Mission> = emptyList()
+    private var currentViewId: String = "view-1"
     val state: StateFlow<MissionMapUiState> = mutableState.asStateFlow()
 
     override suspend fun publish(missions: List<Mission>) = withContext(commitDispatcher) {
+        allMissions = missions
+        commitCurrentView()
+    }
+
+    suspend fun selectView(viewId: String) = withContext(commitDispatcher) {
+        currentViewId = viewId
+        commitCurrentView()
+    }
+
+    private fun commitCurrentView() {
+        val missions = allMissions.filter { it.viewId == currentViewId }
         val routes = missions.flatMap(Mission::routes)
         mutableState.value = MissionMapUiState(
             missions = missions,

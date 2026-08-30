@@ -17,12 +17,12 @@ import kotlin.test.assertTrue
 
 class McpToolCatalogTest {
     @Test
-    fun `capability surface is exactly the fixed twenty two tools`() {
+    fun `capability surface is exactly the fixed twenty eight tools`() {
         val client = RecordingClient()
         val definitions = McpToolCatalog.definitions(client)
         val server = createMcpServer(client)
 
-        assertEquals(22, definitions.size)
+        assertEquals(28, definitions.size)
         assertEquals(McpToolCatalog.names, definitions.map { it.tool.name })
         assertEquals(McpToolCatalog.names.toSet(), server.tools.keys)
         assertTrue(server.resources.isEmpty())
@@ -153,6 +153,12 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
     "calculate_capital_route" to mapOf(
         "startSystemId" to JsonPrimitive(1), "destinationSystemId" to JsonPrimitive(2), "effectiveRangeLy" to JsonPrimitive(5.0),
     ),
+    "list_views" to emptyMap(),
+    "get_current_view" to emptyMap(),
+    "create_view" to emptyMap(),
+    "rename_view" to mapOf("viewId" to JsonPrimitive("view-1"), "label" to JsonPrimitive("Scout")),
+    "switch_view" to mapOf("viewId" to JsonPrimitive("view-1")),
+    "delete_view" to mapOf("viewId" to JsonPrimitive("view-2")),
     "get_active_missions" to emptyMap(),
     "get_mission" to mapOf("missionId" to JsonPrimitive("m1")),
     "begin_mission" to mapOf("title" to JsonPrimitive("Operation")),
@@ -201,6 +207,12 @@ private class RecordingClient : McpMapClient {
         result("calculate_normal_route")
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
         result("calculate_capital_route")
+    override suspend fun listViews() = result("list_views")
+    override suspend fun getCurrentView() = result("get_current_view")
+    override suspend fun createView(label: String?) = result("create_view")
+    override suspend fun renameView(viewId: String, label: String) = result("rename_view")
+    override suspend fun switchView(viewId: String) = result("switch_view")
+    override suspend fun deleteView(viewId: String) = result("delete_view")
     override suspend fun getActiveMissions() = result("get_active_missions")
     override suspend fun getMission(missionId: String) = result("get_mission")
     override suspend fun beginMission(title: String) = result("begin_mission")

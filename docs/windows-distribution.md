@@ -159,7 +159,7 @@ Disconnect the ESI Pack first if desired, then manually delete `%LOCALAPPDATA%\E
 
 Automated acceptance covers clean build, ZIP audit, extraction with spaces, launch from an unrelated working
 directory, no-system-Java launch, first-run AppData creation, program-image immutability, user-data preservation,
-whole-directory movement, external Feature Packs, DPAPI regression, and the exact 22-tool MCP catalog.
+whole-directory movement, external Feature Packs, DPAPI regression, and the exact 28-tool MCP catalog.
 
 Final human product QA is limited to:
 

@@ -12,22 +12,29 @@ import java.util.UUID
 class MissionRegistry(
     private val now: () -> Instant = Instant::now,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val repository: MissionRepository = InMemoryOnlyMissionRepository,
 ) {
-    private val missions = linkedMapOf<MissionId, Mission>()
+    private val missions = linkedMapOf<MissionId, Mission>().apply {
+        repository.load().take(ControlLimits.MAX_ACTIVE_MISSIONS).forEach { put(it.missionId, it) }
+    }
 
     @Synchronized
-    fun begin(title: String): Mission {
+    fun begin(title: String, viewId: String = "view-1"): Mission {
         if (missions.size >= ControlLimits.MAX_ACTIVE_MISSIONS) {
             fail(ControlErrorCode.MISSION_LIMIT_EXCEEDED, "The active mission limit has been reached")
         }
         val id = MissionId(newId())
-        val mission = Mission(id, title, now(), 1, emptyList(), emptyList(), emptyList(), emptySet())
+        val mission = Mission(id, title, now(), 1, emptyList(), emptyList(), emptyList(), emptySet(), viewId)
         missions[id] = mission
+        persist()
         return mission
     }
 
     @Synchronized
     fun active(): List<Mission> = missions.values.toList()
+
+    @Synchronized
+    fun active(viewId: String): List<Mission> = missions.values.filter { it.viewId == viewId }
 
     @Synchronized
     fun get(missionId: MissionId): Mission = missions[missionId]
@@ -136,6 +143,7 @@ class MissionRegistry(
     fun clearMission(missionId: MissionId): Mission {
         val mission = get(missionId)
         missions.remove(missionId)
+        persist()
         return mission
     }
 
@@ -169,8 +177,21 @@ class MissionRegistry(
 
     private fun replace(mission: Mission): Mission {
         missions[mission.missionId] = mission
+        persist()
         return mission
     }
+
+    @Synchronized
+    fun clearView(viewId: String) {
+        if (missions.entries.removeIf { it.value.viewId == viewId }) persist()
+    }
+
+    @Synchronized
+    fun retainViews(viewIds: Set<String>) {
+        if (missions.entries.removeIf { it.value.viewId !in viewIds }) persist()
+    }
+
+    private fun persist() = repository.save(missions.values.toList())
 }
 
 class MissionRegistryFailure(

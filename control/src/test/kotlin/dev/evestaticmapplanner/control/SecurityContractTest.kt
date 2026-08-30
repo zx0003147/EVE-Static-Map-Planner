@@ -9,7 +9,9 @@ import kotlin.test.assertTrue
 class SecurityContractTest {
     @Test
     fun `service exposes only explicit capability whitelist`() {
-        val operations = MapControlService::class.java.declaredMethods.map { it.name }.toSet()
+        val operations = MapControlService::class.java.declaredMethods
+            .filterNot { it.isSynthetic || '$' in it.name }
+            .map { it.name }.toSet()
         assertEquals(
             setOf(
                 "searchSystems", "getSystemInfo", "calculateNormalRoute", "calculateCapitalRoute",
@@ -18,6 +20,7 @@ class SecurityContractTest {
                 "showCapitalRoute", "removeMissionRoute", "clearMissionRoutes", "showJumpRange",
                 "removeJumpRange", "clearMissionJumpRanges", "addMissionMarker", "removeMissionMarker",
                 "clearMissionMarkers", "fitMission", "clearMission",
+                "listViews", "getCurrentView", "createView", "renameView", "switchView", "deleteView",
             ),
             operations,
         )
@@ -26,7 +29,7 @@ class SecurityContractTest {
 
     @Test
     fun `public contract cannot name database view model saved marker or Ansiblex mutation types`() {
-        val exposedTypeNames = MapControlService::class.java.declaredMethods.flatMap { method ->
+        val exposedTypeNames = MapControlService::class.java.declaredMethods.filterNot { it.isSynthetic }.flatMap { method ->
             listOf(method.returnType.name) + method.parameterTypes.map(Class<*>::getName)
         }.joinToString(" ")
         listOf("java.sql", ".data.", "ViewModel", "SavedMarkerRepository", "AnsiblexRepository").forEach {
@@ -42,6 +45,7 @@ class SecurityContractTest {
         ).mapNotNull { it.simpleName }
         assertTrue(commandNames.none { it.contains("AnsiblexMutation", true) })
         val savedMarkerOperations = MapControlService::class.java.declaredMethods
+            .filterNot { it.isSynthetic }
             .map { it.name }
             .filter { it.contains("SavedMarker", true) || it == "getSystemMarkers" }
         assertEquals(setOf("getSystemMarkers", "createSavedMarker"), savedMarkerOperations.toSet())

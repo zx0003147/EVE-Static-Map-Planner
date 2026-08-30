@@ -3,7 +3,41 @@ package dev.evestaticmapplanner.data.db
 import java.sql.Connection
 
 object UserDatabaseSchema {
-    const val VERSION = 4
+    const val VERSION = 5
+
+    internal val planningViewsCreateStatements = listOf(
+        """
+        CREATE TABLE planning_views (
+            id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) BETWEEN 1 AND 120),
+            label TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK(length(trim(label)) BETWEEN 1 AND 80),
+            order_index INTEGER NOT NULL UNIQUE CHECK(order_index >= 0),
+            is_current INTEGER NOT NULL CHECK(is_current IN (0, 1)),
+            normal_from_system_id INTEGER CHECK(normal_from_system_id IS NULL OR normal_from_system_id > 0),
+            normal_to_system_id INTEGER CHECK(normal_to_system_id IS NULL OR normal_to_system_id > 0),
+            normal_use_ansiblex INTEGER NOT NULL CHECK(normal_use_ansiblex IN (0, 1)),
+            normal_calculated INTEGER NOT NULL CHECK(normal_calculated IN (0, 1)),
+            capital_from_system_id INTEGER CHECK(capital_from_system_id IS NULL OR capital_from_system_id > 0),
+            capital_to_system_id INTEGER CHECK(capital_to_system_id IS NULL OR capital_to_system_id > 0),
+            capital_range_text TEXT NOT NULL CHECK(length(trim(capital_range_text)) BETWEEN 1 AND 32),
+            capital_calculated INTEGER NOT NULL CHECK(capital_calculated IN (0, 1)),
+            selected_route_action_targets_json TEXT NOT NULL DEFAULT '{}'
+                CHECK(json_valid(selected_route_action_targets_json))
+        ) STRICT
+        """.trimIndent(),
+        "CREATE UNIQUE INDEX idx_planning_views_current ON planning_views(is_current) WHERE is_current = 1",
+    )
+
+    internal val aiMissionsCreateStatements = listOf(
+        """
+        CREATE TABLE ai_missions (
+            mission_id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(mission_id)) BETWEEN 1 AND 120),
+            view_id TEXT NOT NULL CHECK(length(trim(view_id)) BETWEEN 1 AND 120),
+            order_index INTEGER NOT NULL UNIQUE CHECK(order_index >= 0),
+            payload_json TEXT NOT NULL CHECK(json_valid(payload_json))
+        ) STRICT
+        """.trimIndent(),
+        "CREATE INDEX idx_ai_missions_view ON ai_missions(view_id, order_index)",
+    )
 
     private val savedMarkersVersionTwoCreateStatement =
         """
@@ -91,7 +125,7 @@ object UserDatabaseSchema {
         "CREATE INDEX idx_ansiblex_enabled ON ansiblex_connections(enabled)",
         "CREATE INDEX idx_ansiblex_source ON ansiblex_connections(source)",
         savedMarkersCreateStatement,
-    ) + savedMarkerChildrenCreateStatements
+    ) + savedMarkerChildrenCreateStatements + planningViewsCreateStatements + aiMissionsCreateStatements
 
     fun create(connection: Connection) {
         connection.createStatement().use { statement ->
@@ -119,6 +153,12 @@ object UserDatabaseSchema {
                     CHECK(created_by IN ('USER', 'AI'))
                 """.trimIndent(),
             )
+        }
+    }
+
+    internal fun addPlanningViews(connection: Connection) {
+        connection.createStatement().use { statement ->
+            (planningViewsCreateStatements + aiMissionsCreateStatements).forEach(statement::execute)
         }
     }
 }

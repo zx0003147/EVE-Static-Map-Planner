@@ -19,6 +19,20 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class MissionMapStateStoreTest {
     @Test
+    fun `switching View filters global persisted Mission pool`() = runTest {
+        val store = MissionMapStateStore(UnconfinedTestDispatcher(testScheduler))
+        fun mission(id: String, viewId: String) = Mission(
+            MissionId(id), id, Instant.EPOCH, 1, emptyList(), emptyList(), emptyList(), emptySet(), viewId,
+        )
+        store.publish(listOf(mission("one", "view-1"), mission("scout", "view-scout")))
+        assertEquals(listOf("one"), store.state.value.missions.map { it.missionId.value })
+
+        store.selectView("view-scout")
+
+        assertEquals(listOf("scout"), store.state.value.missions.map { it.missionId.value })
+    }
+
+    @Test
     fun `Mission publish and clear are physically isolated from user collections`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val store = MissionMapStateStore(dispatcher)

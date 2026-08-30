@@ -72,6 +72,7 @@ data class Mission(
     val jumpRanges: List<MissionJumpRange>,
     val markers: List<MissionMarker>,
     val referencedSystemIds: Set<Int>,
+    val viewId: String = "view-1",
 ) {
     /**
      * Systems needed to frame Mission overlays. Generated jump-range coverage is visual-only:

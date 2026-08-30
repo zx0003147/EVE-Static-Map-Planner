@@ -14,22 +14,28 @@ import dev.evestaticmapplanner.control.ControlErrorCode
 import dev.evestaticmapplanner.control.ControlResult
 import dev.evestaticmapplanner.control.CreateSavedMarkerCommand
 import dev.evestaticmapplanner.control.CreateSavedMarkerReceipt
+import dev.evestaticmapplanner.control.CreateViewCommand
+import dev.evestaticmapplanner.control.DeleteViewCommand
 import dev.evestaticmapplanner.control.FitMissionCommand
 import dev.evestaticmapplanner.control.FocusSystemCommand
 import dev.evestaticmapplanner.control.GetActiveMissionsRequest
+import dev.evestaticmapplanner.control.GetCurrentViewRequest
 import dev.evestaticmapplanner.control.GetMissionRequest
 import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.GetSystemMarkersRequest
 import dev.evestaticmapplanner.control.MapControlService
+import dev.evestaticmapplanner.control.ListViewsRequest
 import dev.evestaticmapplanner.control.MissionJumpRangeReceipt
 import dev.evestaticmapplanner.control.MissionMarkerReceipt
 import dev.evestaticmapplanner.control.MissionMutationReceipt
 import dev.evestaticmapplanner.control.MissionRouteReceipt
 import dev.evestaticmapplanner.control.MissionSummaryDto
 import dev.evestaticmapplanner.control.NormalRouteDto
+import dev.evestaticmapplanner.control.PlanningViewDto
 import dev.evestaticmapplanner.control.RemoveJumpRangeCommand
 import dev.evestaticmapplanner.control.RemoveMissionMarkerCommand
 import dev.evestaticmapplanner.control.RemoveMissionRouteCommand
+import dev.evestaticmapplanner.control.RenameViewCommand
 import dev.evestaticmapplanner.control.SearchSystemsRequest
 import dev.evestaticmapplanner.control.ShowCapitalRouteCommand
 import dev.evestaticmapplanner.control.ShowJumpRangeCommand
@@ -37,6 +43,7 @@ import dev.evestaticmapplanner.control.ShowNormalRouteCommand
 import dev.evestaticmapplanner.control.SystemInfoDto
 import dev.evestaticmapplanner.control.SystemMarkersDto
 import dev.evestaticmapplanner.control.SystemSummaryDto
+import dev.evestaticmapplanner.control.SwitchViewCommand
 import dev.evestaticmapplanner.control.mission.Mission
 import dev.evestaticmapplanner.control.mission.MissionId
 import dev.evestaticmapplanner.control.mission.MissionJumpRangeId
@@ -156,10 +163,21 @@ internal class LocalControlJsonCodec {
                 ::capitalRouteJson,
             )
         }
-        LocalControlOperation.ACTIVE_MISSIONS -> {
+        LocalControlOperation.LIST_VIEWS -> {
             request.requireFields(setOf("requestId"))
             controlResponse(
-                service.getActiveMissions(GetActiveMissionsRequest(request.requestId())),
+                service.listViews(ListViewsRequest(request.requestId())),
+                valueEncoder = { list -> JsonArray(list.map(::planningViewJson)) },
+            )
+        }
+        LocalControlOperation.CURRENT_VIEW -> {
+            request.requireFields(setOf("requestId"))
+            controlResponse(service.getCurrentView(GetCurrentViewRequest(request.requestId())), ::planningViewJson)
+        }
+        LocalControlOperation.ACTIVE_MISSIONS -> {
+            request.requireFields(setOf("requestId", "viewId"), setOf("requestId"))
+            controlResponse(
+                service.getActiveMissions(GetActiveMissionsRequest(request.requestId(), request.optionalString("viewId"))),
                 valueEncoder = { list -> JsonArray(list.map(::missionSummaryJson)) },
             )
         }
@@ -172,10 +190,38 @@ internal class LocalControlJsonCodec {
             )
         }
         LocalControlOperation.BEGIN_MISSION -> {
-            request.requireFields(setOf("requestId", "idempotencyKey", "title"))
+            request.requireFields(setOf("requestId", "idempotencyKey", "title", "viewId"), setOf("requestId", "idempotencyKey", "title"))
             controlResponse(
-                service.beginMission(BeginMissionCommand(request.requestId(), request.idempotencyKey(), request.string("title"))),
+                service.beginMission(BeginMissionCommand(request.requestId(), request.idempotencyKey(), request.string("title"), request.optionalString("viewId"))),
                 ::missionSummaryJson,
+            )
+        }
+        LocalControlOperation.CREATE_VIEW -> {
+            request.requireFields(setOf("requestId", "idempotencyKey", "label"), setOf("requestId", "idempotencyKey"))
+            controlResponse(
+                service.createView(CreateViewCommand(request.requestId(), request.idempotencyKey(), request.optionalString("label"))),
+                ::planningViewJson,
+            )
+        }
+        LocalControlOperation.RENAME_VIEW -> {
+            request.requireFields(setOf("requestId", "idempotencyKey", "viewId", "label"))
+            controlResponse(
+                service.renameView(RenameViewCommand(request.requestId(), request.idempotencyKey(), request.string("viewId"), request.string("label"))),
+                ::planningViewJson,
+            )
+        }
+        LocalControlOperation.SWITCH_VIEW -> {
+            request.requireFields(setOf("requestId", "idempotencyKey", "viewId"))
+            controlResponse(
+                service.switchView(SwitchViewCommand(request.requestId(), request.idempotencyKey(), request.string("viewId"))),
+                ::planningViewJson,
+            )
+        }
+        LocalControlOperation.DELETE_VIEW -> {
+            request.requireFields(setOf("requestId", "idempotencyKey", "viewId"))
+            controlResponse(
+                service.deleteView(DeleteViewCommand(request.requestId(), request.idempotencyKey(), request.string("viewId"))),
+                ::planningViewJson,
             )
         }
         LocalControlOperation.CREATE_SAVED_MARKER -> {
@@ -601,6 +647,13 @@ private fun missionSummaryJson(value: MissionSummaryDto) = buildJsonObject {
     put("jumpRangeCount", value.jumpRangeCount)
     put("markerCount", value.markerCount)
     put("referencedSystemCount", value.referencedSystemCount)
+    put("viewId", value.viewId)
+}
+
+private fun planningViewJson(value: PlanningViewDto) = buildJsonObject {
+    put("viewId", value.viewId)
+    put("label", value.label)
+    put("current", value.current)
 }
 
 private fun missionJson(value: Mission) = buildJsonObject {
@@ -608,6 +661,7 @@ private fun missionJson(value: Mission) = buildJsonObject {
     put("title", value.title)
     put("createdAtEpochMillis", value.createdAt.toEpochMilli())
     put("revision", value.revision)
+    put("viewId", value.viewId)
     put("routes", buildJsonArray { value.routes.forEach { add(missionRouteJson(it)) } })
     put("jumpRanges", buildJsonArray {
         value.jumpRanges.forEach { range ->

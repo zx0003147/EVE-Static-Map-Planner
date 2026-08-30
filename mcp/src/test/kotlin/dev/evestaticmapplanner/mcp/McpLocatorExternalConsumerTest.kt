@@ -64,7 +64,7 @@ class McpLocatorExternalConsumerTest {
                     mcp.errorStream.asSource().buffered(),
                 ),
             )
-            assertEquals(22, client.listTools().tools.size)
+            assertEquals(28, client.listTools().tools.size)
         } finally {
             runCatching { client.close() }
             runCatching { mcp.outputStream.close() }

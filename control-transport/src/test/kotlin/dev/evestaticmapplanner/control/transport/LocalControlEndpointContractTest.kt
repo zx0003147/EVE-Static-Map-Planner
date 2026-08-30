@@ -15,7 +15,9 @@ class LocalControlEndpointContractTest {
 
     @Test
     fun `transport methods exactly match MapControlService allowlist`() {
-        val serviceMethods = MapControlService::class.java.declaredMethods.map { it.name }.toSet()
+        val serviceMethods = MapControlService::class.java.declaredMethods
+            .filterNot { it.isSynthetic || '$' in it.name }
+            .map { it.name }.toSet()
         val mappedMethods = LocalControlOperation.entries.mapNotNull(LocalControlOperation::serviceMethod).toSet()
 
         assertEquals(serviceMethods, mappedMethods)
@@ -34,8 +36,8 @@ class LocalControlEndpointContractTest {
 
         assertTrue(LocalControlOperation.allowedPaths.all { it.startsWith("/v1/") })
         assertEquals(LocalControlOperation.entries.size, LocalControlOperation.allowedPaths.size)
-        assertEquals(7, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
-        assertEquals(15, LocalControlOperation.entries.count(LocalControlOperation::mutation))
+        assertEquals(9, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
+        assertEquals(19, LocalControlOperation.entries.count(LocalControlOperation::mutation))
         val savedMarkerOperations = LocalControlOperation.entries.filter {
             it.path.contains("saved-marker") || it.serviceMethod == "getSystemMarkers"
         }

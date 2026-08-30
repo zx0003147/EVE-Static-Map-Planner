@@ -46,6 +46,7 @@ import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
 import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
 import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
+import dev.evestaticmapplanner.data.view.SqlitePlanningViewRepository
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.StaticMapScreen
@@ -79,6 +80,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 fun main(arguments: Array<String>) {
     AppDiagnostics.initialize()
@@ -217,6 +219,14 @@ private fun FrameWindowScope.ReadyApplication(
                     databasePath = configuration.userDatabase.path,
                     initializeDatabase = false,
                 ),
+                planningViewRepository = SqlitePlanningViewRepository(
+                    configuration.userDatabase.path,
+                    initializeDatabase = false,
+                ),
+                missionRepository = dev.evestaticmapplanner.data.mission.SqliteMissionRepository(
+                    configuration.userDatabase.path,
+                    initializeDatabase = false,
+                ),
             )
         }.also { result ->
             result.exceptionOrNull()?.let { AppDiagnostics.warning("User database initialization failed", it) }
@@ -276,10 +286,14 @@ private fun FrameWindowScope.ReadyApplication(
         )
     }
     val planningViewCoordinator = remember(routeViewModel, capitalViewModel) {
-        PlanningViewCoordinator(routeViewModel, capitalViewModel)
+        PlanningViewCoordinator(
+            routeViewModel,
+            capitalViewModel,
+            repository = userComponents.getOrNull()?.planningViewRepository,
+        )
     }
     val missionMapStateStore = remember(configuration) { MissionMapStateStore() }
-    val controlLifecycle = remember(configuration) {
+    val controlLifecycle = remember(configuration, planningViewCoordinator) {
         val planningPorts = ExistingPlanningPorts(
             staticMapRepository = staticRepository,
             ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
@@ -299,6 +313,9 @@ private fun FrameWindowScope.ReadyApplication(
                     viewportControlPort = MapViewportControlAdapter(mapViewModel),
                     missionRenderStatePort = missionMapStateStore,
                     savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
+                    planningViewControlPort = dev.evestaticmapplanner.view.PlanningViewControlAdapter(planningViewCoordinator),
+                    missionRepository = userComponents.getOrNull()?.missionRepository
+                        ?: dev.evestaticmapplanner.control.mission.InMemoryOnlyMissionRepository,
                     scope = sessionScope,
                 )
                 AppAiControlSession(
@@ -380,6 +397,13 @@ private fun FrameWindowScope.ReadyApplication(
     val jumpState by jumpViewModel.state.collectAsState()
     val capitalState by capitalViewModel.state.collectAsState()
     val planningViewsState by planningViewCoordinator.state.collectAsState()
+    LaunchedEffect(planningViewsState.currentViewId, missionMapStateStore) {
+        missionMapStateStore.selectView(planningViewsState.currentViewId.value)
+    }
+    LaunchedEffect(routeState, capitalState, planningViewCoordinator) {
+        delay(250)
+        planningViewCoordinator.captureCurrent()
+    }
     val markerState by markerViewModel.state.collectAsState()
     val missionState by missionMapStateStore.state.collectAsState()
     val featureOverlayState by featurePackRuntime.overlayHost.state.collectAsState()
@@ -564,6 +588,8 @@ private data class UserComponents(
     val ansiblexRepository: SqliteAnsiblexRepository,
     val importService: AnsiblexImportService,
     val savedMarkerRepository: SqliteSavedMarkerRepository,
+    val planningViewRepository: SqlitePlanningViewRepository,
+    val missionRepository: dev.evestaticmapplanner.data.mission.SqliteMissionRepository,
 )
 
 private fun createUpdateService(

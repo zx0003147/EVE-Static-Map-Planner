@@ -42,7 +42,7 @@ class McpProtocolTest {
             assertTrue(capabilities.tasks == null)
             assertTrue(capabilities.experimental == null)
             assertTrue(capabilities.extensions.isNullOrEmpty())
-            assertEquals(22, client.listTools().tools.size)
+            assertEquals(28, client.listTools().tools.size)
 
             val search = client.callTool("search_system", mapOf("query" to "Jita"))
             assertFalse(search.isError == true)
