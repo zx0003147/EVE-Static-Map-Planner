@@ -398,9 +398,7 @@ private fun FrameWindowScope.ReadyApplication(
     val systemInfoState by featurePackRuntime.systemInfoHost.state.collectAsState()
     val routeActions by featurePackRuntime.routeActionHost.state.collectAsState()
     val normalRouteSnapshot = remember(routeState.activeRoute, featurePackRuntime) {
-        featurePackRuntime.routeSnapshotAdapter.normal(
-            routeState.activeRoute?.takeUnless { it.wormholeJumps > 0 },
-        )
+        featurePackRuntime.routeSnapshotAdapter.normal(routeState.activeRoute)
     }
     val capitalRouteSnapshot = remember(capitalState.activeRoute, featurePackRuntime) {
         featurePackRuntime.routeSnapshotAdapter.capital(capitalState.activeRoute)

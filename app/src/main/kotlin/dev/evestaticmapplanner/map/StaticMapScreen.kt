@@ -110,6 +110,7 @@ internal fun StaticMapScreen(
     var expectedMarkerDraft by remember { mutableStateOf<MarkerDraft?>(null) }
     var markerPendingRemoval by remember { mutableStateOf<Int?>(null) }
     var savedRemovalStarted by remember { mutableStateOf(false) }
+    val rendererNormalRoute = activeNormalRouteForRenderer(routeState.activeRoute)
 
     LaunchedEffect(markerState.markersBySystemId, markerState.busySystemIds, markerState.operationError) {
         val editor = markerEditor
@@ -159,11 +160,12 @@ internal fun StaticMapScreen(
                     state.error != null -> CenterMessage("Unable to load map\n${state.error}\n\nDatabase: $databasePath")
                     state.scene != null && state.viewport != null -> StaticMapCanvas(
                         state = state,
-                        activeRoute = routeState.activeRoute?.takeUnless { it.wormholeJumps > 0 },
+                        activeRoute = rendererNormalRoute,
                         capitalRoute = capitalState.activeRoute,
                         jumpOverlays = jumpState.overlays,
                         intersectionSystemIds = jumpState.intersectionSystemIds,
                         ansiblexConnections = routeState.ansiblexConnections,
+                        wormholeConnections = routeState.wormholeConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
                         markerState = markerState,
                         missionState = missionState,
@@ -242,8 +244,7 @@ internal fun StaticMapScreen(
                 }
             }
             state.scene?.let { scene ->
-                val routeOverlay = routeState.activeRoute
-                    ?.takeUnless { it.wormholeJumps > 0 }
+                val routeOverlay = rendererNormalRoute
                     ?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
                 val routeWarning = routeOverlay?.takeIf { it.omittedSystemIds.isNotEmpty() }?.let {
                     " · route: ${it.omittedSystemIds.size} systems / ${it.omittedLegCount} legs unavailable; use Real X-Z"
@@ -254,12 +255,18 @@ internal fun StaticMapScreen(
                 val capitalOmitted = capitalState.activeRoute?.let {
                     ProjectedCapitalRouteOverlayBuilder.build(it, scene).omittedLegCount
                 } ?: 0
+                val wormholeOmitted = remember(scene, routeState.wormholeConnections) {
+                    WormholeMapPresentationBuilder
+                        .build(routeState.wormholeConnections, scene)
+                        .omittedConnectionCount
+                }
                 Text(
                     text = "${scene.projectionId.displayName}: ${scene.nodes.size} systems · ${scene.edges.size} stargate connections" +
                         (if (scene.omittedSystemIds.isNotEmpty()) " · ${scene.omittedSystemIds.size} unavailable" else "") +
                         routeWarning +
                         (if (jumpOmitted > 0) " · jump overlay: $jumpOmitted unavailable" else "") +
                         (if (capitalOmitted > 0) " · capital route: $capitalOmitted legs unavailable" else "") +
+                        (if (wormholeOmitted > 0) " · wormholes: $wormholeOmitted unavailable" else "") +
                         state.focusNotice?.let { " · $it" }.orEmpty(),
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFFAAB9C7),
@@ -350,6 +357,11 @@ internal fun StaticMapScreen(
         )
     }
 }
+
+/** Phase 4 policy seam: Wormhole legs are renderer-supported and must never suppress the route. */
+internal fun activeNormalRouteForRenderer(
+    route: dev.evestaticmapplanner.core.route.RouteResult?,
+): dev.evestaticmapplanner.core.route.RouteResult? = route
 
 @Composable
 private fun MapToolbar(

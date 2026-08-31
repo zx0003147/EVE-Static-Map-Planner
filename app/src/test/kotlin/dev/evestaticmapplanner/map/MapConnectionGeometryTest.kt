@@ -122,6 +122,11 @@ class MapConnectionGeometryTest {
         assertIs<StraightMapConnectionGeometry>(route)
         assertEquals(start, route.start)
         assertEquals(end, route.end)
+
+        val wormhole = activeRouteConnectionGeometry(1, 2, RouteEdgeType.WORMHOLE, start, end)
+        assertIs<StraightMapConnectionGeometry>(wormhole)
+        assertEquals(start, wormhole.start)
+        assertEquals(end, wormhole.end)
     }
 
     private fun assertProjectionCurve(

@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.map.ProjectedStargateEdge
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteResult
+import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 
 internal data class MapSystemConnection(
     val firstSystemId: Int,
@@ -30,6 +31,7 @@ class MapVisualEmphasis private constructor(
     val selectedSystemId: Int?,
     internal val selectedStargateConnections: Set<MapSystemConnection>,
     val selectedAnsiblexConnectionIds: Set<String>,
+    val selectedWormholeConnectionIds: Set<String>,
     val activeRouteCount: Int,
 ) {
     val isActive: Boolean get() = activeRouteCount > 0 || selectedSystemId != null
@@ -54,6 +56,11 @@ class MapVisualEmphasis private constructor(
         else -> ROUTE_FOCUS_BACKGROUND_CONNECTION_ALPHA
     }
 
+    fun wormholeAlphaMultiplier(connectionId: String): Float = when {
+        !isActive || connectionId in selectedWormholeConnectionIds -> 1f
+        else -> ROUTE_FOCUS_BACKGROUND_CONNECTION_ALPHA
+    }
+
     val hierarchyLabelAlphaMultiplier: Float
         get() = if (isActive) ROUTE_FOCUS_BACKGROUND_HIERARCHY_LABEL_ALPHA else 1f
 
@@ -64,6 +71,7 @@ class MapVisualEmphasis private constructor(
             selectedSystemId = null,
             selectedStargateConnections = emptySet(),
             selectedAnsiblexConnectionIds = emptySet(),
+            selectedWormholeConnectionIds = emptySet(),
             activeRouteCount = 0,
         )
 
@@ -74,6 +82,7 @@ class MapVisualEmphasis private constructor(
             selectedSystemId: Int?,
             stargateEdges: List<ProjectedStargateEdge>,
             visibleAnsiblexConnections: List<AnsiblexConnection>,
+            wormholeConnections: List<WormholeConnection> = emptyList(),
         ): MapVisualEmphasis {
             val routeSystemIds = linkedSetOf<Int>()
             var routeCount = 0
@@ -102,6 +111,9 @@ class MapVisualEmphasis private constructor(
                     .filter { it.firstSystemId == selected || it.secondSystemId == selected }
                     .toList()
             }.orEmpty()
+            val selectedWormholes = selectedSystemId?.let { selected ->
+                wormholeConnections.filter { it.firstSystemId == selected || it.secondSystemId == selected }
+            }.orEmpty()
 
             if (routeCount == 0 && selectedSystemId == null) return None
 
@@ -111,8 +123,11 @@ class MapVisualEmphasis private constructor(
                 .map { if (it.firstSystemId == selectedSystemId) it.secondSystemId else it.firstSystemId }
                 .sorted()
                 .forEach(prioritizedSystemIds::add)
-            selectedAnsiblex.asSequence()
-                .map { if (it.firstSystemId == selectedSystemId) it.secondSystemId else it.firstSystemId }
+            (selectedAnsiblex.asSequence().map { connection ->
+                if (connection.firstSystemId == selectedSystemId) connection.secondSystemId else connection.firstSystemId
+            } + selectedWormholes.asSequence().map { connection ->
+                if (connection.firstSystemId == selectedSystemId) connection.secondSystemId else connection.firstSystemId
+            })
                 .sorted()
                 .forEach(prioritizedSystemIds::add)
             prioritizedSystemIds += routeSystemIds
@@ -123,6 +138,7 @@ class MapVisualEmphasis private constructor(
                 selectedSystemId = selectedSystemId,
                 selectedStargateConnections = selectedStargates,
                 selectedAnsiblexConnectionIds = selectedAnsiblex.mapTo(linkedSetOf(), AnsiblexConnection::id),
+                selectedWormholeConnectionIds = selectedWormholes.mapTo(linkedSetOf(), WormholeConnection::id),
                 activeRouteCount = routeCount,
             )
         }

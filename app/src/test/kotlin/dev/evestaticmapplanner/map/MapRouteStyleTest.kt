@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Color
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class MapRouteStyleTest {
@@ -12,6 +11,8 @@ class MapRouteStyleTest {
     fun `route types use their exact visual identity colors`() {
         assertEquals(Color(0xFF42D6F5), ROUTE_STARGATE_COLOR)
         assertEquals(Color(0xFFFF9F43), ROUTE_ANSIBLEX_COLOR)
+        assertEquals(Color(0xFF32D6C5), WORMHOLE_PEACOCK_TEAL)
+        assertEquals(WORMHOLE_PEACOCK_TEAL, ROUTE_WORMHOLE_COLOR)
         assertEquals(Color(0xFFB388FF), CAPITAL_ROUTE_COLOR)
         assertEquals(listOf(Color(0xFFF4E06D)), MISSION_ROUTE_COLORS)
         assertEquals(Color(0xFFFF5C57), MISSION_CAPITAL_ROUTE_COLOR)
@@ -35,11 +36,11 @@ class MapRouteStyleTest {
     }
 
     @Test
-    fun `Wormhole route rendering remains explicitly unsupported in Phase 2`() {
-        val error = assertFailsWith<IllegalStateException> {
-            routeLegRenderStyle(RouteEdgeType.WORMHOLE)
-        }
+    fun `Wormhole route is officially supported with a solid Peacock Teal identity`() {
+        val wormhole = routeLegRenderStyle(RouteEdgeType.WORMHOLE)
 
-        assertEquals("Wormhole route rendering is not supported in Wormhole Phase 2", error.message)
+        assertEquals(WORMHOLE_PEACOCK_TEAL, wormhole.color)
+        assertEquals(4f, wormhole.strokeWidth)
+        assertNull(wormhole.dashPattern)
     }
 }

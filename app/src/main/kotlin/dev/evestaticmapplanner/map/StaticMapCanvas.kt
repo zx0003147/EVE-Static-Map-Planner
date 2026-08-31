@@ -45,6 +45,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlayBuilder
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlayBuilder
 import dev.evestaticmapplanner.marker.MarkerContextAction
@@ -64,6 +65,7 @@ fun StaticMapCanvas(
     jumpOverlays: List<JumpRangeOverlay>,
     intersectionSystemIds: Set<Int>,
     ansiblexConnections: List<AnsiblexConnection>,
+    wormholeConnections: List<WormholeConnection>,
     showAnsiblexLayer: Boolean,
     markerState: MarkerUiState,
     missionState: MissionMapUiState,
@@ -105,6 +107,7 @@ fun StaticMapCanvas(
         state.selectedSystemId,
         scene,
         visibleAnsiblexConnections,
+        wormholeConnections,
     ) {
         MapVisualEmphasis.fromDisplayedMapState(
             userNormalRoute = activeRoute,
@@ -113,6 +116,7 @@ fun StaticMapCanvas(
             selectedSystemId = state.selectedSystemId?.takeIf(scene.nodesById::containsKey),
             stargateEdges = scene.edges,
             visibleAnsiblexConnections = visibleAnsiblexConnections,
+            wormholeConnections = wormholeConnections,
         )
     }
     val labelPresentation = remember(
@@ -137,6 +141,9 @@ fun StaticMapCanvas(
     }
     val routeOverlay = remember(scene, activeRoute) {
         activeRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
+    }
+    val wormholePresentation = remember(scene, wormholeConnections) {
+        WormholeMapPresentationBuilder.build(wormholeConnections, scene)
     }
     val projectedJumpOverlays = remember(scene, jumpOverlays) {
         jumpOverlays.filter(JumpRangeOverlay::enabled).map { ProjectedJumpRangeOverlayBuilder.build(it, scene) }
@@ -445,6 +452,13 @@ fun StaticMapCanvas(
                 }
             }
         }
+        if (wormholePresentation.connections.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.WORMHOLE)) {
+                with(MapRenderer) {
+                    drawWormholeLayer(transform, wormholePresentation, visualEmphasis)
+                }
+            }
+        }
         if (projectedJumpOverlays.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.RANGE_OVERLAY)) {
                 with(MapRenderer) {
@@ -720,6 +734,7 @@ internal const val FEATURE_OVERLAY_LEGEND_Z_INDEX = 6f
 internal object StaticMapVisualLayerOrder {
     const val BASE_MAP = 0f
     const val ANSIBLEX = 2f
+    const val WORMHOLE = 2.25f
     const val RANGE_OVERLAY = 2.5f
     const val ROUTE = 3f
     const val ROUTE_FOCUS = 3.5f

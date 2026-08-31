@@ -324,6 +324,53 @@ object MapRenderer {
         }
     }
 
+    internal fun DrawScope.drawWormholeLayer(
+        transform: MapTransform,
+        presentation: WormholeMapPresentation,
+        emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
+    ) {
+        val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
+        visibleWormholeConnections(presentation, visibleBounds).forEach { projected ->
+            val alpha = emphasis.wormholeAlphaMultiplier(projected.connection.id)
+            val color = WORMHOLE_PEACOCK_TEAL.multiplyAlpha(alpha)
+            val geometry = wormholeConnectionVisualGeometry(
+                firstSystemId = projected.connection.firstSystemId,
+                secondSystemId = projected.connection.secondSystemId,
+                first = transform.worldToScreen(projected.first),
+                second = transform.worldToScreen(projected.second),
+            )
+            drawLine(
+                color = color.copy(alpha = color.alpha * WORMHOLE_NETWORK_LINE_ALPHA),
+                start = geometry.lineStart.toOffset(),
+                end = geometry.lineEnd.toOffset(),
+                strokeWidth = WORMHOLE_NETWORK_LINE_WIDTH_PX,
+            )
+            (geometry.firstHalfChevrons + geometry.secondHalfChevrons).forEach { chevron ->
+                drawWormholeChevron(chevron, color, WORMHOLE_NETWORK_CHEVRON_WIDTH_PX)
+            }
+            listOf(geometry.firstEndpoint, geometry.secondEndpoint).forEach { endpoint ->
+                val center = endpoint.toOffset()
+                drawCircle(
+                    color = color.copy(alpha = color.alpha * 0.9f),
+                    radius = WORMHOLE_ENDPOINT_OUTER_RADIUS_PX,
+                    center = center,
+                    style = Stroke(WORMHOLE_ENDPOINT_STROKE_WIDTH_PX),
+                )
+                drawCircle(
+                    color = color.copy(alpha = color.alpha * 0.72f),
+                    radius = WORMHOLE_ENDPOINT_INNER_RADIUS_PX,
+                    center = center,
+                    style = Stroke(WORMHOLE_ENDPOINT_STROKE_WIDTH_PX),
+                )
+            }
+            drawCircle(
+                color = color,
+                radius = WORMHOLE_CENTER_MARKER_RADIUS_PX,
+                center = geometry.center.toOffset(),
+            )
+        }
+    }
+
     fun DrawScope.drawRoute(
         scene: ProjectedMapScene,
         transform: MapTransform,
@@ -340,12 +387,22 @@ object MapRenderer {
                 end = transform.worldToScreen(leg.to),
             )
             when (geometry) {
-                is StraightMapConnectionGeometry -> drawLine(
-                    color = style.color,
-                    start = geometry.start.toOffset(),
-                    end = geometry.end.toOffset(),
-                    strokeWidth = style.strokeWidth,
-                )
+                is StraightMapConnectionGeometry -> {
+                    drawLine(
+                        color = style.color,
+                        start = geometry.start.toOffset(),
+                        end = geometry.end.toOffset(),
+                        strokeWidth = style.strokeWidth,
+                    )
+                    if (leg.edge.type == RouteEdgeType.WORMHOLE) {
+                        drawActiveWormholeRouteMarks(
+                            firstSystemId = leg.edge.fromSystemId,
+                            secondSystemId = leg.edge.toSystemId,
+                            start = geometry.start,
+                            end = geometry.end,
+                        )
+                    }
+                }
                 is QuadraticMapConnectionGeometry -> {
                     curvedPath.reset()
                     curvedPath.moveTo(geometry.start.x.toFloat(), geometry.start.y.toFloat())
@@ -373,6 +430,37 @@ object MapRenderer {
             drawCircle(ROUTE_DESTINATION_COLOR.copy(alpha = 0.25f), 12f, center)
             drawCircle(ROUTE_DESTINATION_COLOR, 8f, center, style = Stroke(3f))
         }
+    }
+
+    private fun DrawScope.drawActiveWormholeRouteMarks(
+        firstSystemId: Int,
+        secondSystemId: Int,
+        start: MapPoint,
+        end: MapPoint,
+    ) {
+        val geometry = wormholeConnectionVisualGeometry(firstSystemId, secondSystemId, start, end)
+        geometry.firstHalfChevrons.lastOrNull()?.let {
+            drawWormholeChevron(it, WORMHOLE_ACTIVE_ROUTE_MARKER_COLOR, WORMHOLE_ACTIVE_ROUTE_CHEVRON_WIDTH_PX)
+        }
+        geometry.secondHalfChevrons.firstOrNull()?.let {
+            drawWormholeChevron(it, WORMHOLE_ACTIVE_ROUTE_MARKER_COLOR, WORMHOLE_ACTIVE_ROUTE_CHEVRON_WIDTH_PX)
+        }
+        if (geometry.detail != WormholeVisualDetail.SIMPLE) {
+            drawCircle(
+                color = WORMHOLE_ACTIVE_ROUTE_MARKER_COLOR,
+                radius = WORMHOLE_ACTIVE_ROUTE_CENTER_RADIUS_PX,
+                center = geometry.center.toOffset(),
+            )
+        }
+    }
+
+    private fun DrawScope.drawWormholeChevron(
+        geometry: WormholeChevronGeometry,
+        color: Color,
+        strokeWidth: Float,
+    ) {
+        drawLine(color, geometry.firstTail.toOffset(), geometry.tip.toOffset(), strokeWidth)
+        drawLine(color, geometry.secondTail.toOffset(), geometry.tip.toOffset(), strokeWidth)
     }
 
     fun DrawScope.drawJumpRangeOverlays(
@@ -668,6 +756,8 @@ private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
 private val ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(floatArrayOf(6f, 5f))
 internal val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
 internal val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
+internal val WORMHOLE_PEACOCK_TEAL = Color(0xFF32D6C5)
+internal val ROUTE_WORMHOLE_COLOR = WORMHOLE_PEACOCK_TEAL
 internal val ROUTE_ANSIBLEX_DASH_PATTERN = listOf(12f, 7f)
 private val ROUTE_ANSIBLEX_DASH_EFFECT = PathEffect.dashPathEffect(ROUTE_ANSIBLEX_DASH_PATTERN.toFloatArray())
 private val ROUTE_START_COLOR = Color(0xFF57E389)
@@ -701,7 +791,7 @@ internal data class RouteLegRenderStyle(
 internal fun routeLegRenderStyle(type: RouteEdgeType): RouteLegRenderStyle = when (type) {
     RouteEdgeType.STARGATE -> RouteLegRenderStyle(ROUTE_STARGATE_COLOR, 3f, null)
     RouteEdgeType.ANSIBLEX -> RouteLegRenderStyle(ROUTE_ANSIBLEX_COLOR, 4f, ROUTE_ANSIBLEX_DASH_PATTERN)
-    RouteEdgeType.WORMHOLE -> error("Wormhole route rendering is not supported in Wormhole Phase 2")
+    RouteEdgeType.WORMHOLE -> RouteLegRenderStyle(ROUTE_WORMHOLE_COLOR, 4f, null)
 }
 private val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {
@@ -714,6 +804,12 @@ internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences):
 }
 
 private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
+private const val WORMHOLE_NETWORK_LINE_ALPHA = 0.68f
+private const val WORMHOLE_NETWORK_LINE_WIDTH_PX = 1.25f
+private const val WORMHOLE_NETWORK_CHEVRON_WIDTH_PX = 1.35f
+private const val WORMHOLE_ACTIVE_ROUTE_CHEVRON_WIDTH_PX = 2f
+private const val WORMHOLE_ACTIVE_ROUTE_CENTER_RADIUS_PX = 1.6f
+private val WORMHOLE_ACTIVE_ROUTE_MARKER_COLOR = Color(0xFFF0FFFC)
 private const val TERRITORY_FILL_ALPHA = 0.20f
 private const val TERRITORY_BOUNDARY_ALPHA = 0.24f
 private const val TERRITORY_BOUNDARY_WIDTH_PX = 0.8f

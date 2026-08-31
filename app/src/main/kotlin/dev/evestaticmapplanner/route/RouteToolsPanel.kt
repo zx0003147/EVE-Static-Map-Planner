@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
@@ -268,22 +269,12 @@ private fun NormalRouteSectionContent(
             onValueChange = viewModel::updateToQuery,
             onSelect = viewModel::selectTo,
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = state.useAnsiblex,
-                onCheckedChange = viewModel::setUseAnsiblex,
-                enabled = state.isAnsiblexAvailable,
-            )
-            Text("Use Ansiblex")
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = state.showAnsiblexLayer,
-                onCheckedChange = viewModel::setShowAnsiblexLayer,
-                enabled = state.isAnsiblexAvailable,
-            )
-            Text("Show Ansiblex layer")
-        }
+        NormalRouteConnectionOptions(
+            state = state,
+            onUseAnsiblexChanged = viewModel::setUseAnsiblex,
+            onUseWormholesChanged = viewModel::setUseWormholes,
+            onShowAnsiblexLayerChanged = viewModel::setShowAnsiblexLayer,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = viewModel::calculateRoute,
@@ -292,6 +283,13 @@ private fun NormalRouteSectionContent(
             TextButton(onClick = viewModel::clearRoute, enabled = state.routeOutcome != null) { Text("Clear") }
         }
         RouteSummary(state)
+        if (state.activeRoute?.wormholeJumps?.let { it > 0 } == true && routeActions.isNotEmpty()) {
+            Text(
+                "Route actions unavailable for routes containing Wormholes.",
+                color = Color(0xFFFFD166),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         RouteActionButtons(
             routeActions,
             routeSnapshot,
@@ -310,6 +308,39 @@ private fun NormalRouteSectionContent(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+    }
+}
+
+@Composable
+internal fun NormalRouteConnectionOptions(
+    state: RoutePlannerUiState,
+    onUseAnsiblexChanged: (Boolean) -> Unit,
+    onUseWormholesChanged: (Boolean) -> Unit,
+    onShowAnsiblexLayerChanged: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = state.useAnsiblex,
+            onCheckedChange = onUseAnsiblexChanged,
+            enabled = state.isAnsiblexAvailable,
+        )
+        Text("Use Ansiblex")
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = state.useWormholes,
+            onCheckedChange = onUseWormholesChanged,
+            modifier = Modifier.testTag(USE_WORMHOLES_CHECKBOX_TAG),
+        )
+        Text("Use Wormholes")
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = state.showAnsiblexLayer,
+            onCheckedChange = onShowAnsiblexLayerChanged,
+            enabled = state.isAnsiblexAvailable,
+        )
+        Text("Show Ansiblex layer")
     }
 }
 
@@ -382,6 +413,7 @@ private fun CapitalRouteSectionContent(
 
 internal val TOOL_SIDEBAR_WIDTH = 270.dp
 internal const val SIDEBAR_SEARCH_LABEL = "Search system..."
+internal const val USE_WORMHOLES_CHECKBOX_TAG = "normal-route-use-wormholes"
 
 @Composable
 private fun RouteSummary(state: RoutePlannerUiState) {
@@ -390,7 +422,7 @@ private fun RouteSummary(state: RoutePlannerUiState) {
         is RouteCalculationOutcome.Found -> {
             val route = outcome.route
             Text(
-                "${route.totalJumps} jumps · ${route.stargateJumps} Stargate · ${route.ansiblexJumps} Ansiblex",
+                normalRouteSummaryText(route),
                 color = Color(0xFFBFE7F5),
             )
             Text(state.routeSystemNames.joinToString(" → "), style = MaterialTheme.typography.bodySmall)
@@ -399,6 +431,11 @@ private fun RouteSummary(state: RoutePlannerUiState) {
         is RouteCalculationOutcome.Unreachable -> Text("No route is reachable with the selected connection types.", color = Color(0xFFFFB86C))
         is RouteCalculationOutcome.InvalidEndpoint -> Text("One or both route endpoints are invalid.", color = Color(0xFFFF8A80))
     }
+}
+
+internal fun normalRouteSummaryText(route: dev.evestaticmapplanner.core.route.RouteResult): String = buildString {
+    append("${route.totalJumps} jumps · ${route.stargateJumps} Stargate · ${route.ansiblexJumps} Ansiblex")
+    if (route.wormholeJumps > 0) append(" · ${route.wormholeJumps} Wormhole")
 }
 
 @Composable

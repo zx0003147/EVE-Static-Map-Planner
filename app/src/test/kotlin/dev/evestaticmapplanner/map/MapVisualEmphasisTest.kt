@@ -17,6 +17,7 @@ import dev.evestaticmapplanner.core.route.RouteEdge
 import dev.evestaticmapplanner.core.route.RouteEdgeId
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.RouteResult
+import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,6 +37,7 @@ class MapVisualEmphasisTest {
         assertEquals(1f, emphasis.hierarchyLabelAlphaMultiplier)
         assertEquals(1f, emphasis.stargateAlphaMultiplier(1, 2))
         assertEquals(1f, emphasis.ansiblexAlphaMultiplier("a"))
+        assertEquals(1f, emphasis.wormholeAlphaMultiplier("wormhole:1:2"))
     }
 
     @Test
@@ -83,6 +85,27 @@ class MapVisualEmphasisTest {
         assertEquals(setOf(1, 2), emphasis.focusedSystemIds)
         assertEquals(ROUTE_FOCUS_BACKGROUND_SYSTEM_ALPHA, emphasis.systemAlphaMultiplier(3))
         assertEquals(ROUTE_FOCUS_BACKGROUND_CONNECTION_ALPHA, emphasis.stargateAlphaMultiplier(2, 3))
+    }
+
+    @Test
+    fun `selection includes direct Wormhole neighbors without recursive expansion`() {
+        val emphasis = derive(
+            selectedSystemId = 1,
+            wormholeConnections = listOf(
+                WormholeConnection.between(1, 4),
+                WormholeConnection.between(4, 7),
+            ),
+        )
+
+        assertEquals(listOf(1, 4), emphasis.prioritizedSystemIds)
+        assertEquals(setOf(1, 4), emphasis.focusedSystemIds)
+        assertEquals(setOf("wormhole:1:4"), emphasis.selectedWormholeConnectionIds)
+        assertEquals(1f, emphasis.wormholeAlphaMultiplier("wormhole:1:4"))
+        assertEquals(
+            ROUTE_FOCUS_BACKGROUND_CONNECTION_ALPHA,
+            emphasis.wormholeAlphaMultiplier("wormhole:4:7"),
+        )
+        assertEquals(ROUTE_FOCUS_BACKGROUND_SYSTEM_ALPHA, emphasis.systemAlphaMultiplier(7))
     }
 
     @Test
@@ -221,6 +244,7 @@ class MapVisualEmphasisTest {
         selectedSystemId: Int? = null,
         stargateEdges: List<ProjectedStargateEdge> = emptyList(),
         visibleAnsiblexConnections: List<AnsiblexConnection> = emptyList(),
+        wormholeConnections: List<WormholeConnection> = emptyList(),
     ) = MapVisualEmphasis.fromDisplayedMapState(
         userNormalRoute = userNormalRoute,
         userCapitalRoute = userCapitalRoute,
@@ -228,6 +252,7 @@ class MapVisualEmphasisTest {
         selectedSystemId = selectedSystemId,
         stargateEdges = stargateEdges,
         visibleAnsiblexConnections = visibleAnsiblexConnections,
+        wormholeConnections = wormholeConnections,
     )
 
     private fun edge(first: Int, second: Int) = ProjectedStargateEdge(

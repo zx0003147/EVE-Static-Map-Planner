@@ -76,6 +76,11 @@ internal class InteractiveRouteSnapshotAdapter(
             normalSnapshot = null
             return null
         }
+        if (route.edges.any { it.type == RouteEdgeType.WORMHOLE }) {
+            normalRoute = route
+            normalSnapshot = null
+            return null
+        }
         if (route != normalRoute) {
             normalRoute = route
             normalSnapshot = RouteSnapshotAdapters.normal(route, identityFactory())

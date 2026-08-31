@@ -21,6 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class RouteSnapshotAdaptersTest {
@@ -136,6 +137,17 @@ class RouteSnapshotAdaptersTest {
             "Feature API 2.0.0 RouteSnapshot does not support Wormhole route segments",
             error.message,
         )
+    }
+
+    @Test
+    fun `interactive host guard hides Wormhole routes from Feature API actions without poisoning later routes`() {
+        val adapter = InteractiveRouteSnapshotAdapter { RouteIdentity("safe-host") }
+
+        val unsupported = adapter.normal(normalRoute(listOf(edge(1, 2, RouteEdgeType.WORMHOLE))))
+        val supported = adapter.normal(normalRoute(listOf(edge(1, 2, RouteEdgeType.STARGATE))))
+
+        assertNull(unsupported)
+        assertEquals(RouteSegmentKind.STARGATE, supported?.orderedSegments?.single()?.kind)
     }
 
     private fun normalRoute(edges: List<RouteEdge>): RouteResult {
