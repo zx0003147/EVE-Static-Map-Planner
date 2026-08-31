@@ -2,8 +2,8 @@
 
 A small Kotlin/JVM desktop application for offline EVE Online static-map and route-planning workflows.
 
-Version 1.0.0 adds isolated Planning Views, View-aware AI Missions, and the generic contracts needed for
-multi-character ESI targets and image-based system markers, while preserving the existing routing engines.
+Version 1.1.0 adds temporary session-wide Wormhole connections to Normal Route planning, with Peacock Teal map
+visuals, UI management, View-local routing opt-in, and bounded AI list/create support.
 
 Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
 exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
@@ -71,14 +71,26 @@ For manual acceptance, an exact system name and isolated user database can be su
 
 Database resolution order is `--database`, the `eve.static.database` JVM property, `EVE_STATIC_DB`, then the platform application-data path. Without an explicit override, a missing managed database opens Static Data Setup so the application can download and build the latest official SDE.
 
-The separate user database resolves through `--user-database`, `eve.user.database`, `EVE_USER_DB`, then `%LOCALAPPDATA%\EVE Static Map Planner\data\user.db` on Windows. A missing `user.db` is created with schema version 4. Planning Views, route drafts, AI Missions, and per-View Route Action targets are session-only and are deliberately absent from this database. An existing damaged or newer database is never deleted or silently rebuilt; the application keeps the static map and Stargate-only routing available while disabling user-data features.
+The separate user database resolves through `--user-database`, `eve.user.database`, `EVE_USER_DB`, then `%LOCALAPPDATA%\EVE Static Map Planner\data\user.db` on Windows. A missing `user.db` is created with schema version 4. Planning Views, route drafts, AI Missions, Wormhole topology, and per-View Route Action targets are session-only and are deliberately absent from this database. An existing damaged or newer database is never deleted or silently rebuilt; the application keeps the static map and Stargate-only routing available while disabling user-data features.
+
+## Temporary Wormholes
+
+Wormholes are bidirectional connections shared by every Planning View for the current application session. Create or
+remove them through the global Manager or a system's right-click menu; exiting the app clears the network. Each View
+independently controls whether its Normal Route planner may use Wormholes. Removing or clearing a connection removes
+affected current and Mission Normal Routes without recalculating them, while unrelated routes, Missions, markers,
+jump ranges, Capital Routes, and Jump Range calculations remain unchanged.
+
+AI/MCP can list and create Wormholes, but cannot update, remove, delete, clear, replace, import, export, or persist
+them. Feature API v2 remains frozen: Route Actions are unavailable for user routes containing Wormholes because the
+API has no Wormhole route-segment kind.
 
 ## Windows x64 distribution
 
 The official Windows distribution is the installer-free Portable ZIP:
 
 ```text
-EVE-Static-Map-Planner-1.0.0-Windows-x64.zip
+EVE-Static-Map-Planner-1.1.0-Windows-x64.zip
 ```
 
 Download and extract the complete ZIP, then open:

@@ -7,7 +7,9 @@ import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,7 +22,7 @@ class AiWormholeControlIntegrationTest {
     fun `AI create feeds Control and Mission routes from global Store without automatic lifecycle changes`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val store = WormholeSessionStore()
-        val systems = listOf(system(1, "One"), system(2, "Two"))
+        val systems = listOf(system(1, "One"), system(2, "Two"), system(3, "Three"))
         val planning = ExistingPlanningPorts(
             staticMapRepository = StaticMapRepository { StaticMapData(systems, emptyList()) },
             ansiblexRepository = null,
@@ -29,7 +31,7 @@ class AiWormholeControlIntegrationTest {
             calculationDispatcher = dispatcher,
         )
         val viewport = IntegrationViewportPort()
-        var renderedMissionCount = 0
+        var renderedMissions = emptyList<dev.evestaticmapplanner.control.mission.Mission>()
         val service = DefaultMapControlService(
             systemReadPort = object : SystemReadPort {
                 override suspend fun searchSystems(query: String, limit: Int) = systems.map { it.toSummary() }
@@ -40,15 +42,19 @@ class AiWormholeControlIntegrationTest {
             routePlanningPort = planning,
             jumpPlanningPort = planning,
             viewportControlPort = viewport,
-            missionRenderStatePort = MissionRenderStatePort { renderedMissionCount = it.size },
+            missionRenderStatePort = MissionRenderStatePort { renderedMissions = it },
             wormholeControlPort = AppWormholeControlAdapter(store),
+            wormholeConnectionIds = store.connections.map { connections ->
+                connections.mapTo(mutableSetOf()) { it.id }
+            },
             scope = this,
         )
         try {
+            runCurrent()
             val created = service.createWormhole(CreateWormholeCommand("create", "create", 1, 2)).success().value
             assertTrue(created.created)
             assertTrue(viewport.focused.isEmpty() && viewport.fitted.isEmpty())
-            assertEquals(0, renderedMissionCount)
+            assertEquals(0, renderedMissions.size)
 
             assertEquals(
                 ControlErrorCode.ROUTE_NOT_FOUND,
@@ -69,9 +75,20 @@ class AiWormholeControlIntegrationTest {
             val missionRoute = assertIs<MissionRoute.Normal>(beforeRemoval.routes.single())
             assertEquals(1, missionRoute.route.wormholeJumps)
 
+            store.add(1, 3)
+            runCurrent()
+            assertEquals(
+                beforeRemoval.routes,
+                service.getMission(GetMissionRequest("after-add", missionId)).success().value.routes,
+            )
+            assertTrue(viewport.focused.isEmpty() && viewport.fitted.isEmpty())
+
             store.remove("wormhole:1:2")
+            runCurrent()
             val existingSnapshot = service.getMission(GetMissionRequest("after", missionId)).success().value
-            assertEquals(beforeRemoval.routes, existingSnapshot.routes)
+            assertTrue(existingSnapshot.routes.isEmpty())
+            assertEquals(1, renderedMissions.size)
+            assertTrue(renderedMissions.single().routes.isEmpty())
             assertEquals(
                 ControlErrorCode.ROUTE_NOT_FOUND,
                 service.calculateNormalRoute(

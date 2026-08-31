@@ -182,7 +182,9 @@ no Wormhole update, remove, delete, clear, replace, or persistence capability.
 `calculate_normal_route` and `show_normal_route` accept optional `useWormholes`; omission is backward-compatible and
 means `false`. Normal-route output includes `wormholeJumps`, and the total remains the sum of Stargate, Ansiblex, and
 Wormhole jumps. Creating a Wormhole updates the shared topology without focusing the map, switching Views, changing a
-View's `Use Wormholes` preference, or recalculating an existing user route.
+View's `Use Wormholes` preference, recalculating an existing user route, or changing existing Mission routes. UI
+removal or Clear All invalidates only Normal Mission routes that used the removed connection, across every View; AI
+cannot invoke that removal path.
 
 `get_system_markers` aggregates the persistent Saved Marker and current View's AI Mission Markers for one canonical `systemId`. `create_saved_marker` accepts `systemId`, a supported `color`, optional `name`/`notes`, and optional supported initial `tags`. Marker and initial tags are committed atomically; application code always records AI provenance. The tool cannot modify tags on an existing Saved Marker. Both operations use `LocalControlClient` and Control API v2. They never read storage directly, and Saved Marker access must be enabled in Preferences.
 

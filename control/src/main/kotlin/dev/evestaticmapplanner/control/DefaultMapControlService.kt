@@ -10,6 +10,9 @@ import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteResult
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -25,15 +28,29 @@ class DefaultMapControlService(
     private val savedMarkerControlPort: SavedMarkerControlPort = DeniedSavedMarkerControlPort,
     private val planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
     private val wormholeControlPort: WormholeControlPort = UnavailableWormholeControlPort,
+    wormholeConnectionIds: Flow<Set<String>>? = null,
 ) : MapControlService, AutoCloseable {
     private val dispatcher = MapControlCommandDispatcher(scope)
     private val idempotency = IdempotencyCache()
     private val expensiveQueries = Semaphore(ControlLimits.MAX_CONCURRENT_EXPENSIVE_QUERIES)
+    private var wormholeObserver: Job? = null
 
     init {
         scope.launch {
             registry.retainViews(planningViewControlPort.listViews().mapTo(mutableSetOf(), PlanningViewDto::viewId))
             publishMissions()
+        }
+        wormholeConnectionIds?.let { connectionIds ->
+            wormholeObserver = scope.launch {
+                var previousIds: Set<String>? = null
+                connectionIds.collect { currentIds ->
+                    val removedIds = previousIds?.minus(currentIds).orEmpty()
+                    previousIds = currentIds
+                    if (removedIds.isNotEmpty() && registry.invalidateNormalRoutesUsingWormholes(removedIds) > 0) {
+                        publishMissions()
+                    }
+                }
+            }
         }
     }
 
@@ -414,7 +431,10 @@ class DefaultMapControlService(
         success(command.requestId, MissionMutationReceipt(command.missionId))
     }
 
-    override fun close() = dispatcher.close()
+    override fun close() {
+        wormholeObserver?.cancel()
+        dispatcher.close()
+    }
 
     private suspend fun mutationReceipt(
         operation: String,

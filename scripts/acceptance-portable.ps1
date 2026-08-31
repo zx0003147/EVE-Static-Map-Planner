@@ -9,8 +9,15 @@ $ErrorActionPreference = "Stop"
 
 $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $buildRoot = Join-Path $repository "build"
+$appVersionLine = Get-Content -LiteralPath (Join-Path $repository "gradle.properties") |
+    Where-Object { $_ -match '^appVersion=' } |
+    Select-Object -First 1
+if ($null -eq $appVersionLine) {
+    throw "gradle.properties does not define appVersion"
+}
+$appVersion = ($appVersionLine -split '=', 2)[1].Trim()
 if ([string]::IsNullOrWhiteSpace($ZipPath)) {
-    $ZipPath = Join-Path $buildRoot "release\EVE-Static-Map-Planner-1.0.0-Windows-x64.zip"
+    $ZipPath = Join-Path $buildRoot "release\EVE-Static-Map-Planner-$appVersion-Windows-x64.zip"
 }
 $archive = (Resolve-Path -LiteralPath $ZipPath).Path
 if ([string]::IsNullOrWhiteSpace($ReportPath)) {
@@ -75,7 +82,7 @@ function Read-And-Assert-McpLocator {
     if (@(Compare-Object -ReferenceObject $expectedFields -DifferenceObject $fields).Count -ne 0) {
         throw "MCP locator fields changed: $($fields -join ',')"
     }
-    if ($document.schemaVersion -ne 1 -or $document.appVersion -ne "1.0.0" -or $document.transport -ne "stdio") {
+    if ($document.schemaVersion -ne 1 -or $document.appVersion -ne $appVersion -or $document.transport -ne "stdio") {
         throw "MCP locator contract values are invalid"
     }
     $expectedCommand = [System.IO.Path]::GetFullPath((Join-Path $ExpectedImage "eve-map-mcp.exe"))

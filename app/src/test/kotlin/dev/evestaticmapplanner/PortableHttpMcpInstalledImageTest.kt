@@ -187,7 +187,9 @@ class PortableHttpMcpResourceTest {
         val idleSample = samples[1]
         val connectedSample = samples[2]
         val report = buildString {
-            appendLine("EVE Static Map Planner 1.0.0 localhost HTTP MCP resource acceptance")
+            appendLine(
+                "EVE Static Map Planner ${ApplicationBuildInfo.current.appVersion} localhost HTTP MCP resource acceptance",
+            )
             appendLine("stable_window_seconds=5")
             samples.forEach { appendLine(it.encode()) }
             appendLine("http_idle_working_set_delta=${idleSample.workingSetBytes - baseline.workingSetBytes}")

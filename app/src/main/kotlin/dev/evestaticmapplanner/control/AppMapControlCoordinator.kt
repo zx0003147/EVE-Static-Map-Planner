@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.control
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import dev.evestaticmapplanner.control.mission.MissionRegistry
 
 class AppMapControlCoordinator(
@@ -11,6 +12,7 @@ class AppMapControlCoordinator(
     missionRenderStatePort: MissionRenderStatePort,
     savedMarkerControlPort: SavedMarkerControlPort,
     wormholeControlPort: WormholeControlPort,
+    wormholeConnectionIds: Flow<Set<String>>? = null,
     planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
     scope: CoroutineScope,
     private val service: DefaultMapControlService = DefaultMapControlService(
@@ -22,6 +24,7 @@ class AppMapControlCoordinator(
         savedMarkerControlPort = savedMarkerControlPort,
         planningViewControlPort = planningViewControlPort,
         wormholeControlPort = wormholeControlPort,
+        wormholeConnectionIds = wormholeConnectionIds,
         registry = MissionRegistry(),
         scope = scope,
     ),

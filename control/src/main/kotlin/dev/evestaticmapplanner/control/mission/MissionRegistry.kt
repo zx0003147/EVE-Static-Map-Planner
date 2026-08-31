@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.control.ControlLimits
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.RouteResult
 import java.time.Instant
 import java.util.UUID
@@ -65,6 +66,25 @@ class MissionRegistry(
     fun clearRoutes(missionId: MissionId): Mission {
         val mission = get(missionId)
         return if (mission.routes.isEmpty()) mission else replace(mission.copy(routes = emptyList()).revised())
+    }
+
+    @Synchronized
+    fun invalidateNormalRoutesUsingWormholes(connectionIds: Set<String>): Int {
+        if (connectionIds.isEmpty()) return 0
+
+        var invalidatedRouteCount = 0
+        val replacements = missions.values.mapNotNull { mission ->
+            val retainedRoutes = mission.routes.filterNot { route ->
+                val invalidated = route is MissionRoute.Normal && route.route.edges.any { edge ->
+                    edge.type == RouteEdgeType.WORMHOLE && edge.connectionId.value in connectionIds
+                }
+                if (invalidated) invalidatedRouteCount++
+                invalidated
+            }
+            if (retainedRoutes.size == mission.routes.size) null else mission.copy(routes = retainedRoutes).revised()
+        }
+        replacements.forEach(::replace)
+        return invalidatedRouteCount
     }
 
     @Synchronized

@@ -47,7 +47,10 @@ class McpLocatorExternalConsumerTest {
         val document = Json.parseToJsonElement(Files.readString(locator)).jsonObject
         assertEquals(setOf("schemaVersion", "appVersion", "transport", "command"), document.keys)
         assertEquals(1, document.getValue("schemaVersion").jsonPrimitive.content.toInt())
-        assertEquals("1.0.0", document.getValue("appVersion").jsonPrimitive.content)
+        assertEquals(
+            System.getProperty(EXPECTED_APP_VERSION_PROPERTY),
+            document.getValue("appVersion").jsonPrimitive.content,
+        )
         assertEquals("stdio", document.getValue("transport").jsonPrimitive.content)
         val command = Path.of(document.getValue("command").jsonPrimitive.content).toAbsolutePath().normalize()
         assertEquals(applicationImage.resolve("eve-map-mcp.exe"), command)
@@ -93,5 +96,6 @@ class McpLocatorExternalConsumerTest {
 
     private companion object {
         const val PORTABLE_IMAGE_PROPERTY = "eve.mcp.locator.portable.image"
+        const val EXPECTED_APP_VERSION_PROPERTY = "eve.mcp.expected.app.version"
     }
 }

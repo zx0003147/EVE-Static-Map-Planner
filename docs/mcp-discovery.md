@@ -16,7 +16,7 @@ The v1 contract contains only public local integration data:
 ```json
 {
   "schemaVersion": 1,
-  "appVersion": "1.0.0",
+  "appVersion": "1.1.0",
   "transport": "stdio",
   "command": "D:\\Tools\\EVE Static Map Planner\\eve-map-mcp.exe"
 }

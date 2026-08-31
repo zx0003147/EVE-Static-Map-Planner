@@ -134,6 +134,24 @@ class WormholeViewModelTest {
     }
 
     @Test
+    fun `dense five connection network stays visible to Manager and right click after one removal`() = runTest {
+        val fixture = Fixture(StandardTestDispatcher(testScheduler))
+        (2..6).forEach { fixture.store.add(1, it) }
+        advanceUntilIdle()
+
+        val state = fixture.viewModel.state.value
+        assertEquals(5, state.connections.size)
+        assertEquals(5, WormholePresentationBuilder.rows(state.connections, state.systemNamesById).size)
+        assertEquals(5, WormholePresentationBuilder.rowsForSystem(1, state.connections, state.systemNamesById).size)
+
+        assertTrue(fixture.viewModel.remove("wormhole:1:2"))
+        advanceUntilIdle()
+        val remaining = fixture.viewModel.state.value
+        assertEquals(4, remaining.connections.size)
+        assertEquals(4, WormholePresentationBuilder.rowsForSystem(1, remaining.connections, remaining.systemNamesById).size)
+    }
+
+    @Test
     fun `clear all mutates the same Store and returns the removed count`() = runTest {
         val fixture = Fixture(StandardTestDispatcher(testScheduler))
         fixture.store.add(1, 2)

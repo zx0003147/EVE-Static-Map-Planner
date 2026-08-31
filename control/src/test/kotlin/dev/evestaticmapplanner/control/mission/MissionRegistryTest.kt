@@ -148,6 +148,62 @@ class MissionRegistryTest {
     }
 
     @Test
+    fun `removed Wormhole invalidates only dependent Normal routes across every View`() {
+        val registry = registry()
+        val view1 = registry.begin("View 1 Mission", viewId = "view-1")
+        val view2 = registry.begin("View 2 Mission", viewId = "view-2")
+        val view3 = registry.begin("View 3 Mission", viewId = "view-3")
+
+        registry.addNormalRoute(view1.missionId, route(RouteEdgeType.WORMHOLE, "wormhole:1:2", 1, 2))
+        registry.addNormalRoute(view1.missionId, route(RouteEdgeType.STARGATE, "stargate:2:3", 2, 3))
+        registry.addNormalRoute(view1.missionId, route(RouteEdgeType.WORMHOLE, "wormhole:3:4", 3, 4))
+        registry.addMarker(view1.missionId, 1, MissionMarkerRole.RALLY, null, null, null)
+        registry.addJumpRange(view1.missionId, 1, JumpProfile.manual(5.0), setOf(2), null)
+        registry.addCapitalRoute(
+            view1.missionId,
+            dev.evestaticmapplanner.core.route.CapitalRouteResult(
+                1,
+                2,
+                JumpProfile.manual(5.0),
+                listOf(1, 2),
+                listOf(dev.evestaticmapplanner.core.route.CapitalRouteLeg(1, 2, 1.0)),
+            ),
+        )
+        registry.addNormalRoute(view2.missionId, route(RouteEdgeType.WORMHOLE, "wormhole:1:2", 2, 1))
+        registry.addNormalRoute(view3.missionId, route(RouteEdgeType.STARGATE, "stargate:4:5", 4, 5))
+
+        assertEquals(2, registry.invalidateNormalRoutesUsingWormholes(setOf("wormhole:1:2")))
+
+        val first = registry.get(view1.missionId)
+        val second = registry.get(view2.missionId)
+        val third = registry.get(view3.missionId)
+        assertEquals(
+            setOf("stargate:2:3", "wormhole:3:4"),
+            first.routes.filterIsInstance<MissionRoute.Normal>()
+                .map { it.route.edges.single().connectionId.value }
+                .toSet(),
+        )
+        assertTrue(second.routes.isEmpty())
+        assertEquals(1, third.routes.size)
+        assertEquals(1, first.routes.filterIsInstance<MissionRoute.Capital>().size)
+        assertEquals(1, first.markers.size)
+        assertEquals(1, first.jumpRanges.size)
+        assertEquals(3, registry.active().size)
+
+        assertEquals(0, registry.invalidateNormalRoutesUsingWormholes(setOf("wormhole:8:9")))
+        assertEquals(1, registry.invalidateNormalRoutesUsingWormholes(setOf("wormhole:3:4")))
+        val afterClear = registry.get(view1.missionId)
+        assertEquals(
+            listOf("stargate:2:3"),
+            afterClear.routes.filterIsInstance<MissionRoute.Normal>()
+                .map { it.route.edges.single().connectionId.value },
+        )
+        assertEquals(1, afterClear.routes.filterIsInstance<MissionRoute.Capital>().size)
+        assertEquals(1, afterClear.markers.size)
+        assertEquals(1, afterClear.jumpRanges.size)
+    }
+
+    @Test
     fun `same system supports different marker roles without user marker uniqueness`() {
         val registry = registry()
         val mission = registry.begin("Roles")
@@ -225,3 +281,10 @@ private fun chainRoute(systemCount: Int): RouteResult {
     }
     return RouteResult(systems.first(), systems.last(), systems, edges)
 }
+
+private fun route(type: RouteEdgeType, connectionId: String, from: Int, to: Int): RouteResult = RouteResult(
+    from,
+    to,
+    listOf(from, to),
+    listOf(RouteEdge(RouteEdgeId("$connectionId:$from:$to"), RouteConnectionId(connectionId), from, to, type)),
+)

@@ -260,6 +260,7 @@ val portableLocatorExternalConsumerTest by tasks.registering(Test::class) {
     )
     doFirst {
         systemProperty("eve.mcp.locator.portable.image", portableImage.get().asFile.absolutePath)
+        systemProperty("eve.mcp.expected.app.version", project.version.toString())
     }
     inputs.dir(portableImage)
     outputs.upToDateWhen { false }

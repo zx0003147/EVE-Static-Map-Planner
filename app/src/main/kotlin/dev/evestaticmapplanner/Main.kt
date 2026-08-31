@@ -81,6 +81,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 fun main(arguments: Array<String>) {
@@ -316,6 +317,9 @@ private fun FrameWindowScope.ReadyApplication(
                     missionRenderStatePort = missionMapStateStore,
                     savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
                     wormholeControlPort = AppWormholeControlAdapter(wormholeSessionStore),
+                    wormholeConnectionIds = wormholeSessionStore.connections.map { connections ->
+                        connections.mapTo(mutableSetOf()) { it.id }
+                    },
                     planningViewControlPort = dev.evestaticmapplanner.view.PlanningViewControlAdapter(planningViewCoordinator),
                     scope = sessionScope,
                 )
