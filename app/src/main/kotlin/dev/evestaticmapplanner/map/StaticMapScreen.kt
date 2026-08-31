@@ -78,6 +78,11 @@ import dev.evestaticmapplanner.view.PlanningViewCoordinator
 import dev.evestaticmapplanner.view.PlanningView
 import dev.evestaticmapplanner.view.PlanningViewId
 import dev.evestaticmapplanner.view.PlanningViewsState
+import dev.evestaticmapplanner.wormhole.CreateWormholeDialog
+import dev.evestaticmapplanner.wormhole.WormholeConnectionsDialog
+import dev.evestaticmapplanner.wormhole.WormholeManagerDialog
+import dev.evestaticmapplanner.wormhole.WormholeUiState
+import dev.evestaticmapplanner.wormhole.WormholeViewModel
 import java.nio.file.Path
 
 @Composable
@@ -86,6 +91,7 @@ internal fun StaticMapScreen(
     userDatabasePath: Path,
     state: MapUiState,
     routeState: RoutePlannerUiState,
+    wormholeState: WormholeUiState,
     jumpState: JumpOverlayUiState,
     capitalState: CapitalRouteUiState,
     planningViewsState: PlanningViewsState,
@@ -99,6 +105,7 @@ internal fun StaticMapScreen(
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     viewModel: MapViewModel,
     routeViewModel: RoutePlannerViewModel,
+    wormholeViewModel: WormholeViewModel,
     jumpViewModel: JumpOverlayViewModel,
     capitalViewModel: CapitalRouteViewModel,
     planningViewCoordinator: PlanningViewCoordinator,
@@ -106,6 +113,8 @@ internal fun StaticMapScreen(
     suppressMarkerOperationErrorDialog: Boolean = false,
 ) {
     var showAnsiblexManager by remember { mutableStateOf(false) }
+    var showWormholeManager by remember { mutableStateOf(false) }
+    var wormholeConnectionsSystemId by remember { mutableStateOf<Int?>(null) }
     var markerEditor by remember { mutableStateOf<MarkerEditorRequest?>(null) }
     var expectedMarkerDraft by remember { mutableStateOf<MarkerDraft?>(null) }
     var markerPendingRemoval by remember { mutableStateOf<Int?>(null) }
@@ -145,6 +154,7 @@ internal fun StaticMapScreen(
             onSelectRouteActionTarget = planningViewCoordinator::selectRouteActionTarget,
             onInvokeRouteAction = onInvokeRouteAction,
             onOpenAnsiblexManager = { showAnsiblexManager = true },
+            onOpenWormholeManager = { showWormholeManager = true },
             onFocusSystem = viewModel::selectAndFocusSystem,
         )
         Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -237,6 +247,14 @@ internal fun StaticMapScreen(
                             }
                             viewModel.dismissContextMenu()
                         },
+                        onContextCreateWormhole = { systemId ->
+                            state.scene.nodesById[systemId]?.system?.let(wormholeViewModel::beginQuickCreate)
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextManageWormholes = { systemId ->
+                            wormholeConnectionsSystemId = systemId
+                            viewModel.dismissContextMenu()
+                        },
                         onContextDismiss = viewModel::dismissContextMenu,
                         onFirstMapDisplayed = viewModel::onFirstMapDisplayed,
                     )
@@ -281,6 +299,31 @@ internal fun StaticMapScreen(
             state = routeState,
             viewModel = routeViewModel,
             onDismiss = { showAnsiblexManager = false },
+        )
+    }
+    if (showWormholeManager) {
+        WormholeManagerDialog(
+            state = wormholeState,
+            viewModel = wormholeViewModel,
+            onDismiss = { showWormholeManager = false },
+        )
+    }
+    if (wormholeState.quickOrigin != null) {
+        CreateWormholeDialog(
+            state = wormholeState,
+            viewModel = wormholeViewModel,
+            onCreated = wormholeViewModel::endQuickCreate,
+            onDismiss = wormholeViewModel::endQuickCreate,
+        )
+    }
+    wormholeConnectionsSystemId?.let { systemId ->
+        val systemName = state.scene?.nodesById?.get(systemId)?.system?.name ?: "System $systemId"
+        WormholeConnectionsDialog(
+            systemId = systemId,
+            systemName = systemName,
+            state = wormholeState,
+            viewModel = wormholeViewModel,
+            onDismiss = { wormholeConnectionsSystemId = null },
         )
     }
     markerEditor?.let { request ->

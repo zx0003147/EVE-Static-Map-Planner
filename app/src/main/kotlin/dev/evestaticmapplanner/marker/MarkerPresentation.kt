@@ -31,15 +31,23 @@ enum class SystemContextAction(val label: String) {
     SET_ROUTE_DESTINATION("Set Route Destination"),
     SET_CAPITAL_START("Set Capital Start"),
     SET_CAPITAL_DESTINATION("Set Capital Destination"),
+    CREATE_WORMHOLE("Create Wormhole Connection…"),
+    MANAGE_WORMHOLE_CONNECTIONS("Wormhole Connections…"),
 }
 
 data class PresentedSystemContextAction(
     val action: SystemContextAction,
     val enabled: Boolean = true,
+    val label: String = action.label,
+    val startsNewSection: Boolean = false,
 )
 
 object SystemContextMenuPresentationBuilder {
-    fun build(marker: Marker?, state: MarkerUiState): List<PresentedSystemContextAction> =
+    fun build(
+        marker: Marker?,
+        state: MarkerUiState,
+        wormholeConnectionCount: Int = 0,
+    ): List<PresentedSystemContextAction> =
         MarkerContextPresentationBuilder.build(marker, state).map { item ->
             PresentedSystemContextAction(
                 action = when (item.action) {
@@ -58,7 +66,21 @@ object SystemContextMenuPresentationBuilder {
             PresentedSystemContextAction(SystemContextAction.SET_ROUTE_DESTINATION),
             PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_START),
             PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_DESTINATION),
-        )
+        ) + listOf(
+            PresentedSystemContextAction(
+                action = SystemContextAction.CREATE_WORMHOLE,
+                startsNewSection = true,
+            ),
+        ) + if (wormholeConnectionCount > 0) {
+            listOf(
+                PresentedSystemContextAction(
+                    action = SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS,
+                    label = "Wormhole Connections… ($wormholeConnectionCount)",
+                ),
+            )
+        } else {
+            emptyList()
+        }
 }
 
 object MarkerContextPresentationBuilder {

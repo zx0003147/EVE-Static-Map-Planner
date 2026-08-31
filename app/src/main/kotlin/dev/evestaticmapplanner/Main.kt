@@ -75,6 +75,7 @@ import dev.evestaticmapplanner.staticdata.StaticDataManagerDialog
 import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
 import dev.evestaticmapplanner.view.PlanningViewCoordinator
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
+import dev.evestaticmapplanner.wormhole.WormholeViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -239,6 +240,14 @@ private fun FrameWindowScope.ReadyApplication(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
+    val wormholeViewModel = remember(configuration, wormholeSessionStore) {
+        WormholeViewModel(
+            store = wormholeSessionStore,
+            staticMapRepository = staticRepository,
+            searchRepository = searchRepository,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        )
+    }
     val markerServiceScope = remember(configuration) {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     }
@@ -347,6 +356,7 @@ private fun FrameWindowScope.ReadyApplication(
         localhostMcpHost,
         mapViewModel,
         routeViewModel,
+        wormholeViewModel,
         jumpViewModel,
         capitalViewModel,
         markerViewModel,
@@ -359,6 +369,7 @@ private fun FrameWindowScope.ReadyApplication(
             resourceClosers = listOf(
                 mapViewModel::close,
                 routeViewModel::close,
+                wormholeViewModel::close,
                 jumpViewModel::close,
                 capitalViewModel::close,
                 markerViewModel::close,
@@ -383,6 +394,7 @@ private fun FrameWindowScope.ReadyApplication(
 
     val mapState by mapViewModel.state.collectAsState()
     val routeState by routeViewModel.state.collectAsState()
+    val wormholeState by wormholeViewModel.state.collectAsState()
     val jumpState by jumpViewModel.state.collectAsState()
     val capitalState by capitalViewModel.state.collectAsState()
     val planningViewsState by planningViewCoordinator.state.collectAsState()
@@ -453,6 +465,7 @@ private fun FrameWindowScope.ReadyApplication(
         userDatabasePath = configuration.userDatabase.path,
         state = mapState,
         routeState = routeState,
+        wormholeState = wormholeState,
         jumpState = jumpState,
         capitalState = capitalState,
         planningViewsState = planningViewsState,
@@ -466,6 +479,7 @@ private fun FrameWindowScope.ReadyApplication(
         onInvokeRouteAction = featurePackRuntime.routeActionHost::invoke,
         viewModel = mapViewModel,
         routeViewModel = routeViewModel,
+        wormholeViewModel = wormholeViewModel,
         jumpViewModel = jumpViewModel,
         capitalViewModel = capitalViewModel,
         planningViewCoordinator = planningViewCoordinator,

@@ -14,6 +14,8 @@ import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
+import dev.evestaticmapplanner.wormhole.CreateWormholeUiResult
+import dev.evestaticmapplanner.wormhole.WormholeViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -339,6 +341,59 @@ class RoutePlannerViewModelTest {
         assertEquals(1, viewModel.state.value.activeRoute?.wormholeJumps)
         assertEquals(listOf("wormhole:1:4"), viewModel.state.value.wormholeConnections.map { it.id })
     }
+
+    @Test
+    fun `Manager add reaches RoutePlanner through shared Store without recalculating active route`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val routeViewModel = fixture.viewModel(dispatcher)
+        val wormholeViewModel = fixture.wormholeUi(dispatcher)
+        advanceUntilIdle()
+
+        routeViewModel.selectFrom(fixture.systems[0])
+        routeViewModel.selectTo(fixture.systems[3])
+        routeViewModel.setUseWormholes(true)
+        routeViewModel.calculateRoute()
+        assertEquals(3, routeViewModel.state.value.activeRoute?.stargateJumps)
+
+        wormholeViewModel.selectManagerFrom(fixture.systems[0])
+        wormholeViewModel.selectManagerTo(fixture.systems[3])
+        assertEquals(CreateWormholeUiResult.CREATED, wormholeViewModel.addFromManager())
+        advanceUntilIdle()
+
+        assertEquals(listOf("wormhole:1:4"), routeViewModel.state.value.wormholeConnections.map { it.id })
+        assertEquals(3, routeViewModel.state.value.activeRoute?.stargateJumps)
+        assertEquals(0, routeViewModel.state.value.activeRoute?.wormholeJumps)
+        routeViewModel.calculateRoute()
+        assertEquals(1, routeViewModel.state.value.activeRoute?.wormholeJumps)
+    }
+
+    @Test
+    fun `right click add uses shared Store and Manager removal preserves unrelated route then clears used route`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val routeViewModel = fixture.viewModel(dispatcher)
+        val wormholeViewModel = fixture.wormholeUi(dispatcher)
+        advanceUntilIdle()
+
+        wormholeViewModel.beginQuickCreate(fixture.systems[0])
+        wormholeViewModel.selectQuickTo(fixture.systems[3])
+        assertEquals(CreateWormholeUiResult.CREATED, wormholeViewModel.addFromQuickCreate())
+        fixture.wormholes.add(2, 5)
+        advanceUntilIdle()
+        routeViewModel.selectFrom(fixture.systems[0])
+        routeViewModel.selectTo(fixture.systems[3])
+        routeViewModel.setUseWormholes(true)
+        routeViewModel.calculateRoute()
+        assertEquals(1, routeViewModel.state.value.activeRoute?.wormholeJumps)
+
+        assertTrue(wormholeViewModel.remove("wormhole:2:5"))
+        advanceUntilIdle()
+        assertEquals(1, routeViewModel.state.value.activeRoute?.wormholeJumps)
+        assertTrue(wormholeViewModel.remove("wormhole:1:4"))
+        advanceUntilIdle()
+        assertNull(routeViewModel.state.value.activeRoute)
+    }
 }
 
 private class Fixture(
@@ -385,6 +440,15 @@ private class Fixture(
         scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + dispatcher),
         ioDispatcher = dispatcher,
         searchDebounceMillis = debounce,
+    )
+
+    fun wormholeUi(dispatcher: kotlinx.coroutines.CoroutineDispatcher) = WormholeViewModel(
+        store = wormholes,
+        staticMapRepository = StaticMapRepository { StaticMapData(systems, emptyList()) },
+        searchRepository = search,
+        scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + dispatcher),
+        ioDispatcher = dispatcher,
+        searchDebounceMillis = 0,
     )
 }
 

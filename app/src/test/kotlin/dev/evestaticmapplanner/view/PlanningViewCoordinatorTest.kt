@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.capital.CapitalRoutePlanningPort
 import dev.evestaticmapplanner.capital.CapitalRoutePlanningSnapshot
 import dev.evestaticmapplanner.route.NormalRoutePlanningPort
 import dev.evestaticmapplanner.route.NormalRoutePlanningSnapshot
+import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,6 +42,29 @@ class PlanningViewCoordinatorTest {
         assertTrue(coordinator.switchView(second))
         assertEquals(5, normal.value.fromSystemId)
         assertFalse(normal.value.useWormholes)
+    }
+
+    @Test
+    fun `view switching keeps one global Wormhole network while use option remains per view`() {
+        val store = WormholeSessionStore().also { it.add(1, 2) }
+        val normal = NormalPort()
+        val coordinator = PlanningViewCoordinator(
+            normal,
+            CapitalPort(),
+            newId = { PlanningViewId("view-2") },
+        )
+        normal.value = NormalRoutePlanningSnapshot(useWormholes = true)
+        coordinator.captureCurrent()
+
+        val second = coordinator.createView()
+        assertFalse(normal.value.useWormholes)
+        assertEquals(listOf("wormhole:1:2"), store.connections.value.map { it.id })
+        assertTrue(coordinator.switchView(PlanningViewId("view-1")))
+        assertTrue(normal.value.useWormholes)
+        assertEquals(listOf("wormhole:1:2"), store.connections.value.map { it.id })
+        assertTrue(coordinator.switchView(second))
+        assertFalse(normal.value.useWormholes)
+        assertEquals(listOf("wormhole:1:2"), store.connections.value.map { it.id })
     }
 
     @Test

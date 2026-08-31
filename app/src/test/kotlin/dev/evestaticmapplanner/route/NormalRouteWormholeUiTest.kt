@@ -6,6 +6,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -62,8 +63,32 @@ class NormalRouteWormholeUiTest {
         val mixed = route(listOf(RouteEdgeType.STARGATE, RouteEdgeType.ANSIBLEX, RouteEdgeType.WORMHOLE))
 
         assertEquals("2 jumps · 1 Stargate · 1 Ansiblex", normalRouteSummaryText(noWormholes))
-        assertEquals("1 jumps · 0 Stargate · 0 Ansiblex · 1 Wormhole", normalRouteSummaryText(oneWormhole))
+        assertEquals("1 jump · 0 Stargates · 0 Ansiblex · 1 Wormhole", normalRouteSummaryText(oneWormhole))
         assertEquals("3 jumps · 1 Stargate · 1 Ansiblex · 1 Wormhole", normalRouteSummaryText(mixed))
+    }
+
+    @Test
+    fun `Wormhole Manager remains enabled when routing use is off and Ansiblex is unavailable`() = runComposeUiTest {
+        var openCount = 0
+        setContent {
+            MaterialTheme {
+                Column {
+                    RouteManagerButtons(
+                        state = RoutePlannerUiState(
+                            isLoading = false,
+                            userDatabaseError = "user db unavailable",
+                            useWormholes = false,
+                        ),
+                        onOpenAnsiblexManager = {},
+                        onOpenWormholeManager = { openCount++ },
+                    )
+                }
+            }
+        }
+
+        onNodeWithText("Ansiblex Manager (0/0)").assertIsNotEnabled()
+        onNodeWithText("Wormhole Manager (0)").assertIsEnabled().performClick()
+        assertEquals(1, openCount)
     }
 
     private fun route(types: List<RouteEdgeType>): RouteResult {

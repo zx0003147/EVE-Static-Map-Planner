@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.onClick
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -84,6 +85,8 @@ fun StaticMapCanvas(
     onContextCapitalStart: (Int) -> Unit,
     onContextCapitalDestination: (Int) -> Unit,
     onContextMarkerAction: (Int, MarkerContextAction) -> Unit,
+    onContextCreateWormhole: (Int) -> Unit,
+    onContextManageWormholes: (Int) -> Unit,
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
@@ -639,9 +642,18 @@ fun StaticMapCanvas(
                     SystemContextMenuPresentationBuilder.build(
                         markerState.markersBySystemId[menu.systemId],
                         markerState,
+                        wormholeConnections.count {
+                            it.firstSystemId == menu.systemId || it.secondSystemId == menu.systemId
+                        },
                     ).forEach { item ->
+                        if (item.startsNewSection) {
+                            HorizontalDivider(
+                                color = androidx.compose.ui.graphics.Color(0xFF314252),
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
                         Text(
-                            text = item.action.label,
+                            text = item.label,
                             color = if (item.enabled) androidx.compose.ui.graphics.Color.Unspecified else {
                                 androidx.compose.ui.graphics.Color(0xFF71808D)
                             },
@@ -674,6 +686,8 @@ fun StaticMapCanvas(
                                     SystemContextAction.SET_ROUTE_DESTINATION -> onContextRouteDestination(menu.systemId)
                                     SystemContextAction.SET_CAPITAL_START -> onContextCapitalStart(menu.systemId)
                                     SystemContextAction.SET_CAPITAL_DESTINATION -> onContextCapitalDestination(menu.systemId)
+                                    SystemContextAction.CREATE_WORMHOLE -> onContextCreateWormhole(menu.systemId)
+                                    SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS -> onContextManageWormholes(menu.systemId)
                                 }
                             }.padding(10.dp),
                         )

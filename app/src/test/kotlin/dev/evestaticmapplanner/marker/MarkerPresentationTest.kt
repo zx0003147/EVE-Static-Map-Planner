@@ -34,6 +34,7 @@ class MarkerPresentationTest {
                 SystemContextAction.SET_ROUTE_DESTINATION,
                 SystemContextAction.SET_CAPITAL_START,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
+                SystemContextAction.CREATE_WORMHOLE,
             ),
             actions,
         )
@@ -70,6 +71,7 @@ class MarkerPresentationTest {
                 SystemContextAction.SET_ROUTE_DESTINATION,
                 SystemContextAction.SET_CAPITAL_START,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
+                SystemContextAction.CREATE_WORMHOLE,
             ),
             SystemContextMenuPresentationBuilder.build(temporary, readyState(temporary)).map { it.action },
         )
@@ -82,9 +84,26 @@ class MarkerPresentationTest {
                 SystemContextAction.SET_ROUTE_DESTINATION,
                 SystemContextAction.SET_CAPITAL_START,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
+                SystemContextAction.CREATE_WORMHOLE,
             ),
             SystemContextMenuPresentationBuilder.build(saved, readyState(saved)).map { it.action },
         )
+    }
+
+    @Test
+    fun `Wormhole quick actions are the final section and connections appear only when present`() {
+        val none = SystemContextMenuPresentationBuilder.build(null, readyState(), wormholeConnectionCount = 0)
+        val multiple = SystemContextMenuPresentationBuilder.build(null, readyState(), wormholeConnectionCount = 4)
+
+        assertEquals(SystemContextAction.CREATE_WORMHOLE, none.last().action)
+        assertTrue(none.last().startsNewSection)
+        assertTrue(none.none { it.action == SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS })
+        assertEquals(
+            listOf(SystemContextAction.CREATE_WORMHOLE, SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS),
+            multiple.takeLast(2).map { it.action },
+        )
+        assertEquals("Wormhole Connections… (4)", multiple.last().label)
+        assertFalse(multiple.last().startsNewSection)
     }
 
     @Test

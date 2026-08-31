@@ -78,6 +78,7 @@ internal fun RouteToolsPanel(
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
+    onOpenWormholeManager: () -> Unit,
     onFocusSystem: (Int) -> Unit,
 ) {
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
@@ -119,7 +120,7 @@ internal fun RouteToolsPanel(
                     }
                     ToolSidebarSection.NORMAL_ROUTE -> CollapsibleToolSection(
                         title = "Normal Route",
-                        summary = state.activeRoute?.let { "${it.totalJumps} jumps" },
+                        summary = state.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
                         expanded = expanded,
                         onToggle = { expansionState = expansionState.toggle(section) },
                     ) {
@@ -132,11 +133,12 @@ internal fun RouteToolsPanel(
                             onSelectRouteActionTarget,
                             onInvokeRouteAction,
                             onOpenAnsiblexManager,
+                            onOpenWormholeManager,
                         )
                     }
                     ToolSidebarSection.CAPITAL_ROUTE -> CollapsibleToolSection(
                         title = "Capital Route",
-                        summary = capitalState.activeRoute?.let { "${it.totalJumps} jumps" },
+                        summary = capitalState.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
                         expanded = expanded,
                         onToggle = { expansionState = expansionState.toggle(section) },
                     ) {
@@ -253,6 +255,7 @@ private fun NormalRouteSectionContent(
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
+    onOpenWormholeManager: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SystemSearchField(
@@ -297,9 +300,7 @@ private fun NormalRouteSectionContent(
             onSelectRouteActionTarget,
             onInvokeRouteAction,
         )
-        TextButton(onClick = onOpenAnsiblexManager, enabled = state.isAnsiblexAvailable) {
-            Text("Ansiblex Manager (${state.enabledAnsiblexCount}/${state.ansiblexConnections.size})")
-        }
+        RouteManagerButtons(state, onOpenAnsiblexManager, onOpenWormholeManager)
         state.userDatabaseError?.let {
             Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall)
             Text(
@@ -308,6 +309,20 @@ private fun NormalRouteSectionContent(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+    }
+}
+
+@Composable
+internal fun RouteManagerButtons(
+    state: RoutePlannerUiState,
+    onOpenAnsiblexManager: () -> Unit,
+    onOpenWormholeManager: () -> Unit,
+) {
+    TextButton(onClick = onOpenAnsiblexManager, enabled = state.isAnsiblexAvailable) {
+        Text("Ansiblex Manager (${state.enabledAnsiblexCount}/${state.ansiblexConnections.size})")
+    }
+    TextButton(onClick = onOpenWormholeManager) {
+        Text("Wormhole Manager (${state.wormholeConnections.size})")
     }
 }
 
@@ -434,9 +449,14 @@ private fun RouteSummary(state: RoutePlannerUiState) {
 }
 
 internal fun normalRouteSummaryText(route: dev.evestaticmapplanner.core.route.RouteResult): String = buildString {
-    append("${route.totalJumps} jumps · ${route.stargateJumps} Stargate · ${route.ansiblexJumps} Ansiblex")
-    if (route.wormholeJumps > 0) append(" · ${route.wormholeJumps} Wormhole")
+    append(countedNoun(route.totalJumps, "jump"))
+    append(" · ${countedNoun(route.stargateJumps, "Stargate")}")
+    append(" · ${countedNoun(route.ansiblexJumps, "Ansiblex", "Ansiblex")}")
+    if (route.wormholeJumps > 0) append(" · ${countedNoun(route.wormholeJumps, "Wormhole")}")
 }
+
+internal fun countedNoun(count: Int, singular: String, plural: String = "${singular}s"): String =
+    "$count ${if (count == 1) singular else plural}"
 
 @Composable
 private fun CapitalRouteSummary(state: CapitalRouteUiState) {
@@ -444,7 +464,7 @@ private fun CapitalRouteSummary(state: CapitalRouteUiState) {
         null -> Unit
         is CapitalRouteOutcome.Found -> {
             Text(
-                "${outcome.route.totalJumps} capital jumps · " +
+                "${countedNoun(outcome.route.totalJumps, "capital jump")} · " +
                     String.format(java.util.Locale.ROOT, "%.3f LY total", outcome.route.totalDistanceLy),
                 color = Color(0xFFE3C5FF),
             )
