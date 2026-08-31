@@ -1,6 +1,8 @@
 # EVE Static Map Planner
 
-A small Kotlin/JVM desktop application for offline EVE Online static-map and route-planning workflows.
+**EVE Static Map Planner is an unofficial Windows desktop map and route-planning companion for EVE Online. It lets you explore the EVE universe, calculate Stargate, Ansiblex and capital routes, visualize jump ranges, manage Planning Views and markers, and create temporary Wormhole connections directly on the map.**
+
+**The core map works independently from local static universe data and does not require AI, ESI, or any Feature Pack. Optional integrations add AI map control through the EVE Map Assistant plugin and account-aware or live-data features through external ESI and Sovereignty Feature Packs.**
 
 Version 1.1.0 adds temporary session-wide Wormhole connections to Normal Route planning, with Peacock Teal map
 visuals, UI management, View-local routing opt-in, and bounded AI list/create support.
