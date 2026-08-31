@@ -4,6 +4,7 @@ import java.util.ArrayDeque
 
 data class RouteOptions(
     val useAnsiblex: Boolean = false,
+    val useWormholes: Boolean = false,
 )
 
 data class RouteResult(
@@ -28,6 +29,7 @@ data class RouteResult(
     val totalJumps: Int get() = edges.size
     val stargateJumps: Int get() = edges.count { it.type == RouteEdgeType.STARGATE }
     val ansiblexJumps: Int get() = edges.count { it.type == RouteEdgeType.ANSIBLEX }
+    val wormholeJumps: Int get() = edges.count { it.type == RouteEdgeType.WORMHOLE }
 }
 
 enum class RouteEndpoint {
@@ -75,6 +77,7 @@ class NormalRouteEngine {
             val current = queue.removeFirst()
             for (edge in graph.neighbors(current)) {
                 if (!options.useAnsiblex && edge.type == RouteEdgeType.ANSIBLEX) continue
+                if (!options.useWormholes && edge.type == RouteEdgeType.WORMHOLE) continue
                 if (!visited.add(edge.toSystemId)) continue
                 predecessor[edge.toSystemId] = edge
                 if (edge.toSystemId == destinationSystemId) {

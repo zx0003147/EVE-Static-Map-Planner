@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class MapRouteStyleTest {
@@ -31,5 +32,14 @@ class MapRouteStyleTest {
         assertEquals(ROUTE_STARGATE_COLOR, stargate.color)
         assertEquals(3f, stargate.strokeWidth)
         assertNull(stargate.dashPattern)
+    }
+
+    @Test
+    fun `Wormhole route rendering remains explicitly unsupported in Phase 2`() {
+        val error = assertFailsWith<IllegalStateException> {
+            routeLegRenderStyle(RouteEdgeType.WORMHOLE)
+        }
+
+        assertEquals("Wormhole route rendering is not supported in Wormhole Phase 2", error.message)
     }
 }

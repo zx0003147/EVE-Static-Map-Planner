@@ -701,6 +701,7 @@ internal data class RouteLegRenderStyle(
 internal fun routeLegRenderStyle(type: RouteEdgeType): RouteLegRenderStyle = when (type) {
     RouteEdgeType.STARGATE -> RouteLegRenderStyle(ROUTE_STARGATE_COLOR, 3f, null)
     RouteEdgeType.ANSIBLEX -> RouteLegRenderStyle(ROUTE_ANSIBLEX_COLOR, 4f, ROUTE_ANSIBLEX_DASH_PATTERN)
+    RouteEdgeType.WORMHOLE -> error("Wormhole route rendering is not supported in Wormhole Phase 2")
 }
 private val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {

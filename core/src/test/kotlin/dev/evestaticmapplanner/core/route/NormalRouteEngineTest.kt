@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StargateConnection
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
+import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,6 +25,9 @@ class NormalRouteEngineTest {
         val route = assertIs<RouteCalculationOutcome.SameSystem>(outcome).route
         assertEquals(listOf(1), route.systems)
         assertEquals(0, route.totalJumps)
+        assertEquals(0, route.stargateJumps)
+        assertEquals(0, route.ansiblexJumps)
+        assertEquals(0, route.wormholeJumps)
     }
 
     @Test
@@ -73,6 +77,104 @@ class NormalRouteEngineTest {
         assertEquals(0, without.ansiblexJumps)
         assertEquals(1, with.totalJumps)
         assertEquals(1, with.ansiblexJumps)
+    }
+
+    @Test
+    fun `Wormhole shortcut is ignored by default and used only when enabled`() {
+        val graph = graph(
+            1, 2, 3, 4,
+            gates = listOf(1 to 2, 2 to 3, 3 to 4),
+            wormholes = listOf(WormholeConnection.between(1, 4)),
+        )
+
+        val defaultRoute = found(engine.calculate(graph, 1, 4))
+        val enabledRoute = found(engine.calculate(graph, 1, 4, RouteOptions(useWormholes = true)))
+
+        assertEquals(listOf(1, 2, 3, 4), defaultRoute.systems)
+        assertEquals(0, defaultRoute.wormholeJumps)
+        assertEquals(listOf(1, 4), enabledRoute.systems)
+        assertEquals(1, enabledRoute.wormholeJumps)
+    }
+
+    @Test
+    fun `Ansiblex and Wormhole switches are independent`() {
+        val graph = graph(
+            1, 2, 3, 4,
+            gates = listOf(1 to 2, 2 to 3, 3 to 4),
+            ansiblex = listOf(ansiblex("direct", 1, 4)),
+            wormholes = listOf(WormholeConnection.between(1, 3)),
+        )
+
+        val neither = found(engine.calculate(graph, 1, 4, RouteOptions()))
+        val onlyAnsiblex = found(engine.calculate(graph, 1, 4, RouteOptions(useAnsiblex = true)))
+        val onlyWormhole = found(engine.calculate(graph, 1, 4, RouteOptions(useWormholes = true)))
+        val both = found(engine.calculate(graph, 1, 4, RouteOptions(useAnsiblex = true, useWormholes = true)))
+
+        assertEquals(listOf(1, 2, 3, 4), neither.systems)
+        assertEquals(listOf(1, 4), onlyAnsiblex.systems)
+        assertEquals(RouteEdgeType.ANSIBLEX, onlyAnsiblex.edges.single().type)
+        assertEquals(listOf(1, 3, 4), onlyWormhole.systems)
+        assertEquals(listOf(RouteEdgeType.WORMHOLE, RouteEdgeType.STARGATE), onlyWormhole.edges.map(RouteEdge::type))
+        assertEquals(listOf(1, 4), both.systems)
+        assertEquals(RouteEdgeType.ANSIBLEX, both.edges.single().type)
+    }
+
+    @Test
+    fun `one Wormhole is traversable in both directions`() {
+        val graph = graph(1, 2, wormholes = listOf(WormholeConnection.between(1, 2)))
+        val options = RouteOptions(useWormholes = true)
+
+        assertEquals(listOf(1, 2), found(engine.calculate(graph, 1, 2, options)).systems)
+        assertEquals(listOf(2, 1), found(engine.calculate(graph, 2, 1, options)).systems)
+    }
+
+    @Test
+    fun `multiple Wormholes from one origin route to each neighbor`() {
+        val graph = graph(
+            1, 2, 3, 4,
+            wormholes = listOf(
+                WormholeConnection.between(1, 2),
+                WormholeConnection.between(1, 3),
+                WormholeConnection.between(1, 4),
+            ),
+        )
+        val options = RouteOptions(useWormholes = true)
+
+        listOf(2, 3, 4).forEach { destination ->
+            val route = found(engine.calculate(graph, 1, destination, options))
+            assertEquals(listOf(1, destination), route.systems)
+            assertEquals(1, route.wormholeJumps)
+        }
+    }
+
+    @Test
+    fun `mixed route preserves edge order and all jump statistics`() {
+        val graph = graph(
+            1, 2, 3, 4,
+            gates = listOf(1 to 2),
+            ansiblex = listOf(ansiblex("final", 3, 4)),
+            wormholes = listOf(WormholeConnection.between(2, 3)),
+        )
+
+        val route = found(
+            engine.calculate(
+                graph,
+                1,
+                4,
+                RouteOptions(useAnsiblex = true, useWormholes = true),
+            ),
+        )
+
+        assertEquals(listOf(1, 2, 3, 4), route.systems)
+        assertEquals(
+            listOf(RouteEdgeType.STARGATE, RouteEdgeType.WORMHOLE, RouteEdgeType.ANSIBLEX),
+            route.edges.map(RouteEdge::type),
+        )
+        assertEquals(3, route.totalJumps)
+        assertEquals(1, route.stargateJumps)
+        assertEquals(1, route.wormholeJumps)
+        assertEquals(1, route.ansiblexJumps)
+        assertEquals(route.totalJumps, route.stargateJumps + route.ansiblexJumps + route.wormholeJumps)
     }
 
     @Test
@@ -133,12 +235,14 @@ private fun graph(
     vararg systemIds: Int,
     gates: List<Pair<Int, Int>> = emptyList(),
     ansiblex: List<AnsiblexConnection> = emptyList(),
+    wormholes: List<WormholeConnection> = emptyList(),
 ) = RouteGraphBuilder.build(
     StaticMapData(
         systems = systemIds.map(::system),
         connections = gates.map { StargateConnection.between(it.first, it.second) }.distinct(),
     ),
     ansiblex,
+    wormholes,
 )
 
 private fun ansiblex(

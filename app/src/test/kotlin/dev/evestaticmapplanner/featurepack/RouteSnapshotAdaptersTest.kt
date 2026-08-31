@@ -18,6 +18,7 @@ import dev.evestaticmapplanner.feature.api.RouteSegmentKind
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
@@ -120,6 +121,21 @@ class RouteSnapshotAdaptersTest {
         assertEquals(listOf(1, 2), snapshot.orderedSystemIds)
         assertEquals(1, snapshot.orderedSegments.size)
         assertNotSame(systems, snapshot.orderedSystemIds)
+    }
+
+    @Test
+    fun `normal adapter rejects Wormhole routes at the frozen Feature API boundary`() {
+        val error = assertFailsWith<IllegalStateException> {
+            RouteSnapshotAdapters.normal(
+                normalRoute(listOf(edge(1, 2, RouteEdgeType.WORMHOLE))),
+                RouteIdentity("unsupported-wormhole"),
+            )
+        }
+
+        assertEquals(
+            "Feature API 2.0.0 RouteSnapshot does not support Wormhole route segments",
+            error.message,
+        )
     }
 
     private fun normalRoute(edges: List<RouteEdge>): RouteResult {

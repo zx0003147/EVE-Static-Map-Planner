@@ -3,10 +3,12 @@ package dev.evestaticmapplanner.core.route
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.model.StaticMapData
+import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 
 enum class RouteEdgeType {
     STARGATE,
     ANSIBLEX,
+    WORMHOLE,
 }
 
 @JvmInline
@@ -58,6 +60,7 @@ class RouteGraph(
 
     companion object {
         private val EDGE_ORDER = compareBy<RouteEdge>(
+            { it.type == RouteEdgeType.WORMHOLE },
             RouteEdge::toSystemId,
             { it.type.ordinal },
             { it.id.value },
@@ -69,6 +72,7 @@ object RouteGraphBuilder {
     fun build(
         staticMapData: StaticMapData,
         ansiblexConnections: List<AnsiblexConnection> = emptyList(),
+        wormholeConnections: List<WormholeConnection> = emptyList(),
     ): RouteGraph {
         val systemIds = staticMapData.systems.mapTo(linkedSetOf()) { it.id }
         val edges = mutableListOf<RouteEdge>()
@@ -102,6 +106,17 @@ object RouteGraphBuilder {
                         edges += edge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.ANSIBLEX)
                     }
                 }
+            }
+
+        wormholeConnections.asSequence()
+            .sortedWith(compareBy({ it.firstSystemId }, { it.secondSystemId }, { it.id }))
+            .forEach { connection ->
+                require(connection.firstSystemId in systemIds && connection.secondSystemId in systemIds) {
+                    "Wormhole connection ${connection.id} references an unknown solar system"
+                }
+                val connectionId = RouteConnectionId(connection.id)
+                edges += edge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.WORMHOLE)
+                edges += edge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.WORMHOLE)
             }
 
         return RouteGraph(

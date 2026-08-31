@@ -26,6 +26,9 @@ internal object RouteSnapshotAdapters {
                 kind = when (edge.type) {
                     RouteEdgeType.STARGATE -> RouteSegmentKind.STARGATE
                     RouteEdgeType.ANSIBLEX -> RouteSegmentKind.ANSIBLEX
+                    RouteEdgeType.WORMHOLE -> error(
+                        "Feature API 2.0.0 RouteSnapshot does not support Wormhole route segments",
+                    )
                 },
                 distanceLy = null,
             )
