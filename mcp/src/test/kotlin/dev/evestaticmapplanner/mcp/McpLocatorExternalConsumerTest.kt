@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class McpLocatorExternalConsumerTest {
     @Test
-    fun `external consumer launches exact twenty eight tool MCP directly from generated locator`() = runBlocking {
+    fun `external consumer launches exact thirty tool MCP directly from generated locator`() = runBlocking {
         val imageProperty = System.getProperty(PORTABLE_IMAGE_PROPERTY)
         assumeTrue(imageProperty != null, "Runs only against the final extracted Portable image")
         val applicationImage = Path.of(imageProperty).toAbsolutePath().normalize()
@@ -64,7 +64,7 @@ class McpLocatorExternalConsumerTest {
                     mcp.errorStream.asSource().buffered(),
                 ),
             )
-            assertEquals(28, client.listTools().tools.size)
+            assertEquals(30, client.listTools().tools.size)
         } finally {
             runCatching { client.close() }
             runCatching { mcp.outputStream.close() }

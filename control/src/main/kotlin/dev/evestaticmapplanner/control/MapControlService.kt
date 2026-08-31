@@ -7,6 +7,8 @@ interface MapControlService {
     suspend fun getSystemInfo(request: GetSystemInfoRequest): ControlResult<SystemInfoDto>
     suspend fun getSystemMarkers(request: GetSystemMarkersRequest): ControlResult<SystemMarkersDto>
     suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest): ControlResult<NormalRouteDto>
+    suspend fun listWormholes(request: ListWormholesRequest): ControlResult<List<WormholeConnectionDto>> =
+        unsupportedWormholes(request.requestId)
     suspend fun calculateCapitalRoute(request: CalculateCapitalRouteRequest): ControlResult<CapitalRouteDto>
     suspend fun listViews(request: ListViewsRequest): ControlResult<List<PlanningViewDto>> = unsupported(request.requestId)
     suspend fun getCurrentView(request: GetCurrentViewRequest): ControlResult<PlanningViewDto> = unsupported(request.requestId)
@@ -20,6 +22,8 @@ interface MapControlService {
     suspend fun deleteView(command: DeleteViewCommand): ControlResult<PlanningViewDto> = unsupported(command.requestId)
     suspend fun createSavedMarker(command: CreateSavedMarkerCommand): ControlResult<CreateSavedMarkerReceipt>
     suspend fun focusSystem(command: FocusSystemCommand): ControlResult<SystemSummaryDto>
+    suspend fun createWormhole(command: CreateWormholeCommand): ControlResult<CreateWormholeReceipt> =
+        unsupportedWormholes(command.requestId)
     suspend fun showNormalRoute(command: ShowNormalRouteCommand): ControlResult<MissionRouteReceipt>
     suspend fun showCapitalRoute(command: ShowCapitalRouteCommand): ControlResult<MissionRouteReceipt>
     suspend fun removeMissionRoute(command: RemoveMissionRouteCommand): ControlResult<MissionMutationReceipt>
@@ -37,4 +41,9 @@ interface MapControlService {
 private fun <T> unsupported(requestId: String): ControlResult<T> = ControlResult.Failure(
     requestId,
     ControlError(ControlErrorCode.INVALID_ARGUMENT, "Planning Views are not supported by this host"),
+)
+
+private fun <T> unsupportedWormholes(requestId: String): ControlResult<T> = ControlResult.Failure(
+    requestId,
+    ControlError(ControlErrorCode.APP_NOT_READY, "Wormhole session control is unavailable"),
 )

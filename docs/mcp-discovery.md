@@ -47,6 +47,6 @@ The locator is not an HTTP endpoint advertisement, AI-client configuration file,
 for credentials. It contains no token, session secret, user identity, database path, port, PID, or client-specific
 configuration. Locator-aware clients must not assume that legacy/manual MCP registrations are rewritten by the map.
 
-The HTTP host and STDIO bridge share the same MCP server factory and 28 tools. The HTTP side currently targets Kotlin
+The HTTP host and STDIO bridge share the same MCP server factory and 30 tools. The HTTP side currently targets Kotlin
 MCP SDK 0.14.0 / 2025-series Streamable HTTP; migration to MCP 2026-07-28 waits for corresponding official Kotlin SDK
 support.

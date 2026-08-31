@@ -91,7 +91,7 @@ class PortableHttpMcpInstalledImageTest {
             val client = Client(Implementation("portable-http-acceptance", "1.0"))
             try {
                 client.connect(StreamableHttpClientTransport(http, ENDPOINT))
-                assertEquals(28, client.listTools().tools.size)
+                assertEquals(30, client.listTools().tools.size)
                 val search = client.callTool("search_system", mapOf("query" to "Jita"))
                 assertFalse(search.isError == true)
                 val systems = search.structuredContent?.get("systems") as JsonArray
@@ -175,7 +175,7 @@ class PortableHttpMcpResourceTest {
         try {
             waitForPort(connected)
             client.connect(StreamableHttpClientTransport(http, ENDPOINT))
-            assertEquals(28, client.listTools().tools.size)
+            assertEquals(30, client.listTools().tools.size)
             samples += sample("C_ONE_CLIENT_CONNECTED", connected)
         } finally {
             runCatching { client.close() }

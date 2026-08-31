@@ -8,6 +8,13 @@ internal interface McpMapClient : AutoCloseable {
     suspend fun getSystemInfo(systemId: Int): LocalControlClientResult
     suspend fun getSystemMarkers(systemId: Int): LocalControlClientResult
     suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean): LocalControlClientResult
+    suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): LocalControlClientResult = calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
+    suspend fun listWormholes(): LocalControlClientResult = unsupportedWormholeClientResult()
     suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double): LocalControlClientResult
     suspend fun listViews(): LocalControlClientResult = unsupportedViewClientResult()
     suspend fun getCurrentView(): LocalControlClientResult = unsupportedViewClientResult()
@@ -28,12 +35,20 @@ internal interface McpMapClient : AutoCloseable {
         tags: List<String>,
     ): LocalControlClientResult
     suspend fun focusSystem(systemId: Int): LocalControlClientResult
+    suspend fun createWormhole(fromSystemId: Int, toSystemId: Int): LocalControlClientResult = unsupportedWormholeClientResult()
     suspend fun showNormalRoute(
         missionId: String,
         startSystemId: Int,
         destinationSystemId: Int,
         useAnsiblex: Boolean,
     ): LocalControlClientResult
+    suspend fun showNormalRoute(
+        missionId: String,
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): LocalControlClientResult = showNormalRoute(missionId, startSystemId, destinationSystemId, useAnsiblex)
     suspend fun showCapitalRoute(
         missionId: String,
         startSystemId: Int,
@@ -72,6 +87,13 @@ internal class LocalMcpMapClient(
     override suspend fun getSystemMarkers(systemId: Int) = client.getSystemMarkers(systemId)
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
+    override suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex, useWormholes)
+    override suspend fun listWormholes() = client.listWormholes()
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
         client.calculateCapitalRoute(startSystemId, destinationSystemId, effectiveRangeLy)
     override suspend fun listViews() = client.listViews()
@@ -93,12 +115,20 @@ internal class LocalMcpMapClient(
         tags: List<String>,
     ) = client.createSavedMarker(systemId, name, notes, color, tags)
     override suspend fun focusSystem(systemId: Int) = client.focusSystem(systemId)
+    override suspend fun createWormhole(fromSystemId: Int, toSystemId: Int) = client.createWormhole(fromSystemId, toSystemId)
     override suspend fun showNormalRoute(
         missionId: String,
         startSystemId: Int,
         destinationSystemId: Int,
         useAnsiblex: Boolean,
     ) = client.showNormalRoute(missionId, startSystemId, destinationSystemId, useAnsiblex)
+    override suspend fun showNormalRoute(
+        missionId: String,
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = client.showNormalRoute(missionId, startSystemId, destinationSystemId, useAnsiblex, useWormholes)
     override suspend fun showCapitalRoute(
         missionId: String,
         startSystemId: Int,
@@ -132,5 +162,12 @@ private fun unsupportedViewClientResult() = LocalControlClientResult.Failure(
     dev.evestaticmapplanner.control.transport.LocalControlClientError(
         dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.INVALID_ARGUMENT,
         "Planning Views are not supported by this client",
+    ),
+)
+
+private fun unsupportedWormholeClientResult() = LocalControlClientResult.Failure(
+    dev.evestaticmapplanner.control.transport.LocalControlClientError(
+        dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.APP_NOT_READY,
+        "Wormhole session control is unavailable",
     ),
 )

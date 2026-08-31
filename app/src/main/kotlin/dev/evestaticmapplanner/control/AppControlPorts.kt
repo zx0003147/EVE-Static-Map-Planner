@@ -15,6 +15,8 @@ import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteGraphBuilder
 import dev.evestaticmapplanner.core.route.RouteOptions
 import dev.evestaticmapplanner.map.MapViewModel
+import dev.evestaticmapplanner.wormhole.AddWormholeResult
+import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -48,6 +50,7 @@ class RepositorySystemReadPort(
 class ExistingPlanningPorts(
     private val staticMapRepository: StaticMapRepository,
     private val ansiblexRepository: AnsiblexRepository?,
+    private val wormholeSessionStore: WormholeSessionStore,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val calculationDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : RoutePlanningPort, JumpPlanningPort {
@@ -58,6 +61,18 @@ class ExistingPlanningPorts(
         startSystemId: Int,
         destinationSystemId: Int,
         useAnsiblex: Boolean,
+    ): RouteCalculationOutcome = calculateNormalRoute(
+        startSystemId,
+        destinationSystemId,
+        useAnsiblex,
+        useWormholes = false,
+    )
+
+    override suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
     ): RouteCalculationOutcome {
         val (data, enabledSnapshot) = withContext(ioDispatcher) {
             staticMapRepository.load() to if (useAnsiblex) {
@@ -66,12 +81,13 @@ class ExistingPlanningPorts(
                 emptyList()
             }
         }
+        val wormholeSnapshot = if (useWormholes) wormholeSessionStore.connections.value else emptyList()
         return withContext(calculationDispatcher) {
             NormalRouteEngine().calculate(
-                RouteGraphBuilder.build(data, enabledSnapshot),
+                RouteGraphBuilder.build(data, enabledSnapshot, wormholeSnapshot),
                 startSystemId,
                 destinationSystemId,
-                RouteOptions(useAnsiblex),
+                RouteOptions(useAnsiblex = useAnsiblex, useWormholes = useWormholes),
             )
         }
     }
@@ -103,6 +119,35 @@ class ExistingPlanningPorts(
                 CapitalJumpCandidateProvider(UniformGridSystemPositionIndex(staticMapRepository.load().systems))
             }.also { candidateProvider = it }
         }
+    }
+}
+
+class AppWormholeControlAdapter(
+    private val store: WormholeSessionStore,
+) : WormholeControlPort {
+    override suspend fun listWormholes(): List<WormholeConnectionDto> =
+        store.connections.value.map { connection ->
+            WormholeConnectionDto(
+                connectionId = connection.id,
+                firstSystemId = connection.firstSystemId,
+                secondSystemId = connection.secondSystemId,
+            )
+        }
+
+    override suspend fun createWormhole(fromSystemId: Int, toSystemId: Int): WormholeCreatePortResult {
+        val status = when (store.add(fromSystemId, toSystemId)) {
+            AddWormholeResult.CREATED -> WormholeCreateStatus.CREATED
+            AddWormholeResult.ALREADY_EXISTS -> WormholeCreateStatus.ALREADY_EXISTS
+        }
+        val connection = dev.evestaticmapplanner.core.wormhole.WormholeConnection.between(fromSystemId, toSystemId)
+        return WormholeCreatePortResult(
+            connection = WormholeConnectionDto(
+                connectionId = connection.id,
+                firstSystemId = connection.firstSystemId,
+                secondSystemId = connection.secondSystemId,
+            ),
+            status = status,
+        )
     }
 }
 

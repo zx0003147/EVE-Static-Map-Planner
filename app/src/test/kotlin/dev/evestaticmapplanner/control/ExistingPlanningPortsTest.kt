@@ -15,6 +15,7 @@ import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
+import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,6 +31,7 @@ class ExistingPlanningPortsTest {
         val ports = ExistingPlanningPorts(
             StaticMapRepository { staticData() },
             repository,
+            WormholeSessionStore(),
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -48,6 +50,7 @@ class ExistingPlanningPortsTest {
         val ports = ExistingPlanningPorts(
             StaticMapRepository { staticData() },
             null,
+            WormholeSessionStore(),
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -60,6 +63,30 @@ class ExistingPlanningPortsTest {
         assertEquals(listOf(FIRST, SECOND), capital.systems)
         assertEquals(setOf(SECOND), range.reachableSystemIds)
         assertTrue(capital.legs.single().distanceLy < 5.0)
+    }
+
+    @Test
+    fun `normal routing uses current global Wormhole snapshot only when requested`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store = WormholeSessionStore()
+        val ports = ExistingPlanningPorts(
+            StaticMapRepository { staticData() },
+            null,
+            store,
+            ioDispatcher = dispatcher,
+            calculationDispatcher = dispatcher,
+        )
+
+        assertIs<RouteCalculationOutcome.Unreachable>(ports.calculateNormalRoute(FIRST, SECOND, false, false))
+        store.add(FIRST, SECOND)
+        assertIs<RouteCalculationOutcome.Unreachable>(ports.calculateNormalRoute(FIRST, SECOND, false, false))
+        val route = assertIs<RouteCalculationOutcome.Found>(
+            ports.calculateNormalRoute(FIRST, SECOND, false, true),
+        ).route
+
+        assertEquals(1, route.wormholeJumps)
+        assertEquals(0, route.stargateJumps)
+        assertEquals(0, route.ansiblexJumps)
     }
 }
 

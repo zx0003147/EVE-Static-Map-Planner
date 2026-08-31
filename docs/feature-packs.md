@@ -182,7 +182,7 @@ The authoritative local cross-repository acceptance mechanism is Core's existing
 It requires clean `main` worktrees. The runner publishes Feature API `2.0.0` only to Core's generated test repository,
 builds the standalone Sovereignty Pack by coordinate, clean-builds Core without the Pack, runs focused Host and
 generic presentation regressions, supplies the canonical external JAR only to the explicit integration test, and
-enforces the exactly 28-tool MCP catalog. It uses fixtures/LKG data instead of live ESI and performs no remote
+enforces the exactly 30-tool MCP catalog. It uses fixtures/LKG data instead of live ESI and performs no remote
 publication. The external Pack must first update only its Feature API coordinate, manifest, and version expectations
 to runtime contract 2; Feature API v2 deliberately preserves its existing business Kotlin contracts.
 

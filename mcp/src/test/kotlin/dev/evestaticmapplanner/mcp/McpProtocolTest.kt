@@ -1,6 +1,8 @@
 package dev.evestaticmapplanner.mcp
 
 import dev.evestaticmapplanner.control.transport.LocalControlClientResult
+import dev.evestaticmapplanner.control.transport.LocalControlClientError
+import dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode
 import io.modelcontextprotocol.kotlin.sdk.ExperimentalMcpApi
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.testing.ChannelTransport
@@ -42,7 +44,7 @@ class McpProtocolTest {
             assertTrue(capabilities.tasks == null)
             assertTrue(capabilities.experimental == null)
             assertTrue(capabilities.extensions.isNullOrEmpty())
-            assertEquals(28, client.listTools().tools.size)
+            assertEquals(30, client.listTools().tools.size)
 
             val search = client.callTool("search_system", mapOf("query" to "Jita"))
             assertFalse(search.isError == true)
@@ -109,6 +111,70 @@ class McpProtocolTest {
                 ?.get("createdBy")?.jsonPrimitive?.content)
             assertContains(saved.text(), "Saved Marker created successfully.")
 
+            val emptyWormholes = client.callTool("list_wormholes", emptyMap())
+            assertFalse(emptyWormholes.isError == true)
+            assertTrue((emptyWormholes.structuredContent?.get("wormholes") as JsonArray).isEmpty())
+
+            val createdWormhole = client.callTool(
+                "create_wormhole",
+                mapOf("fromSystemId" to 30000143, "toSystemId" to 30000142),
+            )
+            assertFalse(createdWormhole.isError == true)
+            assertEquals("created", createdWormhole.structuredContent?.get("status")?.jsonPrimitive?.content)
+            assertEquals("true", createdWormhole.structuredContent?.get("created")?.jsonPrimitive?.content)
+
+            val duplicateWormhole = client.callTool(
+                "create_wormhole",
+                mapOf("fromSystemId" to 30000142, "toSystemId" to 30000143),
+            )
+            assertFalse(duplicateWormhole.isError == true)
+            assertEquals("already_exists", duplicateWormhole.structuredContent?.get("status")?.jsonPrimitive?.content)
+            assertEquals("false", duplicateWormhole.structuredContent?.get("created")?.jsonPrimitive?.content)
+
+            val listedWormholes = client.callTool("list_wormholes", emptyMap())
+            assertEquals(1, (listedWormholes.structuredContent?.get("wormholes") as JsonArray).size)
+
+            val selfLoop = client.callTool(
+                "create_wormhole",
+                mapOf("fromSystemId" to 30000142, "toSystemId" to 30000142),
+            )
+            assertTrue(selfLoop.isError == true)
+            assertEquals("INVALID_ARGUMENT", selfLoop.structuredContent?.get("error")?.jsonObject?.get("code")?.jsonPrimitive?.content)
+
+            val unknownSystem = client.callTool(
+                "create_wormhole",
+                mapOf("fromSystemId" to 30000142, "toSystemId" to 99999999),
+            )
+            assertTrue(unknownSystem.isError == true)
+            assertEquals("SYSTEM_NOT_FOUND", unknownSystem.structuredContent?.get("error")?.jsonObject?.get("code")?.jsonPrimitive?.content)
+
+            val routeOff = client.callTool(
+                "calculate_normal_route",
+                mapOf("startSystemId" to 30000142, "destinationSystemId" to 30000143, "useAnsiblex" to false),
+            )
+            val routeOn = client.callTool(
+                "calculate_normal_route",
+                mapOf(
+                    "startSystemId" to 30000142, "destinationSystemId" to 30000143,
+                    "useAnsiblex" to false, "useWormholes" to true,
+                ),
+            )
+            assertEquals("0", routeOff.structuredContent?.get("wormholeJumps")?.jsonPrimitive?.content)
+            assertEquals("1", routeOn.structuredContent?.get("wormholeJumps")?.jsonPrimitive?.content)
+
+            val missionRoute = client.callTool(
+                "show_normal_route",
+                mapOf(
+                    "missionId" to "mission-1", "startSystemId" to 30000142,
+                    "destinationSystemId" to 30000143, "useAnsiblex" to false, "useWormholes" to true,
+                ),
+            )
+            assertFalse(missionRoute.isError == true)
+            assertEquals(
+                "1",
+                missionRoute.structuredContent?.get("route")?.jsonObject?.get("wormholeJumps")?.jsonPrimitive?.content,
+            )
+
             val invalid = client.callTool("search_system", mapOf("query" to "Jita", "requestId" to "forbidden"))
             assertTrue(invalid.isError == true)
             assertEquals(buildJsonObject {
@@ -125,7 +191,9 @@ class McpProtocolTest {
             assertEquals(
                 listOf(
                     "search_system", "begin_mission", "get_mission", "show_jump_range",
-                    "get_system_markers", "create_saved_marker",
+                    "get_system_markers", "create_saved_marker", "list_wormholes", "create_wormhole",
+                    "create_wormhole", "list_wormholes", "create_wormhole", "create_wormhole",
+                    "calculate_normal_route", "calculate_normal_route", "show_normal_route",
                 ),
                 mapClient.calls,
             )
@@ -141,6 +209,7 @@ private fun io.modelcontextprotocol.kotlin.sdk.types.CallToolResult.text(): Stri
 
 private class ProtocolMapClient : RecordingProtocolClient() {
     val calls = mutableListOf<String>()
+    private var wormholeCreated = false
 
     override suspend fun searchSystem(query: String): LocalControlClientResult {
         calls += "search_system"
@@ -235,6 +304,75 @@ private class ProtocolMapClient : RecordingProtocolClient() {
             put("reachableSystemCount", 42)
         }, 2)
     }
+
+    override suspend fun listWormholes(): LocalControlClientResult {
+        calls += "list_wormholes"
+        val values = if (wormholeCreated) JsonArray(listOf(wormholeConnection())) else JsonArray(emptyList())
+        return LocalControlClientResult.Success(values, null)
+    }
+
+    override suspend fun createWormhole(fromSystemId: Int, toSystemId: Int): LocalControlClientResult {
+        calls += "create_wormhole"
+        if (fromSystemId == toSystemId) return failure(LocalControlClientErrorCode.INVALID_ARGUMENT)
+        if (setOf(fromSystemId, toSystemId) != setOf(30000142, 30000143)) {
+            return failure(LocalControlClientErrorCode.SYSTEM_NOT_FOUND)
+        }
+        val created = !wormholeCreated
+        wormholeCreated = true
+        return LocalControlClientResult.Success(buildJsonObject {
+            put("connection", wormholeConnection())
+            put("created", created)
+            put("status", if (created) "created" else "already_exists")
+        }, null)
+    }
+
+    override suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): LocalControlClientResult {
+        calls += "calculate_normal_route"
+        return LocalControlClientResult.Success(normalRoute(startSystemId, destinationSystemId, useWormholes), null)
+    }
+
+    override suspend fun showNormalRoute(
+        missionId: String,
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): LocalControlClientResult {
+        calls += "show_normal_route"
+        return LocalControlClientResult.Success(buildJsonObject {
+            put("missionId", missionId)
+            put("routeId", "route-wormhole")
+            put("type", "NORMAL")
+            put("route", normalRoute(startSystemId, destinationSystemId, useWormholes))
+        }, 3)
+    }
+
+    private fun normalRoute(start: Int, destination: Int, useWormholes: Boolean) = buildJsonObject {
+        put("startSystemId", start)
+        put("destinationSystemId", destination)
+        put("systemIds", JsonArray(listOf(JsonPrimitive(start), JsonPrimitive(destination))))
+        put("totalJumps", 1)
+        put("stargateJumps", if (useWormholes) 0 else 1)
+        put("ansiblexJumps", 0)
+        put("wormholeJumps", if (useWormholes) 1 else 0)
+    }
+
+    private fun wormholeConnection() = buildJsonObject {
+        put("connectionId", "wormhole:30000142:30000143")
+        put("firstSystemId", 30000142)
+        put("firstSystemName", "Jita")
+        put("secondSystemId", 30000143)
+        put("secondSystemName", "Perimeter")
+    }
+
+    private fun failure(code: LocalControlClientErrorCode) = LocalControlClientResult.Failure(
+        LocalControlClientError(code, if (code == LocalControlClientErrorCode.SYSTEM_NOT_FOUND) "The solar system was not found." else "The request is invalid."),
+    )
 }
 
 internal open class RecordingProtocolClient : McpMapClient {

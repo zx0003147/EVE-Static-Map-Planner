@@ -29,9 +29,9 @@ internal data class McpToolDefinition(
 
 internal object McpToolCatalog {
     val names = listOf(
-        "search_system", "get_system_info", "get_system_markers", "calculate_normal_route", "calculate_capital_route",
+        "search_system", "get_system_info", "get_system_markers", "list_wormholes", "calculate_normal_route", "calculate_capital_route",
         "list_views", "get_current_view", "create_view", "rename_view", "switch_view", "delete_view",
-        "get_active_missions", "get_mission", "begin_mission", "focus_system", "show_normal_route",
+        "get_active_missions", "get_mission", "begin_mission", "focus_system", "create_wormhole", "show_normal_route",
         "show_capital_route", "remove_mission_route", "clear_mission_routes", "show_jump_range",
         "remove_jump_range", "clear_mission_jump_ranges", "add_mission_marker", "remove_mission_marker",
         "clear_mission_markers", "fit_mission", "clear_mission", "create_saved_marker",
@@ -68,15 +68,31 @@ internal object McpToolCatalog {
             client.getSystemMarkers(input.positiveInt("systemId"))
         },
         queryTool(
-            "calculate_normal_route",
-            "Calculate a normal route with optional Ansiblex edges. This does not display the route or change the map.",
-            routeInput(false, false),
-            objectOutput("startSystemId", "destinationSystemId", "systemIds", "totalJumps", "stargateJumps", "ansiblexJumps"),
+            "list_wormholes",
+            "List all temporary bidirectional Wormhole connections currently known to the application. " +
+                "Wormholes are global for the current application session and disappear when the app exits.",
+            schema(emptyList()),
+            schema(listOf("wormholes"), "wormholes" to arrayProperty()),
+            "wormholes",
         ) { arguments ->
-            val fields = setOf("startSystemId", "destinationSystemId", "useAnsiblex")
-            val input = StrictArguments(arguments, fields, fields)
+            StrictArguments(arguments, emptySet(), emptySet())
+            client.listWormholes()
+        },
+        queryTool(
+            "calculate_normal_route",
+            "Calculate a normal route with optional Ansiblex and Wormhole edges. This does not display the route or change the map.",
+            routeInput(false, false),
+            objectOutput(
+                "startSystemId", "destinationSystemId", "systemIds", "totalJumps", "stargateJumps",
+                "ansiblexJumps", "wormholeJumps",
+            ),
+        ) { arguments ->
+            val allowed = setOf("startSystemId", "destinationSystemId", "useAnsiblex", "useWormholes")
+            val required = setOf("startSystemId", "destinationSystemId", "useAnsiblex")
+            val input = StrictArguments(arguments, allowed, required)
             client.calculateNormalRoute(
                 input.positiveInt("startSystemId"), input.positiveInt("destinationSystemId"), input.boolean("useAnsiblex"),
+                input.optionalBoolean("useWormholes", false),
             )
         },
         queryTool(
@@ -192,17 +208,37 @@ internal object McpToolCatalog {
             client.focusSystem(input.positiveInt("systemId"))
         },
         commandTool(
+            "create_wormhole",
+            "Create one temporary bidirectional Wormhole connection in the global application session. " +
+                "Resolve solar systems with search_system first and pass canonical system IDs. " +
+                "This does not focus the map, switch Views, or calculate a route.",
+            schema(
+                listOf("fromSystemId", "toSystemId"),
+                "fromSystemId" to positiveIntegerProperty(),
+                "toSystemId" to positiveIntegerProperty(),
+            ),
+            objectOutput("connection", "created", "status"),
+            false,
+        ) { arguments ->
+            val fields = setOf("fromSystemId", "toSystemId")
+            val input = StrictArguments(arguments, fields, fields)
+            client.createWormhole(input.positiveInt("fromSystemId"), input.positiveInt("toSystemId"))
+        },
+        commandTool(
             "show_normal_route",
-            "Calculate and display a Mission-owned normal route. Requires an active temporary Mission.",
+            "Calculate and display a Mission-owned normal route using the current global Wormhole topology when requested. " +
+                "Requires an active temporary Mission.",
             routeInput(true, false),
             objectOutput("missionId", "routeId", "type", "route"),
             false,
         ) { arguments ->
-            val fields = setOf("missionId", "startSystemId", "destinationSystemId", "useAnsiblex")
-            val input = StrictArguments(arguments, fields, fields)
+            val allowed = setOf("missionId", "startSystemId", "destinationSystemId", "useAnsiblex", "useWormholes")
+            val required = setOf("missionId", "startSystemId", "destinationSystemId", "useAnsiblex")
+            val input = StrictArguments(arguments, allowed, required)
             client.showNormalRoute(
                 input.opaqueId("missionId"), input.positiveInt("startSystemId"),
                 input.positiveInt("destinationSystemId"), input.boolean("useAnsiblex"),
+                input.optionalBoolean("useWormholes", false),
             )
         },
         commandTool(
@@ -429,6 +465,8 @@ private class StrictArguments(
         ?.takeUnless(JsonPrimitive::isString)?.doubleOrNull?.takeIf { it.isFinite() && it > 0.0 && it <= 20.0 } ?: invalid()
     fun boolean(name: String): Boolean = (values[name] as? JsonPrimitive)
         ?.takeUnless(JsonPrimitive::isString)?.booleanOrNull ?: invalid()
+    fun optionalBoolean(name: String, default: Boolean): Boolean =
+        if (name in values) boolean(name) else default
     fun enum(name: String, allowed: Set<String>): String = primitiveString(name).takeIf { it in allowed } ?: invalid()
     fun optionalEnum(name: String, allowed: Set<String>): String? = if (name in values) enum(name, allowed) else null
     fun optionalEnumArray(name: String, allowed: Set<String>): List<String> {
@@ -525,6 +563,7 @@ private fun routeInput(includeMission: Boolean, capital: Boolean): ToolSchema {
     } else {
         properties += "useAnsiblex" to booleanProperty()
         required += "useAnsiblex"
+        properties += "useWormholes" to booleanProperty(default = false)
     }
     return schema(required, *properties.toTypedArray())
 }
@@ -536,7 +575,10 @@ private fun opaqueIdProperty() = buildJsonObject {
 }
 private fun positiveIntegerProperty() = buildJsonObject { put("type", "integer"); put("minimum", 1) }
 private fun rangeProperty() = buildJsonObject { put("type", "number"); put("exclusiveMinimum", 0); put("maximum", 20) }
-private fun booleanProperty() = buildJsonObject { put("type", "boolean") }
+private fun booleanProperty(default: Boolean? = null) = buildJsonObject {
+    put("type", "boolean")
+    if (default != null) put("default", default)
+}
 private fun arrayProperty() = buildJsonObject { put("type", "array") }
 private fun enumArrayProperty(values: Set<String>) = buildJsonObject {
     put("type", "array")

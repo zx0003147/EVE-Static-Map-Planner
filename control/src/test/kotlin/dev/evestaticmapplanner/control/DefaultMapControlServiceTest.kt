@@ -44,6 +44,7 @@ class DefaultMapControlServiceTest {
             assertEquals(1, capital.value.totalJumps)
             assertTrue(fixture.rendered.isEmpty())
             assertEquals(listOf(true), fixture.routes.normalAnsiblexFlags)
+            assertEquals(listOf(false), fixture.routes.normalWormholeFlags)
         } finally {
             fixture.close()
         }
@@ -291,11 +292,22 @@ private class FakeSystemPort : SystemReadPort {
 
 private class FakeRoutePort : RoutePlanningPort {
     val normalAnsiblexFlags = mutableListOf<Boolean>()
+    val normalWormholeFlags = mutableListOf<Boolean>()
     var capitalCalls = 0
     var normalOutcome: RouteCalculationOutcome = RouteCalculationOutcome.Found(normalRoute())
 
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         normalOutcome.also { normalAnsiblexFlags += useAnsiblex }
+
+    override suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = normalOutcome.also {
+        normalAnsiblexFlags += useAnsiblex
+        normalWormholeFlags += useWormholes
+    }
 
     override suspend fun calculateCapitalRoute(
         startSystemId: Int,

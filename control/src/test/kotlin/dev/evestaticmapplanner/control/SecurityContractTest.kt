@@ -21,6 +21,7 @@ class SecurityContractTest {
                 "removeJumpRange", "clearMissionJumpRanges", "addMissionMarker", "removeMissionMarker",
                 "clearMissionMarkers", "fitMission", "clearMission",
                 "listViews", "getCurrentView", "createView", "renameView", "switchView", "deleteView",
+                "listWormholes", "createWormhole",
             ),
             operations,
         )
@@ -53,5 +54,15 @@ class SecurityContractTest {
             listOf("update", "delete", "remove", "clear", "replace").any { it in operation.lowercase() }
         })
         assertEquals(6, MissionMarkerRole.entries.size)
+
+        val wormholeOperations = MapControlService::class.java.declaredMethods
+            .filterNot { it.isSynthetic }
+            .map { it.name }
+            .filter { it.contains("Wormhole", true) }
+            .toSet()
+        assertEquals(setOf("listWormholes", "createWormhole"), wormholeOperations)
+        assertFalse(wormholeOperations.any { operation ->
+            listOf("update", "delete", "remove", "clear", "replace").any { it in operation.lowercase() }
+        })
     }
 }

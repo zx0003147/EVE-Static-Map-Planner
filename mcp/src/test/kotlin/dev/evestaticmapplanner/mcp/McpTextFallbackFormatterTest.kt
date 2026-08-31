@@ -45,6 +45,7 @@ class McpTextFallbackFormatterTest {
             put("totalJumps", 23)
             put("stargateJumps", 21)
             put("ansiblexJumps", 2)
+            put("wormholeJumps", 0)
         }
 
         val text = McpTextFallbackFormatter.format("calculate_normal_route", result)
@@ -54,9 +55,38 @@ class McpTextFallbackFormatterTest {
         assertContains(text, "To (system ID):\n24")
         assertContains(text, "Jumps:\n23")
         assertContains(text, "Route type:\nNORMAL")
+        assertContains(text, "Wormhole jumps:\n0")
         assertContains(text, "systems omitted")
         assertContains(text, "1 -> 2")
         assertTrue(text.endsWith("23 -> 24"))
+    }
+
+    @Test
+    fun `Wormhole list and duplicate create summaries are human readable`() {
+        val connection = buildJsonObject {
+            put("connectionId", "wormhole:1:2")
+            put("firstSystemId", 1)
+            put("firstSystemName", "One")
+            put("secondSystemId", 2)
+            put("secondSystemName", "Two")
+        }
+        val listed = McpTextFallbackFormatter.format(
+            "list_wormholes",
+            buildJsonObject { put("wormholes", buildJsonArray { add(connection) }) },
+        )
+        val duplicate = McpTextFallbackFormatter.format(
+            "create_wormhole",
+            buildJsonObject {
+                put("connection", connection)
+                put("created", false)
+                put("status", "already_exists")
+            },
+        )
+
+        assertContains(listed, "Found 1 temporary Wormhole connection.")
+        assertContains(listed, "One (1)")
+        assertContains(duplicate, "already exists")
+        assertContains(duplicate, "already_exists")
     }
 
     @Test

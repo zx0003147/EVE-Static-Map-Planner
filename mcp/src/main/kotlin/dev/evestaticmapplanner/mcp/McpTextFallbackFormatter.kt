@@ -20,12 +20,14 @@ internal object McpTextFallbackFormatter {
             "search_system" -> formatSystemSearch(structuredContent)
             "get_system_info" -> formatSystemInfo(structuredContent)
             "get_system_markers" -> formatSystemMarkers(structuredContent)
+            "list_wormholes" -> formatWormholes(structuredContent)
             "calculate_normal_route" -> formatRoute(structuredContent, "NORMAL", "Route calculated.")
             "calculate_capital_route" -> formatRoute(structuredContent, "CAPITAL", "Route calculated.")
             "get_active_missions" -> formatActiveMissions(structuredContent)
             "get_mission" -> formatMission(structuredContent)
             "begin_mission" -> formatMutation("Mission created successfully.", structuredContent)
             "focus_system" -> formatMutation("Map focused successfully.", structuredContent)
+            "create_wormhole" -> formatCreatedWormhole(structuredContent)
             "show_normal_route", "show_capital_route" -> formatDisplayedRoute(structuredContent)
             "remove_mission_route" -> formatMutation("Mission route removed successfully.", structuredContent)
             "clear_mission_routes" -> formatMutation("Mission routes cleared successfully.", structuredContent)
@@ -158,6 +160,45 @@ internal object McpTextFallbackFormatter {
         }.trimEnd()
     }
 
+    private fun formatWormholes(content: JsonObject): String {
+        val wormholes = content.array("wormholes")
+        if (wormholes.isEmpty()) return "No temporary Wormhole connections are active."
+        return buildString {
+            appendLine("Found ${wormholes.size} temporary Wormhole ${if (wormholes.size == 1) "connection" else "connections"}.")
+            wormholes.take(MAX_MISSION_ITEMS).forEach { element ->
+                val connection = element as? JsonObject ?: return@forEach
+                appendLine()
+                appendField("Connection ID", connection.text("connectionId"))
+                appendField("First system", endpoint(connection, "first"))
+                appendField("Second system", endpoint(connection, "second"))
+            }
+            appendOmitted(wormholes.size - MAX_MISSION_ITEMS, "Wormhole connections")
+        }.trimEnd()
+    }
+
+    private fun formatCreatedWormhole(content: JsonObject): String {
+        val connection = content.obj("connection") ?: JsonObject(emptyMap())
+        val heading = if (content.text("created") == "true") {
+            "Wormhole connection created successfully."
+        } else {
+            "Wormhole connection already exists."
+        }
+        return buildString {
+            appendLine(heading)
+            appendLine()
+            appendField("Status", content.text("status"))
+            appendField("Connection ID", connection.text("connectionId"))
+            appendField("First system", endpoint(connection, "first"))
+            appendField("Second system", endpoint(connection, "second"))
+        }.trimEnd()
+    }
+
+    private fun endpoint(connection: JsonObject, prefix: String): String? {
+        val name = connection.text("${prefix}SystemName")
+        val id = connection.text("${prefix}SystemId") ?: return name
+        return if (name == null) id else "$name ($id)"
+    }
+
     private fun StringBuilder.appendMarkerFields(marker: JsonObject) {
         appendField("System ID", marker.text("systemId"))
         appendField("Name", marker.text("name"))
@@ -175,6 +216,7 @@ internal object McpTextFallbackFormatter {
         if (routeType == "NORMAL") {
             appendField("Stargate jumps", content.text("stargateJumps"))
             appendField("Ansiblex jumps", content.text("ansiblexJumps"))
+            appendField("Wormhole jumps", content.text("wormholeJumps"))
         } else {
             appendField("Effective range", content.text("effectiveRangeLy")?.let { "$it LY" })
             appendField("Total distance", content.text("totalDistanceLy")?.let { "$it LY" })

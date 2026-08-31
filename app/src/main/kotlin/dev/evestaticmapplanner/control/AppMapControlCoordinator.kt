@@ -10,6 +10,7 @@ class AppMapControlCoordinator(
     viewportControlPort: ViewportControlPort,
     missionRenderStatePort: MissionRenderStatePort,
     savedMarkerControlPort: SavedMarkerControlPort,
+    wormholeControlPort: WormholeControlPort,
     planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
     scope: CoroutineScope,
     private val service: DefaultMapControlService = DefaultMapControlService(
@@ -20,6 +21,7 @@ class AppMapControlCoordinator(
         missionRenderStatePort = missionRenderStatePort,
         savedMarkerControlPort = savedMarkerControlPort,
         planningViewControlPort = planningViewControlPort,
+        wormholeControlPort = wormholeControlPort,
         registry = MissionRegistry(),
         scope = scope,
     ),

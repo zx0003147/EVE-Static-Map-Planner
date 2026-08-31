@@ -17,12 +17,12 @@ import kotlin.test.assertTrue
 
 class McpToolCatalogTest {
     @Test
-    fun `capability surface is exactly the fixed twenty eight tools`() {
+    fun `capability surface is exactly the fixed thirty tools`() {
         val client = RecordingClient()
         val definitions = McpToolCatalog.definitions(client)
         val server = createMcpServer(client)
 
-        assertEquals(28, definitions.size)
+        assertEquals(30, definitions.size)
         assertEquals(McpToolCatalog.names, definitions.map { it.tool.name })
         assertEquals(McpToolCatalog.names.toSet(), server.tools.keys)
         assertTrue(server.resources.isEmpty())
@@ -39,6 +39,9 @@ class McpToolCatalogTest {
             }.toSet(),
         )
         listOf("update_saved_marker", "delete_saved_marker", "clear_saved_markers", "replace_saved_marker")
+            .forEach { assertFalse(it in McpToolCatalog.names, it) }
+        assertEquals(setOf("list_wormholes", "create_wormhole"), McpToolCatalog.names.filter { "wormhole" in it }.toSet())
+        listOf("remove_wormhole", "delete_wormhole", "clear_wormholes", "clear_all_wormholes", "replace_wormholes")
             .forEach { assertFalse(it in McpToolCatalog.names, it) }
         runBlocking { server.close() }
     }
@@ -141,12 +144,41 @@ class McpToolCatalogTest {
         )
         assertEquals(listOf("STAGING", "STRATEGIC"), client.createdTags)
     }
+
+    @Test
+    fun `Wormhole schemas are create-only and route options default false`() = runBlocking {
+        val client = RecordingClient()
+        val definitions = McpToolCatalog.definitions(client).associateBy { it.tool.name }
+        val list = definitions.getValue("list_wormholes").tool
+        val create = definitions.getValue("create_wormhole").tool
+        val calculate = definitions.getValue("calculate_normal_route")
+        val show = definitions.getValue("show_normal_route")
+
+        assertTrue(list.inputSchema.properties.orEmpty().isEmpty())
+        assertEquals(setOf("fromSystemId", "toSystemId"), create.inputSchema.properties.orEmpty().keys)
+        assertEquals(listOf("fromSystemId", "toSystemId"), create.inputSchema.required)
+        assertTrue(create.description.orEmpty().contains("search_system"))
+        val wormholeOption = assertIs<JsonObject>(
+            calculate.tool.inputSchema.properties.orEmpty().getValue("useWormholes"),
+        )
+        assertEquals(false, assertIs<JsonPrimitive>(wormholeOption.getValue("default")).content.toBoolean())
+
+        calculate.invoke(JsonObject(validArguments.getValue("calculate_normal_route")))
+        assertEquals(false, client.lastUseWormholes)
+        calculate.invoke(JsonObject(validArguments.getValue("calculate_normal_route") + ("useWormholes" to JsonPrimitive(true))))
+        assertEquals(true, client.lastUseWormholes)
+        show.invoke(JsonObject(validArguments.getValue("show_normal_route")))
+        assertEquals(false, client.lastUseWormholes)
+        show.invoke(JsonObject(validArguments.getValue("show_normal_route") + ("useWormholes" to JsonPrimitive(true))))
+        assertEquals(true, client.lastUseWormholes)
+    }
 }
 
 private val validArguments: Map<String, Map<String, kotlinx.serialization.json.JsonElement>> = mapOf(
     "search_system" to mapOf("query" to JsonPrimitive("Jita")),
     "get_system_info" to mapOf("systemId" to JsonPrimitive(30000142)),
     "get_system_markers" to mapOf("systemId" to JsonPrimitive(30000142)),
+    "list_wormholes" to emptyMap(),
     "calculate_normal_route" to mapOf(
         "startSystemId" to JsonPrimitive(1), "destinationSystemId" to JsonPrimitive(2), "useAnsiblex" to JsonPrimitive(false),
     ),
@@ -163,6 +195,7 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
     "get_mission" to mapOf("missionId" to JsonPrimitive("m1")),
     "begin_mission" to mapOf("title" to JsonPrimitive("Operation")),
     "focus_system" to mapOf("systemId" to JsonPrimitive(1)),
+    "create_wormhole" to mapOf("fromSystemId" to JsonPrimitive(1), "toSystemId" to JsonPrimitive(2)),
     "show_normal_route" to mapOf(
         "missionId" to JsonPrimitive("m1"), "startSystemId" to JsonPrimitive(1),
         "destinationSystemId" to JsonPrimitive(2), "useAnsiblex" to JsonPrimitive(false),
@@ -194,6 +227,7 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
 private class RecordingClient : McpMapClient {
     var called: String? = null
     var createdTags: List<String>? = null
+    var lastUseWormholes: Boolean? = null
 
     private fun result(name: String): LocalControlClientResult {
         called = name
@@ -203,8 +237,15 @@ private class RecordingClient : McpMapClient {
     override suspend fun searchSystem(query: String) = result("search_system")
     override suspend fun getSystemInfo(systemId: Int) = result("get_system_info")
     override suspend fun getSystemMarkers(systemId: Int) = result("get_system_markers")
+    override suspend fun listWormholes() = result("list_wormholes")
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         result("calculate_normal_route")
+    override suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = result("calculate_normal_route").also { lastUseWormholes = useWormholes }
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
         result("calculate_capital_route")
     override suspend fun listViews() = result("list_views")
@@ -227,8 +268,16 @@ private class RecordingClient : McpMapClient {
         return result("create_saved_marker")
     }
     override suspend fun focusSystem(systemId: Int) = result("focus_system")
+    override suspend fun createWormhole(fromSystemId: Int, toSystemId: Int) = result("create_wormhole")
     override suspend fun showNormalRoute(missionId: String, startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         result("show_normal_route")
+    override suspend fun showNormalRoute(
+        missionId: String,
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = result("show_normal_route").also { lastUseWormholes = useWormholes }
     override suspend fun showCapitalRoute(
         missionId: String,
         startSystemId: Int,

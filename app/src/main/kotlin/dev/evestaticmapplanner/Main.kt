@@ -25,6 +25,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
+import dev.evestaticmapplanner.control.AppWormholeControlAdapter
 import dev.evestaticmapplanner.control.AiSavedMarkerControlAdapter
 import dev.evestaticmapplanner.control.AiMapControlLifecycleController
 import dev.evestaticmapplanner.control.AppAiControlSession
@@ -297,6 +298,7 @@ private fun FrameWindowScope.ReadyApplication(
         val planningPorts = ExistingPlanningPorts(
             staticMapRepository = staticRepository,
             ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
+            wormholeSessionStore = wormholeSessionStore,
         )
         val systemReadPort = RepositorySystemReadPort(
             searchRepository,
@@ -313,6 +315,7 @@ private fun FrameWindowScope.ReadyApplication(
                     viewportControlPort = MapViewportControlAdapter(mapViewModel),
                     missionRenderStatePort = missionMapStateStore,
                     savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
+                    wormholeControlPort = AppWormholeControlAdapter(wormholeSessionStore),
                     planningViewControlPort = dev.evestaticmapplanner.view.PlanningViewControlAdapter(planningViewCoordinator),
                     scope = sessionScope,
                 )

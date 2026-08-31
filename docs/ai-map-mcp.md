@@ -1,6 +1,6 @@
 # AI Map MCP transports
 
-EVE Static Map Planner exposes the same fixed 28-tool MCP server through two local transports:
+EVE Static Map Planner exposes the same fixed 30-tool MCP server through two local transports:
 
 ```text
 Streamable HTTP client -> http://127.0.0.1:27892/mcp -> MCP server in the Map JVM
@@ -137,12 +137,13 @@ elsewhere, repeat the registration with the new launcher path.
 
 ## Fixed tool surface
 
-The server exposes exactly these 28 tools:
+The server exposes exactly these 30 tools:
 
 ```text
 search_system
 get_system_info
 get_system_markers
+list_wormholes
 calculate_normal_route
 calculate_capital_route
 list_views
@@ -155,6 +156,7 @@ get_active_missions
 get_mission
 begin_mission
 focus_system
+create_wormhole
 show_normal_route
 show_capital_route
 remove_mission_route
@@ -169,6 +171,18 @@ fit_mission
 clear_mission
 create_saved_marker
 ```
+
+`list_wormholes` reads every temporary bidirectional Wormhole connection in deterministic canonical order.
+`create_wormhole` accepts `fromSystemId` and `toSystemId`; callers should resolve both endpoints with
+`search_system` first. A reverse-direction duplicate returns `created: false` and `status: already_exists` rather than
+an error. Self-loops and unknown systems are rejected. Wormholes are session-only global facts shared by every
+Planning View and disappear when the app exits. AI can list and create them, but the Control and MCP surfaces expose
+no Wormhole update, remove, delete, clear, replace, or persistence capability.
+
+`calculate_normal_route` and `show_normal_route` accept optional `useWormholes`; omission is backward-compatible and
+means `false`. Normal-route output includes `wormholeJumps`, and the total remains the sum of Stargate, Ansiblex, and
+Wormhole jumps. Creating a Wormhole updates the shared topology without focusing the map, switching Views, changing a
+View's `Use Wormholes` preference, or recalculating an existing user route.
 
 `get_system_markers` aggregates the persistent Saved Marker and current View's AI Mission Markers for one canonical `systemId`. `create_saved_marker` accepts `systemId`, a supported `color`, optional `name`/`notes`, and optional supported initial `tags`. Marker and initial tags are committed atomically; application code always records AI provenance. The tool cannot modify tags on an existing Saved Marker. Both operations use `LocalControlClient` and Control API v2. They never read storage directly, and Saved Marker access must be enabled in Preferences.
 

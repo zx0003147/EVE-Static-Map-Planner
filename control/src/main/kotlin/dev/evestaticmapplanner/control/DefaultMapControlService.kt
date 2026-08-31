@@ -24,6 +24,7 @@ class DefaultMapControlService(
     private val registry: MissionRegistry = MissionRegistry(),
     private val savedMarkerControlPort: SavedMarkerControlPort = DeniedSavedMarkerControlPort,
     private val planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
+    private val wormholeControlPort: WormholeControlPort = UnavailableWormholeControlPort,
 ) : MapControlService, AutoCloseable {
     private val dispatcher = MapControlCommandDispatcher(scope)
     private val idempotency = IdempotencyCache()
@@ -84,8 +85,22 @@ class DefaultMapControlService(
                     request.startSystemId,
                     request.destinationSystemId,
                     request.useAnsiblex,
+                    request.useWormholes,
                 ).requireRoute().toDto()
             }
+        }
+
+    override suspend fun listWormholes(request: ListWormholesRequest): ControlResult<List<WormholeConnectionDto>> =
+        query(request.requestId) {
+            validateRequestId(request.requestId)
+            val result = mutableListOf<WormholeConnectionDto>()
+            val ordered = wormholeControlPort.listWormholes().sortedWith(
+                compareBy(WormholeConnectionDto::firstSystemId, WormholeConnectionDto::secondSystemId),
+            )
+            for (connection in ordered) {
+                result += withSystemNames(connection)
+            }
+            result
         }
 
     override suspend fun calculateCapitalRoute(request: CalculateCapitalRouteRequest): ControlResult<CapitalRouteDto> =
@@ -208,10 +223,40 @@ class DefaultMapControlService(
         success(command.requestId, system)
     }
 
+    override suspend fun createWormhole(command: CreateWormholeCommand): ControlResult<CreateWormholeReceipt> = mutation(
+        "createWormhole",
+        command,
+        listOf(
+            minOf(command.fromSystemId, command.toSystemId),
+            maxOf(command.fromSystemId, command.toSystemId),
+        ),
+    ) {
+        validateSystemId(command.fromSystemId)
+        validateSystemId(command.toSystemId)
+        if (command.fromSystemId == command.toSystemId) invalid("Wormhole endpoints must be different solar systems")
+        requireExistingSystem(command.fromSystemId)
+        requireExistingSystem(command.toSystemId)
+        val result = wormholeControlPort.createWormhole(command.fromSystemId, command.toSystemId)
+        success(
+            command.requestId,
+            CreateWormholeReceipt(
+                connection = withSystemNames(result.connection),
+                created = result.status == WormholeCreateStatus.CREATED,
+                status = result.status.name.lowercase(),
+            ),
+        )
+    }
+
     override suspend fun showNormalRoute(command: ShowNormalRouteCommand): ControlResult<MissionRouteReceipt> = mutation(
         "showNormalRoute",
         command,
-        listOf(command.missionId, command.startSystemId, command.destinationSystemId, command.useAnsiblex),
+        listOf(
+            command.missionId,
+            command.startSystemId,
+            command.destinationSystemId,
+            command.useAnsiblex,
+            command.useWormholes,
+        ),
     ) {
         validateSystemId(command.startSystemId)
         validateSystemId(command.destinationSystemId)
@@ -220,6 +265,7 @@ class DefaultMapControlService(
             command.startSystemId,
             command.destinationSystemId,
             command.useAnsiblex,
+            command.useWormholes,
         ).requireRoute()
         val owned = registry.addNormalRoute(command.missionId, route)
         publishMissions()
@@ -432,6 +478,15 @@ class DefaultMapControlService(
             limit("The mission route limit has been reached")
         }
     }
+
+    private suspend fun requireExistingSystem(systemId: Int): SystemSummaryDto =
+        systemReadPort.getSystemInfo(systemId)?.system
+            ?: throw ControlFailure(ControlErrorCode.SYSTEM_NOT_FOUND, "Solar system was not found")
+
+    private suspend fun withSystemNames(connection: WormholeConnectionDto): WormholeConnectionDto = connection.copy(
+        firstSystemName = requireExistingSystem(connection.firstSystemId).name,
+        secondSystemName = requireExistingSystem(connection.secondSystemId).name,
+    )
 }
 
 class ControlPortFailure(val code: ControlErrorCode, override val message: String) : RuntimeException(message)
@@ -497,6 +552,7 @@ private fun RouteResult.toDto() = NormalRouteDto(
     totalJumps,
     stargateJumps,
     ansiblexJumps,
+    wormholeJumps,
 )
 
 private fun CapitalRouteResult.toDto() = CapitalRouteDto(

@@ -108,13 +108,19 @@ class LocalControlClient internal constructor(
         startSystemId: Int,
         destinationSystemId: Int,
         useAnsiblex: Boolean,
+        useWormholes: Boolean = false,
     ): LocalControlClientResult = query(LocalControlOperation.NORMAL_ROUTE) { requestId ->
         buildJsonObject {
             put("requestId", requestId)
             put("startSystemId", startSystemId)
             put("destinationSystemId", destinationSystemId)
             put("useAnsiblex", useAnsiblex)
+            put("useWormholes", useWormholes)
         }
+    }
+
+    suspend fun listWormholes(): LocalControlClientResult = query(LocalControlOperation.LIST_WORMHOLES) { requestId ->
+        buildJsonObject { put("requestId", requestId) }
     }
 
     suspend fun calculateCapitalRoute(
@@ -195,17 +201,27 @@ class LocalControlClient internal constructor(
         ids.body { put("systemId", systemId) }
     }
 
+    suspend fun createWormhole(fromSystemId: Int, toSystemId: Int): LocalControlClientResult =
+        mutation(LocalControlOperation.CREATE_WORMHOLE) { ids ->
+            ids.body {
+                put("fromSystemId", fromSystemId)
+                put("toSystemId", toSystemId)
+            }
+        }
+
     suspend fun showNormalRoute(
         missionId: String,
         startSystemId: Int,
         destinationSystemId: Int,
         useAnsiblex: Boolean,
+        useWormholes: Boolean = false,
     ): LocalControlClientResult = mutation(LocalControlOperation.SHOW_NORMAL_ROUTE) { ids ->
         ids.body {
             put("missionId", missionId)
             put("startSystemId", startSystemId)
             put("destinationSystemId", destinationSystemId)
             put("useAnsiblex", useAnsiblex)
+            put("useWormholes", useWormholes)
         }
     }
 

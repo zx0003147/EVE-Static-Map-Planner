@@ -36,8 +36,8 @@ class LocalControlEndpointContractTest {
 
         assertTrue(LocalControlOperation.allowedPaths.all { it.startsWith("/v1/") })
         assertEquals(LocalControlOperation.entries.size, LocalControlOperation.allowedPaths.size)
-        assertEquals(9, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
-        assertEquals(19, LocalControlOperation.entries.count(LocalControlOperation::mutation))
+        assertEquals(10, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
+        assertEquals(20, LocalControlOperation.entries.count(LocalControlOperation::mutation))
         val savedMarkerOperations = LocalControlOperation.entries.filter {
             it.path.contains("saved-marker") || it.serviceMethod == "getSystemMarkers"
         }
@@ -45,5 +45,15 @@ class LocalControlEndpointContractTest {
             setOf(LocalControlOperation.SYSTEM_MARKERS, LocalControlOperation.CREATE_SAVED_MARKER),
             savedMarkerOperations.toSet(),
         )
+        val wormholeOperations = LocalControlOperation.entries.filter {
+            it.path.contains("wormhole") || it.serviceMethod?.contains("Wormhole") == true
+        }
+        assertEquals(
+            setOf(LocalControlOperation.LIST_WORMHOLES, LocalControlOperation.CREATE_WORMHOLE),
+            wormholeOperations.toSet(),
+        )
+        listOf("remove", "delete", "clear", "replace").forEach { forbidden ->
+            assertFalse(wormholeOperations.any { forbidden in it.path || forbidden in it.serviceMethod.orEmpty().lowercase() })
+        }
     }
 }

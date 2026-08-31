@@ -16,7 +16,9 @@ Ansiblex, or capital-routing engines.
 
 ## AI and localhost HTTP MCP
 
-- The fixed catalog contains 28 tools, including list/get/create/rename/switch/delete View operations.
+- The fixed catalog contains 30 tools, including View operations and global session Wormhole list/create.
+- AI can list and create temporary Wormholes but has no Wormhole delete or clear capability. Normal-route query and
+  Mission tools accept optional `useWormholes=false` and report `wormholeJumps`.
 - Mission creation and listing accept an optional stable `viewId`; omission means the currently displayed View.
 - The EVE Map Assistant resolves unique View labels case-insensitively and sends stable IDs to the Map.
 - Plugin transport is unchanged: the running Map hosts `http://127.0.0.1:27892/mcp` on IPv4 loopback.

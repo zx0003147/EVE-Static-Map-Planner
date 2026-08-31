@@ -41,11 +41,43 @@ interface RoutePlanningPort {
         useAnsiblex: Boolean,
     ): RouteCalculationOutcome
 
+    suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        destinationSystemId: Int,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): RouteCalculationOutcome = calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
+
     suspend fun calculateCapitalRoute(
         startSystemId: Int,
         destinationSystemId: Int,
         effectiveRangeLy: Double,
     ): CapitalRouteOutcome
+}
+
+enum class WormholeCreateStatus {
+    CREATED,
+    ALREADY_EXISTS,
+}
+
+data class WormholeCreatePortResult(
+    val connection: WormholeConnectionDto,
+    val status: WormholeCreateStatus,
+)
+
+interface WormholeControlPort {
+    suspend fun listWormholes(): List<WormholeConnectionDto>
+    suspend fun createWormhole(fromSystemId: Int, toSystemId: Int): WormholeCreatePortResult
+}
+
+object UnavailableWormholeControlPort : WormholeControlPort {
+    override suspend fun listWormholes(): List<WormholeConnectionDto> = unavailable()
+    override suspend fun createWormhole(fromSystemId: Int, toSystemId: Int): WormholeCreatePortResult = unavailable()
+
+    private fun unavailable(): Nothing = throw ControlPortFailure(
+        ControlErrorCode.APP_NOT_READY,
+        "Wormhole session control is unavailable",
+    )
 }
 
 fun interface JumpPlanningPort {

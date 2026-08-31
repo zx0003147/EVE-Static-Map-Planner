@@ -14,6 +14,8 @@ import dev.evestaticmapplanner.control.ControlErrorCode
 import dev.evestaticmapplanner.control.ControlResult
 import dev.evestaticmapplanner.control.CreateSavedMarkerCommand
 import dev.evestaticmapplanner.control.CreateSavedMarkerReceipt
+import dev.evestaticmapplanner.control.CreateWormholeCommand
+import dev.evestaticmapplanner.control.CreateWormholeReceipt
 import dev.evestaticmapplanner.control.CreateViewCommand
 import dev.evestaticmapplanner.control.DeleteViewCommand
 import dev.evestaticmapplanner.control.FitMissionCommand
@@ -25,6 +27,7 @@ import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.GetSystemMarkersRequest
 import dev.evestaticmapplanner.control.MapControlService
 import dev.evestaticmapplanner.control.ListViewsRequest
+import dev.evestaticmapplanner.control.ListWormholesRequest
 import dev.evestaticmapplanner.control.MissionJumpRangeReceipt
 import dev.evestaticmapplanner.control.MissionMarkerReceipt
 import dev.evestaticmapplanner.control.MissionMutationReceipt
@@ -43,6 +46,7 @@ import dev.evestaticmapplanner.control.ShowNormalRouteCommand
 import dev.evestaticmapplanner.control.SystemInfoDto
 import dev.evestaticmapplanner.control.SystemMarkersDto
 import dev.evestaticmapplanner.control.SystemSummaryDto
+import dev.evestaticmapplanner.control.WormholeConnectionDto
 import dev.evestaticmapplanner.control.SwitchViewCommand
 import dev.evestaticmapplanner.control.mission.Mission
 import dev.evestaticmapplanner.control.mission.MissionId
@@ -136,7 +140,10 @@ internal class LocalControlJsonCodec {
             )
         }
         LocalControlOperation.NORMAL_ROUTE -> {
-            request.requireFields(setOf("requestId", "startSystemId", "destinationSystemId", "useAnsiblex"))
+            request.requireFields(
+                setOf("requestId", "startSystemId", "destinationSystemId", "useAnsiblex", "useWormholes"),
+                setOf("requestId", "startSystemId", "destinationSystemId", "useAnsiblex"),
+            )
             controlResponse(
                 service.calculateNormalRoute(
                     CalculateNormalRouteRequest(
@@ -144,9 +151,17 @@ internal class LocalControlJsonCodec {
                         request.int("startSystemId"),
                         request.int("destinationSystemId"),
                         request.boolean("useAnsiblex"),
+                        request.optionalBoolean("useWormholes") ?: false,
                     ),
                 ),
                 ::normalRouteJson,
+            )
+        }
+        LocalControlOperation.LIST_WORMHOLES -> {
+            request.requireFields(setOf("requestId"))
+            controlResponse(
+                service.listWormholes(ListWormholesRequest(request.requestId())),
+                valueEncoder = { list -> JsonArray(list.map(::wormholeConnectionJson)) },
             )
         }
         LocalControlOperation.CAPITAL_ROUTE -> {
@@ -251,8 +266,26 @@ internal class LocalControlJsonCodec {
                 ::systemSummaryJson,
             )
         }
+        LocalControlOperation.CREATE_WORMHOLE -> {
+            request.requireFields(setOf("requestId", "idempotencyKey", "fromSystemId", "toSystemId"))
+            controlResponse(
+                service.createWormhole(
+                    CreateWormholeCommand(
+                        request.requestId(),
+                        request.idempotencyKey(),
+                        request.int("fromSystemId"),
+                        request.int("toSystemId"),
+                    ),
+                ),
+                ::createWormholeReceiptJson,
+            )
+        }
         LocalControlOperation.SHOW_NORMAL_ROUTE -> {
             request.requireFields(
+                setOf(
+                    "requestId", "idempotencyKey", "missionId", "startSystemId", "destinationSystemId",
+                    "useAnsiblex", "useWormholes",
+                ),
                 setOf("requestId", "idempotencyKey", "missionId", "startSystemId", "destinationSystemId", "useAnsiblex"),
             )
             controlResponse(
@@ -260,6 +293,7 @@ internal class LocalControlJsonCodec {
                     ShowNormalRouteCommand(
                         request.requestId(), request.idempotencyKey(), request.missionId(),
                         request.int("startSystemId"), request.int("destinationSystemId"), request.boolean("useAnsiblex"),
+                        request.optionalBoolean("useWormholes") ?: false,
                     ),
                 ),
                 ::missionRouteReceiptJson,
@@ -501,6 +535,12 @@ private fun JsonObject.double(name: String): Double =
 private fun JsonObject.boolean(name: String): Boolean =
     (this[name] as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.booleanOrNull ?: invalid()
 
+private fun JsonObject.optionalBoolean(name: String): Boolean? = when (val value = this[name]) {
+    null -> null
+    is JsonPrimitive -> value.takeUnless(JsonPrimitive::isString)?.booleanOrNull ?: invalid()
+    else -> invalid()
+}
+
 private fun <T> JsonObject.enum(name: String, parse: (String) -> T): T =
     runCatching { parse(string(name)) }.getOrElse { invalid() }
 
@@ -618,6 +658,21 @@ private fun normalRouteJson(value: NormalRouteDto) = buildJsonObject {
     put("totalJumps", value.totalJumps)
     put("stargateJumps", value.stargateJumps)
     put("ansiblexJumps", value.ansiblexJumps)
+    put("wormholeJumps", value.wormholeJumps)
+}
+
+private fun wormholeConnectionJson(value: WormholeConnectionDto) = buildJsonObject {
+    put("connectionId", value.connectionId)
+    put("firstSystemId", value.firstSystemId)
+    put("firstSystemName", value.firstSystemName?.let(::JsonPrimitive) ?: JsonNull)
+    put("secondSystemId", value.secondSystemId)
+    put("secondSystemName", value.secondSystemName?.let(::JsonPrimitive) ?: JsonNull)
+}
+
+private fun createWormholeReceiptJson(value: CreateWormholeReceipt) = buildJsonObject {
+    put("connection", wormholeConnectionJson(value.connection))
+    put("created", value.created)
+    put("status", value.status)
 }
 
 private fun capitalRouteJson(value: CapitalRouteDto) = buildJsonObject {
@@ -751,6 +806,7 @@ private fun dev.evestaticmapplanner.core.route.RouteResult.toControlDto() = Norm
     totalJumps,
     stargateJumps,
     ansiblexJumps,
+    wormholeJumps,
 )
 
 private fun dev.evestaticmapplanner.core.route.CapitalRouteResult.toControlDto() = CapitalRouteDto(

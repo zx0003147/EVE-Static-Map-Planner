@@ -72,6 +72,21 @@ data class NormalRouteDto(
     val totalJumps: Int,
     val stargateJumps: Int,
     val ansiblexJumps: Int,
+    val wormholeJumps: Int = 0,
+)
+
+data class WormholeConnectionDto(
+    val connectionId: String,
+    val firstSystemId: Int,
+    val secondSystemId: Int,
+    val firstSystemName: String? = null,
+    val secondSystemName: String? = null,
+)
+
+data class CreateWormholeReceipt(
+    val connection: WormholeConnectionDto,
+    val created: Boolean,
+    val status: String,
 )
 
 data class CapitalRouteLegDto(
@@ -195,7 +210,9 @@ data class CalculateNormalRouteRequest(
     val startSystemId: Int,
     val destinationSystemId: Int,
     val useAnsiblex: Boolean,
+    val useWormholes: Boolean = false,
 ) : QueryRequest
+data class ListWormholesRequest(override val requestId: String) : QueryRequest
 data class CalculateCapitalRouteRequest(
     override val requestId: String,
     val startSystemId: Int,
@@ -248,6 +265,12 @@ data class FocusSystemCommand(
     override val idempotencyKey: String,
     val systemId: Int,
 ) : MutationCommand
+data class CreateWormholeCommand(
+    override val requestId: String,
+    override val idempotencyKey: String,
+    val fromSystemId: Int,
+    val toSystemId: Int,
+) : MutationCommand
 data class ShowNormalRouteCommand(
     override val requestId: String,
     override val idempotencyKey: String,
@@ -255,6 +278,7 @@ data class ShowNormalRouteCommand(
     val startSystemId: Int,
     val destinationSystemId: Int,
     val useAnsiblex: Boolean,
+    val useWormholes: Boolean = false,
 ) : MutationCommand
 data class ShowCapitalRouteCommand(
     override val requestId: String,
