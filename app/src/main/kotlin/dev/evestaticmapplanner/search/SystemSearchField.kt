@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import dev.evestaticmapplanner.core.model.SolarSystem
@@ -54,19 +57,45 @@ fun SystemSearchField(
     suggestionsPresentation: SearchSuggestionsPresentation = SearchSuggestionsPresentation.INLINE,
     compact: Boolean = false,
 ) {
+    var editingValue by remember { mutableStateOf(initialSearchFieldValue(value)) }
+    val synchronizedEditingValue = synchronizeSearchFieldValue(editingValue, value)
+    SideEffect {
+        if (editingValue != synchronizedEditingValue) editingValue = synchronizedEditingValue
+    }
+    val onEditingValueChange: (TextFieldValue) -> Unit = { updatedValue ->
+        editingValue = updatedValue
+        if (updatedValue.text != value) onValueChange(updatedValue.text)
+    }
+
     if (suggestionsPresentation == SearchSuggestionsPresentation.DROPDOWN) {
-        DropdownSystemSearchField(value, label, results, onValueChange, onSelect, modifier, compact)
+        DropdownSystemSearchField(
+            synchronizedEditingValue,
+            label,
+            results,
+            onEditingValueChange,
+            onSelect,
+            modifier,
+            compact,
+        )
     } else {
-        InlineSystemSearchField(value, label, results, onValueChange, onSelect, modifier, compact)
+        InlineSystemSearchField(
+            synchronizedEditingValue,
+            label,
+            results,
+            onEditingValueChange,
+            onSelect,
+            modifier,
+            compact,
+        )
     }
 }
 
 @Composable
 private fun InlineSystemSearchField(
-    value: String,
+    value: TextFieldValue,
     label: String,
     results: List<SolarSystem>,
-    onValueChange: (String) -> Unit,
+    onValueChange: (TextFieldValue) -> Unit,
     onSelect: (SolarSystem) -> Unit,
     modifier: Modifier,
     compact: Boolean,
@@ -89,20 +118,23 @@ private fun InlineSystemSearchField(
 
 @Composable
 private fun DropdownSystemSearchField(
-    value: String,
+    value: TextFieldValue,
     label: String,
     results: List<SolarSystem>,
-    onValueChange: (String) -> Unit,
+    onValueChange: (TextFieldValue) -> Unit,
     onSelect: (SolarSystem) -> Unit,
     modifier: Modifier,
     compact: Boolean,
 ) {
-    var dismissed by remember(value) { mutableStateOf(false) }
+    var dismissed by remember { mutableStateOf(false) }
     val expanded = results.isNotEmpty() && !dismissed
     Box(modifier) {
         SearchTextField(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { updatedValue ->
+                if (updatedValue.text != value.text) dismissed = false
+                onValueChange(updatedValue)
+            },
             label = label,
             compact = compact,
             modifier = Modifier
@@ -134,8 +166,8 @@ private fun DropdownSystemSearchField(
 
 @Composable
 private fun SearchTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     label: String,
     compact: Boolean,
     modifier: Modifier,
@@ -174,7 +206,7 @@ private fun SearchTextField(
                 modifier = Modifier.fillMaxSize().padding(horizontal = COMPACT_SEARCH_HORIZONTAL_PADDING),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (value.isEmpty()) {
+                if (value.text.isEmpty()) {
                     Text(
                         text = label,
                         style = textStyle,
@@ -196,3 +228,11 @@ internal val COMPACT_SEARCH_FIELD_BORDER_WIDTH = 1.dp
 internal const val COMPACT_SEARCH_FIELD_TEST_TAG = "compact-search-field"
 internal const val COMPACT_SEARCH_PLACEHOLDER_TEST_TAG = "compact-search-placeholder"
 internal val SYSTEM_SEARCH_POPUP_PROPERTIES = PopupProperties(focusable = false)
+
+internal fun initialSearchFieldValue(text: String): TextFieldValue = TextFieldValue(
+    text = text,
+    selection = TextRange(text.length),
+)
+
+internal fun synchronizeSearchFieldValue(current: TextFieldValue, externalText: String): TextFieldValue =
+    if (current.text == externalText) current else initialSearchFieldValue(externalText)

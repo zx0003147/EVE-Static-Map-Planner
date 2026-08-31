@@ -9,16 +9,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
@@ -35,6 +43,70 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class WormholeManagerDialogTest {
+    @Test
+    fun `manager from and to keep caret and edited selections invalidate immediately`() = runComposeUiTest {
+        val systems = searchSystems()
+        val viewModel = viewModel(systems)
+        setContent {
+            MaterialTheme {
+                val state by viewModel.state.collectAsState()
+                Box(Modifier.requiredSize(860.dp, 640.dp)) {
+                    WormholeManagerContent(state, viewModel, onDismiss = {}, onRequestClearAll = {})
+                }
+            }
+        }
+
+        val fields = onAllNodes(hasSetTextAction())
+        val from = fields[0]
+        val to = fields[1]
+        typeSequentially(from, "1DQ1-A")
+        from.assertTextEquals("From", "1DQ1-A").assertSelection(6)
+        onNodeWithText("1DQ1-A  ·  30000100").performClick()
+        runOnIdle { assertEquals(systems[0], viewModel.state.value.selectedManagerFrom) }
+
+        to.performClick().assertIsFocused()
+        from.assertTextEquals("From", "1DQ1-A")
+        typeSequentially(to, "4-HWWF")
+        to.assertTextEquals("To", "4-HWWF").assertSelection(6)
+        onNodeWithText("4-HWWF  ·  30000101").performClick()
+        runOnIdle { assertEquals(systems[1], viewModel.state.value.selectedManagerTo) }
+
+        from.performClick().performTextInputSelection(TextRange(3))
+        from.assertSelection(3).performTextInput("X")
+        waitForIdle()
+        from.assertTextEquals("From", "1DQX1-A").assertSelection(4)
+        runOnIdle {
+            assertEquals(null, viewModel.state.value.selectedManagerFrom)
+            assertEquals(systems[1], viewModel.state.value.selectedManagerTo)
+        }
+    }
+
+    @Test
+    fun `quick create to keeps caret and edited selection invalidates immediately`() = runComposeUiTest {
+        val systems = searchSystems()
+        val viewModel = viewModel(systems)
+        viewModel.beginQuickCreate(systems[0])
+        setContent {
+            MaterialTheme {
+                val state by viewModel.state.collectAsState()
+                CreateWormholeDialog(state, viewModel, onCreated = {}, onDismiss = {})
+            }
+        }
+
+        val to = onAllNodes(hasSetTextAction())[0]
+        typeSequentially(to, "ULX-3A")
+        to.assertTextEquals("To", "ULX-3A").assertSelection(6)
+        onNodeWithText("ULX-3A  ·  30000102").performClick()
+        runOnIdle { assertEquals(systems[2], viewModel.state.value.selectedQuickTo) }
+
+        to.performClick()
+        to.performTextInputSelection(TextRange(3))
+        to.performTextInput("Q")
+        waitForIdle()
+        to.assertTextEquals("To", "ULXQ-3A").assertSelection(4)
+        runOnIdle { assertEquals(null, viewModel.state.value.selectedQuickTo) }
+    }
+
     @Test
     fun `manager sizing keeps the add form and connection list usable`() {
         assertTrue(WORMHOLE_MANAGER_DEFAULT_SIZE.width >= WORMHOLE_MANAGER_MINIMUM_SIZE.width)
@@ -186,6 +258,13 @@ class WormholeManagerDialogTest {
         system(4, "Delta"),
     )
 
+    private fun searchSystems() = listOf(
+        system(30_000_100, "1DQ1-A"),
+        system(30_000_101, "4-HWWF"),
+        system(30_000_102, "ULX-3A"),
+        system(30_000_103, "DQA-11"),
+    )
+
     private fun system(id: Int, name: String) = SolarSystem(
         id = id,
         constellationId = 20_000_001,
@@ -199,4 +278,22 @@ class WormholeManagerDialogTest {
         factionId = null,
         wormholeClassId = null,
     )
+
+    private fun androidx.compose.ui.test.ComposeUiTest.typeSequentially(
+        field: SemanticsNodeInteraction,
+        text: String,
+    ) {
+        field.performClick()
+        text.forEachIndexed { index, character ->
+            field.performTextInput(character.toString())
+            waitForIdle()
+            field.assertIsFocused().assertSelection(index + 1)
+        }
+    }
+
+    private fun SemanticsNodeInteraction.assertSelection(offset: Int): SemanticsNodeInteraction {
+        val actual = fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange]
+        assertEquals(TextRange(offset), actual)
+        return this
+    }
 }

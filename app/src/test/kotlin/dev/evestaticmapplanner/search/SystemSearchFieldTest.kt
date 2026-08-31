@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
@@ -12,8 +13,15 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextInputSelection
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.UniversePosition
@@ -26,6 +34,108 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class SystemSearchFieldTest {
+    @Test
+    fun `editing synchronization preserves user selection until external text really changes`() {
+        val userEditingValue = TextFieldValue("1DQ1-A", selection = TextRange(3))
+
+        assertSame(userEditingValue, synchronizeSearchFieldValue(userEditingValue, "1DQ1-A"))
+
+        val programmaticSelection = synchronizeSearchFieldValue(userEditingValue, "4-HWWF")
+        assertEquals("4-HWWF", programmaticSelection.text)
+        assertEquals(TextRange(6), programmaticSelection.selection)
+        assertEquals(null, programmaticSelection.composition)
+    }
+
+    @Test
+    fun `non compact dropdown keeps selection when suggestions arrive`() = runComposeUiTest {
+        val acceptanceNames = listOf("1DQ1-A", "4-HWWF", "ULX-3A", "DQA-11")
+        var query by mutableStateOf("")
+        var results by mutableStateOf(emptyList<SolarSystem>())
+
+        setContent {
+            MaterialTheme {
+                SystemSearchField(
+                    value = query,
+                    label = "Search system",
+                    results = results,
+                    onValueChange = { query = it },
+                    onSelect = {},
+                    suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
+                )
+            }
+        }
+
+        val textField = onNode(hasSetTextAction())
+        acceptanceNames.forEachIndexed { systemIndex, systemName ->
+            runOnIdle {
+                query = ""
+                results = emptyList()
+            }
+            waitForIdle()
+            textField.performClick()
+            textField.assertSelection(0)
+
+            systemName.forEachIndexed { characterIndex, character ->
+                textField.performTextInput(character.toString())
+                waitForIdle()
+                textField.assertSelection(characterIndex + 1)
+
+                if (characterIndex == 0) {
+                    runOnIdle {
+                        results = listOf(system(30_000_100 + systemIndex, systemName))
+                    }
+                    waitForIdle()
+                    textField.assertIsFocused()
+                    textField.assertSelection(1)
+                }
+            }
+
+            textField.assertTextEquals("Search system", systemName)
+            assertEquals(systemName, query)
+        }
+    }
+
+    @Test
+    fun `dropdown preserves a manually moved selection through results recomposition`() =
+        verifyManualSelection(SearchSuggestionsPresentation.DROPDOWN)
+
+    @Test
+    fun `inline preserves a manually moved selection through results recomposition`() =
+        verifyManualSelection(SearchSuggestionsPresentation.INLINE)
+
+    @Test
+    fun `escape dismisses dropdown until the user edits again`() = runComposeUiTest {
+        val c0nd2 = system(30_000_001, "C-0ND2")
+        var query by mutableStateOf("")
+        setContent {
+            MaterialTheme {
+                SystemSearchField(
+                    value = query,
+                    label = "Search system",
+                    results = if (query.isBlank()) emptyList() else listOf(c0nd2),
+                    onValueChange = { query = it },
+                    onSelect = {},
+                    suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
+                )
+            }
+        }
+
+        val textField = onNode(hasSetTextAction())
+        textField.performClick().performTextInput("C")
+        waitForIdle()
+        onNodeWithText("C-0ND2  ·  30000001").assertExists()
+
+        textField.performKeyInput { pressKey(Key.Escape) }
+        waitForIdle()
+        textField.assertIsFocused().assertSelection(1)
+        onNodeWithText("C-0ND2  ·  30000001").assertDoesNotExist()
+
+        textField.performTextInput("-")
+        waitForIdle()
+        textField.assertTextEquals("Search system", "C-").assertSelection(2)
+        onNodeWithText("C-0ND2  ·  30000001").assertExists()
+    }
+
     @Test
     fun `dropdown stays focused while query updates and suggestions filter`() = runComposeUiTest {
         val c0nd2 = system(30_000_001, "C-0ND2")
@@ -148,4 +258,48 @@ class SystemSearchFieldTest {
         factionId = null,
         wormholeClassId = null,
     )
+
+    private fun SemanticsNodeInteraction.assertSelection(offset: Int) {
+        val actual = fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange]
+        assertEquals(TextRange(offset), actual)
+    }
+
+    private fun verifyManualSelection(presentation: SearchSuggestionsPresentation) = runComposeUiTest {
+        val ulx3a = system(30_000_200, "ULX-3A")
+        var query by mutableStateOf("")
+        var results by mutableStateOf(emptyList<SolarSystem>())
+        setContent {
+            MaterialTheme {
+                SystemSearchField(
+                    value = query,
+                    label = "Search system",
+                    results = results,
+                    onValueChange = { query = it },
+                    onSelect = {},
+                    suggestionsPresentation = presentation,
+                )
+            }
+        }
+
+        val textField = onNode(hasSetTextAction())
+        textField.performClick().performTextInput("ULX-3A")
+        waitForIdle()
+        textField.performTextInputSelection(TextRange(3))
+        textField.assertSelection(3)
+
+        runOnIdle { results = listOf(ulx3a) }
+        waitForIdle()
+        textField.assertIsFocused().assertSelection(3)
+
+        textField.performTextInput("Q")
+        waitForIdle()
+        textField.assertTextEquals("Search system", "ULXQ-3A")
+        textField.assertSelection(4)
+
+        textField.performTextInputSelection(TextRange(0, query.length))
+        textField.performTextInput("DQA-11")
+        waitForIdle()
+        textField.assertTextEquals("Search system", "DQA-11")
+        textField.assertSelection(6)
+    }
 }
