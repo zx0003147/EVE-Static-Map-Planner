@@ -74,6 +74,7 @@ import dev.evestaticmapplanner.staticdata.StaticDataBootstrapScreen
 import dev.evestaticmapplanner.staticdata.StaticDataManagerDialog
 import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
 import dev.evestaticmapplanner.view.PlanningViewCoordinator
+import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -117,6 +118,7 @@ fun main(arguments: Array<String>) {
     logStartupResolution(initial)
 
     application {
+        val wormholeSessionStore = remember { WormholeSessionStore() }
         val windowState = rememberWindowState(width = 1280.dp, height = 780.dp)
         var startup by remember { mutableStateOf(initial) }
         var exitRequested by remember { mutableStateOf(false) }
@@ -134,6 +136,7 @@ fun main(arguments: Array<String>) {
                     is StartupResolution.Ready -> ReadyApplication(
                         resolution.configuration,
                         featurePackRuntime,
+                        wormholeSessionStore,
                         exitRequested,
                         ::exitApplication,
                     )
@@ -175,6 +178,7 @@ private fun BootstrapApplication(configuration: StartupConfiguration, onInstalle
 private fun FrameWindowScope.ReadyApplication(
     configuration: StartupConfiguration,
     featurePackRuntime: ProductionFeaturePackRuntime,
+    @Suppress("UNUSED_PARAMETER") wormholeSessionStore: WormholeSessionStore,
     exitRequested: Boolean,
     onExitApplication: () -> Unit,
 ) {
