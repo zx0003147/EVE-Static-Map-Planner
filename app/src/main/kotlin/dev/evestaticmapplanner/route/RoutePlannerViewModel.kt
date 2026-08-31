@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.route
 
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
@@ -8,12 +9,15 @@ import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
+import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.RouteGraph
 import dev.evestaticmapplanner.core.route.RouteGraphBuilder
 import dev.evestaticmapplanner.core.route.RouteOptions
 import dev.evestaticmapplanner.core.route.RouteResult
+import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
+import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,6 +37,7 @@ data class NormalRoutePlanningSnapshot(
     val fromSystemId: Int? = null,
     val toSystemId: Int? = null,
     val useAnsiblex: Boolean = false,
+    val useWormholes: Boolean = false,
     val calculated: Boolean = false,
 )
 
@@ -46,16 +52,24 @@ class RoutePlannerViewModel(
     private val ansiblexRepository: AnsiblexRepository?,
     private val importService: AnsiblexImportService?,
     userDatabaseError: String?,
+    private val wormholeSessionStore: WormholeSessionStore,
     private val scope: CoroutineScope,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val searchDebounceMillis: Long = 180,
     private val routeEngine: NormalRouteEngine = NormalRouteEngine(),
 ) : NormalRoutePlanningPort {
-    private val mutableState = MutableStateFlow(RoutePlannerUiState(userDatabaseError = userDatabaseError))
+    private val mutableState = MutableStateFlow(
+        RoutePlannerUiState(
+            userDatabaseError = userDatabaseError,
+            wormholeConnections = wormholeSessionStore.connections.value,
+        ),
+    )
     val state: StateFlow<RoutePlannerUiState> = mutableState.asStateFlow()
 
     private var staticData: StaticMapData? = null
     private var systemsById: Map<Int, SolarSystem> = emptyMap()
+    private var currentAnsiblexConnections: List<AnsiblexConnection> = emptyList()
+    private var currentWormholeConnections: List<WormholeConnection> = wormholeSessionStore.connections.value
     private var graph: RouteGraph? = null
     private var systemSearchJob: Job? = null
     private var fromSearchJob: Job? = null
@@ -63,6 +77,7 @@ class RoutePlannerViewModel(
     private var pendingPlanningSnapshot: NormalRoutePlanningSnapshot? = null
 
     init {
+        observeWormholeConnections()
         load()
     }
 
@@ -120,6 +135,17 @@ class RoutePlannerViewModel(
         }
     }
 
+    fun setUseWormholes(enabled: Boolean) {
+        mutableState.update {
+            it.copy(
+                useWormholes = enabled,
+                routeOutcome = null,
+                activeRoute = null,
+                routeSystemNames = emptyList(),
+            )
+        }
+    }
+
     fun setShowAnsiblexLayer(show: Boolean) {
         mutableState.update { it.copy(showAnsiblexLayer = show) }
     }
@@ -133,7 +159,10 @@ class RoutePlannerViewModel(
             routeGraph,
             start.id,
             destination.id,
-            RouteOptions(useAnsiblex = current.useAnsiblex),
+            RouteOptions(
+                useAnsiblex = current.useAnsiblex,
+                useWormholes = current.useWormholes,
+            ),
         )
         val route = when (outcome) {
             is RouteCalculationOutcome.Found -> outcome.route
@@ -158,6 +187,7 @@ class RoutePlannerViewModel(
             fromSystemId = current.selectedFrom?.id,
             toSystemId = current.selectedTo?.id,
             useAnsiblex = current.useAnsiblex,
+            useWormholes = current.useWormholes,
             calculated = current.routeOutcome != null,
         )
     }
@@ -285,19 +315,35 @@ class RoutePlannerViewModel(
             runCatching {
                 withContext(ioDispatcher) {
                     val data = staticMapRepository.load()
-                    val ansiblex = ansiblexRepository?.getAll().orEmpty()
+                    val ansiblex = runCatching { ansiblexRepository?.getAll().orEmpty() }
                     data to ansiblex
                 }
-            }.onSuccess { (data, ansiblex) ->
+            }.onSuccess { (data, ansiblexResult) ->
                 staticData = data
                 systemsById = data.systems.associateBy(SolarSystem::id)
-                val graphResult = runCatching { RouteGraphBuilder.build(data, ansiblex) }
-                graph = graphResult.getOrElse { RouteGraphBuilder.build(data) }
+                currentAnsiblexConnections = ansiblexResult.getOrElse { emptyList() }
+                val combinedGraphResult = rebuildGraph()
+                val graphResult = if (combinedGraphResult.isFailure && currentAnsiblexConnections.isNotEmpty()) {
+                    currentAnsiblexConnections = emptyList()
+                    rebuildGraph()
+                } else {
+                    combinedGraphResult
+                }
                 mutableState.update {
                     it.copy(
                         isLoading = false,
-                        userDatabaseError = it.userDatabaseError ?: graphResult.exceptionOrNull()?.message,
-                        ansiblexConnections = if (graphResult.isSuccess) ansiblex else emptyList(),
+                        userDatabaseError = it.userDatabaseError ?: ansiblexResult.exceptionOrNull()?.message
+                            ?: combinedGraphResult.exceptionOrNull()?.message
+                            ?: graphResult.exceptionOrNull()?.message,
+                        ansiblexConnections = if (
+                            ansiblexResult.isSuccess && combinedGraphResult.isSuccess && graphResult.isSuccess
+                        ) {
+                            currentAnsiblexConnections
+                        } else {
+                            emptyList()
+                        },
+                        useAnsiblex = it.useAnsiblex && ansiblexResult.isSuccess && combinedGraphResult.isSuccess &&
+                            graphResult.isSuccess,
                     )
                 }
                 pendingPlanningSnapshot?.let {
@@ -322,6 +368,7 @@ class RoutePlannerViewModel(
                 fromResults = emptyList(),
                 toResults = emptyList(),
                 useAnsiblex = snapshot.useAnsiblex && it.isAnsiblexAvailable,
+                useWormholes = snapshot.useWormholes,
                 routeOutcome = null,
                 activeRoute = null,
                 routeSystemNames = emptyList(),
@@ -360,34 +407,78 @@ class RoutePlannerViewModel(
     private fun refreshAnsiblex(message: String) {
         val repository = ansiblexRepository ?: return
         scope.launch {
-            runCatching { withContext(ioDispatcher) { repository.getAll() } }
-                .onSuccess { connections ->
-                    val data = checkNotNull(staticData)
-                    graph = RouteGraphBuilder.build(data, connections)
-                    mutableState.update {
-                        it.copy(
-                            ansiblexConnections = connections,
-                            routeOutcome = null,
-                            activeRoute = null,
-                            routeSystemNames = emptyList(),
-                            importPreview = null,
-                            importError = null,
-                            isImportBusy = false,
-                            managerMessage = message,
+            val connectionsResult = runCatching { withContext(ioDispatcher) { repository.getAll() } }
+            connectionsResult.fold(
+                onSuccess = { connections ->
+                    currentAnsiblexConnections = connections
+                    val graphResult = rebuildGraph()
+                    if (graphResult.isSuccess) {
+                        mutableState.update {
+                            it.copy(
+                                ansiblexConnections = connections,
+                                routeOutcome = null,
+                                activeRoute = null,
+                                routeSystemNames = emptyList(),
+                                importPreview = null,
+                                importError = null,
+                                isImportBusy = false,
+                                managerMessage = message,
+                            )
+                        }
+                    } else {
+                        handleAnsiblexUnavailable(
+                            graphResult.exceptionOrNull()?.message ?: "Unable to rebuild Ansiblex route graph",
                         )
                     }
-                }
-                .onFailure { error ->
-                    graph = staticData?.let(RouteGraphBuilder::build)
-                    mutableState.update {
-                        it.copy(
-                            userDatabaseError = error.message ?: "Unable to refresh Ansiblex data",
-                            ansiblexConnections = emptyList(),
-                            useAnsiblex = false,
-                            isImportBusy = false,
-                        )
-                    }
-                }
+                },
+                onFailure = { error ->
+                    handleAnsiblexUnavailable(error.message ?: "Unable to refresh Ansiblex data")
+                },
+            )
         }
+    }
+
+    private fun handleAnsiblexUnavailable(message: String) {
+        currentAnsiblexConnections = emptyList()
+        rebuildGraph()
+        mutableState.update {
+            it.copy(
+                userDatabaseError = message,
+                ansiblexConnections = emptyList(),
+                useAnsiblex = false,
+                isImportBusy = false,
+            )
+        }
+    }
+
+    private fun observeWormholeConnections() {
+        scope.launch {
+            wormholeSessionStore.connections.collect { connections ->
+                currentWormholeConnections = connections
+                rebuildGraph()
+                mutableState.update { current ->
+                    val routeInvalidated = current.activeRoute
+                        ?.edges
+                        ?.asSequence()
+                        ?.filter { it.type == RouteEdgeType.WORMHOLE }
+                        ?.map { it.connectionId.value }
+                        ?.any { usedId -> connections.none { it.id == usedId } }
+                        ?: false
+                    current.copy(
+                        wormholeConnections = connections,
+                        routeOutcome = if (routeInvalidated) null else current.routeOutcome,
+                        activeRoute = if (routeInvalidated) null else current.activeRoute,
+                        routeSystemNames = if (routeInvalidated) emptyList() else current.routeSystemNames,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun rebuildGraph(): Result<RouteGraph> {
+        val data = staticData ?: return Result.failure(IllegalStateException("Static map data is not loaded"))
+        return runCatching {
+            RouteGraphBuilder.build(data, currentAnsiblexConnections, currentWormholeConnections)
+        }.onSuccess { graph = it }
     }
 }

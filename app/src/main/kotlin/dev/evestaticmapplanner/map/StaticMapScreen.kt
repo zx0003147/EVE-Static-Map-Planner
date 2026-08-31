@@ -159,7 +159,7 @@ internal fun StaticMapScreen(
                     state.error != null -> CenterMessage("Unable to load map\n${state.error}\n\nDatabase: $databasePath")
                     state.scene != null && state.viewport != null -> StaticMapCanvas(
                         state = state,
-                        activeRoute = routeState.activeRoute,
+                        activeRoute = routeState.activeRoute?.takeUnless { it.wormholeJumps > 0 },
                         capitalRoute = capitalState.activeRoute,
                         jumpOverlays = jumpState.overlays,
                         intersectionSystemIds = jumpState.intersectionSystemIds,
@@ -242,7 +242,9 @@ internal fun StaticMapScreen(
                 }
             }
             state.scene?.let { scene ->
-                val routeOverlay = routeState.activeRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
+                val routeOverlay = routeState.activeRoute
+                    ?.takeUnless { it.wormholeJumps > 0 }
+                    ?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
                 val routeWarning = routeOverlay?.takeIf { it.omittedSystemIds.isNotEmpty() }?.let {
                     " · route: ${it.omittedSystemIds.size} systems / ${it.omittedLegCount} legs unavailable; use Real X-Z"
                 }.orEmpty()

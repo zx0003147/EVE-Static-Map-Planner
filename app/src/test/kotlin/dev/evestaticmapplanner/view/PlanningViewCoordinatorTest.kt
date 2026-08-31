@@ -21,7 +21,13 @@ class PlanningViewCoordinatorTest {
             newId = { PlanningViewId("generated-${id++}") },
         )
 
-        normal.value = NormalRoutePlanningSnapshot(1, 2, useAnsiblex = true, calculated = true)
+        normal.value = NormalRoutePlanningSnapshot(
+            1,
+            2,
+            useAnsiblex = true,
+            useWormholes = true,
+            calculated = true,
+        )
         capital.value = CapitalRoutePlanningSnapshot(3, 4, "7.5", calculated = true)
         val second = coordinator.createView()
         assertEquals(NormalRoutePlanningSnapshot(), normal.value)
@@ -30,9 +36,11 @@ class PlanningViewCoordinatorTest {
         normal.value = NormalRoutePlanningSnapshot(5, 6, calculated = true)
         assertTrue(coordinator.switchView(PlanningViewId("view-1")))
         assertEquals(1, normal.value.fromSystemId)
+        assertTrue(normal.value.useWormholes)
         assertEquals("7.5", capital.value.manualRangeText)
         assertTrue(coordinator.switchView(second))
         assertEquals(5, normal.value.fromSystemId)
+        assertFalse(normal.value.useWormholes)
     }
 
     @Test

@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteResult
+import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportPreview
 
@@ -20,11 +21,13 @@ data class RoutePlannerUiState(
     val selectedFrom: SolarSystem? = null,
     val selectedTo: SolarSystem? = null,
     val useAnsiblex: Boolean = false,
+    val useWormholes: Boolean = false,
     val showAnsiblexLayer: Boolean = true,
     val routeOutcome: RouteCalculationOutcome? = null,
     val activeRoute: RouteResult? = null,
     val routeSystemNames: List<String> = emptyList(),
     val ansiblexConnections: List<AnsiblexConnection> = emptyList(),
+    val wormholeConnections: List<WormholeConnection> = emptyList(),
     val importMode: AnsiblexImportMode = AnsiblexImportMode.MERGE,
     val importPreview: AnsiblexImportPreview? = null,
     val importError: String? = null,

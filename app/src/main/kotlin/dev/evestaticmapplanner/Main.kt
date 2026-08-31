@@ -178,7 +178,7 @@ private fun BootstrapApplication(configuration: StartupConfiguration, onInstalle
 private fun FrameWindowScope.ReadyApplication(
     configuration: StartupConfiguration,
     featurePackRuntime: ProductionFeaturePackRuntime,
-    @Suppress("UNUSED_PARAMETER") wormholeSessionStore: WormholeSessionStore,
+    wormholeSessionStore: WormholeSessionStore,
     exitRequested: Boolean,
     onExitApplication: () -> Unit,
 ) {
@@ -226,7 +226,7 @@ private fun FrameWindowScope.ReadyApplication(
             result.exceptionOrNull()?.let { AppDiagnostics.warning("User database initialization failed", it) }
         }
     }
-    val routeViewModel = remember(configuration) {
+    val routeViewModel = remember(configuration, wormholeSessionStore) {
         RoutePlannerViewModel(
             staticMapRepository = staticRepository,
             searchRepository = searchRepository,
@@ -235,6 +235,7 @@ private fun FrameWindowScope.ReadyApplication(
             userDatabaseError = userComponents.exceptionOrNull()?.let {
                 "Ansiblex disabled: ${it.message ?: it::class.simpleName}"
             },
+            wormholeSessionStore = wormholeSessionStore,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
@@ -397,7 +398,9 @@ private fun FrameWindowScope.ReadyApplication(
     val systemInfoState by featurePackRuntime.systemInfoHost.state.collectAsState()
     val routeActions by featurePackRuntime.routeActionHost.state.collectAsState()
     val normalRouteSnapshot = remember(routeState.activeRoute, featurePackRuntime) {
-        featurePackRuntime.routeSnapshotAdapter.normal(routeState.activeRoute)
+        featurePackRuntime.routeSnapshotAdapter.normal(
+            routeState.activeRoute?.takeUnless { it.wormholeJumps > 0 },
+        )
     }
     val capitalRouteSnapshot = remember(capitalState.activeRoute, featurePackRuntime) {
         featurePackRuntime.routeSnapshotAdapter.capital(capitalState.activeRoute)
