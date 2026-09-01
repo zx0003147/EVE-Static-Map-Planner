@@ -802,14 +802,16 @@ security replacement exists, report the proposed pin change before scaffolding.
 | Gradle Wrapper | 9.7.0 | [official Gradle 9.7 release](https://docs.gradle.org/9.7.0/release-notes.html) |
 | Kotlin JVM/serialization plugin | 2.4.10 | [official Kotlin releases](https://kotlinlang.org/docs/releases.html) |
 | Ktor Server | 3.5.2 | [official Ktor releases](https://ktor.io/docs/releases.html) |
-| kotlinx serialization JSON | 1.10.0 | Explicit pin; compatible family already used by Map |
-| kotlinx coroutines | 1.10.2 | Explicit pin; compatible family already used by Map |
+| kotlinx serialization JSON | 1.11.0 | Explicit compatibility pin required by Ktor 3.5.2 |
+| kotlinx coroutines | 1.11.0 | Explicit compatibility pin required by Ktor 3.5.2 |
 | Flyway OSS core + PostgreSQL module | 13.2.0 | [official Java API coordinates](https://documentation.red-gate.com/flyway/reference/usage/api-java) |
 | PostgreSQL JDBC | 42.7.13 | [official pgJDBC changelog](https://jdbc.postgresql.org/changelogs/) |
 | HikariCP | 7.0.2 | [official project artifact declaration](https://github.com/brettwooldridge/HikariCP) |
 | Logback Classic | 1.6.3 | [official Logback downloads](https://logback.qos.ch/download.html) |
 | Testcontainers | 2.0.5 | [official releases](https://github.com/testcontainers/testcontainers-java/releases) |
 | PostgreSQL dev image | `postgres:18.6-alpine` | [official PostgreSQL 18.6 docs](https://www.postgresql.org/docs/18/) |
+
+> Compatibility correction: kotlinx-coroutines and kotlinx-serialization were updated to 1.11.0 because Ktor 3.5.2 requires the 1.11.0 runtime APIs. Forcing the previously documented 1.10.x versions caused runtime NoSuchMethodError failures. This correction does not change the Shared Map Protocol v1 or Phase 1 scope.
 
 Use Logback's built-in `ch.qos.logback.classic.encoder.JsonEncoder` for JSON Lines structured logs; do not add a
 second JSON logging stack. The official encoder contract is documented in the
