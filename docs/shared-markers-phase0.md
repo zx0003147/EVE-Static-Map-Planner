@@ -602,6 +602,20 @@ contains bearer/invite secrets, their hashes, raw credentials, complete notes, o
 Primary key `(token_id, idempotency_key)` and index `expires_at`. Records expire after 24 hours and are hard deleted
 in bounded batches.
 
+### 11.9 One-time secret response correction
+
+Security contract correction: one-time credential issuance endpoints cannot both avoid storing recoverable secrets
+and replay the original secret-bearing response. Invite creation therefore uses non-replayable-secret idempotency
+semantics while still guaranteeing duplicate suppression.
+
+Invite creation still requires a UUID `Idempotency-Key`. The first successful request creates exactly one Invite and
+returns its raw secret exactly once. The Invite row stores only its HMAC and short non-secret prefix; audit, logs, and
+the idempotency record store no raw secret or derivation material. A concurrent or later same-key/same-fingerprint
+request creates no second Invite and returns HTTP `409` with `IDEMPOTENCY_RESPONSE_NOT_REPLAYABLE` and only safe
+Invite metadata. Recovery is explicit revoke-and-recreate with a new key. This exception applies only to mutations
+whose successful response contains a one-time unrecoverable secret; ordinary mutations continue to replay their
+stored non-secret response for 24 hours.
+
 ## 12. Audit and privacy contract
 
 Shared notes may contain alliance strategy. The server database, backups, logs that contain metadata, and operator

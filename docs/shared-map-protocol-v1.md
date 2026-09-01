@@ -579,6 +579,7 @@ users' private data.
 | `LAST_ADMIN_REQUIRED` | 409 | Mutation would leave no active Admin |
 | `IDEMPOTENCY_KEY_REQUIRED` | 400 | Mutation omitted the required header |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Same key was used for a different request fingerprint |
+| `IDEMPOTENCY_RESPONSE_NOT_REPLAYABLE` | 409 | A mutation succeeded, but its one-time secret-bearing response cannot safely be replayed |
 | `INVITE_INVALID` | 401 | Invite is malformed or unknown |
 | `INVITE_EXPIRED` | 401 | Invite expired |
 | `INVITE_REVOKED` | 401 | Invite was revoked |
@@ -612,9 +613,22 @@ The server stores for 24 hours:
 - final HTTP status and non-secret response body;
 - creation and expiry time.
 
-The same principal, key, and request fingerprint returns the original result without re-executing the mutation. The
-same key with a different fingerprint returns `IDEMPOTENCY_KEY_REUSED`. In-progress duplicate requests serialize on
-the same record. Expired records are hard deleted by a bounded cleanup job.
+The same principal, key, and request fingerprint normally returns the original result without re-executing the
+mutation. The same key with a different fingerprint returns `IDEMPOTENCY_KEY_REUSED`. In-progress duplicate requests
+serialize on the same record. Expired records are hard deleted by a bounded cleanup job.
+
+Invite creation uses **non-replayable-secret idempotency semantics** because its successful response contains the
+one-time plaintext invite secret. The first successful request creates exactly one Invite and returns the plaintext
+exactly once. Its idempotency record stores only the non-secret response metadata. A concurrent or later request with
+the same principal, key, and fingerprint never creates another Invite and returns HTTP `409` with
+`IDEMPOTENCY_RESPONSE_NOT_REPLAYABLE` plus safe metadata identifying the existing Invite. It never returns the
+plaintext, hash, or material from which the secret can be derived. The Admin recovery flow is to inspect/revoke that
+Invite and create a replacement with a new idempotency key. Ordinary non-secret mutations retain normal 24-hour
+response replay semantics.
+
+Security contract correction: one-time credential issuance endpoints cannot both avoid storing recoverable secrets
+and replay the original secret-bearing response. Invite creation therefore uses non-replayable-secret idempotency
+semantics while still guaranteeing duplicate suppression.
 
 ## 13. Polling and snapshot reconciliation
 
