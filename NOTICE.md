@@ -15,4 +15,6 @@ The custom Keepstar child-marker vector is traced from CCP's
 `Uprising_V21.03_Icons.zip` Image Export Collection. The source bitmap is used only as a
 development geometry reference and is not bundled or loaded at runtime. The reference imagery remains © CCP hf.
 
-The project name and other branding must receive a separate public-distribution branding review before any public release.
+The 1.2.0 public-distribution review retains the descriptive project name, original abstract icon, proprietary notice,
+and explicit unofficial/not-endorsed wording. Distributors remain responsible for compliance with the then-current
+CCP Developer License Agreement.

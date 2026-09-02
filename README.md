@@ -4,8 +4,9 @@
 
 **The core map works independently from local static universe data and does not require AI, ESI, or any Feature Pack. Optional integrations add AI map control through the EVE Map Assistant plugin and account-aware or live-data features through external ESI and Sovereignty Feature Packs.**
 
-Version 1.1.0 adds temporary session-wide Wormhole connections to Normal Route planning, with Peacock Teal map
-visuals, UI management, View-local routing opt-in, and bounded AI list/create support.
+Version 1.2.0 adds the optional Shared Map client and Shared Markers: Workspace-based collaboration, role-aware
+management, invite-to-device-token connection, multi-client polling, conflict protection, and clear degraded/stale
+snapshot behavior. The map remains local-first and all existing features work without a Shared Map Server.
 
 Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
 exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
@@ -20,6 +21,7 @@ exclude intel, killboards, application auto-update, signing, Microsoft Store/MSI
 - `feature-api`: Frozen Feature API v2 contracts and generic external Pack test fixture.
 - `mcp`: Core-owned MCP server and its fixed 30-tool catalog, including View control, session Wormhole read/create, and permission-gated Saved Marker read/create.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
+- `shared-client`: Compose-independent Shared Map protocol, HTTPS client, Workspace session, polling, and secure credential contracts.
 
 ## External Feature Packs
 
@@ -87,12 +89,30 @@ AI/MCP can list and create Wormholes, but cannot update, remove, delete, clear, 
 them. Feature API v2 remains frozen: Route Actions are unavailable for user routes containing Wormholes because the
 API has no Wormhole route-segment kind.
 
+## Shared Map and Shared Markers
+
+Shared Map is optional collaboration support. Without a server connection, EVE Static Map Planner keeps its complete
+local map, routing, local Saved Markers, AI Missions, Wormholes, Feature Packs, and static-data workflow. Connecting
+does not move those local domains to the server.
+
+A Shared Map Server hosts Workspaces with `ADMIN`, `EDITOR`, and `VIEWER` roles. Users join with a short-lived invite;
+the client exchanges it for a Workspace-scoped Device Token and protects that token with Windows DPAPI. Remote
+servers must use HTTPS; plain HTTP is accepted only for `localhost` and `127.0.0.1` development endpoints.
+
+The Shared Marker Manager provides role-aware create, edit, delete, member, role, invite, and device administration.
+Connected clients poll every 30 seconds and atomically replace the selected Workspace snapshot. If a refresh fails,
+the last in-memory snapshot remains visible as stale in degraded mode; it is never persisted as a shared snapshot
+disk cache. Disconnecting clears Shared Marker state without affecting local markers or AI Missions.
+
+Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
+visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.2.0.
+
 ## Windows x64 distribution
 
 The official Windows distribution is the installer-free Portable ZIP:
 
 ```text
-EVE-Static-Map-Planner-1.1.0-Windows-x64.zip
+EVE-Static-Map-Planner-1.2.0-Windows-x64.zip
 ```
 
 Download and extract the complete ZIP, then open:
@@ -120,7 +140,8 @@ always remains under:
 %LOCALAPPDATA%\EVE Static Map Planner
 ```
 
-That includes managed `static.db`, `user.db`, settings, logs, ESI credential storage, and external Feature Packs.
+That includes managed `static.db`, `user.db`, settings, logs, DPAPI-protected Shared Map and ESI credentials, and
+external Feature Packs.
 Moving, copying, replacing, or deleting the extracted program directory does not move or delete this data.
 
 To update, close the app and any MCP bridge processes, extract the new ZIP to a new directory, run it, and remove the
@@ -149,9 +170,12 @@ Plugin developers should use the authoritative contract in `docs/mcp-discovery.m
 See `docs/windows-distribution.md` for the Portable layout, data boundary, build process, MCP path behavior, and
 acceptance checklist.
 
-### Public distribution branding review
+### Public distribution notices
 
-`EVE Static Map Planner` is approved only as the current local Phase 8 QA name. Before any public release, review the product name, icon, description, CCP proprietary notice, and unofficial/not-endorsed wording against the then-current CCP developer agreement and trademark requirements. The placeholder icon is an original abstract node-and-route mark and does not use CCP/EVE, RIFT, or SMT artwork.
+The public-distribution branding review retains the descriptive `EVE Static Map Planner` name, original abstract
+node-and-route icon, unofficial/not-endorsed wording, and CCP proprietary notice in `NOTICE.md`. The icon does not use
+CCP/EVE, RIFT, or SMT artwork. Distributors remain responsible for accepting and complying with the then-current CCP
+Developer License Agreement.
 
 ## Manual Ansiblex import
 
