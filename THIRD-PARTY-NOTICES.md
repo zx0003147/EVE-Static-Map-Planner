@@ -13,6 +13,8 @@ The following distributed families are licensed under Apache License 2.0. A comp
 - Xerial SQLite JDBC 3.53.1.0
 - Apache Commons CSV 1.14.1, Commons IO 2.20.0, and Commons Codec 1.19.0
 - kotlin-logging 8.0.4
+- Ktor 3.4.3 client/server runtime and CIO engines
+- Java Native Access (JNA and JNA Platform) 5.19.1, distributed under its Apache License 2.0 option
 
 The resolved artifacts and version-specific upstream NOTICE entries were inspected. Skiko's NOTICE attributes code adapted from the Android Open Source Project; Apache Commons NOTICE files contain Apache Software Foundation copyright/attribution only.
 

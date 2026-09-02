@@ -110,6 +110,7 @@ dependencies {
     implementation(project(":marker-application"))
     implementation(project(":mcp"))
     implementation(project(":sde"))
+    implementation(project(":shared-client"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
     implementation(libs.kotlinx.coroutines.core)
@@ -120,6 +121,7 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.sse)
     implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.runtime.jna.platform)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.compose.ui.test.junit4)

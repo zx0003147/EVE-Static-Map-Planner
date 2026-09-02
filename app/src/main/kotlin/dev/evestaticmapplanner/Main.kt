@@ -71,6 +71,12 @@ import dev.evestaticmapplanner.sde.update.SdeArchiveDownloader
 import dev.evestaticmapplanner.sde.update.SdeCandidatePreparer
 import dev.evestaticmapplanner.sde.update.SdeUpdateClient
 import dev.evestaticmapplanner.sde.update.SdeUpdateService
+import dev.evestaticmapplanner.shared.api.KtorSharedMapClient
+import dev.evestaticmapplanner.shared.SharedMapViewModel
+import dev.evestaticmapplanner.shared.WindowsDpapiCredentialStore
+import dev.evestaticmapplanner.shared.sync.SharedMapConfigurationSink
+import dev.evestaticmapplanner.shared.sync.SharedMapSession
+import dev.evestaticmapplanner.shared.toPreferences
 import dev.evestaticmapplanner.staticdata.StaticDataBootstrapScreen
 import dev.evestaticmapplanner.staticdata.StaticDataManagerDialog
 import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
@@ -242,6 +248,22 @@ private fun FrameWindowScope.ReadyApplication(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
+    val sharedMapScope = remember(configuration) {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
+    val sharedMapViewModel = remember(configuration, mapViewModel, sharedMapScope) {
+        val session = SharedMapSession(
+            client = KtorSharedMapClient(),
+            credentialStore = WindowsDpapiCredentialStore(ApplicationDirectories.root()),
+            configurationSink = object : SharedMapConfigurationSink {
+                override suspend fun save(configuration: dev.evestaticmapplanner.shared.model.SharedMapConfiguration) {
+                    mapViewModel.updateSharedMapPreferences(configuration.toPreferences()).getOrThrow()
+                }
+            },
+            scope = sharedMapScope,
+        )
+        SharedMapViewModel(session, sharedMapScope)
+    }
     val wormholeViewModel = remember(configuration, wormholeSessionStore) {
         WormholeViewModel(
             store = wormholeSessionStore,
@@ -362,6 +384,7 @@ private fun FrameWindowScope.ReadyApplication(
         controlLifecycle,
         localhostMcpHost,
         mapViewModel,
+        sharedMapViewModel,
         routeViewModel,
         wormholeViewModel,
         jumpViewModel,
@@ -374,6 +397,7 @@ private fun FrameWindowScope.ReadyApplication(
             shutdownLocalhostMcp = localhostMcpHost::shutdown,
             shutdownAiControl = controlLifecycle::shutdown,
             resourceClosers = listOf(
+                sharedMapViewModel::close,
                 mapViewModel::close,
                 routeViewModel::close,
                 wormholeViewModel::close,
@@ -400,6 +424,15 @@ private fun FrameWindowScope.ReadyApplication(
     }
 
     val mapState by mapViewModel.state.collectAsState()
+    val sharedMapState by sharedMapViewModel.state.collectAsState()
+    val sharedMapOperationError by sharedMapViewModel.operationError.collectAsState()
+    var sharedMapRestored by remember(configuration) { mutableStateOf(false) }
+    LaunchedEffect(mapState.isLoading, sharedMapRestored, sharedMapViewModel) {
+        if (!mapState.isLoading && !sharedMapRestored) {
+            sharedMapRestored = true
+            sharedMapViewModel.restore(mapState.appPreferences.sharedMap)
+        }
+    }
     val routeState by routeViewModel.state.collectAsState()
     val wormholeState by wormholeViewModel.state.collectAsState()
     val jumpState by jumpViewModel.state.collectAsState()
@@ -506,6 +539,13 @@ private fun FrameWindowScope.ReadyApplication(
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,
             overlayState = featureOverlayState,
+            sharedMapState = sharedMapState,
+            sharedMapOperationError = sharedMapOperationError,
+            onSharedMapConnect = sharedMapViewModel::connect,
+            onSharedMapWorkspaceChange = sharedMapViewModel::switchWorkspace,
+            onSharedMapRefresh = sharedMapViewModel::refreshNow,
+            onSharedMapDisconnect = sharedMapViewModel::disconnect,
+            onSharedMapClearError = sharedMapViewModel::clearOperationError,
             onOverlayVisibilityChange = mapViewModel::updateOverlayVisibilityPreferences,
             onAiControlChange = { enabled ->
                 uiScope.launch {
@@ -554,6 +594,12 @@ private fun FrameWindowScope.ReadyApplication(
             onResetAll = {
                 uiScope.launch {
                     aiPreferenceError = null
+                    val sharedDisconnected = sharedMapViewModel.disconnectForPreferencesReset()
+                    if (sharedDisconnected.isFailure) {
+                        aiPreferenceError = "Preferences could not be reset because the Shared Map credential could not be removed."
+                        AppDiagnostics.warning("Shared Map disconnect during preference reset failed")
+                        return@launch
+                    }
                     mapViewModel.resetAllPreferences().fold(
                         onSuccess = { controlLifecycle.setEnabled(false) },
                         onFailure = {

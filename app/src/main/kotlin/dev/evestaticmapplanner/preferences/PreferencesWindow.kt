@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.preferences
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +14,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
@@ -47,6 +51,11 @@ import dev.evestaticmapplanner.featurepack.PackControlActionUiState
 import dev.evestaticmapplanner.feature.api.PackControlActionStatus
 import dev.evestaticmapplanner.feature.api.PackControlSeverity
 import dev.evestaticmapplanner.feature.api.OverlayState
+import dev.evestaticmapplanner.shared.auth.SecretValue
+import dev.evestaticmapplanner.shared.model.SharedConnectionState
+import dev.evestaticmapplanner.shared.model.SharedMapState
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -59,6 +68,13 @@ fun PreferencesWindow(
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
     overlayState: OverlayState,
+    sharedMapState: SharedMapState,
+    sharedMapOperationError: String?,
+    onSharedMapConnect: (String, SecretValue, String) -> Unit,
+    onSharedMapWorkspaceChange: (String) -> Unit,
+    onSharedMapRefresh: () -> Unit,
+    onSharedMapDisconnect: () -> Unit,
+    onSharedMapClearError: () -> Unit,
     onOverlayVisibilityChange: (OverlayVisibilityPreferences) -> Unit,
     onAiControlChange: (Boolean) -> Unit,
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
@@ -129,6 +145,16 @@ fun PreferencesWindow(
                                 onMapDisplayChange,
                                 onResetOverlayVisibility,
                             )
+                            PreferencesCategory.SHARED_MAP -> SharedMapPreferencesContent(
+                                preferences.sharedMap,
+                                sharedMapState,
+                                sharedMapOperationError,
+                                onSharedMapConnect,
+                                onSharedMapWorkspaceChange,
+                                onSharedMapRefresh,
+                                onSharedMapDisconnect,
+                                onSharedMapClearError,
+                            )
                         }
                     }
                 }
@@ -148,7 +174,194 @@ private enum class PreferencesCategory(val label: String) {
     AI_CONTROL("AI Control"),
     FEATURE_PACKS("Feature Packs"),
     OVERLAYS("Overlays"),
+    SHARED_MAP("Shared Map"),
 }
+
+@Composable
+private fun SharedMapPreferencesContent(
+    preferences: SharedMapPreferences,
+    state: SharedMapState,
+    operationError: String?,
+    onConnect: (String, SecretValue, String) -> Unit,
+    onWorkspaceChange: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onDisconnect: () -> Unit,
+    onClearError: () -> Unit,
+) {
+    var serverUrl by remember(preferences.serverUrl) { mutableStateOf(preferences.serverUrl.orEmpty()) }
+    var deviceName by remember(preferences.deviceName) { mutableStateOf(preferences.deviceName) }
+    var showInviteDialog by remember { mutableStateOf(false) }
+    var workspaceMenuExpanded by remember { mutableStateOf(false) }
+    val canConnect = state.connectionState in setOf(
+        SharedConnectionState.DISCONNECTED,
+        SharedConnectionState.AUTH_REQUIRED,
+        SharedConnectionState.FORBIDDEN,
+        SharedConnectionState.PROTOCOL_UNSUPPORTED,
+    ) || (state.connectionState == SharedConnectionState.OFFLINE && state.selectedWorkspaceId == null)
+
+    Text("Shared Map", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Connect to a Shared Map Server and keep its read-only marker snapshot synchronized.",
+        color = Color(0xFFAAB9C7),
+    )
+    OutlinedTextField(
+        value = serverUrl,
+        onValueChange = { serverUrl = it },
+        label = { Text("Server URL") },
+        placeholder = { Text("https://map.example.com") },
+        singleLine = true,
+        enabled = canConnect,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = deviceName,
+        onValueChange = { if (it.codePointCount(0, it.length) <= 80) deviceName = it },
+        label = { Text("Device name") },
+        singleLine = true,
+        enabled = canConnect,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text("Status: ${sharedMapStatusLabel(state)}")
+    state.statusMessage?.let { Text(it, color = Color(0xFFAAB9C7)) }
+    operationError?.let {
+        Text(it, color = MaterialTheme.colorScheme.error)
+        TextButton(onClick = onClearError) { Text("Dismiss") }
+    }
+
+    if (state.workspaces.isNotEmpty()) {
+        Text("Workspace", style = MaterialTheme.typography.titleSmall)
+        Box {
+            TextButton(
+                onClick = { workspaceMenuExpanded = true },
+                enabled = state.workspaces.size > 1,
+            ) {
+                Text(state.selectedWorkspace?.name ?: "Select Workspace")
+            }
+            DropdownMenu(
+                expanded = workspaceMenuExpanded,
+                onDismissRequest = { workspaceMenuExpanded = false },
+            ) {
+                state.workspaces.forEach { workspace ->
+                    DropdownMenuItem(
+                        text = { Text(workspace.name) },
+                        onClick = {
+                            workspaceMenuExpanded = false
+                            onWorkspaceChange(workspace.workspaceId)
+                        },
+                    )
+                }
+            }
+        }
+    }
+    state.identity?.workspace?.role?.let { role ->
+        Text("Role: ${role.name.lowercase().replaceFirstChar(Char::uppercase)}")
+    }
+    Text("Last sync: ${state.lastSuccessfulSyncAt?.let(::formatLocalInstant) ?: "Never"}")
+    Text("Shared markers: ${state.markerCount}")
+    state.snapshot?.let { Text("Revision: ${it.revision}", color = Color(0xFFAAB9C7)) }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(
+            onClick = { showInviteDialog = true },
+            enabled = canConnect && serverUrl.isNotBlank(),
+        ) { Text("Connect with Invite…") }
+        TextButton(
+            onClick = onRefresh,
+            enabled = state.selectedWorkspaceId != null && state.connectionState in setOf(
+                SharedConnectionState.ONLINE,
+                SharedConnectionState.DEGRADED,
+                SharedConnectionState.OFFLINE,
+            ),
+        ) { Text("Refresh Now") }
+    }
+    TextButton(
+        onClick = onDisconnect,
+        enabled = state.serverUrl != null && state.connectionState != SharedConnectionState.CONNECTING,
+    ) { Text("Disconnect") }
+
+    if (showInviteDialog) {
+        InviteConnectDialog(
+            serverUrl = serverUrl,
+            onDismiss = { showInviteDialog = false },
+            onSubmit = { inviteText ->
+                val secret = runCatching { SecretValue.from(inviteText) }.getOrNull()
+                if (secret != null) {
+                    try {
+                        onConnect(serverUrl, secret, deviceName)
+                    } finally {
+                        secret.close()
+                    }
+                }
+                showInviteDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun InviteConnectDialog(
+    serverUrl: String,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var invite by remember { mutableStateOf("") }
+    fun clearAndDismiss() {
+        invite = ""
+        onDismiss()
+    }
+    AlertDialog(
+        onDismissRequest = ::clearAndDismiss,
+        title = { Text("Connect to Shared Map") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(serverUrl, color = Color(0xFFAAB9C7))
+                OutlinedTextField(
+                    value = invite,
+                    onValueChange = { invite = it },
+                    label = { Text("One-time invite") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("The invite is used once and is not saved.", color = Color(0xFFAAB9C7))
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val submitted = invite
+                    invite = ""
+                    onSubmit(submitted)
+                },
+                enabled = invite.isNotBlank(),
+            ) { Text("Connect") }
+        },
+        dismissButton = { TextButton(onClick = ::clearAndDismiss) { Text("Cancel") } },
+    )
+}
+
+internal fun sharedMapStatusLabel(state: SharedConnectionState): String = when (state) {
+    SharedConnectionState.DISCONNECTED -> "Not configured"
+    SharedConnectionState.CONNECTING -> "Connecting"
+    SharedConnectionState.ONLINE -> "Connected"
+    SharedConnectionState.DEGRADED -> "Degraded — showing stale data"
+    SharedConnectionState.OFFLINE -> "Offline"
+    SharedConnectionState.AUTH_REQUIRED -> "Authentication required"
+    SharedConnectionState.FORBIDDEN -> "Access removed"
+    SharedConnectionState.PROTOCOL_UNSUPPORTED -> "Incompatible server"
+}
+
+internal fun sharedMapStatusLabel(state: SharedMapState): String =
+    if (state.connectionState == SharedConnectionState.DISCONNECTED && state.serverUrl != null) {
+        "Disconnected"
+    } else {
+        sharedMapStatusLabel(state.connectionState)
+    }
+
+private val SHARED_MAP_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")
+
+private fun formatLocalInstant(instant: java.time.Instant): String =
+    SHARED_MAP_TIME_FORMATTER.format(instant.atZone(ZoneId.systemDefault()))
 
 @Composable
 private fun OverlayPreferencesContent(

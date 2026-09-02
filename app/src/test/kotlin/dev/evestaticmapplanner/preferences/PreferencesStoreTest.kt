@@ -12,6 +12,28 @@ import kotlin.test.assertTrue
 
 class PreferencesStoreTest {
     @Test
+    fun `Shared Map settings persist only non-sensitive configuration`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val preferences = AppPreferences(
+            sharedMap = SharedMapPreferences(
+                serverUrl = "https://map.example.com",
+                selectedWorkspaceId = "01991d60-b8a2-7a20-a311-b5114b27c219",
+                deviceName = "FC Laptop",
+            ),
+        )
+
+        PropertiesPreferencesStore(path).save(preferences)
+
+        val text = Files.readString(path)
+        assertTrue(text.contains("sharedMap.serverUrl=https\\://map.example.com"))
+        assertTrue(text.contains("sharedMap.selectedWorkspaceId=01991d60-b8a2-7a20-a311-b5114b27c219"))
+        assertTrue(text.contains("sharedMap.deviceName=FC Laptop"))
+        assertFalse(text.contains("accessToken", ignoreCase = true))
+        assertFalse(text.contains("esm_dev_"))
+        assertEquals(preferences.sharedMap, PropertiesPreferencesStore(path).load().sharedMap)
+    }
+
+    @Test
     fun `default AppPreferences contains default MapDisplayPreferences`() {
         assertEquals(MapDisplayPreferences.Defaults, AppPreferences.Defaults.mapDisplay)
         assertEquals(2.0, MapDisplayPreferences.Defaults.constellationZoomThreshold)

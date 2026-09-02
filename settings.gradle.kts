@@ -28,4 +28,5 @@ include(
     ":mcp",
     ":marker-application",
     ":sde",
+    ":shared-client",
 )

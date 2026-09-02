@@ -5,15 +5,27 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.Properties
+import java.util.UUID
 
 data class AppPreferences(
     val mapDisplay: MapDisplayPreferences = MapDisplayPreferences.Defaults,
     val marker: MarkerPreferences = MarkerPreferences.Defaults,
     val aiControl: AiControlPreferences = AiControlPreferences.Defaults,
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
+    val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
 ) {
     companion object {
         val Defaults = AppPreferences()
+    }
+}
+
+data class SharedMapPreferences(
+    val serverUrl: String? = null,
+    val selectedWorkspaceId: String? = null,
+    val deviceName: String = DEFAULT_SHARED_MAP_DEVICE_NAME,
+) {
+    companion object {
+        val Defaults = SharedMapPreferences()
     }
 }
 
@@ -198,6 +210,17 @@ class PropertiesPreferencesStore(
                 savedMarkerAccessEnabled = properties.safeAiSavedMarkerAccessEnabled(warningSink),
             ),
             overlayVisibility = properties.overlayVisibilityPreferences(),
+            sharedMap = SharedMapPreferences(
+                serverUrl = properties.getProperty(KEY_SHARED_MAP_SERVER_URL)
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty),
+                selectedWorkspaceId = properties.getProperty(KEY_SHARED_MAP_SELECTED_WORKSPACE_ID)
+                    ?.canonicalUuidOrNull(),
+                deviceName = properties.getProperty(KEY_SHARED_MAP_DEVICE_NAME)
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 80 }
+                    ?: DEFAULT_SHARED_MAP_DEVICE_NAME,
+            ),
         )
     }
 
@@ -213,6 +236,7 @@ class PropertiesPreferencesStore(
             val marker = preferences.marker
             val aiControl = preferences.aiControl
             val overlayVisibility = preferences.overlayVisibility
+            val sharedMap = preferences.sharedMap
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_CONSTELLATION_THRESHOLD, mapDisplay.constellationZoomThreshold.toString())
@@ -235,6 +259,9 @@ class PropertiesPreferencesStore(
                     KEY_OVERLAY_DISABLED_LAYERS,
                     overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
                 )
+                sharedMap.serverUrl?.let { setProperty(KEY_SHARED_MAP_SERVER_URL, it) }
+                sharedMap.selectedWorkspaceId?.let { setProperty(KEY_SHARED_MAP_SELECTED_WORKSPACE_ID, it) }
+                setProperty(KEY_SHARED_MAP_DEVICE_NAME, sharedMap.deviceName)
             }
             Files.newOutputStream(temporary).use {
                 properties.store(it, "EVE Static Map Planner preferences")
@@ -297,6 +324,10 @@ private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferen
     return OverlayVisibilityPreferences(disabledLayers)
 }
 
+private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromString(this).toString() }
+    .getOrNull()
+    ?.takeIf { it == this }
+
 const val SETTINGS_VERSION = "1"
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
@@ -310,6 +341,7 @@ const val DEFAULT_CONSTELLATION_FONT_SIZE_SP = 13f
 const val DEFAULT_SYSTEM_FONT_SIZE_SP = 11f
 const val MAX_ZOOM_THRESHOLD = 250.0
 const val MAX_FONT_SIZE_SP = 72f
+const val DEFAULT_SHARED_MAP_DEVICE_NAME = "EVE Static Map Planner"
 const val DEFAULT_SAVED_MARKER_RING_RADIUS_DP = 13f
 const val MIN_SAVED_MARKER_RING_RADIUS_DP = 10f
 const val MAX_SAVED_MARKER_RING_RADIUS_DP = 30f
@@ -338,3 +370,6 @@ private const val KEY_SAVED_MARKER_GLOW_STRENGTH = "marker.savedMarkerAppearance
 private const val KEY_AI_CONTROL_ENABLED = "aiControl.enabled"
 private const val KEY_AI_SAVED_MARKER_ACCESS_ENABLED = "aiControl.savedMarkerAccessEnabled"
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
+private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
+private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"
+private const val KEY_SHARED_MAP_DEVICE_NAME = "sharedMap.deviceName"
