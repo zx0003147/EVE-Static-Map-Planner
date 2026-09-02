@@ -69,6 +69,7 @@ fun StaticMapCanvas(
     wormholeConnections: List<WormholeConnection>,
     showAnsiblexLayer: Boolean,
     markerState: MarkerUiState,
+    sharedMarkerState: SharedMarkerPresentationState,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
     compactSystemInfo: CompactSystemInfoPresentation?,
@@ -268,6 +269,19 @@ fun StaticMapCanvas(
         state.selectedSystemId?.let(::add)
         activeMarkerInteractionSystemId?.let(::add)
     }
+    val visibleSystemNameIds = remember(
+        labelPresentation.systemLabelSystemIds,
+        labelPresentation.emphasizedSystemLabelIds,
+        state.hoveredSystemId,
+        state.selectedSystemId,
+    ) {
+        systemNameVisibilityIds(
+            regularSystemLabelIds = labelPresentation.systemLabelSystemIds,
+            emphasizedSystemLabelIds = labelPresentation.emphasizedSystemLabelIds,
+            hoveredSystemId = state.hoveredSystemId,
+            selectedSystemId = state.selectedSystemId,
+        )
+    }
     val presentedMarkers = remember(
         scene,
         transform,
@@ -279,6 +293,7 @@ fun StaticMapCanvas(
         state.semanticLabelMode,
         markerOffsetPx,
         childOrbitRadiusPx,
+        visibleSystemNameIds,
     ) {
         MarkerMapPresentationBuilder.build(
             scene = scene,
@@ -291,7 +306,72 @@ fun StaticMapCanvas(
             semanticMode = state.semanticLabelMode,
             offsetPx = markerOffsetPx,
             childOrbitRadiusPx = childOrbitRadiusPx,
+            systemNameVisibleIds = visibleSystemNameIds,
         )
+    }
+    val sharedMarkerGeometry = remember(density) {
+        with(density) {
+            SharedMarkerVisualGeometry(
+                baseRingRadiusPx = SHARED_MARKER_BASE_RING_RADIUS_DP.dp.toPx().toDouble(),
+                localRingClearancePx = SHARED_MARKER_LOCAL_RING_CLEARANCE_DP.dp.toPx().toDouble(),
+                primaryStrokePx = SHARED_MARKER_PRIMARY_STROKE_DP.dp.toPx(),
+                secondaryOffsetPx = SHARED_MARKER_SECONDARY_OFFSET_DP.dp.toPx().toDouble(),
+                secondaryStrokePx = SHARED_MARKER_SECONDARY_STROKE_DP.dp.toPx(),
+                badgeOutwardOffsetPx = SHARED_MARKER_BADGE_OUTWARD_OFFSET_DP.dp.toPx().toDouble(),
+                badgeRadiusPx = SHARED_MARKER_BADGE_RADIUS_DP.dp.toPx(),
+                badgeBorderWidthPx = SHARED_MARKER_BADGE_BORDER_WIDTH_DP.dp.toPx(),
+                badgeDotRadiusPx = SHARED_MARKER_BADGE_DOT_RADIUS_DP.dp.toPx(),
+                badgeLinkWidthPx = SHARED_MARKER_BADGE_LINK_WIDTH_DP.dp.toPx(),
+            )
+        }
+    }
+    val localSavedRingRadiusPx = with(density) { savedMarkerAppearance.ringRadiusDp.dp.toPx().toDouble() }
+    val presentedSharedMarkers = remember(
+        scene,
+        transform,
+        labelPresentation.visibleSystemIds,
+        sharedMarkerState,
+        markerState.markersBySystemId,
+        missionState.markers,
+        sharedMarkerGeometry,
+        localSavedRingRadiusPx,
+    ) {
+        SharedMarkerMapPresentationBuilder.build(
+            scene = scene,
+            transform = transform,
+            visibleSystemIds = labelPresentation.visibleSystemIds,
+            state = sharedMarkerState,
+            localMarkersBySystemId = markerState.markersBySystemId,
+            missionMarkers = missionState.markers,
+            geometry = sharedMarkerGeometry,
+            localSavedRingRadiusPx = localSavedRingRadiusPx,
+        )
+    }
+    val localSavedVisualRadiusPx = with(density) {
+        savedMarkerRingRenderState(savedMarkerAppearance).visualRadiusDp().dp.toPx().toDouble()
+    }
+    val systemNameSafetyGapPx = with(density) { SYSTEM_LABEL_MARKER_SAFETY_GAP_DP.dp.toPx().toDouble() }
+    val systemNameVisualObstaclesBySystemId = remember(
+        presentedMarkers,
+        presentedSharedMarkers,
+        sharedMarkerGeometry,
+        localSavedVisualRadiusPx,
+    ) {
+        systemNameVisualObstaclesBySystemId(
+            localMarkers = presentedMarkers,
+            sharedMarkers = presentedSharedMarkers,
+            sharedGeometry = sharedMarkerGeometry,
+            localSavedVisualRadiusPx = localSavedVisualRadiusPx,
+        )
+    }
+    val hoveredSharedMarker = remember(
+        state.hoveredSystemId,
+        state.selectedSystemId,
+        presentedSharedMarkers,
+    ) {
+        state.hoveredSystemId
+            ?.takeUnless { it == state.selectedSystemId }
+            ?.let { hoveredId -> presentedSharedMarkers.firstOrNull { it.marker.systemId == hoveredId } }
     }
     var pressedAt by remember { mutableStateOf<MapPoint?>(null) }
     var lastDragPosition by remember { mutableStateOf<MapPoint?>(null) }
@@ -436,15 +516,17 @@ fun StaticMapCanvas(
         Canvas(Modifier.fillMaxSize()) {
             with(MapRenderer) {
                 drawBase(
-                    scene,
-                    transform,
-                    textMeasurer,
-                    renderCache,
-                    labelPresentation,
-                    featureOverlayPresentation,
-                    mapDisplayPreferences,
-                    visualEmphasis,
-                    presentedFeatureEmblems,
+                    scene = scene,
+                    transform = transform,
+                    textMeasurer = textMeasurer,
+                    cache = renderCache,
+                    presentation = labelPresentation,
+                    featureOverlayPresentation = featureOverlayPresentation,
+                    preferences = mapDisplayPreferences,
+                    emphasis = visualEmphasis,
+                    featureEmblems = presentedFeatureEmblems,
+                    systemNameVisualObstaclesBySystemId = systemNameVisualObstaclesBySystemId,
+                    systemNameSafetyGapPx = systemNameSafetyGapPx,
                 )
             }
         }
@@ -477,6 +559,11 @@ fun StaticMapCanvas(
         if (projectedMissionJumpRanges.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.RANGE_OVERLAY)) {
                 with(MapRenderer) { drawMissionJumpRangeOverlays(scene, transform, projectedMissionJumpRanges) }
+            }
+        }
+        if (presentedSharedMarkers.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.SHARED_MARKER)) {
+                with(MapRenderer) { drawSharedMarkers(presentedSharedMarkers, sharedMarkerGeometry) }
             }
         }
         routeOverlay?.let { overlay ->
@@ -512,6 +599,8 @@ fun StaticMapCanvas(
                         textMeasurer = textMeasurer,
                         cache = renderCache,
                         preferences = mapDisplayPreferences,
+                        systemNameVisualObstaclesBySystemId = systemNameVisualObstaclesBySystemId,
+                        systemNameSafetyGapPx = systemNameSafetyGapPx,
                     )
                 }
             }
@@ -525,6 +614,8 @@ fun StaticMapCanvas(
                         renderCache,
                         mapDisplayPreferences,
                         savedMarkerAppearance,
+                        systemNameVisualObstaclesBySystemId,
+                        systemNameSafetyGapPx,
                     )
                 }
             }
@@ -558,45 +649,34 @@ fun StaticMapCanvas(
                     textMeasurer = textMeasurer,
                     cache = renderCache,
                     preferences = mapDisplayPreferences,
+                    systemNameVisualObstaclesBySystemId = systemNameVisualObstaclesBySystemId,
+                    systemNameSafetyGapPx = systemNameSafetyGapPx,
                 )
             }
+        }
+        hoveredSharedMarker?.let { marker ->
+            MapMarkerTooltip(
+                lines = marker.hoverLines,
+                offset = IntOffset(
+                    marker.screenCenter.x.toInt() + marker.ringRadiusPx.toInt() + 8,
+                    marker.screenCenter.y.toInt() - marker.ringRadiusPx.toInt() - 12,
+                ),
+            )
         }
         hoveredSavedMarkerChild?.let { child ->
-            Surface(
-                color = androidx.compose.ui.graphics.Color(0xF21B2A37),
-                contentColor = androidx.compose.ui.graphics.Color(0xFFF1F5F8),
-                shadowElevation = 6.dp,
-                modifier = Modifier
-                    .zIndex(SAVED_MARKER_TOOLTIP_Z_INDEX)
-                    .offset {
-                        IntOffset(
-                            child.screenCenter.x.toInt() + 12,
-                            child.screenCenter.y.toInt() - 16,
-                        )
-                    },
-            ) {
-                Text(
-                    child.visual.label,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(7.dp),
-                )
-            }
+            MapMarkerTooltip(
+                lines = listOf(child.visual.label),
+                offset = IntOffset(
+                    child.screenCenter.x.toInt() + 12,
+                    child.screenCenter.y.toInt() - 16,
+                ),
+            )
         }
         hoveredOverlaySystemMarker?.takeIf { it.tooltipLines.isNotEmpty() }?.let { marker ->
-            Surface(
-                color = androidx.compose.ui.graphics.Color(0xF21B2A37),
-                contentColor = androidx.compose.ui.graphics.Color(0xFFF1F5F8),
-                shadowElevation = 6.dp,
-                modifier = Modifier
-                    .zIndex(SAVED_MARKER_TOOLTIP_Z_INDEX)
-                    .offset { IntOffset(marker.center.x.toInt() + 28, marker.center.y.toInt() - 16) },
-            ) {
-                Text(
-                    marker.tooltipLines.joinToString("\n"),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(7.dp),
-                )
-            }
+            MapMarkerTooltip(
+                lines = marker.tooltipLines,
+                offset = IntOffset(marker.center.x.toInt() + 28, marker.center.y.toInt() - 16),
+            )
         }
         compactSystemInfo?.let { presentation ->
             CompactSystemInfoCard(
@@ -708,6 +788,27 @@ fun StaticMapCanvas(
     }
 }
 
+@Composable
+private fun MapMarkerTooltip(
+    lines: List<String>,
+    offset: IntOffset,
+) {
+    Surface(
+        color = androidx.compose.ui.graphics.Color(0xF21B2A37),
+        contentColor = androidx.compose.ui.graphics.Color(0xFFF1F5F8),
+        shadowElevation = 6.dp,
+        modifier = Modifier
+            .zIndex(SAVED_MARKER_TOOLTIP_Z_INDEX)
+            .offset { offset },
+    ) {
+        Text(
+            lines.joinToString("\n"),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(7.dp),
+        )
+    }
+}
+
 private fun Offset.toMapPoint() = MapPoint(x.toDouble(), y.toDouble())
 
 internal fun Rect?.containsPoint(point: MapPoint): Boolean =
@@ -715,6 +816,18 @@ internal fun Rect?.containsPoint(point: MapPoint): Boolean =
 
 internal fun Rect?.containsPoint(point: Offset): Boolean =
     this?.contains(point) == true
+
+internal fun systemNameVisibilityIds(
+    regularSystemLabelIds: Collection<Int>,
+    emphasizedSystemLabelIds: Collection<Int>,
+    hoveredSystemId: Int?,
+    selectedSystemId: Int?,
+): Set<Int> = buildSet {
+    addAll(regularSystemLabelIds)
+    addAll(emphasizedSystemLabelIds)
+    hoveredSystemId?.let(::add)
+    selectedSystemId?.let(::add)
+}
 
 internal fun calculateContextMenuPosition(
     anchor: IntOffset,
@@ -750,6 +863,7 @@ internal object StaticMapVisualLayerOrder {
     const val ANSIBLEX = 2f
     const val WORMHOLE = 2.25f
     const val RANGE_OVERLAY = 2.5f
+    const val SHARED_MARKER = 2.75f
     const val ROUTE = 3f
     const val ROUTE_FOCUS = 3.5f
     const val SAVED_MARKER = 4f

@@ -46,6 +46,7 @@ class PreferencesStoreTest {
         assertEquals(0.75, MapDisplayPreferences.Defaults.sovereigntyLogoEmphasisZoom)
         assertEquals(MarkerPreferences.Defaults, AppPreferences.Defaults.marker)
         assertTrue(MarkerPreferences.Defaults.showMarkers)
+        assertTrue(MarkerPreferences.Defaults.showSharedMarkers)
         assertTrue(MarkerPreferences.Defaults.showMarkerNames)
         assertEquals(13f, MarkerPreferences.Defaults.savedMarkerAppearance.ringRadiusDp)
         assertEquals(2f, MarkerPreferences.Defaults.savedMarkerAppearance.lineWidthDp)
@@ -71,6 +72,7 @@ class PreferencesStoreTest {
             ),
             marker = MarkerPreferences(
                 showMarkers = false,
+                showSharedMarkers = false,
                 showMarkerNames = false,
                 savedMarkerAppearance = SavedMarkerAppearancePreferences(
                     ringRadiusDp = 24.5f,
@@ -92,6 +94,7 @@ class PreferencesStoreTest {
 
         assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=1" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.glowEnabled=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.enabled=true" })
@@ -218,12 +221,14 @@ class PreferencesStoreTest {
         val path = root.resolve("settings.properties")
         Files.writeString(
             path,
-            "settings.version=1\nmarker.showMarkers=false\nmarker.showMarkerNames=not-a-boolean\n",
+            "settings.version=1\nmarker.showMarkers=false\nmarker.showSharedMarkers=invalid\n" +
+                "marker.showMarkerNames=not-a-boolean\n",
         )
 
         val loaded = PropertiesPreferencesStore(path).load().marker
 
         assertFalse(loaded.showMarkers)
+        assertTrue(loaded.showSharedMarkers)
         assertTrue(loaded.showMarkerNames)
         assertEquals(SavedMarkerAppearancePreferences.Defaults, loaded.savedMarkerAppearance)
     }

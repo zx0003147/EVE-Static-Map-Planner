@@ -642,10 +642,13 @@ private fun MarkerPreferencesContent(
     onReset: () -> Unit,
 ) {
     Text("Marker", style = MaterialTheme.typography.titleMedium)
-    PreferenceCheckbox("Show markers", preferences.showMarkers) {
+    PreferenceCheckbox("Show Local Markers", preferences.showMarkers) {
         onChange(preferences.copy(showMarkers = it))
     }
-    PreferenceCheckbox("Show marker names", preferences.showMarkerNames, preferences.showMarkers) {
+    PreferenceCheckbox("Show Shared Markers", preferences.showSharedMarkers) {
+        onChange(preferences.copy(showSharedMarkers = it))
+    }
+    PreferenceCheckbox("Show Local Marker Names", preferences.showMarkerNames, preferences.showMarkers) {
         onChange(preferences.copy(showMarkerNames = it))
     }
     HorizontalDivider(color = Color(0xFF314252))

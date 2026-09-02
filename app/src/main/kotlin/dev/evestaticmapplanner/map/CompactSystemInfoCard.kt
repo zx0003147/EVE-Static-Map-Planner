@@ -1,12 +1,14 @@
 package dev.evestaticmapplanner.map
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +36,9 @@ import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.marker.markerColor
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoState
+import dev.evestaticmapplanner.shared.model.SharedMarkerColor
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 data class CompactInfoField(
@@ -50,6 +56,7 @@ data class CompactSystemInfoPresentation(
     val jumpOverlayLabels: List<String>,
     val isInJumpIntersection: Boolean,
     val marker: CompactMarkerPresentation?,
+    val sharedMarker: CompactSharedMarkerPresentation? = null,
     val extensionSections: List<SystemInfoSection> = emptyList(),
 )
 
@@ -61,6 +68,17 @@ data class CompactMarkerPresentation(
     val color: MarkerColor,
 )
 
+data class CompactSharedMarkerPresentation(
+    val name: String,
+    val color: SharedMarkerColor,
+    val tags: List<String>,
+    val notes: String?,
+    val updatedByDisplayName: String,
+    val updatedByUserId: String,
+    val updatedAtLabel: String,
+    val isStale: Boolean,
+)
+
 object CompactSystemInfoPresentationBuilder {
     fun build(
         state: MapUiState,
@@ -68,8 +86,15 @@ object CompactSystemInfoPresentationBuilder {
         jumpState: JumpOverlayUiState,
         marker: Marker? = null,
         systemInfoState: SystemInfoState = SystemInfoState(null, emptyList()),
+        sharedMarkerState: SharedMarkerPresentationState = SharedMarkerPresentationState.Empty,
+        localTimeZone: ZoneId = ZoneId.systemDefault(),
     ): CompactSystemInfoPresentation? {
         val selectedSystemId = state.selectedSystemId ?: return null
+        val sharedMarker = sharedMarkerState
+            .takeIf(SharedMarkerPresentationState::isVisible)
+            ?.markersBySystemId
+            ?.get(selectedSystemId)
+            ?.toCompactPresentation(sharedMarkerState.isStale, localTimeZone)
         val extensionSections = systemInfoState.sections.takeIf { systemInfoState.systemId == selectedSystemId }
             ?: emptyList()
         val fallbackName = state.scene?.nodesById?.get(selectedSystemId)?.system?.name
@@ -85,6 +110,7 @@ object CompactSystemInfoPresentationBuilder {
                 jumpOverlayLabels = emptyList(),
                 isInJumpIntersection = false,
                 marker = marker?.toCompactPresentation(),
+                sharedMarker = sharedMarker,
                 extensionSections = extensionSections,
             )
 
@@ -115,6 +141,7 @@ object CompactSystemInfoPresentationBuilder {
             jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },
             isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,
             marker = marker?.toCompactPresentation(),
+            sharedMarker = sharedMarker,
             extensionSections = extensionSections,
         )
     }
@@ -179,6 +206,7 @@ fun CompactSystemInfoCard(
                 presentation.fields.forEach { field -> CompactInfoRow(field) }
             }
             presentation.marker?.let { marker -> CompactMarkerSection(marker) }
+            presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker) }
             if (presentation.isLoading) return@Column
             if (presentation.ansiblexConnections.isNotEmpty()) {
                 Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
@@ -226,6 +254,67 @@ fun CompactSystemInfoCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation) {
+    Text("Shared Marker", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+        SharedMarkerOwnershipBadge(marker.color)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                marker.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            CompactInfoRow(CompactInfoField("Color", marker.color.name))
+            if (marker.tags.isNotEmpty()) {
+                Text("Tags", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+                Text(marker.tags.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+            }
+            marker.notes?.let { notes ->
+                Text("Notes", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+                Text(notes, style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                "Updated by ${marker.updatedByDisplayName}",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF91A2B2),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(marker.updatedAtLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+            if (marker.isStale) {
+                Text(
+                    "Shared Map data may be stale",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFFFB86B),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SharedMarkerOwnershipBadge(color: SharedMarkerColor) {
+    val tint = sharedMarkerColor(color)
+    Canvas(Modifier.size(24.dp)) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension * 0.34f
+        drawCircle(Color(0xF2111C26), radius, center)
+        drawCircle(tint, radius, center, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+        val nodeOffset = radius * 0.34f
+        val nodeRadius = radius * 0.2f
+        drawLine(
+            Color(0xFFF1F5F8),
+            Offset(center.x - nodeOffset, center.y + nodeRadius),
+            Offset(center.x + nodeOffset, center.y + nodeRadius),
+            1.dp.toPx(),
+        )
+        drawCircle(Color(0xFFF1F5F8), nodeRadius, Offset(center.x - nodeOffset, center.y - nodeRadius * 0.5f))
+        drawCircle(Color(0xFFF1F5F8), nodeRadius, Offset(center.x + nodeOffset, center.y - nodeRadius * 0.5f))
     }
 }
 
@@ -303,3 +392,20 @@ private fun Marker.toCompactPresentation() = CompactMarkerPresentation(
     notes = notes,
     color = color,
 )
+
+private fun SharedMarkerPresentation.toCompactPresentation(
+    isStale: Boolean,
+    localTimeZone: ZoneId,
+) = CompactSharedMarkerPresentation(
+    name = name,
+    color = color,
+    tags = tags.map(::sharedMarkerTagLabel),
+    notes = notes,
+    updatedByDisplayName = updatedByDisplayName,
+    updatedByUserId = updatedByUserId,
+    updatedAtLabel = SHARED_MARKER_TIME_FORMATTER.format(updatedAt.atZone(localTimeZone)),
+    isStale = isStale,
+)
+
+private val SHARED_MARKER_TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")

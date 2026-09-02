@@ -37,7 +37,9 @@ import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.route.RoutePlannerUiState
+import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -188,6 +190,56 @@ class CompactSystemInfoCardTest {
         assertEquals("Staging", presentation.marker?.name)
         assertEquals("Form here before moving.", presentation.marker?.notes)
         assertEquals(MarkerColor.PURPLE, presentation.marker?.color)
+    }
+
+    @Test
+    fun `selected Shared Marker shows full read-only metadata and stale state while visible`() {
+        val shared = SharedMarkerPresentation(
+            markerId = "shared-1",
+            systemId = 2,
+            name = "Alliance Staging",
+            color = SharedMarkerColor.PURPLE,
+            tags = listOf("staging", "future_tag"),
+            notes = "Line one\nLine two",
+            updatedByUserId = "user-1",
+            updatedByDisplayName = "A Very Long Alliance Display Name",
+            updatedAt = Instant.parse("2026-09-02T02:03:04Z"),
+        )
+        val sharedState = SharedMarkerPresentationState(
+            workspaceId = "workspace",
+            revision = 4,
+            isVisible = true,
+            isStale = true,
+            markersBySystemId = mapOf(2 to shared),
+        )
+
+        val presentation = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state = MapUiState(selectedSystemId = 2),
+                routeState = RoutePlannerUiState(),
+                jumpState = JumpOverlayUiState(),
+                sharedMarkerState = sharedState,
+                localTimeZone = ZoneOffset.UTC,
+            )?.sharedMarker,
+        )
+
+        assertEquals("Alliance Staging", presentation.name)
+        assertEquals(SharedMarkerColor.PURPLE, presentation.color)
+        assertEquals(listOf("STAGING", "FUTURE_TAG"), presentation.tags)
+        assertEquals("Line one\nLine two", presentation.notes)
+        assertEquals("user-1", presentation.updatedByUserId)
+        assertEquals("A Very Long Alliance Display Name", presentation.updatedByDisplayName)
+        assertEquals("2026-09-02 02:03:04 Z", presentation.updatedAtLabel)
+        assertTrue(presentation.isStale)
+
+        val hidden = CompactSystemInfoPresentationBuilder.build(
+            state = MapUiState(selectedSystemId = 2),
+            routeState = RoutePlannerUiState(),
+            jumpState = JumpOverlayUiState(),
+            sharedMarkerState = sharedState.copy(isVisible = false),
+            localTimeZone = ZoneOffset.UTC,
+        )
+        assertNull(hidden?.sharedMarker)
     }
 
     @Test

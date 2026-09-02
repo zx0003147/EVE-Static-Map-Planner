@@ -40,6 +40,7 @@ data class AiControlPreferences(
 
 data class MarkerPreferences(
     val showMarkers: Boolean = true,
+    val showSharedMarkers: Boolean = true,
     val showMarkerNames: Boolean = true,
     val savedMarkerAppearance: SavedMarkerAppearancePreferences = SavedMarkerAppearancePreferences.Defaults,
 ) {
@@ -182,6 +183,10 @@ class PropertiesPreferencesStore(
             ),
             marker = MarkerPreferences(
                 showMarkers = properties.validBoolean(KEY_SHOW_MARKERS, markerDefaults.showMarkers),
+                showSharedMarkers = properties.validBoolean(
+                    KEY_SHOW_SHARED_MARKERS,
+                    markerDefaults.showSharedMarkers,
+                ),
                 showMarkerNames = properties.validBoolean(
                     KEY_SHOW_MARKER_NAMES,
                     markerDefaults.showMarkerNames,
@@ -248,6 +253,7 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_SYSTEM_FONT_SIZE, mapDisplay.systemFontSizeSp.toString())
                 setProperty(KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, mapDisplay.sovereigntyLogoEmphasisZoom.toString())
                 setProperty(KEY_SHOW_MARKERS, marker.showMarkers.toString())
+                setProperty(KEY_SHOW_SHARED_MARKERS, marker.showSharedMarkers.toString())
                 setProperty(KEY_SHOW_MARKER_NAMES, marker.showMarkerNames.toString())
                 setProperty(KEY_SAVED_MARKER_RING_RADIUS, marker.savedMarkerAppearance.ringRadiusDp.toString())
                 setProperty(KEY_SAVED_MARKER_LINE_WIDTH, marker.savedMarkerAppearance.lineWidthDp.toString())
@@ -362,6 +368,7 @@ private const val KEY_CONSTELLATION_FONT_SIZE = "mapDisplay.constellationFontSiz
 private const val KEY_SYSTEM_FONT_SIZE = "mapDisplay.systemFontSizeSp"
 private const val KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = "mapDisplay.sovereigntyLogoEmphasisZoom"
 private const val KEY_SHOW_MARKERS = "marker.showMarkers"
+private const val KEY_SHOW_SHARED_MARKERS = "marker.showSharedMarkers"
 private const val KEY_SHOW_MARKER_NAMES = "marker.showMarkerNames"
 private const val KEY_SAVED_MARKER_RING_RADIUS = "marker.savedMarkerAppearance.ringRadiusDp"
 private const val KEY_SAVED_MARKER_LINE_WIDTH = "marker.savedMarkerAppearance.lineWidthDp"

@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.map
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.FilterQuality
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import dev.evestaticmapplanner.core.map.MapPoint
+import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
@@ -94,6 +96,8 @@ object MapRenderer {
         preferences: MapDisplayPreferences,
         emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
         featureEmblems: List<PresentedFeatureEmblem> = emptyList(),
+        systemNameVisualObstaclesBySystemId: Map<Int, SystemNameVisualObstacles> = emptyMap(),
+        systemNameSafetyGapPx: Double = 0.0,
     ) {
         drawRect(MAP_BACKGROUND)
 
@@ -162,11 +166,18 @@ object MapRenderer {
             val node = scene.nodesById.getValue(systemId)
             val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
             val screen = transform.worldToScreen(node.position)
+            val layout = systemNameLabelLayout(
+                center = screen,
+                labelSize = MapSize(label.size.width.toDouble(), label.size.height.toDouble()),
+                existingOffsetPx = SYSTEM_LABEL_OFFSET_PX,
+                visualObstacles = systemNameVisualObstaclesBySystemId[systemId],
+                safetyGapPx = systemNameSafetyGapPx,
+            )
             drawText(
                 textLayoutResult = label,
                 color = labelColor(MapLabelType.SYSTEM, preferences)
                     .multiplyAlpha(emphasis.systemLabelAlphaMultiplier(systemId)),
-                topLeft = Offset(screen.x.toFloat() + 5f, screen.y.toFloat() - label.size.height / 2f),
+                topLeft = layout.topLeft.toOffset(),
             )
         }
     }
@@ -251,6 +262,8 @@ object MapRenderer {
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
+        systemNameVisualObstaclesBySystemId: Map<Int, SystemNameVisualObstacles> = emptyMap(),
+        systemNameSafetyGapPx: Double = 0.0,
     ) {
         if (!emphasis.isActive) return
         val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
@@ -267,10 +280,17 @@ object MapRenderer {
             val node = scene.nodesById.getValue(systemId)
             val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
             val screen = transform.worldToScreen(node.position)
+            val layout = systemNameLabelLayout(
+                center = screen,
+                labelSize = MapSize(label.size.width.toDouble(), label.size.height.toDouble()),
+                existingOffsetPx = SYSTEM_LABEL_OFFSET_PX,
+                visualObstacles = systemNameVisualObstaclesBySystemId[systemId],
+                safetyGapPx = systemNameSafetyGapPx,
+            )
             drawText(
                 textLayoutResult = label,
                 color = labelColor(MapLabelType.SYSTEM, preferences),
-                topLeft = Offset(screen.x.toFloat() + 5f, screen.y.toFloat() - label.size.height / 2f),
+                topLeft = layout.topLeft.toOffset(),
             )
         }
     }
@@ -283,12 +303,20 @@ object MapRenderer {
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
+        systemNameVisualObstaclesBySystemId: Map<Int, SystemNameVisualObstacles> = emptyMap(),
+        systemNameSafetyGapPx: Double = 0.0,
     ) {
         if (selectedSystemId != null) {
-            drawHighlightedNode(scene, transform, selectedSystemId, SELECTED_COLOR, 8f, textMeasurer, cache, preferences)
+            drawHighlightedNode(
+                scene, transform, selectedSystemId, SELECTED_COLOR, 8f, textMeasurer, cache, preferences,
+                systemNameVisualObstaclesBySystemId[selectedSystemId], systemNameSafetyGapPx,
+            )
         }
         if (hoveredSystemId != null && hoveredSystemId != selectedSystemId) {
-            drawHighlightedNode(scene, transform, hoveredSystemId, HOVER_COLOR, 6f, textMeasurer, cache, preferences)
+            drawHighlightedNode(
+                scene, transform, hoveredSystemId, HOVER_COLOR, 6f, textMeasurer, cache, preferences,
+                systemNameVisualObstaclesBySystemId[hoveredSystemId], systemNameSafetyGapPx,
+            )
         }
     }
 
@@ -579,8 +607,12 @@ object MapRenderer {
     ) {
         markers.forEachIndexed { index, marker ->
             val node = scene.nodesById[marker.systemId] ?: return@forEachIndexed
-            val base = transform.worldToScreen(node.position).toOffset()
-            val center = Offset(base.x + 11f + (index % 3) * 3f, base.y - 11f - (index % 3) * 3f)
+            val base = transform.worldToScreen(node.position)
+            val center = missionMarkerBadgeCenter(
+                systemCenter = base,
+                markerIndex = index,
+                outwardSpacingPx = AI_MISSION_MARKER_OUTWARD_SPACING_DP.dp.toPx().toDouble(),
+            ).toOffset()
             val color = markerColor(marker.color)
             drawCircle(color.copy(alpha = 0.25f), 9f, center)
             drawCircle(color, 6f, center, style = Stroke(2.5f))
@@ -597,12 +629,65 @@ object MapRenderer {
         }
     }
 
+    fun DrawScope.drawSharedMarkers(
+        markers: List<PresentedSharedMarker>,
+        geometry: SharedMarkerVisualGeometry,
+    ) {
+        markers.forEach { presented ->
+            val center = presented.screenCenter.toOffset()
+            val color = sharedMarkerColor(presented.marker.color)
+            drawSegmentedSharedRing(
+                center = center,
+                radius = presented.ringRadiusPx.toFloat(),
+                color = color,
+                strokeWidth = geometry.primaryStrokePx,
+            )
+            val secondaryRadius = presented.ringRadiusPx.toFloat() + geometry.secondaryOffsetPx.toFloat()
+            if (secondaryRadius > 0f) {
+                drawSegmentedSharedRing(
+                    center = center,
+                    radius = secondaryRadius,
+                    color = color.copy(alpha = 0.55f),
+                    strokeWidth = geometry.secondaryStrokePx,
+                )
+            }
+
+            val badgeCenter = presented.badgeCenter.toOffset()
+            drawCircle(Color(0xF2111C26), geometry.badgeRadiusPx, badgeCenter)
+            drawCircle(
+                color.copy(alpha = 0.95f),
+                geometry.badgeRadiusPx,
+                badgeCenter,
+                style = Stroke(geometry.badgeBorderWidthPx),
+            )
+            val dotOffset = geometry.badgeDotRadiusPx * 1.45f
+            drawLine(
+                color = Color(0xFFF1F5F8),
+                start = Offset(badgeCenter.x - dotOffset, badgeCenter.y + geometry.badgeDotRadiusPx),
+                end = Offset(badgeCenter.x + dotOffset, badgeCenter.y + geometry.badgeDotRadiusPx),
+                strokeWidth = geometry.badgeLinkWidthPx,
+            )
+            drawCircle(
+                color = Color(0xFFF1F5F8),
+                radius = geometry.badgeDotRadiusPx,
+                center = Offset(badgeCenter.x - dotOffset, badgeCenter.y - geometry.badgeDotRadiusPx * 0.55f),
+            )
+            drawCircle(
+                color = Color(0xFFF1F5F8),
+                radius = geometry.badgeDotRadiusPx,
+                center = Offset(badgeCenter.x + dotOffset, badgeCenter.y - geometry.badgeDotRadiusPx * 0.55f),
+            )
+        }
+    }
+
     fun DrawScope.drawMarkers(
         markers: List<PresentedMapMarker>,
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
         savedMarkerAppearance: SavedMarkerAppearancePreferences,
+        systemNameVisualObstaclesBySystemId: Map<Int, SystemNameVisualObstacles> = emptyMap(),
+        systemNameSafetyGapPx: Double = 0.0,
     ) {
         val halfSize = (MARKER_DIAMOND_SIZE_DP / 2f).dp.toPx()
         val savedMarkerRing = savedMarkerRingRenderState(savedMarkerAppearance)
@@ -640,19 +725,62 @@ object MapRenderer {
             }
             presented.visibleName?.let { name ->
                 val label = cache.label(name, MapLabelType.SYSTEM, preferences, textMeasurer)
+                val markerRadiusPx = if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
+                    savedMarkerRing.radiusDp.dp.toPx().toDouble()
+                } else {
+                    halfSize.toDouble()
+                }
+                val systemLabelSize = presented.systemName
+                    .takeIf { presented.systemNameVisible }
+                    ?.let { systemName ->
+                        val systemLabel = cache.label(systemName, MapLabelType.SYSTEM, preferences, textMeasurer)
+                        MapSize(systemLabel.size.width.toDouble(), systemLabel.size.height.toDouble())
+                    }
+                val systemLabelBounds = systemLabelSize?.let { size ->
+                    systemNameLabelLayout(
+                        center = presented.screenCenter,
+                        labelSize = size,
+                        existingOffsetPx = SYSTEM_LABEL_OFFSET_PX,
+                        visualObstacles = systemNameVisualObstaclesBySystemId[presented.marker.systemId],
+                        safetyGapPx = systemNameSafetyGapPx,
+                    ).bounds
+                }
+                val layout = markerNameLabelLayout(
+                    marker = presented,
+                    markerLabelSize = MapSize(label.size.width.toDouble(), label.size.height.toDouble()),
+                    systemLabelBounds = systemLabelBounds,
+                    markerRadiusPx = markerRadiusPx,
+                    rightGapPx = LOCAL_MARKER_LABEL_RIGHT_GAP_DP.dp.toPx().toDouble(),
+                    belowRingGapPx = LOCAL_MARKER_LABEL_BELOW_RING_GAP_DP.dp.toPx().toDouble(),
+                    collisionPaddingPx = LOCAL_MARKER_LABEL_COLLISION_PADDING_DP.dp.toPx().toDouble(),
+                )
                 drawText(
                     textLayoutResult = label,
                     color = color,
-                    topLeft = Offset(
-                        center.x + if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
-                            savedMarkerRing.radiusDp.dp.toPx() + 4.dp.toPx()
-                        } else {
-                            halfSize + 4.dp.toPx()
-                        },
-                        center.y - label.size.height / 2f,
-                    ),
+                    topLeft = layout.topLeft.toOffset(),
                 )
             }
+        }
+    }
+
+    private fun DrawScope.drawSegmentedSharedRing(
+        center: Offset,
+        radius: Float,
+        color: Color,
+        strokeWidth: Float,
+    ) {
+        val topLeft = Offset(center.x - radius, center.y - radius)
+        val size = Size(radius * 2f, radius * 2f)
+        SHARED_MARKER_ARC_START_ANGLES.forEach { startAngle ->
+            drawArc(
+                color = color,
+                startAngle = startAngle,
+                sweepAngle = SHARED_MARKER_ARC_SWEEP_DEGREES,
+                useCenter = false,
+                topLeft = topLeft,
+                size = size,
+                style = Stroke(strokeWidth),
+            )
         }
     }
 
@@ -665,21 +793,33 @@ object MapRenderer {
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
+        systemNameVisualObstacles: SystemNameVisualObstacles?,
+        systemNameSafetyGapPx: Double,
     ) {
         val node = scene.nodesById[systemId] ?: return
         val screen = transform.worldToScreen(node.position).toOffset()
         drawCircle(color = color.copy(alpha = 0.2f), radius = radius + 4f, center = screen)
         drawCircle(color = color, radius = radius, center = screen, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
         val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
+        val labelLayout = systemNameLabelLayout(
+            center = MapPoint(screen.x.toDouble(), screen.y.toDouble()),
+            labelSize = MapSize(label.size.width.toDouble(), label.size.height.toDouble()),
+            existingOffsetPx = radius + 6.0,
+            visualObstacles = systemNameVisualObstacles,
+            safetyGapPx = systemNameSafetyGapPx,
+        )
         drawRect(
             color = MAP_BACKGROUND.copy(alpha = 0.88f),
-            topLeft = Offset(screen.x + radius + 3f, screen.y - label.size.height / 2f - 2f),
+            topLeft = Offset(
+                labelLayout.topLeft.x.toFloat() - 3f,
+                labelLayout.topLeft.y.toFloat() - 2f,
+            ),
             size = androidx.compose.ui.geometry.Size(label.size.width + 6f, label.size.height + 4f),
         )
         drawText(
             textLayoutResult = label,
             color = labelColor(MapLabelType.SYSTEM, preferences),
-            topLeft = Offset(screen.x + radius + 6f, screen.y - label.size.height / 2f),
+            topLeft = labelLayout.topLeft.toOffset(),
         )
     }
 
@@ -817,7 +957,29 @@ private const val NORMAL_ZOOM = 1.2
 private const val DETAIL_ZOOM = 4.0
 private const val MARKER_DIAMOND_SIZE_DP = 10f
 private const val SAVED_MARKER_CHILD_BADGE_RADIUS_DP = 9f
+private val SHARED_MARKER_ARC_START_ANGLES = floatArrayOf(80f, 260f)
+private const val SHARED_MARKER_ARC_SWEEP_DEGREES = 120f
 private const val EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f
+
+internal fun missionMarkerBadgeCenter(
+    systemCenter: MapPoint,
+    markerIndex: Int,
+    outwardSpacingPx: Double,
+): MapPoint {
+    require(markerIndex >= 0)
+    require(outwardSpacingPx.isFinite() && outwardSpacingPx >= 0.0)
+    val diagonalOffset = AI_MISSION_MARKER_BASE_OFFSET_PX +
+        outwardSpacingPx +
+        (markerIndex % 3) * AI_MISSION_MARKER_STAGGER_PX
+    return MapPoint(
+        x = systemCenter.x + diagonalOffset,
+        y = systemCenter.y - diagonalOffset,
+    )
+}
+
+internal const val AI_MISSION_MARKER_BASE_OFFSET_PX = 11.0
+internal const val AI_MISSION_MARKER_STAGGER_PX = 3.0
+internal const val AI_MISSION_MARKER_OUTWARD_SPACING_DP = 7f
 
 internal data class SavedMarkerGlowLayer(
     val expansionDp: Float,
@@ -828,7 +990,12 @@ internal data class SavedMarkerRingRenderState(
     val radiusDp: Float,
     val lineWidthDp: Float,
     val glowLayers: List<SavedMarkerGlowLayer>,
-)
+) {
+    fun visualRadiusDp(): Float = maxOf(
+        radiusDp + lineWidthDp / 2f,
+        glowLayers.maxOfOrNull { radiusDp + it.expansionDp } ?: 0f,
+    )
+}
 
 internal fun savedMarkerRingRenderState(
     preferences: SavedMarkerAppearancePreferences,

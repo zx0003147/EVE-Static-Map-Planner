@@ -96,6 +96,7 @@ internal fun StaticMapScreen(
     capitalState: CapitalRouteUiState,
     planningViewsState: PlanningViewsState,
     markerState: MarkerUiState,
+    sharedMarkerState: SharedMarkerPresentationState,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
     systemInfoState: SystemInfoState,
@@ -178,6 +179,7 @@ internal fun StaticMapScreen(
                         wormholeConnections = routeState.wormholeConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
                         markerState = markerState,
+                        sharedMarkerState = sharedMarkerState,
                         missionState = missionState,
                         featureOverlayState = featureOverlayState,
                         compactSystemInfo = CompactSystemInfoPresentationBuilder.build(
@@ -186,6 +188,7 @@ internal fun StaticMapScreen(
                             jumpState,
                             state.selectedSystemId?.let(markerState.markersBySystemId::get),
                             systemInfoState,
+                            sharedMarkerState,
                         ),
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
                         onZoom = viewModel::zoomAt,

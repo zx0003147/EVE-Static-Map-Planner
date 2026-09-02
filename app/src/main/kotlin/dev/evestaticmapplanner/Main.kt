@@ -49,6 +49,8 @@ import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
+import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
+import dev.evestaticmapplanner.map.SharedMarkerPresentationState
 import dev.evestaticmapplanner.map.StaticMapScreen
 import dev.evestaticmapplanner.marker.MarkerViewModel
 import dev.evestaticmapplanner.marker.MarkerManagerWindow
@@ -446,6 +448,35 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val markerState by markerViewModel.state.collectAsState()
     val missionState by missionMapStateStore.state.collectAsState()
+    val sharedMarkerPresentation = remember(
+        sharedMapState.snapshot,
+        sharedMapState.stale,
+        sharedMapState.selectedWorkspaceId,
+        mapState.scene,
+        mapState.appPreferences.marker.showSharedMarkers,
+    ) {
+        mapState.scene?.let { scene ->
+            SharedMarkerPresentationAdapter.build(
+                state = sharedMapState,
+                knownSystemIds = scene.nodesById.keys + scene.omittedSystemIds,
+                isVisible = mapState.appPreferences.marker.showSharedMarkers,
+            )
+        } ?: SharedMarkerPresentationState.Empty.copy(
+            isVisible = mapState.appPreferences.marker.showSharedMarkers,
+            isStale = sharedMapState.stale,
+        )
+    }
+    LaunchedEffect(
+        sharedMarkerPresentation.workspaceId,
+        sharedMarkerPresentation.revision,
+        sharedMarkerPresentation.skippedUnknownSystems,
+    ) {
+        sharedMarkerPresentation.skippedUnknownSystems.forEach { skipped ->
+            AppDiagnostics.warning(
+                "Shared Marker skipped for unknown system: markerId=${skipped.markerId} systemId=${skipped.systemId}",
+            )
+        }
+    }
     val featureOverlayState by featurePackRuntime.overlayHost.state.collectAsState()
     val systemInfoState by featurePackRuntime.systemInfoHost.state.collectAsState()
     val routeActions by featurePackRuntime.routeActionHost.state.collectAsState()
@@ -510,6 +541,7 @@ private fun FrameWindowScope.ReadyApplication(
         capitalState = capitalState,
         planningViewsState = planningViewsState,
         markerState = markerState,
+        sharedMarkerState = sharedMarkerPresentation,
         missionState = missionState,
         featureOverlayState = visibleFeatureOverlayState,
         systemInfoState = systemInfoState,

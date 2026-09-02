@@ -21,6 +21,7 @@ import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.preferences.MarkerPreferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import java.time.Instant
@@ -85,6 +86,102 @@ class MarkerMapPresentationTest {
         assertEquals(MarkerVisualStyle.OUTER_RING, presented.visualStyle)
         assertEquals(systemCenter, presented.screenCenter)
         assertTrue(presented.children.isEmpty())
+    }
+
+    @Test
+    fun `system name keeps priority and colliding Local saved label moves below the ring`() {
+        val marker = Marker.saved(
+            1,
+            MarkerDraft.create(name = "Local Test", color = MarkerColor.BLUE),
+            Instant.EPOCH,
+            Instant.EPOCH,
+        )
+        val presented = MarkerMapPresentationBuilder.build(
+            scene, transform, listOf(1), mapOf(1 to marker), MarkerPreferences.Defaults,
+            SemanticLabelMode.SYSTEM, 10.0,
+            systemNameVisibleIds = setOf(1),
+        ).single()
+        val systemLabelSize = MapSize(44.0, 14.0)
+        val layout = markerLabelLayout(presented, systemLabelSize)
+
+        assertTrue(presented.systemNameVisible)
+        assertTrue(layout.avoidedSystemName)
+        assertFalse(layout.bounds.intersects(systemNameLabelBounds(presented.screenCenter, systemLabelSize)))
+        assertTrue(layout.topLeft.y > presented.screenCenter.y)
+    }
+
+    @Test
+    fun `Local saved label keeps its existing right position when measured bounds do not collide`() {
+        val marker = Marker.saved(
+            1,
+            MarkerDraft.create(name = "Local Test", color = MarkerColor.BLUE),
+            Instant.EPOCH,
+            Instant.EPOCH,
+        )
+        val presented = MarkerMapPresentationBuilder.build(
+            scene, transform, listOf(1), mapOf(1 to marker), MarkerPreferences.Defaults,
+            SemanticLabelMode.SYSTEM, 10.0,
+            systemNameVisibleIds = setOf(1),
+        ).single()
+        val layout = markerLabelLayout(presented, systemLabelSize = MapSize(4.0, 14.0))
+
+        assertFalse(layout.avoidedSystemName)
+        assertEquals(presented.screenCenter.x + 17.0, layout.topLeft.x)
+        assertEquals(presented.screenCenter.y - 7.0, layout.topLeft.y)
+    }
+
+    @Test
+    fun `Local saved label remains clear of system name across zoom changes`() {
+        val marker = Marker.saved(
+            1,
+            MarkerDraft.create(name = "Local Test", color = MarkerColor.BLUE),
+            Instant.EPOCH,
+            Instant.EPOCH,
+        )
+
+        listOf(0.75, 2.0, 8.0).forEach { zoom ->
+            val zoomedTransform = MapTransform(MapViewport(MapPoint(0.0, 0.0), zoom), MapSize(800.0, 600.0))
+            val presented = MarkerMapPresentationBuilder.build(
+                scene, zoomedTransform, listOf(1), mapOf(1 to marker), MarkerPreferences.Defaults,
+                SemanticLabelMode.SYSTEM, 10.0,
+                systemNameVisibleIds = setOf(1),
+            ).single()
+            val systemLabelSize = MapSize(44.0, 14.0)
+            val layout = markerLabelLayout(presented, systemLabelSize)
+
+            assertTrue(layout.avoidedSystemName, "Expected collision avoidance at zoom $zoom")
+            assertFalse(
+                layout.bounds.intersects(systemNameLabelBounds(presented.screenCenter, systemLabelSize)),
+                "Local label overlaps the system name at zoom $zoom",
+            )
+        }
+    }
+
+    @Test
+    fun `system name minimally clears a badge only when its measured bounds cross the label row`() {
+        val center = MapPoint(100.0, 100.0)
+        val labelSize = MapSize(44.0, 14.0)
+        val intersectingBadge = ScreenBounds(112.0, 96.0, 122.0, 106.0)
+        val lowerBadge = ScreenBounds(112.0, 110.0, 122.0, 120.0)
+
+        val avoided = systemNameLabelLayout(
+            center = center,
+            labelSize = labelSize,
+            existingOffsetPx = SYSTEM_LABEL_OFFSET_PX,
+            visualObstacles = SystemNameVisualObstacles(screenBounds = listOf(intersectingBadge)),
+            safetyGapPx = 4.0,
+        )
+        val unchanged = systemNameLabelLayout(
+            center = center,
+            labelSize = labelSize,
+            existingOffsetPx = SYSTEM_LABEL_OFFSET_PX,
+            visualObstacles = SystemNameVisualObstacles(screenBounds = listOf(lowerBadge)),
+            safetyGapPx = 4.0,
+        )
+
+        assertEquals(126.0, avoided.topLeft.x)
+        assertFalse(avoided.bounds.intersects(intersectingBadge))
+        assertEquals(105.0, unchanged.topLeft.x)
     }
 
     @Test
@@ -188,4 +285,17 @@ class MarkerMapPresentationTest {
         assertTrue(culled.isEmpty())
         assertNull(constellationMode.visibleName)
     }
+
+    private fun markerLabelLayout(
+        marker: PresentedMapMarker,
+        systemLabelSize: MapSize,
+    ) = markerNameLabelLayout(
+        marker = marker,
+        markerLabelSize = MapSize(62.0, 14.0),
+        systemLabelBounds = systemNameLabelBounds(marker.screenCenter, systemLabelSize),
+        markerRadiusPx = 13.0,
+        rightGapPx = 4.0,
+        belowRingGapPx = 10.0,
+        collisionPaddingPx = 2.0,
+    )
 }
