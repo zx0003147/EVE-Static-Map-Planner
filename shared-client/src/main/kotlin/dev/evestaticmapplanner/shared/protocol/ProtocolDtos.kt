@@ -4,6 +4,8 @@ import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.shared.auth.SecretValueSerializer
 import dev.evestaticmapplanner.shared.model.SharedDevice
 import dev.evestaticmapplanner.shared.model.SharedIdentity
+import dev.evestaticmapplanner.shared.model.SharedInvite
+import dev.evestaticmapplanner.shared.model.SharedMember
 import dev.evestaticmapplanner.shared.model.SharedMarker
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedMarkerSnapshot
@@ -100,6 +102,65 @@ data class SharedMarkerSnapshotResponseDto(
 )
 
 @Serializable
+data class CreateSharedMarkerRequestDto(
+    val systemId: Int,
+    val name: String,
+    val color: String,
+    val tags: List<String>,
+    val notes: String?,
+)
+
+@Serializable
+data class UpdateSharedMarkerRequestDto(
+    val expectedVersion: Long,
+    val name: String,
+    val color: String,
+    val tags: List<String>,
+    val notes: String?,
+)
+
+@Serializable
+data class MemberDto(
+    val memberId: String,
+    val userId: String,
+    val displayName: String,
+    val role: String,
+    val version: Long,
+    val createdAt: String,
+    val updatedAt: String,
+    val revokedAt: String?,
+)
+
+@Serializable
+data class MembersResponseDto(val members: List<MemberDto>)
+
+@Serializable
+data class CreateMemberRequestDto(val displayName: String, val role: String)
+
+@Serializable
+data class UpdateMemberRequestDto(
+    val expectedVersion: Long,
+    val displayName: String? = null,
+    val role: String? = null,
+)
+
+@Serializable
+data class CreateInviteRequestDto(val expiresInHours: Long = 72)
+
+@Serializable
+class InviteCreatedResponseDto(
+    val inviteId: String,
+    @Serializable(with = SecretValueSerializer::class)
+    val inviteToken: SecretValue,
+    val memberId: String,
+    val expiresAt: String,
+    val createdAt: String,
+) {
+    override fun toString(): String =
+        "InviteCreatedResponseDto(inviteId=$inviteId, inviteToken=${SecretValue.REDACTED}, memberId=$memberId)"
+}
+
+@Serializable
 data class ApiErrorDto(
     val code: String,
     val message: String,
@@ -163,7 +224,7 @@ fun SharedMarkerSnapshotResponseDto.toDomain(): SharedMarkerSnapshot {
     )
 }
 
-private fun SharedMarkerDto.toDomain(): SharedMarker = SharedMarker(
+fun SharedMarkerDto.toDomain(): SharedMarker = SharedMarker(
     markerId = canonicalUuid(markerId, "markerId"),
     workspaceId = canonicalUuid(workspaceId, "workspaceId"),
     systemId = systemId.also { require(it > 0) { "systemId is invalid" } },
@@ -177,6 +238,24 @@ private fun SharedMarkerDto.toDomain(): SharedMarker = SharedMarker(
     updatedAt = instant(updatedAt, "updatedAt"),
     version = version.also { require(it > 0) { "version is invalid" } },
 )
+
+fun MemberDto.toDomain(): SharedMember = SharedMember(
+    memberId = canonicalUuid(memberId, "memberId"),
+    userId = canonicalUuid(userId, "userId"),
+    displayName = displayName,
+    role = enumValue<SharedWorkspaceRole>(role, "role"),
+    version = version.also { require(it > 0) { "version is invalid" } },
+    createdAt = instant(createdAt, "createdAt"),
+    updatedAt = instant(updatedAt, "updatedAt"),
+    revokedAt = revokedAt?.let { instant(it, "revokedAt") },
+)
+
+fun InviteCreatedResponseDto.toDomain(): Pair<SharedInvite, SecretValue> = SharedInvite(
+    inviteId = canonicalUuid(inviteId, "inviteId"),
+    memberId = canonicalUuid(memberId, "memberId"),
+    expiresAt = instant(expiresAt, "expiresAt"),
+    createdAt = instant(createdAt, "createdAt"),
+) to inviteToken
 
 private fun UserDto.toDomain(): SharedUser = SharedUser(
     userId = canonicalUuid(userId, "userId"),

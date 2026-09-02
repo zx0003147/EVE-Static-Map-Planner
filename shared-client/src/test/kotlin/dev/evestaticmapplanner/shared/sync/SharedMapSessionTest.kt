@@ -13,6 +13,7 @@ import dev.evestaticmapplanner.shared.model.SharedIdentity
 import dev.evestaticmapplanner.shared.model.SharedMapConfiguration
 import dev.evestaticmapplanner.shared.model.SharedMarker
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
+import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedMarkerSnapshot
 import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedUser
@@ -334,6 +335,98 @@ class SharedMapSessionTest {
         assertEquals(SharedConnectionState.DISCONNECTED, session.state.value.connectionState)
     }
 
+    @Test
+    fun `marker create update and delete reconcile immediately without inventing revision`() = runTest {
+        val client = FakeClient()
+        val store = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val keys = ArrayDeque(listOf(
+            UUID.fromString("a3c1be66-724c-46f0-bb8a-678817343a58"),
+            UUID.fromString("355e18eb-b7d6-4abe-aedd-6ef9abc678e1"),
+            UUID.fromString("76a4cb5d-2f63-4c30-822e-6bbf7c37a645"),
+        ))
+        val session = SharedMapSession(
+            client,
+            store,
+            object : SharedMapConfigurationSink { override suspend fun save(configuration: SharedMapConfiguration) = Unit },
+            CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+            clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC),
+            idempotencyKeyFactory = keys::removeFirst,
+        )
+        session.restore(CONFIG_A)
+        val created = marker(MARKER_D, version = 1, name = "Created")
+        client.mutationMarker = created
+        session.createSharedMarker(created.systemId, SharedMarkerDraft("Created", SharedMarkerColor.GREEN, emptyList(), null))
+        assertEquals(created, session.state.value.snapshot?.markers?.get(MARKER_D))
+        assertEquals(7, session.state.value.snapshot?.revision)
+
+        val updated = created.copy(name = "Updated", version = 2)
+        client.mutationMarker = updated
+        session.updateSharedMarker(MARKER_D, 1, SharedMarkerDraft("Updated", SharedMarkerColor.GREEN, emptyList(), null))
+        assertEquals(2, session.state.value.snapshot?.markers?.get(MARKER_D)?.version)
+
+        session.deleteSharedMarker(MARKER_D, 2)
+        assertTrue(MARKER_D !in session.state.value.snapshot!!.markers)
+        assertEquals(3, client.idempotencyKeys.distinct().size)
+        session.close()
+    }
+
+    @Test
+    fun `version conflict reconciles current server marker and never overwrites it`() = runTest {
+        val client = FakeClient()
+        val store = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val session = session(client, store) {}
+        session.restore(CONFIG_A)
+        val current = marker(MARKER_A, version = 2, name = "Changed elsewhere")
+        client.mutationFailure = SharedMapError.MarkerVersionConflict("conflict", currentMarker = current)
+
+        val failure = assertFailsWith<SharedMapException> {
+            session.updateSharedMarker(
+                MARKER_A,
+                1,
+                SharedMarkerDraft("My stale edit", SharedMarkerColor.RED, emptyList(), null),
+            )
+        }
+
+        assertTrue(failure.error is SharedMapError.MarkerVersionConflict)
+        assertEquals(current, session.state.value.snapshot?.markers?.get(MARKER_A))
+        session.close()
+    }
+
+    @Test
+    fun `viewer cannot invoke marker writes even through the session API`() = runTest {
+        val client = FakeClient().apply { workspace = workspace(WORKSPACE_A).copy(role = SharedWorkspaceRole.VIEWER) }
+        val store = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val session = session(client, store) {}
+        session.restore(CONFIG_A)
+
+        assertFailsWith<SharedMapException> {
+            session.createSharedMarker(
+                30_004_760,
+                SharedMarkerDraft("Denied", SharedMarkerColor.RED, emptyList(), null),
+            )
+        }
+        assertEquals(0, client.markerCreateCalls)
+        assertEquals(SharedConnectionState.ONLINE, session.state.value.connectionState)
+        session.close()
+    }
+
+    @Test
+    fun `network failure during mutation makes retained snapshot degraded and read only`() = runTest {
+        val client = FakeClient()
+        val store = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val session = session(client, store) {}
+        session.restore(CONFIG_A)
+        client.mutationFailure = SharedMapError.Network()
+
+        assertFailsWith<SharedMapException> {
+            session.deleteSharedMarker(MARKER_A, 1)
+        }
+        assertEquals(SharedConnectionState.DEGRADED, session.state.value.connectionState)
+        assertTrue(session.state.value.stale)
+        assertTrue(MARKER_A in session.state.value.snapshot!!.markers)
+        session.close()
+    }
+
     private fun TestScope.session(
         client: FakeClient,
         store: MemoryCredentialStore,
@@ -356,6 +449,10 @@ private class FakeClient(private val events: MutableList<String> = mutableListOf
     var workspace: SharedWorkspace = workspace(WORKSPACE_A)
     var snapshot: SharedMarkerSnapshot = snapshot(setOf(MARKER_A))
     var failure: SharedMapError? = null
+    var mutationFailure: SharedMapError? = null
+    var mutationMarker: SharedMarker = marker(MARKER_D)
+    val idempotencyKeys = mutableListOf<UUID>()
+    var markerCreateCalls = 0
     var calls = 0
     var metaCalls = 0
     var meCalls = 0
@@ -412,6 +509,46 @@ private class FakeClient(private val events: MutableList<String> = mutableListOf
         } finally {
             concurrentSnapshots--
         }
+    }
+
+    override suspend fun createSharedMarker(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+        systemId: Int,
+        draft: SharedMarkerDraft,
+        idempotencyKey: UUID,
+    ): SharedMarker {
+        markerCreateCalls++
+        idempotencyKeys += idempotencyKey
+        mutationFailure?.let { throw SharedMapException(it) }
+        return mutationMarker
+    }
+
+    override suspend fun updateSharedMarker(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+        markerId: String,
+        expectedVersion: Long,
+        draft: SharedMarkerDraft,
+        idempotencyKey: UUID,
+    ): SharedMarker {
+        idempotencyKeys += idempotencyKey
+        mutationFailure?.let { throw SharedMapException(it) }
+        return mutationMarker
+    }
+
+    override suspend fun deleteSharedMarker(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+        markerId: String,
+        expectedVersion: Long,
+        idempotencyKey: UUID,
+    ) {
+        idempotencyKeys += idempotencyKey
+        mutationFailure?.let { throw SharedMapException(it) }
     }
 
     override fun close() {
@@ -503,4 +640,24 @@ private fun snapshot(
             version = 1,
         )
     },
+)
+
+private fun marker(
+    id: String,
+    version: Long = 1,
+    name: String = "Marker $id",
+    workspaceId: String = WORKSPACE_A,
+) = SharedMarker(
+    markerId = id,
+    workspaceId = workspaceId,
+    systemId = 30_004_759 + listOf(MARKER_A, MARKER_B, MARKER_C, MARKER_D).indexOf(id).coerceAtLeast(0),
+    name = name,
+    color = SharedMarkerColor.BLUE,
+    tags = emptyList(),
+    notes = "private",
+    createdBy = USER,
+    updatedBy = USER,
+    createdAt = Instant.parse("2026-09-01T00:00:00Z"),
+    updatedAt = Instant.parse("2026-09-01T00:00:00Z"),
+    version = version,
 )

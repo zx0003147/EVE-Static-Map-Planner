@@ -4,6 +4,8 @@ import androidx.compose.ui.graphics.Color
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.shared.PresentedSharedMarkerContextAction
+import dev.evestaticmapplanner.shared.SharedMarkerContextAction
 
 enum class MarkerContextAction(val label: String) {
     ADD_TEMPORARY("Add Temporary Marker"),
@@ -26,6 +28,8 @@ enum class SystemContextAction(val label: String) {
     SAVE_MARKER_PERMANENTLY("Save Permanently…"),
     REMOVE_MARKER("Remove Marker"),
     MARKERS_UNAVAILABLE("Markers unavailable"),
+    ADD_SHARED_MARKER("Add Shared Marker…"),
+    OPEN_SHARED_MARKER("Shared Marker…"),
     ADD_JUMP_RANGE_OVERLAY("Add Jump Range Overlay"),
     SET_ROUTE_START("Set Route Start"),
     SET_ROUTE_DESTINATION("Set Route Destination"),
@@ -46,6 +50,7 @@ object SystemContextMenuPresentationBuilder {
     fun build(
         marker: Marker?,
         state: MarkerUiState,
+        sharedActions: List<PresentedSharedMarkerContextAction> = emptyList(),
         wormholeConnectionCount: Int = 0,
     ): List<PresentedSystemContextAction> =
         MarkerContextPresentationBuilder.build(marker, state).map { item ->
@@ -59,6 +64,15 @@ object SystemContextMenuPresentationBuilder {
                     MarkerContextAction.UNAVAILABLE -> SystemContextAction.MARKERS_UNAVAILABLE
                 },
                 enabled = item.enabled,
+            )
+        } + sharedActions.map { item ->
+            PresentedSystemContextAction(
+                action = when (item.action) {
+                    SharedMarkerContextAction.ADD -> SystemContextAction.ADD_SHARED_MARKER
+                    SharedMarkerContextAction.OPEN -> SystemContextAction.OPEN_SHARED_MARKER
+                },
+                enabled = item.enabled,
+                label = item.label,
             )
         } + listOf(
             PresentedSystemContextAction(SystemContextAction.ADD_JUMP_RANGE_OVERLAY),

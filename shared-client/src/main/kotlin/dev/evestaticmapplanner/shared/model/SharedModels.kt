@@ -68,6 +68,33 @@ data class SharedMarker(
     val version: Long,
 )
 
+data class SharedMarkerDraft(
+    val name: String,
+    val color: SharedMarkerColor,
+    val tags: List<String>,
+    val notes: String?,
+)
+
+data class SharedMember(
+    val memberId: String,
+    val userId: String,
+    val displayName: String,
+    val role: SharedWorkspaceRole,
+    val version: Long,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val revokedAt: Instant?,
+) {
+    val isActive: Boolean get() = revokedAt == null
+}
+
+data class SharedInvite(
+    val inviteId: String,
+    val memberId: String,
+    val expiresAt: Instant,
+    val createdAt: Instant,
+)
+
 data class SharedMarkerSnapshot(
     val workspaceId: String,
     val revision: Long,

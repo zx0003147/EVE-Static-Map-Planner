@@ -55,6 +55,9 @@ import dev.evestaticmapplanner.marker.SystemContextAction
 import dev.evestaticmapplanner.marker.SystemContextMenuPresentationBuilder
 import dev.evestaticmapplanner.control.MissionMapUiState
 import dev.evestaticmapplanner.feature.api.OverlayState
+import dev.evestaticmapplanner.shared.SharedMarkerContextAction
+import dev.evestaticmapplanner.shared.SharedMarkerContextPresentationBuilder
+import dev.evestaticmapplanner.shared.model.SharedMapState
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -69,6 +72,7 @@ fun StaticMapCanvas(
     wormholeConnections: List<WormholeConnection>,
     showAnsiblexLayer: Boolean,
     markerState: MarkerUiState,
+    sharedMapState: SharedMapState,
     sharedMarkerState: SharedMarkerPresentationState,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
@@ -86,6 +90,7 @@ fun StaticMapCanvas(
     onContextCapitalStart: (Int) -> Unit,
     onContextCapitalDestination: (Int) -> Unit,
     onContextMarkerAction: (Int, MarkerContextAction) -> Unit,
+    onContextSharedMarkerAction: (Int, SharedMarkerContextAction) -> Unit,
     onContextCreateWormhole: (Int) -> Unit,
     onContextManageWormholes: (Int) -> Unit,
     onContextDismiss: () -> Unit,
@@ -681,6 +686,14 @@ fun StaticMapCanvas(
         compactSystemInfo?.let { presentation ->
             CompactSystemInfoCard(
                 presentation = presentation,
+                onEditSharedMarker = if (
+                    presentation.sharedMarker != null &&
+                    dev.evestaticmapplanner.shared.canWriteSharedMarkers(sharedMapState)
+                ) {
+                    { onContextSharedMarkerAction(presentation.selectedSystemId, SharedMarkerContextAction.OPEN) }
+                } else {
+                    null
+                },
                 onBoundsChanged = { compactCardBounds = it },
                 modifier = Modifier
                     .align(CompactSystemInfoCardDefaults.alignment)
@@ -722,6 +735,10 @@ fun StaticMapCanvas(
                     SystemContextMenuPresentationBuilder.build(
                         markerState.markersBySystemId[menu.systemId],
                         markerState,
+                        SharedMarkerContextPresentationBuilder.build(
+                            sharedMapState.snapshot?.markers?.values?.singleOrNull { it.systemId == menu.systemId },
+                            sharedMapState,
+                        ),
                         wormholeConnections.count {
                             it.firstSystemId == menu.systemId || it.secondSystemId == menu.systemId
                         },
@@ -761,6 +778,14 @@ fun StaticMapCanvas(
                                         MarkerContextAction.REMOVE,
                                     )
                                     SystemContextAction.MARKERS_UNAVAILABLE -> Unit
+                                    SystemContextAction.ADD_SHARED_MARKER -> onContextSharedMarkerAction(
+                                        menu.systemId,
+                                        SharedMarkerContextAction.ADD,
+                                    )
+                                    SystemContextAction.OPEN_SHARED_MARKER -> onContextSharedMarkerAction(
+                                        menu.systemId,
+                                        SharedMarkerContextAction.OPEN,
+                                    )
                                     SystemContextAction.ADD_JUMP_RANGE_OVERLAY -> onContextJumpOverlay(menu.systemId)
                                     SystemContextAction.SET_ROUTE_START -> onContextRouteStart(menu.systemId)
                                     SystemContextAction.SET_ROUTE_DESTINATION -> onContextRouteDestination(menu.systemId)

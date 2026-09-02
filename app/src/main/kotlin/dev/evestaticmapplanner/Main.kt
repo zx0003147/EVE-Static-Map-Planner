@@ -75,6 +75,7 @@ import dev.evestaticmapplanner.sde.update.SdeUpdateClient
 import dev.evestaticmapplanner.sde.update.SdeUpdateService
 import dev.evestaticmapplanner.shared.api.KtorSharedMapClient
 import dev.evestaticmapplanner.shared.SharedMapViewModel
+import dev.evestaticmapplanner.shared.SharedMarkerManagerWindow
 import dev.evestaticmapplanner.shared.WindowsDpapiCredentialStore
 import dev.evestaticmapplanner.shared.sync.SharedMapConfigurationSink
 import dev.evestaticmapplanner.shared.sync.SharedMapSession
@@ -428,6 +429,8 @@ private fun FrameWindowScope.ReadyApplication(
     val mapState by mapViewModel.state.collectAsState()
     val sharedMapState by sharedMapViewModel.state.collectAsState()
     val sharedMapOperationError by sharedMapViewModel.operationError.collectAsState()
+    val sharedMarkerMutation by sharedMapViewModel.markerMutation.collectAsState()
+    val sharedAdminState by sharedMapViewModel.admin.collectAsState()
     var sharedMapRestored by remember(configuration) { mutableStateOf(false) }
     LaunchedEffect(mapState.isLoading, sharedMapRestored, sharedMapViewModel) {
         if (!mapState.isLoading && !sharedMapRestored) {
@@ -498,6 +501,7 @@ private fun FrameWindowScope.ReadyApplication(
     var showStaticData by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
     var showMarkerManager by remember { mutableStateOf(false) }
+    var showSharedMarkerManager by remember { mutableStateOf(false) }
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
     var aiPreferenceError by remember { mutableStateOf<String?>(null) }
     val aiControlReady = !mapState.isLoading && mapState.scene != null && !mapState.canvasSize.isEmpty
@@ -516,6 +520,11 @@ private fun FrameWindowScope.ReadyApplication(
                 "Marker Manager…",
                 enabled = !showMarkerManager,
                 onClick = { showMarkerManager = true },
+            )
+            Item(
+                "Shared Marker Manager…",
+                enabled = !showSharedMarkerManager,
+                onClick = { showSharedMarkerManager = true },
             )
             Separator()
             Item(
@@ -541,7 +550,9 @@ private fun FrameWindowScope.ReadyApplication(
         capitalState = capitalState,
         planningViewsState = planningViewsState,
         markerState = markerState,
+        sharedMapState = sharedMapState,
         sharedMarkerState = sharedMarkerPresentation,
+        sharedMarkerMutation = sharedMarkerMutation,
         missionState = missionState,
         featureOverlayState = visibleFeatureOverlayState,
         systemInfoState = systemInfoState,
@@ -556,6 +567,7 @@ private fun FrameWindowScope.ReadyApplication(
         capitalViewModel = capitalViewModel,
         planningViewCoordinator = planningViewCoordinator,
         markerViewModel = markerViewModel,
+        sharedMapViewModel = sharedMapViewModel,
         suppressMarkerOperationErrorDialog = showMarkerManager,
     )
     if (showStaticData) {
@@ -573,11 +585,19 @@ private fun FrameWindowScope.ReadyApplication(
             overlayState = featureOverlayState,
             sharedMapState = sharedMapState,
             sharedMapOperationError = sharedMapOperationError,
+            sharedAdminState = sharedAdminState,
             onSharedMapConnect = sharedMapViewModel::connect,
             onSharedMapWorkspaceChange = sharedMapViewModel::switchWorkspace,
             onSharedMapRefresh = sharedMapViewModel::refreshNow,
             onSharedMapDisconnect = sharedMapViewModel::disconnect,
             onSharedMapClearError = sharedMapViewModel::clearOperationError,
+            onSharedMapLoadMembers = sharedMapViewModel::loadMembers,
+            onSharedMapCreateMember = sharedMapViewModel::createMember,
+            onSharedMapChangeMemberRole = sharedMapViewModel::changeMemberRole,
+            onSharedMapRemoveMember = sharedMapViewModel::removeMember,
+            onSharedMapCreateInvite = sharedMapViewModel::createInvite,
+            onSharedMapClearAdminError = sharedMapViewModel::clearAdminError,
+            onSharedMapClearInvite = sharedMapViewModel::clearOneTimeInvite,
             onOverlayVisibilityChange = mapViewModel::updateOverlayVisibilityPreferences,
             onAiControlChange = { enabled ->
                 uiScope.launch {
@@ -651,6 +671,16 @@ private fun FrameWindowScope.ReadyApplication(
             searchRepository = searchRepository,
             onShowOnMap = mapViewModel::selectAndFocusSystem,
             onDismiss = { showMarkerManager = false },
+        )
+    }
+    if (showSharedMarkerManager) {
+        SharedMarkerManagerWindow(
+            state = sharedMapState,
+            mutation = sharedMarkerMutation,
+            viewModel = sharedMapViewModel,
+            searchRepository = searchRepository,
+            onFocusSystem = mapViewModel::selectAndFocusSystem,
+            onDismiss = { showSharedMarkerManager = false },
         )
     }
     if (confirmClearTemporaryMarkers) {

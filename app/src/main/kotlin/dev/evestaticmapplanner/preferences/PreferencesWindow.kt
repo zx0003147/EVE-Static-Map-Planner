@@ -52,14 +52,17 @@ import dev.evestaticmapplanner.feature.api.PackControlActionStatus
 import dev.evestaticmapplanner.feature.api.PackControlSeverity
 import dev.evestaticmapplanner.feature.api.OverlayState
 import dev.evestaticmapplanner.shared.auth.SecretValue
+import dev.evestaticmapplanner.shared.SharedAdminUiState
+import dev.evestaticmapplanner.shared.SharedMapMembersDialog
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMapState
+import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun PreferencesWindow(
+internal fun PreferencesWindow(
     currentZoom: Double?,
     preferences: AppPreferences,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
@@ -70,11 +73,19 @@ fun PreferencesWindow(
     overlayState: OverlayState,
     sharedMapState: SharedMapState,
     sharedMapOperationError: String?,
+    sharedAdminState: SharedAdminUiState,
     onSharedMapConnect: (String, SecretValue, String) -> Unit,
     onSharedMapWorkspaceChange: (String) -> Unit,
     onSharedMapRefresh: () -> Unit,
     onSharedMapDisconnect: () -> Unit,
     onSharedMapClearError: () -> Unit,
+    onSharedMapLoadMembers: () -> Unit,
+    onSharedMapCreateMember: (String, SharedWorkspaceRole) -> Boolean,
+    onSharedMapChangeMemberRole: (String, Long, SharedWorkspaceRole) -> Boolean,
+    onSharedMapRemoveMember: (String, Long) -> Boolean,
+    onSharedMapCreateInvite: (String, Long) -> Boolean,
+    onSharedMapClearAdminError: () -> Unit,
+    onSharedMapClearInvite: () -> Unit,
     onOverlayVisibilityChange: (OverlayVisibilityPreferences) -> Unit,
     onAiControlChange: (Boolean) -> Unit,
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
@@ -149,11 +160,19 @@ fun PreferencesWindow(
                                 preferences.sharedMap,
                                 sharedMapState,
                                 sharedMapOperationError,
+                                sharedAdminState,
                                 onSharedMapConnect,
                                 onSharedMapWorkspaceChange,
                                 onSharedMapRefresh,
                                 onSharedMapDisconnect,
                                 onSharedMapClearError,
+                                onSharedMapLoadMembers,
+                                onSharedMapCreateMember,
+                                onSharedMapChangeMemberRole,
+                                onSharedMapRemoveMember,
+                                onSharedMapCreateInvite,
+                                onSharedMapClearAdminError,
+                                onSharedMapClearInvite,
                             )
                         }
                     }
@@ -182,22 +201,39 @@ private fun SharedMapPreferencesContent(
     preferences: SharedMapPreferences,
     state: SharedMapState,
     operationError: String?,
+    adminState: SharedAdminUiState,
     onConnect: (String, SecretValue, String) -> Unit,
     onWorkspaceChange: (String) -> Unit,
     onRefresh: () -> Unit,
     onDisconnect: () -> Unit,
     onClearError: () -> Unit,
+    onLoadMembers: () -> Unit,
+    onCreateMember: (String, SharedWorkspaceRole) -> Boolean,
+    onChangeMemberRole: (String, Long, SharedWorkspaceRole) -> Boolean,
+    onRemoveMember: (String, Long) -> Boolean,
+    onCreateInvite: (String, Long) -> Boolean,
+    onClearAdminError: () -> Unit,
+    onClearInvite: () -> Unit,
 ) {
     var serverUrl by remember(preferences.serverUrl) { mutableStateOf(preferences.serverUrl.orEmpty()) }
     var deviceName by remember(preferences.deviceName) { mutableStateOf(preferences.deviceName) }
     var showInviteDialog by remember { mutableStateOf(false) }
     var workspaceMenuExpanded by remember { mutableStateOf(false) }
+    var showMembers by remember { mutableStateOf(false) }
     val canConnect = state.connectionState in setOf(
         SharedConnectionState.DISCONNECTED,
         SharedConnectionState.AUTH_REQUIRED,
         SharedConnectionState.FORBIDDEN,
         SharedConnectionState.PROTOCOL_UNSUPPORTED,
     ) || (state.connectionState == SharedConnectionState.OFFLINE && state.selectedWorkspaceId == null)
+    val canAdmin = state.connectionState == SharedConnectionState.ONLINE &&
+        state.identity?.workspace?.role == SharedWorkspaceRole.ADMIN
+    LaunchedEffect(canAdmin, state.selectedWorkspaceId) {
+        if (!canAdmin) {
+            showMembers = false
+            onClearInvite()
+        }
+    }
 
     Text("Shared Map", style = MaterialTheme.typography.titleMedium)
     Text(
@@ -278,6 +314,15 @@ private fun SharedMapPreferencesContent(
         onClick = onDisconnect,
         enabled = state.serverUrl != null && state.connectionState != SharedConnectionState.CONNECTING,
     ) { Text("Disconnect") }
+    if (state.identity?.workspace?.role == SharedWorkspaceRole.ADMIN) {
+        TextButton(
+            onClick = { showMembers = true },
+            enabled = canAdmin,
+        ) { Text("Manage Members…") }
+        if (!canAdmin) {
+            Text("Member management is available only while Shared Map is online.", color = Color(0xFFAAB9C7))
+        }
+    }
 
     if (showInviteDialog) {
         InviteConnectDialog(
@@ -293,6 +338,24 @@ private fun SharedMapPreferencesContent(
                     }
                 }
                 showInviteDialog = false
+            },
+        )
+    }
+    if (showMembers) {
+        SharedMapMembersDialog(
+            workspaceName = state.selectedWorkspace?.name ?: "Shared Map",
+            state = adminState,
+            canAdmin = canAdmin,
+            onLoad = onLoadMembers,
+            onCreateMember = onCreateMember,
+            onChangeRole = onChangeMemberRole,
+            onRemoveMember = onRemoveMember,
+            onCreateInvite = onCreateInvite,
+            onClearError = onClearAdminError,
+            onClearInvite = onClearInvite,
+            onDismiss = {
+                showMembers = false
+                onClearInvite()
             },
         )
     }

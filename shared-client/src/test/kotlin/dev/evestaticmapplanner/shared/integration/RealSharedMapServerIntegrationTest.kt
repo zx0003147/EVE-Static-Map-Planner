@@ -1,11 +1,15 @@
 package dev.evestaticmapplanner.shared.integration
 
 import dev.evestaticmapplanner.shared.api.KtorSharedMapClient
+import dev.evestaticmapplanner.shared.api.SharedMapError
+import dev.evestaticmapplanner.shared.api.SharedMapException
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.shared.auth.SecureCredentialStore
 import dev.evestaticmapplanner.shared.auth.SharedCredentialKey
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMapConfiguration
+import dev.evestaticmapplanner.shared.model.SharedMarkerColor
+import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import dev.evestaticmapplanner.shared.sync.SharedMapConfigurationSink
 import dev.evestaticmapplanner.shared.sync.SharedMapSession
@@ -25,13 +29,14 @@ import java.time.Duration
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RealSharedMapServerIntegrationTest {
     @Test
-    fun `real PostgreSQL server supports read sync recovery role and revocation semantics`() {
+    fun `real PostgreSQL server supports two client CRUD conflict recovery role and revocation semantics`() {
         val inviteText = System.getenv(INVITE_ENV) ?: return
         val serverUrl = System.getenv(SERVER_ENV) ?: return
         val docker = System.getenv(DOCKER_ENV) ?: return
@@ -52,55 +57,11 @@ class RealSharedMapServerIntegrationTest {
                 val adminKey = SharedCredentialKey(serverUrl, workspaceId)
                 val adminToken = assertNotNull(adminStore.load(adminKey))
                 adminToken.use { token ->
-                    val created = raw.request(
-                        "POST",
-                        "/api/v1/workspaces/$workspaceId/markers",
-                        token,
-                        """{"systemId":30004759,"name":"Phase 4 marker","color":"BLUE","tags":["integration"],"notes":"private integration note"}""",
-                    ).requireStatus(201)
-                    val createdJson = created.json()
-                    val markerId = createdJson.string("markerId")
-                    assertEquals(1, createdJson.long("version"))
-
-                    adminSession.refreshNow()
-                    assertEquals(setOf(markerId), adminSession.state.value.snapshot?.markers?.keys)
-
-                    val updated = raw.request(
-                        "PATCH",
-                        "/api/v1/workspaces/$workspaceId/markers/$markerId",
-                        token,
-                        """{"expectedVersion":1,"name":"Phase 4 marker updated","color":"ORANGE","tags":["integration","updated"],"notes":null}""",
-                    ).requireStatus(200)
-                    assertEquals(2, updated.json().long("version"))
-                    adminSession.refreshNow()
-                    assertEquals(2, adminSession.state.value.snapshot?.markers?.get(markerId)?.version)
-
-                    raw.request(
-                        "DELETE",
-                        "/api/v1/workspaces/$workspaceId/markers/$markerId?expectedVersion=2",
-                        token,
-                    ).requireStatus(204)
-                    adminSession.refreshNow()
-                    assertTrue(adminSession.state.value.snapshot?.markers?.isEmpty() == true)
-
-                    docker(docker, "pause", container)
-                    containerPaused = true
-                    adminSession.refreshNow()
-                    assertEquals(SharedConnectionState.DEGRADED, adminSession.state.value.connectionState)
-                    assertNotNull(adminSession.state.value.snapshot)
-                    assertTrue(adminSession.state.value.stale)
-
-                    docker(docker, "unpause", container)
-                    containerPaused = false
-                    raw.awaitHealthy()
-                    adminSession.refreshNow()
-                    assertEquals(SharedConnectionState.ONLINE, adminSession.state.value.connectionState)
-
                     val member = raw.request(
                         "POST",
                         "/api/v1/workspaces/$workspaceId/members",
                         token,
-                        """{"displayName":"Phase 4 Reader","role":"EDITOR"}""",
+                        """{"displayName":"Phase 6 Editor B","role":"EDITOR"}""",
                     ).requireStatus(201).json()
                     val memberId = member.string("memberId")
                     val memberVersion = member.long("version")
@@ -115,8 +76,84 @@ class RealSharedMapServerIntegrationTest {
                     val activeMemberSession = session(activeMemberStore)
                     memberStore = activeMemberStore
                     memberSession = activeMemberSession
-                    SecretValue.from(invite).use { activeMemberSession.connect(serverUrl, it, "Phase 4 Reader") }
+                    SecretValue.from(invite).use { activeMemberSession.connect(serverUrl, it, "Phase 6 Editor B") }
                     assertEquals(SharedWorkspaceRole.EDITOR, activeMemberSession.state.value.identity?.workspace?.role)
+
+                    val created = adminSession.createSharedMarker(
+                        30_004_759,
+                        SharedMarkerDraft(
+                            "Phase 6 marker",
+                            SharedMarkerColor.BLUE,
+                            listOf("integration"),
+                            "private integration note",
+                        ),
+                    )
+                    val markerId = created.markerId
+                    assertEquals(1, created.version)
+                    assertEquals(1, adminSession.state.value.snapshot?.markers?.get(markerId)?.version)
+
+                    activeMemberSession.refreshNow()
+                    val editorBVersion = assertNotNull(activeMemberSession.state.value.snapshot?.markers?.get(markerId)).version
+                    assertEquals(1, editorBVersion)
+
+                    val updatedByA = adminSession.updateSharedMarker(
+                        markerId,
+                        1,
+                        SharedMarkerDraft(
+                            "Phase 6 marker updated by A",
+                            SharedMarkerColor.ORANGE,
+                            listOf("integration", "updated"),
+                            null,
+                        ),
+                    )
+                    assertEquals(2, updatedByA.version)
+
+                    val conflict = assertFailsWith<SharedMapException> {
+                        activeMemberSession.updateSharedMarker(
+                            markerId,
+                            editorBVersion,
+                            SharedMarkerDraft(
+                                "Stale edit by B",
+                                SharedMarkerColor.RED,
+                                listOf("danger"),
+                                null,
+                            ),
+                        )
+                    }
+                    assertTrue(conflict.error is SharedMapError.MarkerVersionConflict)
+                    assertEquals(2, activeMemberSession.state.value.snapshot?.markers?.get(markerId)?.version)
+
+                    val updatedByB = activeMemberSession.updateSharedMarker(
+                        markerId,
+                        2,
+                        SharedMarkerDraft(
+                            "Phase 6 marker updated by B",
+                            SharedMarkerColor.GREEN,
+                            listOf("integration", "resolved"),
+                            null,
+                        ),
+                    )
+                    assertEquals(3, updatedByB.version)
+                    adminSession.refreshNow()
+                    assertEquals(3, adminSession.state.value.snapshot?.markers?.get(markerId)?.version)
+
+                    adminSession.deleteSharedMarker(markerId, 3)
+                    assertTrue(adminSession.state.value.snapshot?.markers?.isEmpty() == true)
+                    activeMemberSession.refreshNow()
+                    assertTrue(activeMemberSession.state.value.snapshot?.markers?.isEmpty() == true)
+
+                    docker(docker, "pause", container)
+                    containerPaused = true
+                    adminSession.refreshNow()
+                    assertEquals(SharedConnectionState.DEGRADED, adminSession.state.value.connectionState)
+                    assertNotNull(adminSession.state.value.snapshot)
+                    assertTrue(adminSession.state.value.stale)
+
+                    docker(docker, "unpause", container)
+                    containerPaused = false
+                    raw.awaitHealthy()
+                    adminSession.refreshNow()
+                    assertEquals(SharedConnectionState.ONLINE, adminSession.state.value.connectionState)
 
                     val viewerUpdate = raw.request(
                         "PATCH",

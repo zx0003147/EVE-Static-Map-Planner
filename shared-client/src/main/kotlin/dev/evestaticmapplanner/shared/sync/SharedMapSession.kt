@@ -10,11 +10,17 @@ import dev.evestaticmapplanner.shared.auth.SharedCredentialKey
 import dev.evestaticmapplanner.shared.model.DEFAULT_SHARED_MAP_DEVICE_NAME
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedIdentity
+import dev.evestaticmapplanner.shared.model.SharedInvite
 import dev.evestaticmapplanner.shared.model.SharedMapConfiguration
 import dev.evestaticmapplanner.shared.model.SharedMapState
+import dev.evestaticmapplanner.shared.model.SharedMarker
+import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedMarkerSnapshot
+import dev.evestaticmapplanner.shared.model.SharedMarkerValidation
+import dev.evestaticmapplanner.shared.model.SharedMember
 import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
+import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -43,9 +49,11 @@ class SharedMapSession(
     private val clock: Clock = Clock.systemUTC(),
     private val pollingIntervalMillis: Long = DEFAULT_POLLING_INTERVAL_MILLIS,
     private val delayFunction: suspend (Long) -> Unit = { delay(it) },
+    private val idempotencyKeyFactory: () -> UUID = UUID::randomUUID,
 ) : AutoCloseable {
     private val lifecycleMutex = Mutex()
     private val refreshMutex = Mutex()
+    private val mutationMutex = Mutex()
     private val closed = AtomicBoolean(false)
     private val _state = MutableStateFlow(SharedMapState())
 
@@ -241,6 +249,170 @@ class SharedMapSession(
         }
     }
 
+    suspend fun createSharedMarker(systemId: Int, draft: SharedMarkerDraft): SharedMarker =
+        lifecycleMutex.withLock {
+            mutationMutex.withLock {
+                require(systemId > 0) { "System ID must be positive" }
+                val normalized = SharedMarkerValidation.normalize(draft)
+                val context = activeContext(SharedWorkspaceRole.EDITOR)
+                try {
+                    client.createSharedMarker(
+                        context.server,
+                        context.token,
+                        context.workspaceId,
+                        systemId,
+                        normalized,
+                        idempotencyKeyFactory(),
+                    ).also(::reconcileMarker)
+                } catch (error: Exception) {
+                    handleOperationFailure(error)
+                    throw error
+                }
+            }
+        }
+
+    suspend fun updateSharedMarker(
+        markerId: String,
+        expectedVersion: Long,
+        draft: SharedMarkerDraft,
+    ): SharedMarker = lifecycleMutex.withLock {
+        mutationMutex.withLock {
+            require(expectedVersion > 0) { "Expected version must be positive" }
+            val normalized = SharedMarkerValidation.normalize(draft)
+            val context = activeContext(SharedWorkspaceRole.EDITOR)
+            try {
+                client.updateSharedMarker(
+                    context.server,
+                    context.token,
+                    context.workspaceId,
+                    markerId,
+                    expectedVersion,
+                    normalized,
+                    idempotencyKeyFactory(),
+                ).also(::reconcileMarker)
+            } catch (error: Exception) {
+                handleOperationFailure(error)
+                throw error
+            }
+        }
+    }
+
+    suspend fun deleteSharedMarker(markerId: String, expectedVersion: Long) = lifecycleMutex.withLock {
+        mutationMutex.withLock {
+            require(expectedVersion > 0) { "Expected version must be positive" }
+            val context = activeContext(SharedWorkspaceRole.EDITOR)
+            try {
+                client.deleteSharedMarker(
+                    context.server,
+                    context.token,
+                    context.workspaceId,
+                    markerId,
+                    expectedVersion,
+                    idempotencyKeyFactory(),
+                )
+                reconcileDeletedMarker(markerId)
+            } catch (error: Exception) {
+                handleOperationFailure(error)
+                throw error
+            }
+        }
+    }
+
+    suspend fun getMembers(): List<SharedMember> = lifecycleMutex.withLock {
+        val context = activeContext(SharedWorkspaceRole.ADMIN)
+        try {
+            client.getMembers(context.server, context.token, context.workspaceId)
+        } catch (error: Exception) {
+            handleOperationFailure(error)
+            throw error
+        }
+    }
+
+    suspend fun createMember(displayName: String, role: SharedWorkspaceRole): SharedMember = lifecycleMutex.withLock {
+        mutationMutex.withLock {
+            val context = activeContext(SharedWorkspaceRole.ADMIN)
+            try {
+                client.createMember(
+                    context.server,
+                    context.token,
+                    context.workspaceId,
+                    displayName,
+                    role,
+                    idempotencyKeyFactory(),
+                )
+            } catch (error: Exception) {
+                handleOperationFailure(error)
+                throw error
+            }
+        }
+    }
+
+    suspend fun updateMember(
+        memberId: String,
+        expectedVersion: Long,
+        displayName: String? = null,
+        role: SharedWorkspaceRole? = null,
+    ): SharedMember = lifecycleMutex.withLock {
+        mutationMutex.withLock {
+            val context = activeContext(SharedWorkspaceRole.ADMIN)
+            try {
+                client.updateMember(
+                    context.server,
+                    context.token,
+                    context.workspaceId,
+                    memberId,
+                    expectedVersion,
+                    displayName,
+                    role,
+                    idempotencyKeyFactory(),
+                )
+            } catch (error: Exception) {
+                handleOperationFailure(error)
+                throw error
+            }
+        }
+    }
+
+    suspend fun deleteMember(memberId: String, expectedVersion: Long) = lifecycleMutex.withLock {
+        mutationMutex.withLock {
+            val context = activeContext(SharedWorkspaceRole.ADMIN)
+            try {
+                client.deleteMember(
+                    context.server,
+                    context.token,
+                    context.workspaceId,
+                    memberId,
+                    expectedVersion,
+                    idempotencyKeyFactory(),
+                )
+            } catch (error: Exception) {
+                handleOperationFailure(error)
+                throw error
+            }
+        }
+    }
+
+    suspend fun createInvite(memberId: String, expiresInHours: Long = 72): Pair<SharedInvite, SecretValue> =
+        lifecycleMutex.withLock {
+            mutationMutex.withLock {
+                require(expiresInHours in 1..(30 * 24)) { "Invite lifetime is invalid" }
+                val context = activeContext(SharedWorkspaceRole.ADMIN)
+                try {
+                    client.createInvite(
+                        context.server,
+                        context.token,
+                        context.workspaceId,
+                        memberId,
+                        expiresInHours,
+                        idempotencyKeyFactory(),
+                    )
+                } catch (error: Exception) {
+                    handleOperationFailure(error)
+                    throw error
+                }
+            }
+        }
+
     suspend fun disconnect() = lifecycleMutex.withLock {
         ensureOpen()
         stopPolling()
@@ -336,6 +508,64 @@ class SharedMapSession(
     private fun stopPolling() {
         pollingJob?.cancel()
         pollingJob = null
+    }
+
+    private fun activeContext(minimumRole: SharedWorkspaceRole): ActiveContext {
+        ensureOpen()
+        val current = _state.value
+        if (current.connectionState != SharedConnectionState.ONLINE) {
+            throw SharedMapException(
+                SharedMapError.InvalidConfiguration("Shared Map is currently read-only."),
+            )
+        }
+        val currentRole = current.identity?.workspace?.role
+            ?: throw SharedMapException(SharedMapError.Authentication("Shared Map authentication is required."))
+        val allowed = when (minimumRole) {
+            SharedWorkspaceRole.VIEWER -> true
+            SharedWorkspaceRole.EDITOR -> currentRole in setOf(SharedWorkspaceRole.EDITOR, SharedWorkspaceRole.ADMIN)
+            SharedWorkspaceRole.ADMIN -> currentRole == SharedWorkspaceRole.ADMIN
+        }
+        if (!allowed) {
+            throw SharedMapException(SharedMapError.Forbidden("You do not have permission for this Shared Map operation."))
+        }
+        return ActiveContext(
+            server = server ?: throw SharedMapException(SharedMapError.InvalidConfiguration("Shared Map is not configured.")),
+            token = accessToken ?: throw SharedMapException(SharedMapError.Authentication("Shared Map authentication is required.")),
+            workspaceId = current.selectedWorkspaceId
+                ?: throw SharedMapException(SharedMapError.InvalidConfiguration("No Shared Map Workspace is selected.")),
+        )
+    }
+
+    private fun reconcileMarker(marker: SharedMarker) {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return
+        if (marker.workspaceId != snapshot.workspaceId) return
+        val reconciled = snapshot.markers
+            .filterValues { it.markerId == marker.markerId || it.systemId != marker.systemId }
+            .toMutableMap()
+            .apply { put(marker.markerId, marker) }
+            .toMap()
+        _state.value = current.copy(snapshot = snapshot.copy(markers = reconciled))
+    }
+
+    private fun reconcileDeletedMarker(markerId: String) {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return
+        if (markerId !in snapshot.markers) return
+        _state.value = current.copy(snapshot = snapshot.copy(markers = snapshot.markers - markerId))
+    }
+
+    private suspend fun handleOperationFailure(error: Exception) {
+        if (error is CancellationException) throw error
+        when (val mapped = (error as? SharedMapException)?.error) {
+            is SharedMapError.MarkerVersionConflict -> mapped.currentMarker?.let(::reconcileMarker)
+            is SharedMapError.MarkerAlreadyExists -> refreshAuthenticated(initial = false)
+            is SharedMapError.Authentication -> publishFailure(error, initial = false)
+            is SharedMapError.Forbidden -> refreshAuthenticated(initial = false)
+            is SharedMapError.NotFound -> refreshAuthenticated(initial = false)
+            is SharedMapError.Network, is SharedMapError.Server -> publishFailure(error, initial = false)
+            else -> Unit
+        }
     }
 
     private fun publishOnline(
@@ -444,6 +674,12 @@ class SharedMapSession(
             is SharedMapError.Server,
             is SharedMapError.RateLimited,
             is SharedMapError.InvalidResponse,
+            is SharedMapError.InvalidArgument,
+            is SharedMapError.MarkerAlreadyExists,
+            is SharedMapError.MarkerVersionConflict,
+            is SharedMapError.MemberVersionConflict,
+            is SharedMapError.LastAdminRequired,
+            is SharedMapError.IdempotencyResponseNotReplayable,
             -> {
                 val snapshot = if (initial) null else previous.snapshot
                 val hasSnapshot = snapshot != null
@@ -537,4 +773,10 @@ class SharedMapSession(
             SharedConnectionState.OFFLINE,
         )
     }
+
+    private data class ActiveContext(
+        val server: SharedServerUrl,
+        val token: SecretValue,
+        val workspaceId: String,
+    )
 }

@@ -67,6 +67,14 @@ import dev.evestaticmapplanner.marker.MarkerEditorMode
 import dev.evestaticmapplanner.marker.MarkerEditorRequest
 import dev.evestaticmapplanner.marker.MarkerUiState
 import dev.evestaticmapplanner.marker.MarkerViewModel
+import dev.evestaticmapplanner.shared.SharedMapViewModel
+import dev.evestaticmapplanner.shared.SharedMarkerContextAction
+import dev.evestaticmapplanner.shared.SharedMarkerEditorDialog
+import dev.evestaticmapplanner.shared.SharedMarkerEditorMode
+import dev.evestaticmapplanner.shared.SharedMarkerEditorRequest
+import dev.evestaticmapplanner.shared.SharedMarkerMutationUiState
+import dev.evestaticmapplanner.shared.canWriteSharedMarkers
+import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.control.MissionMapUiState
 import dev.evestaticmapplanner.feature.api.OverlayState
 import dev.evestaticmapplanner.feature.api.SystemInfoState
@@ -96,7 +104,9 @@ internal fun StaticMapScreen(
     capitalState: CapitalRouteUiState,
     planningViewsState: PlanningViewsState,
     markerState: MarkerUiState,
+    sharedMapState: SharedMapState,
     sharedMarkerState: SharedMarkerPresentationState,
+    sharedMarkerMutation: SharedMarkerMutationUiState,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
     systemInfoState: SystemInfoState,
@@ -111,6 +121,7 @@ internal fun StaticMapScreen(
     capitalViewModel: CapitalRouteViewModel,
     planningViewCoordinator: PlanningViewCoordinator,
     markerViewModel: MarkerViewModel,
+    sharedMapViewModel: SharedMapViewModel,
     suppressMarkerOperationErrorDialog: Boolean = false,
 ) {
     var showAnsiblexManager by remember { mutableStateOf(false) }
@@ -120,7 +131,15 @@ internal fun StaticMapScreen(
     var expectedMarkerDraft by remember { mutableStateOf<MarkerDraft?>(null) }
     var markerPendingRemoval by remember { mutableStateOf<Int?>(null) }
     var savedRemovalStarted by remember { mutableStateOf(false) }
+    var sharedMarkerEditor by remember { mutableStateOf<SharedMarkerEditorRequest?>(null) }
     val rendererNormalRoute = activeNormalRouteForRenderer(routeState.activeRoute)
+
+    LaunchedEffect(sharedMapState.selectedWorkspaceId) {
+        if (sharedMarkerEditor?.workspaceId != sharedMapState.selectedWorkspaceId) {
+            sharedMarkerEditor = null
+            sharedMapViewModel.clearMarkerMutationFeedback()
+        }
+    }
 
     LaunchedEffect(markerState.markersBySystemId, markerState.busySystemIds, markerState.operationError) {
         val editor = markerEditor
@@ -179,6 +198,7 @@ internal fun StaticMapScreen(
                         wormholeConnections = routeState.wormholeConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
                         markerState = markerState,
+                        sharedMapState = sharedMapState,
                         sharedMarkerState = sharedMarkerState,
                         missionState = missionState,
                         featureOverlayState = featureOverlayState,
@@ -247,6 +267,38 @@ internal fun StaticMapScreen(
                                     markerViewModel.removeTemporary(systemId)
                                 }
                                 MarkerContextAction.UNAVAILABLE -> Unit
+                            }
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextSharedMarkerAction = { systemId, action ->
+                            val workspaceId = sharedMapState.selectedWorkspaceId
+                            val systemName = state.scene.nodesById[systemId]?.system?.name ?: "System $systemId"
+                            val marker = sharedMapState.snapshot?.markers?.values?.singleOrNull {
+                                it.systemId == systemId
+                            }
+                            if (workspaceId != null) {
+                                sharedMapViewModel.clearMarkerMutationFeedback()
+                                sharedMarkerEditor = when (action) {
+                                    SharedMarkerContextAction.ADD -> SharedMarkerEditorRequest(
+                                        workspaceId = workspaceId,
+                                        mode = SharedMarkerEditorMode.CREATE,
+                                        systemId = systemId,
+                                        systemName = systemName,
+                                    )
+                                    SharedMarkerContextAction.OPEN -> marker?.let {
+                                        SharedMarkerEditorRequest(
+                                            workspaceId = workspaceId,
+                                            mode = if (canWriteSharedMarkers(sharedMapState)) {
+                                                SharedMarkerEditorMode.EDIT
+                                            } else {
+                                                SharedMarkerEditorMode.VIEW
+                                            },
+                                            systemId = systemId,
+                                            systemName = systemName,
+                                            marker = it,
+                                        )
+                                    }
+                                }
                             }
                             viewModel.dismissContextMenu()
                         },
@@ -355,6 +407,25 @@ internal fun StaticMapScreen(
                 markerEditor = null
                 expectedMarkerDraft = null
                 markerViewModel.clearOperationError()
+            },
+        )
+    }
+    sharedMarkerEditor?.let { request ->
+        val currentMarker = request.marker?.markerId?.let { markerId ->
+            sharedMapState.snapshot?.markers?.get(markerId)
+        }
+        SharedMarkerEditorDialog(
+            request = request,
+            currentMarker = if (request.mode == SharedMarkerEditorMode.CREATE) null else currentMarker,
+            canWrite = canWriteSharedMarkers(sharedMapState),
+            mutation = sharedMarkerMutation,
+            onCreate = sharedMapViewModel::createSharedMarker,
+            onUpdate = sharedMapViewModel::updateSharedMarker,
+            onDelete = sharedMapViewModel::deleteSharedMarker,
+            onClearFeedback = sharedMapViewModel::clearMarkerMutationFeedback,
+            onDismiss = {
+                sharedMarkerEditor = null
+                sharedMapViewModel.clearMarkerMutationFeedback()
             },
         )
     }

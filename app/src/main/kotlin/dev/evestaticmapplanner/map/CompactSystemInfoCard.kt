@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -160,6 +161,7 @@ internal object CompactSystemInfoCardDefaults {
 fun CompactSystemInfoCard(
     presentation: CompactSystemInfoPresentation,
     onBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit,
+    onEditSharedMarker: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -206,7 +208,7 @@ fun CompactSystemInfoCard(
                 presentation.fields.forEach { field -> CompactInfoRow(field) }
             }
             presentation.marker?.let { marker -> CompactMarkerSection(marker) }
-            presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker) }
+            presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker, onEditSharedMarker) }
             if (presentation.isLoading) return@Column
             if (presentation.ansiblexConnections.isNotEmpty()) {
                 Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
@@ -258,7 +260,7 @@ fun CompactSystemInfoCard(
 }
 
 @Composable
-private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation) {
+private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation, onEdit: (() -> Unit)?) {
     Text("Shared Marker", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         SharedMarkerOwnershipBadge(marker.color)
@@ -292,6 +294,9 @@ private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation) 
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFFFB86B),
                 )
+            }
+            if (onEdit != null) {
+                TextButton(onClick = onEdit) { Text("Edit Shared Marker") }
             }
         }
     }
