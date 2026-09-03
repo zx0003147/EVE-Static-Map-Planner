@@ -172,6 +172,75 @@ class McpToolCatalogTest {
         show.invoke(JsonObject(validArguments.getValue("show_normal_route") + ("useWormholes" to JsonPrimitive(true))))
         assertEquals(true, client.lastUseWormholes)
     }
+
+    @Test
+    fun `route schemas accept ordered Waypoints with optional destination and invoke one batched operation`() = runBlocking {
+        val client = RecordingClient()
+        val definitions = McpToolCatalog.definitions(client).associateBy { it.tool.name }
+        val calculate = definitions.getValue("calculate_normal_route")
+        val showCapital = definitions.getValue("show_capital_route")
+
+        assertEquals(
+            setOf("startSystemId", "waypointSystemIds", "destinationSystemId", "useAnsiblex", "useWormholes"),
+            calculate.tool.inputSchema.properties.orEmpty().keys,
+        )
+        assertEquals(listOf("startSystemId", "useAnsiblex"), calculate.tool.inputSchema.required)
+        val waypointsSchema = assertIs<JsonObject>(
+            calculate.tool.inputSchema.properties.orEmpty().getValue("waypointSystemIds"),
+        )
+        assertEquals("array", assertIs<JsonPrimitive>(waypointsSchema.getValue("type")).content)
+        assertEquals(
+            "integer",
+            assertIs<JsonPrimitive>(assertIs<JsonObject>(waypointsSchema.getValue("items")).getValue("type")).content,
+        )
+
+        calculate.invoke(
+            buildJsonObject {
+                put("startSystemId", 1)
+                put("waypointSystemIds", JsonArray(listOf(JsonPrimitive(2), JsonPrimitive(3))))
+                put("useAnsiblex", false)
+            },
+        )
+        assertEquals(1, client.callCount)
+        assertEquals(listOf(2, 3), client.lastWaypointSystemIds)
+        assertEquals(null, client.lastDestinationSystemId)
+
+        showCapital.invoke(
+            buildJsonObject {
+                put("missionId", "m1")
+                put("startSystemId", 4)
+                put("waypointSystemIds", JsonArray(listOf(JsonPrimitive(5))))
+                put("destinationSystemId", 6)
+                put("effectiveRangeLy", 5.0)
+            },
+        )
+        assertEquals(2, client.callCount)
+        assertEquals(listOf(5), client.lastWaypointSystemIds)
+        assertEquals(6, client.lastDestinationSystemId)
+    }
+
+    @Test
+    fun `waypoint arrays fail closed for wrong types and non positive IDs`() = runBlocking {
+        val invoke = McpToolCatalog.definitions(RecordingClient()).associateBy { it.tool.name }
+            .getValue("calculate_normal_route").invoke
+
+        listOf(
+            JsonPrimitive("2"),
+            JsonArray(listOf(JsonPrimitive(0))),
+            JsonArray(listOf(JsonPrimitive(-1))),
+            JsonArray(listOf(JsonPrimitive("2"))),
+        ).forEach { invalidWaypoints ->
+            assertFails {
+                invoke(
+                    buildJsonObject {
+                        put("startSystemId", 1)
+                        put("waypointSystemIds", invalidWaypoints)
+                        put("useAnsiblex", false)
+                    },
+                )
+            }
+        }
+    }
 }
 
 private val validArguments: Map<String, Map<String, kotlinx.serialization.json.JsonElement>> = mapOf(
@@ -228,9 +297,13 @@ private class RecordingClient : McpMapClient {
     var called: String? = null
     var createdTags: List<String>? = null
     var lastUseWormholes: Boolean? = null
+    var lastWaypointSystemIds: List<Int>? = null
+    var lastDestinationSystemId: Int? = null
+    var callCount = 0
 
     private fun result(name: String): LocalControlClientResult {
         called = name
+        callCount++
         return LocalControlClientResult.Success(buildJsonObject { put("operation", name) }, null)
     }
 
@@ -246,8 +319,28 @@ private class RecordingClient : McpMapClient {
         useAnsiblex: Boolean,
         useWormholes: Boolean,
     ) = result("calculate_normal_route").also { lastUseWormholes = useWormholes }
+    override suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = result("calculate_normal_route").also {
+        lastWaypointSystemIds = waypointSystemIds
+        lastDestinationSystemId = destinationSystemId
+        lastUseWormholes = useWormholes
+    }
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
         result("calculate_capital_route")
+    override suspend fun calculateCapitalRoute(
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        effectiveRangeLy: Double,
+    ) = result("calculate_capital_route").also {
+        lastWaypointSystemIds = waypointSystemIds
+        lastDestinationSystemId = destinationSystemId
+    }
     override suspend fun listViews() = result("list_views")
     override suspend fun getCurrentView() = result("get_current_view")
     override suspend fun createView(label: String?) = result("create_view")
@@ -278,12 +371,34 @@ private class RecordingClient : McpMapClient {
         useAnsiblex: Boolean,
         useWormholes: Boolean,
     ) = result("show_normal_route").also { lastUseWormholes = useWormholes }
+    override suspend fun showNormalRoute(
+        missionId: String,
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = result("show_normal_route").also {
+        lastWaypointSystemIds = waypointSystemIds
+        lastDestinationSystemId = destinationSystemId
+        lastUseWormholes = useWormholes
+    }
     override suspend fun showCapitalRoute(
         missionId: String,
         startSystemId: Int,
         destinationSystemId: Int,
         effectiveRangeLy: Double,
     ) = result("show_capital_route")
+    override suspend fun showCapitalRoute(
+        missionId: String,
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        effectiveRangeLy: Double,
+    ) = result("show_capital_route").also {
+        lastWaypointSystemIds = waypointSystemIds
+        lastDestinationSystemId = destinationSystemId
+    }
     override suspend fun removeMissionRoute(missionId: String, routeId: String) = result("remove_mission_route")
     override suspend fun clearMissionRoutes(missionId: String) = result("clear_mission_routes")
     override suspend fun showJumpRange(missionId: String, originSystemId: Int, effectiveRangeLy: Double, label: String?) =

@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteResult
+import dev.evestaticmapplanner.core.route.NavigationIntent
 import java.time.Instant
 
 @JvmInline value class MissionId(val value: String)
@@ -29,16 +30,26 @@ sealed interface MissionRoute {
         override val missionId: MissionId,
         override val routeId: MissionRouteId,
         val route: RouteResult,
+        val navigationIntent: NavigationIntent = NavigationIntent(
+            route.startSystemId,
+            destinationSystemId = route.destinationSystemId,
+        ),
     ) : MissionRoute {
         override val systemIds: List<Int> get() = route.systems
+        val waypointSystemIds: List<Int> get() = navigationIntent.waypointSystemIds
     }
 
     data class Capital(
         override val missionId: MissionId,
         override val routeId: MissionRouteId,
         val route: CapitalRouteResult,
+        val navigationIntent: NavigationIntent = NavigationIntent(
+            route.startSystemId,
+            destinationSystemId = route.destinationSystemId,
+        ),
     ) : MissionRoute {
         override val systemIds: List<Int> get() = route.systems
+        val waypointSystemIds: List<Int> get() = navigationIntent.waypointSystemIds
     }
 }
 

@@ -23,13 +23,23 @@ class PlanningViewCoordinatorTest {
         )
 
         normal.value = NormalRoutePlanningSnapshot(
-            1,
-            2,
+            fromSystemId = 1,
+            toSystemId = 2,
+            waypointSystemIds = listOf(7, 8),
             useAnsiblex = true,
             useWormholes = true,
             calculated = true,
+            calculatedWaypointSystemIds = listOf(7),
+            isRouteStale = true,
         )
-        capital.value = CapitalRoutePlanningSnapshot(3, 4, "7.5", calculated = true)
+        capital.value = CapitalRoutePlanningSnapshot(
+            fromSystemId = 3,
+            toSystemId = 4,
+            manualRangeText = "7.5",
+            calculated = true,
+            waypointSystemIds = listOf(9),
+            calculatedWaypointSystemIds = listOf(9),
+        )
         val second = coordinator.createView()
         assertEquals(NormalRoutePlanningSnapshot(), normal.value)
         assertEquals(CapitalRoutePlanningSnapshot(), capital.value)
@@ -37,8 +47,12 @@ class PlanningViewCoordinatorTest {
         normal.value = NormalRoutePlanningSnapshot(5, 6, calculated = true)
         assertTrue(coordinator.switchView(PlanningViewId("view-1")))
         assertEquals(1, normal.value.fromSystemId)
+        assertEquals(listOf(7, 8), normal.value.waypointSystemIds)
+        assertEquals(listOf(7), normal.value.calculatedWaypointSystemIds)
+        assertTrue(normal.value.isRouteStale)
         assertTrue(normal.value.useWormholes)
         assertEquals("7.5", capital.value.manualRangeText)
+        assertEquals(listOf(9), capital.value.waypointSystemIds)
         assertTrue(coordinator.switchView(second))
         assertEquals(5, normal.value.fromSystemId)
         assertFalse(normal.value.useWormholes)

@@ -31,10 +31,12 @@ enum class SystemContextAction(val label: String) {
     ADD_SHARED_MARKER("Add Shared Marker…"),
     OPEN_SHARED_MARKER("Shared Marker…"),
     ADD_JUMP_RANGE_OVERLAY("Add Jump Range Overlay"),
-    SET_ROUTE_START("Set Route Start"),
-    SET_ROUTE_DESTINATION("Set Route Destination"),
-    SET_CAPITAL_START("Set Capital Start"),
-    SET_CAPITAL_DESTINATION("Set Capital Destination"),
+    SET_ROUTE_START("Set as Normal Start"),
+    ADD_ROUTE_WAYPOINT("Add as Normal Waypoint"),
+    SET_ROUTE_DESTINATION("Set as Normal Destination"),
+    SET_CAPITAL_START("Set as Capital Start"),
+    ADD_CAPITAL_WAYPOINT("Add as Capital Waypoint"),
+    SET_CAPITAL_DESTINATION("Set as Capital Destination"),
     CREATE_WORMHOLE("Create Wormhole Connection…"),
     MANAGE_WORMHOLE_CONNECTIONS("Wormhole Connections…"),
 }
@@ -77,8 +79,10 @@ object SystemContextMenuPresentationBuilder {
         } + listOf(
             PresentedSystemContextAction(SystemContextAction.ADD_JUMP_RANGE_OVERLAY),
             PresentedSystemContextAction(SystemContextAction.SET_ROUTE_START),
+            PresentedSystemContextAction(SystemContextAction.ADD_ROUTE_WAYPOINT),
             PresentedSystemContextAction(SystemContextAction.SET_ROUTE_DESTINATION),
             PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_START),
+            PresentedSystemContextAction(SystemContextAction.ADD_CAPITAL_WAYPOINT),
             PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_DESTINATION),
         ) + listOf(
             PresentedSystemContextAction(

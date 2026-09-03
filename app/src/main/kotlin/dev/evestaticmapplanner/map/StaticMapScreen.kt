@@ -191,7 +191,11 @@ internal fun StaticMapScreen(
                     state.scene != null && state.viewport != null -> StaticMapCanvas(
                         state = state,
                         activeRoute = rendererNormalRoute,
+                        normalWaypointSystemIds = routeState.calculatedWaypointSystemIds,
+                        normalExplicitDestinationSystemId = routeState.calculatedExplicitDestinationSystemId,
                         capitalRoute = capitalState.activeRoute,
+                        capitalWaypointSystemIds = capitalState.calculatedWaypointSystemIds,
+                        capitalExplicitDestinationSystemId = capitalState.calculatedExplicitDestinationSystemId,
                         jumpOverlays = jumpState.overlays,
                         intersectionSystemIds = jumpState.intersectionSystemIds,
                         ansiblexConnections = routeState.ansiblexConnections,
@@ -221,6 +225,10 @@ internal fun StaticMapScreen(
                             routeViewModel.setRouteStart(it)
                             viewModel.dismissContextMenu()
                         },
+                        onContextRouteWaypoint = {
+                            routeViewModel.addRouteWaypoint(it)
+                            viewModel.dismissContextMenu()
+                        },
                         onContextRouteDestination = {
                             routeViewModel.setRouteDestination(it)
                             viewModel.dismissContextMenu()
@@ -231,6 +239,10 @@ internal fun StaticMapScreen(
                         },
                         onContextCapitalStart = {
                             capitalViewModel.setRouteStart(it)
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextCapitalWaypoint = {
+                            capitalViewModel.addRouteWaypoint(it)
                             viewModel.dismissContextMenu()
                         },
                         onContextCapitalDestination = {

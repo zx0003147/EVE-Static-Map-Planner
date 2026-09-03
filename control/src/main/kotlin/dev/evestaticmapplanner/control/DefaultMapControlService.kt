@@ -7,6 +7,11 @@ import dev.evestaticmapplanner.core.jump.EligibilityVerdict
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.core.route.CapitalNavigationOutcome
+import dev.evestaticmapplanner.core.route.NavigationIntent
+import dev.evestaticmapplanner.core.route.NavigationIntentValidation
+import dev.evestaticmapplanner.core.route.NavigationStopRole
+import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteResult
 import kotlinx.coroutines.CoroutineScope
@@ -96,14 +101,15 @@ class DefaultMapControlService(
         query(request.requestId) {
             validateRequestId(request.requestId)
             validateSystemId(request.startSystemId)
-            validateSystemId(request.destinationSystemId)
+            request.destinationSystemId?.let(::validateSystemId)
+            request.waypointSystemIds.forEach(::validateSystemId)
+            val intent = request.navigationIntent().validated()
             expensiveQueries.withPermit {
                 routePlanningPort.calculateNormalRoute(
-                    request.startSystemId,
-                    request.destinationSystemId,
+                    intent,
                     request.useAnsiblex,
                     request.useWormholes,
-                ).requireRoute().toDto()
+                ).requireRoute().toDto(intent)
             }
         }
 
@@ -124,14 +130,15 @@ class DefaultMapControlService(
         query(request.requestId) {
             validateRequestId(request.requestId)
             validateSystemId(request.startSystemId)
-            validateSystemId(request.destinationSystemId)
+            request.destinationSystemId?.let(::validateSystemId)
+            request.waypointSystemIds.forEach(::validateSystemId)
             validateRange(request.effectiveRangeLy)
+            val intent = request.navigationIntent().validated()
             expensiveQueries.withPermit {
                 routePlanningPort.calculateCapitalRoute(
-                    request.startSystemId,
-                    request.destinationSystemId,
+                    intent,
                     request.effectiveRangeLy,
-                ).requireRoute().toDto()
+                ).requireRoute().toDto(intent)
             }
         }
 
@@ -271,25 +278,27 @@ class DefaultMapControlService(
             command.missionId,
             command.startSystemId,
             command.destinationSystemId,
+            command.waypointSystemIds,
             command.useAnsiblex,
             command.useWormholes,
         ),
     ) {
         validateSystemId(command.startSystemId)
-        validateSystemId(command.destinationSystemId)
+        command.destinationSystemId?.let(::validateSystemId)
+        command.waypointSystemIds.forEach(::validateSystemId)
+        val intent = command.navigationIntent().validated()
         ensureRouteCapacity(command.missionId)
         val route = routePlanningPort.calculateNormalRoute(
-            command.startSystemId,
-            command.destinationSystemId,
+            intent,
             command.useAnsiblex,
             command.useWormholes,
         ).requireRoute()
-        val owned = registry.addNormalRoute(command.missionId, route)
+        val owned = registry.addNormalRoute(command.missionId, route, intent)
         publishMissions()
         val revision = registry.get(command.missionId).revision
         success(
             command.requestId,
-            MissionRouteReceipt(command.missionId, owned.routeId, AnyRouteDto.Normal(route.toDto())),
+            MissionRouteReceipt(command.missionId, owned.routeId, AnyRouteDto.Normal(route.toDto(intent))),
             revision,
         )
     }
@@ -297,23 +306,30 @@ class DefaultMapControlService(
     override suspend fun showCapitalRoute(command: ShowCapitalRouteCommand): ControlResult<MissionRouteReceipt> = mutation(
         "showCapitalRoute",
         command,
-        listOf(command.missionId, command.startSystemId, command.destinationSystemId, command.effectiveRangeLy),
-    ) {
-        validateSystemId(command.startSystemId)
-        validateSystemId(command.destinationSystemId)
-        validateRange(command.effectiveRangeLy)
-        ensureRouteCapacity(command.missionId)
-        val route = routePlanningPort.calculateCapitalRoute(
+        listOf(
+            command.missionId,
             command.startSystemId,
             command.destinationSystemId,
+            command.waypointSystemIds,
+            command.effectiveRangeLy,
+        ),
+    ) {
+        validateSystemId(command.startSystemId)
+        command.destinationSystemId?.let(::validateSystemId)
+        command.waypointSystemIds.forEach(::validateSystemId)
+        validateRange(command.effectiveRangeLy)
+        val intent = command.navigationIntent().validated()
+        ensureRouteCapacity(command.missionId)
+        val route = routePlanningPort.calculateCapitalRoute(
+            intent,
             command.effectiveRangeLy,
         ).requireRoute()
-        val owned = registry.addCapitalRoute(command.missionId, route)
+        val owned = registry.addCapitalRoute(command.missionId, route, intent)
         publishMissions()
         val revision = registry.get(command.missionId).revision
         success(
             command.requestId,
-            MissionRouteReceipt(command.missionId, owned.routeId, AnyRouteDto.Capital(route.toDto())),
+            MissionRouteReceipt(command.missionId, owned.routeId, AnyRouteDto.Capital(route.toDto(intent))),
             revision,
         )
     }
@@ -565,7 +581,35 @@ private fun CapitalRouteOutcome.requireRoute(): CapitalRouteResult = when (this)
     )
 }
 
-private fun RouteResult.toDto() = NormalRouteDto(
+private fun NormalNavigationOutcome.requireRoute(): RouteResult = when (this) {
+    is NormalNavigationOutcome.Found -> route
+    is NormalNavigationOutcome.InvalidIntent -> throw ControlFailure(
+        ControlErrorCode.INVALID_ARGUMENT,
+        validation.controlMessage(),
+    )
+    is NormalNavigationOutcome.SegmentFailed -> throw ControlFailure(
+        if (cause is RouteCalculationOutcome.InvalidEndpoint) ControlErrorCode.NOT_FOUND else ControlErrorCode.ROUTE_NOT_FOUND,
+        "Unable to calculate ${segment.controlLabel()}",
+    )
+}
+
+private fun CapitalNavigationOutcome.requireRoute(): CapitalRouteResult = when (this) {
+    is CapitalNavigationOutcome.Found -> route
+    is CapitalNavigationOutcome.InvalidIntent -> throw ControlFailure(
+        ControlErrorCode.INVALID_ARGUMENT,
+        validation.controlMessage(),
+    )
+    is CapitalNavigationOutcome.SegmentFailed -> throw ControlFailure(
+        when (cause) {
+            is CapitalRouteOutcome.InvalidEndpoint -> ControlErrorCode.NOT_FOUND
+            is CapitalRouteOutcome.IneligibleEndpoint -> ControlErrorCode.INVALID_ARGUMENT
+            else -> ControlErrorCode.ROUTE_NOT_FOUND
+        },
+        "Unable to calculate ${segment.controlLabel()}",
+    )
+}
+
+private fun RouteResult.toDto(intent: NavigationIntent? = null) = NormalRouteDto(
     startSystemId,
     destinationSystemId,
     systems,
@@ -573,9 +617,11 @@ private fun RouteResult.toDto() = NormalRouteDto(
     stargateJumps,
     ansiblexJumps,
     wormholeJumps,
+    intent?.waypointSystemIds.orEmpty(),
+    if (intent == null) destinationSystemId else intent.destinationSystemId,
 )
 
-private fun CapitalRouteResult.toDto() = CapitalRouteDto(
+private fun CapitalRouteResult.toDto(intent: NavigationIntent? = null) = CapitalRouteDto(
     startSystemId,
     destinationSystemId,
     profile.maxRangeLy,
@@ -583,7 +629,41 @@ private fun CapitalRouteResult.toDto() = CapitalRouteDto(
     legs.map { CapitalRouteLegDto(it.fromSystemId, it.toSystemId, it.distanceLy) },
     totalJumps,
     totalDistanceLy,
+    intent?.waypointSystemIds.orEmpty(),
+    if (intent == null) destinationSystemId else intent.destinationSystemId,
 )
+
+private fun CalculateNormalRouteRequest.navigationIntent() =
+    NavigationIntent(startSystemId, waypointSystemIds, destinationSystemId)
+
+private fun CalculateCapitalRouteRequest.navigationIntent() =
+    NavigationIntent(startSystemId, waypointSystemIds, destinationSystemId)
+
+private fun ShowNormalRouteCommand.navigationIntent() =
+    NavigationIntent(startSystemId, waypointSystemIds, destinationSystemId)
+
+private fun ShowCapitalRouteCommand.navigationIntent() =
+    NavigationIntent(startSystemId, waypointSystemIds, destinationSystemId)
+
+private fun NavigationIntent.validated(): NavigationIntent {
+    when (val validation = validate()) {
+        NavigationIntentValidation.Valid -> return this
+        else -> throw ControlFailure(ControlErrorCode.INVALID_ARGUMENT, validation.controlMessage())
+    }
+}
+
+private fun NavigationIntentValidation.controlMessage(): String = when (this) {
+    NavigationIntentValidation.Valid -> "Navigation intent is valid"
+    NavigationIntentValidation.MissingTerminalStop -> "A Destination or at least one ordered Waypoint is required"
+    NavigationIntentValidation.InvalidSystemId -> "Every navigation stop must use a positive solar system ID"
+    is NavigationIntentValidation.AdjacentDuplicate ->
+        "Adjacent navigation stops cannot use the same solar system ID ($systemId)"
+}
+
+private fun dev.evestaticmapplanner.core.route.NavigationSegment.controlLabel(): String =
+    "${fromRole.controlName()} $fromSystemId -> ${toRole.controlName()} $toSystemId"
+
+private fun NavigationStopRole.controlName(): String = name.lowercase().replaceFirstChar(Char::uppercase)
 
 private fun Mission.toSummary() = MissionSummaryDto(
     missionId,

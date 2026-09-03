@@ -403,6 +403,7 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         overlay: ProjectedRouteOverlay,
+        showDestination: Boolean = true,
     ) {
         val curvedPath = Path()
         overlay.legs.forEach { leg ->
@@ -453,10 +454,12 @@ object MapRenderer {
             drawCircle(ROUTE_START_COLOR.copy(alpha = 0.25f), 12f, center)
             drawCircle(ROUTE_START_COLOR, 8f, center, style = Stroke(3f))
         }
-        scene.nodesById[overlay.route.destinationSystemId]?.let { node ->
-            val center = transform.worldToScreen(node.position).toOffset()
-            drawCircle(ROUTE_DESTINATION_COLOR.copy(alpha = 0.25f), 12f, center)
-            drawCircle(ROUTE_DESTINATION_COLOR, 8f, center, style = Stroke(3f))
+        if (showDestination) {
+            scene.nodesById[overlay.route.destinationSystemId]?.let { node ->
+                val center = transform.worldToScreen(node.position).toOffset()
+                drawCircle(ROUTE_DESTINATION_COLOR.copy(alpha = 0.25f), 12f, center)
+                drawCircle(ROUTE_DESTINATION_COLOR, 8f, center, style = Stroke(3f))
+            }
         }
     }
 
@@ -527,6 +530,7 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         overlay: ProjectedCapitalRouteOverlay,
+        showDestination: Boolean = true,
     ) {
         overlay.legs.forEach { leg ->
             drawLine(
@@ -541,10 +545,12 @@ object MapRenderer {
             drawCircle(CAPITAL_START_COLOR.copy(alpha = 0.25f), 13f, center)
             drawCircle(CAPITAL_START_COLOR, 9f, center, style = Stroke(3f))
         }
-        scene.nodesById[overlay.route.destinationSystemId]?.let { node ->
-            val center = transform.worldToScreen(node.position).toOffset()
-            drawCircle(CAPITAL_DESTINATION_COLOR.copy(alpha = 0.25f), 13f, center)
-            drawCircle(CAPITAL_DESTINATION_COLOR, 9f, center, style = Stroke(3f))
+        if (showDestination) {
+            scene.nodesById[overlay.route.destinationSystemId]?.let { node ->
+                val center = transform.worldToScreen(node.position).toOffset()
+                drawCircle(CAPITAL_DESTINATION_COLOR.copy(alpha = 0.25f), 13f, center)
+                drawCircle(CAPITAL_DESTINATION_COLOR, 9f, center, style = Stroke(3f))
+            }
         }
     }
 
@@ -570,6 +576,38 @@ object MapRenderer {
                 end = transform.worldToScreen(leg.to).toOffset(),
                 strokeWidth = 5f,
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)),
+            )
+        }
+    }
+
+    fun DrawScope.drawRouteWaypoints(
+        scene: ProjectedMapScene,
+        transform: MapTransform,
+        waypoints: List<PresentedRouteWaypoint>,
+        textMeasurer: TextMeasurer,
+    ) {
+        waypoints.forEach { waypoint ->
+            val node = scene.nodesById[waypoint.systemId] ?: return@forEach
+            val base = transform.worldToScreen(node.position).toOffset()
+            val column = waypoint.stackIndex % 3
+            val row = waypoint.stackIndex / 3
+            val center = Offset(base.x + 11f + column * 14f, base.y - 10f - row * 14f)
+            val color = when (waypoint.kind) {
+                RouteWaypointKind.USER_NORMAL -> ROUTE_STARGATE_COLOR
+                RouteWaypointKind.USER_CAPITAL -> CAPITAL_ROUTE_COLOR
+                RouteWaypointKind.MISSION_NORMAL -> MISSION_ROUTE_COLORS.first()
+                RouteWaypointKind.MISSION_CAPITAL -> MISSION_CAPITAL_COLORS.first()
+            }
+            drawCircle(Color(0xE6162430), 7f, center)
+            drawCircle(color.copy(alpha = 0.86f), 7f, center, style = Stroke(1.25f))
+            val label = textMeasurer.measure(
+                waypoint.sequenceNumber.toString(),
+                style = TextStyle(fontSize = 8.sp, color = Color(0xFFF1F5F8)),
+                softWrap = false,
+            )
+            drawText(
+                label,
+                topLeft = Offset(center.x - label.size.width / 2f, center.y - label.size.height / 2f),
             )
         }
     }

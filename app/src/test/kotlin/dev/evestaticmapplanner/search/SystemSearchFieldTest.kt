@@ -172,7 +172,7 @@ class SystemSearchFieldTest {
             textField.assertIsFocused()
         }
 
-        textField.assertTextEquals("C-0ND2")
+        textField.assertTextEquals("Search system", "C-0ND2")
         assertEquals(listOf("C", "C-", "C-0", "C-0N", "C-0ND", "C-0ND2"), queryUpdates)
         onNodeWithText("C-0ND2  ·  30000001").assertExists()
         onNodeWithText("C-J6MT  ·  30000002").assertDoesNotExist()

@@ -14,8 +14,29 @@ internal interface McpMapClient : AutoCloseable {
         useAnsiblex: Boolean,
         useWormholes: Boolean,
     ): LocalControlClientResult = calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
+    suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): LocalControlClientResult = if (waypointSystemIds.isEmpty() && destinationSystemId != null) {
+        calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex, useWormholes)
+    } else {
+        unsupportedWaypointClientResult()
+    }
     suspend fun listWormholes(): LocalControlClientResult = unsupportedWormholeClientResult()
     suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double): LocalControlClientResult
+    suspend fun calculateCapitalRoute(
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        effectiveRangeLy: Double,
+    ): LocalControlClientResult = if (waypointSystemIds.isEmpty() && destinationSystemId != null) {
+        calculateCapitalRoute(startSystemId, destinationSystemId, effectiveRangeLy)
+    } else {
+        unsupportedWaypointClientResult()
+    }
     suspend fun listViews(): LocalControlClientResult = unsupportedViewClientResult()
     suspend fun getCurrentView(): LocalControlClientResult = unsupportedViewClientResult()
     suspend fun getActiveMissions(): LocalControlClientResult
@@ -49,12 +70,35 @@ internal interface McpMapClient : AutoCloseable {
         useAnsiblex: Boolean,
         useWormholes: Boolean,
     ): LocalControlClientResult = showNormalRoute(missionId, startSystemId, destinationSystemId, useAnsiblex)
+    suspend fun showNormalRoute(
+        missionId: String,
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): LocalControlClientResult = if (waypointSystemIds.isEmpty() && destinationSystemId != null) {
+        showNormalRoute(missionId, startSystemId, destinationSystemId, useAnsiblex, useWormholes)
+    } else {
+        unsupportedWaypointClientResult()
+    }
     suspend fun showCapitalRoute(
         missionId: String,
         startSystemId: Int,
         destinationSystemId: Int,
         effectiveRangeLy: Double,
     ): LocalControlClientResult
+    suspend fun showCapitalRoute(
+        missionId: String,
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        effectiveRangeLy: Double,
+    ): LocalControlClientResult = if (waypointSystemIds.isEmpty() && destinationSystemId != null) {
+        showCapitalRoute(missionId, startSystemId, destinationSystemId, effectiveRangeLy)
+    } else {
+        unsupportedWaypointClientResult()
+    }
     suspend fun removeMissionRoute(missionId: String, routeId: String): LocalControlClientResult
     suspend fun clearMissionRoutes(missionId: String): LocalControlClientResult
     suspend fun showJumpRange(
@@ -93,9 +137,22 @@ internal class LocalMcpMapClient(
         useAnsiblex: Boolean,
         useWormholes: Boolean,
     ) = client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex, useWormholes)
+    override suspend fun calculateNormalRoute(
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex, useWormholes, waypointSystemIds)
     override suspend fun listWormholes() = client.listWormholes()
     override suspend fun calculateCapitalRoute(startSystemId: Int, destinationSystemId: Int, effectiveRangeLy: Double) =
         client.calculateCapitalRoute(startSystemId, destinationSystemId, effectiveRangeLy)
+    override suspend fun calculateCapitalRoute(
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        effectiveRangeLy: Double,
+    ) = client.calculateCapitalRoute(startSystemId, destinationSystemId, effectiveRangeLy, waypointSystemIds)
     override suspend fun listViews() = client.listViews()
     override suspend fun getCurrentView() = client.getCurrentView()
     override suspend fun getActiveMissions() = client.getActiveMissions()
@@ -129,12 +186,34 @@ internal class LocalMcpMapClient(
         useAnsiblex: Boolean,
         useWormholes: Boolean,
     ) = client.showNormalRoute(missionId, startSystemId, destinationSystemId, useAnsiblex, useWormholes)
+    override suspend fun showNormalRoute(
+        missionId: String,
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ) = client.showNormalRoute(
+        missionId,
+        startSystemId,
+        destinationSystemId,
+        useAnsiblex,
+        useWormholes,
+        waypointSystemIds,
+    )
     override suspend fun showCapitalRoute(
         missionId: String,
         startSystemId: Int,
         destinationSystemId: Int,
         effectiveRangeLy: Double,
     ) = client.showCapitalRoute(missionId, startSystemId, destinationSystemId, effectiveRangeLy)
+    override suspend fun showCapitalRoute(
+        missionId: String,
+        startSystemId: Int,
+        waypointSystemIds: List<Int>,
+        destinationSystemId: Int?,
+        effectiveRangeLy: Double,
+    ) = client.showCapitalRoute(missionId, startSystemId, destinationSystemId, effectiveRangeLy, waypointSystemIds)
     override suspend fun removeMissionRoute(missionId: String, routeId: String) = client.removeMissionRoute(missionId, routeId)
     override suspend fun clearMissionRoutes(missionId: String) = client.clearMissionRoutes(missionId)
     override suspend fun showJumpRange(missionId: String, originSystemId: Int, effectiveRangeLy: Double, label: String?) =
@@ -169,5 +248,12 @@ private fun unsupportedWormholeClientResult() = LocalControlClientResult.Failure
     dev.evestaticmapplanner.control.transport.LocalControlClientError(
         dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.APP_NOT_READY,
         "Wormhole session control is unavailable",
+    ),
+)
+
+private fun unsupportedWaypointClientResult() = LocalControlClientResult.Failure(
+    dev.evestaticmapplanner.control.transport.LocalControlClientError(
+        dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.INVALID_ARGUMENT,
+        "Ordered Waypoints are not supported by this client",
     ),
 )

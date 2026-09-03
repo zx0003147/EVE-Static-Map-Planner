@@ -7,6 +7,7 @@ import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.RouteResult
+import dev.evestaticmapplanner.core.route.NavigationIntent
 import java.time.Instant
 import java.util.UUID
 
@@ -38,19 +39,33 @@ class MissionRegistry(
         ?: fail(ControlErrorCode.MISSION_NOT_FOUND, "Mission was not found")
 
     @Synchronized
-    fun addNormalRoute(missionId: MissionId, route: RouteResult): MissionRoute.Normal {
+    fun addNormalRoute(
+        missionId: MissionId,
+        route: RouteResult,
+        navigationIntent: NavigationIntent = NavigationIntent(
+            route.startSystemId,
+            destinationSystemId = route.destinationSystemId,
+        ),
+    ): MissionRoute.Normal {
         val mission = get(missionId)
         ensureRouteCapacity(mission)
-        val owned = MissionRoute.Normal(missionId, MissionRouteId(newId()), route)
+        val owned = MissionRoute.Normal(missionId, MissionRouteId(newId()), route, navigationIntent)
         replace(mission.copy(routes = mission.routes + owned).revised())
         return owned
     }
 
     @Synchronized
-    fun addCapitalRoute(missionId: MissionId, route: CapitalRouteResult): MissionRoute.Capital {
+    fun addCapitalRoute(
+        missionId: MissionId,
+        route: CapitalRouteResult,
+        navigationIntent: NavigationIntent = NavigationIntent(
+            route.startSystemId,
+            destinationSystemId = route.destinationSystemId,
+        ),
+    ): MissionRoute.Capital {
         val mission = get(missionId)
         ensureRouteCapacity(mission)
-        val owned = MissionRoute.Capital(missionId, MissionRouteId(newId()), route)
+        val owned = MissionRoute.Capital(missionId, MissionRouteId(newId()), route, navigationIntent)
         replace(mission.copy(routes = mission.routes + owned).revised())
         return owned
     }

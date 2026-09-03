@@ -5,12 +5,16 @@ import dev.evestaticmapplanner.control.mission.MissionJumpRangeId
 import dev.evestaticmapplanner.control.mission.MissionMarkerId
 import dev.evestaticmapplanner.control.mission.MissionMarkerRole
 import dev.evestaticmapplanner.control.mission.MissionRouteId
+import dev.evestaticmapplanner.control.mission.MissionRoute
 import dev.evestaticmapplanner.core.jump.EligibilityVerdict
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.JumpRangeResult
 import dev.evestaticmapplanner.core.jump.PositionQueryStrategy
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.core.route.CapitalNavigationOutcome
+import dev.evestaticmapplanner.core.route.NavigationIntent
+import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteConnectionId
 import dev.evestaticmapplanner.core.route.RouteEdge
@@ -194,14 +198,23 @@ class DefaultMapControlServiceTest {
             val invalidRange = fixture.service.calculateCapitalRoute(
                 CalculateCapitalRouteRequest("r", 1, 2, 20.1),
             ).failure()
+            val missingTerminal = fixture.service.calculateNormalRoute(
+                CalculateNormalRouteRequest("missing", 1, null, useAnsiblex = false),
+            ).failure()
+            val capitalAdjacent = fixture.service.calculateCapitalRoute(
+                CalculateCapitalRouteRequest("adjacent-capital", 1, 2, 5.0, waypointSystemIds = listOf(1)),
+            ).failure()
             val invalidTitle = fixture.service.beginMission(
                 BeginMissionCommand("b", "b", "x".repeat(121)),
             ).failure()
 
             assertEquals(ControlErrorCode.INVALID_ARGUMENT, invalidSearch.error.code)
             assertEquals(ControlErrorCode.INVALID_ARGUMENT, invalidRange.error.code)
+            assertEquals(ControlErrorCode.INVALID_ARGUMENT, missingTerminal.error.code)
+            assertEquals(ControlErrorCode.INVALID_ARGUMENT, capitalAdjacent.error.code)
             assertEquals(ControlErrorCode.INVALID_ARGUMENT, invalidTitle.error.code)
             assertEquals(0, fixture.routes.capitalCalls)
+            assertEquals(0, fixture.routes.normalIntentCalls)
             assertTrue(fixture.rendered.isEmpty())
         } finally {
             fixture.close()
@@ -235,6 +248,74 @@ class DefaultMapControlServiceTest {
             fixture.service.clearMission(ClearMissionCommand("clear-fit", "clear-fit", mission)).success()
             assertTrue(fixture.rendered.isEmpty())
             assertEquals(setOf(3), userJumpRangeSystemIds)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `waypoint request is planned once as one ordered Mission route and destination may be omitted`() = runTest {
+        val fixture = Fixture(this)
+        try {
+            val missionId = fixture.begin().value.missionId
+            fixture.service.showNormalRoute(
+                ShowNormalRouteCommand(
+                    requestId = "waypoints",
+                    idempotencyKey = "waypoints",
+                    missionId = missionId,
+                    startSystemId = 1,
+                    destinationSystemId = null,
+                    useAnsiblex = true,
+                    waypointSystemIds = listOf(2, 3),
+                ),
+            ).success()
+
+            assertEquals(1, fixture.routes.normalIntentCalls)
+            assertEquals(NavigationIntent(1, listOf(2, 3), null), fixture.routes.lastNormalIntent)
+            val route = assertIs<MissionRoute.Normal>(fixture.rendered.single().routes.single())
+            assertEquals(listOf(2, 3), route.waypointSystemIds)
+            assertEquals(null, route.navigationIntent.destinationSystemId)
+            assertEquals(3, route.route.destinationSystemId)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `invalid or failed waypoint batch never creates a partial Mission route`() = runTest {
+        val fixture = Fixture(this)
+        try {
+            val missionId = fixture.begin().value.missionId
+            val adjacent = fixture.service.showNormalRoute(
+                ShowNormalRouteCommand(
+                    requestId = "adjacent",
+                    idempotencyKey = "adjacent",
+                    missionId = missionId,
+                    startSystemId = 1,
+                    destinationSystemId = 3,
+                    useAnsiblex = false,
+                    waypointSystemIds = listOf(1),
+                ),
+            ).failure()
+            assertEquals(ControlErrorCode.INVALID_ARGUMENT, adjacent.error.code)
+            assertEquals(0, fixture.routes.normalIntentCalls)
+            assertTrue(fixture.rendered.single().routes.isEmpty())
+
+            fixture.routes.normalIntentFailureSegmentIndex = 1
+            val failed = fixture.service.showNormalRoute(
+                ShowNormalRouteCommand(
+                    requestId = "failed",
+                    idempotencyKey = "failed",
+                    missionId = missionId,
+                    startSystemId = 1,
+                    destinationSystemId = 3,
+                    useAnsiblex = false,
+                    waypointSystemIds = listOf(2),
+                ),
+            ).failure()
+            assertEquals(ControlErrorCode.ROUTE_NOT_FOUND, failed.error.code)
+            assertEquals(1, fixture.routes.normalIntentCalls)
+            assertTrue(fixture.rendered.single().routes.isEmpty())
         } finally {
             fixture.close()
         }
@@ -294,6 +375,9 @@ private class FakeRoutePort : RoutePlanningPort {
     val normalAnsiblexFlags = mutableListOf<Boolean>()
     val normalWormholeFlags = mutableListOf<Boolean>()
     var capitalCalls = 0
+    var normalIntentCalls = 0
+    var lastNormalIntent: NavigationIntent? = null
+    var normalIntentFailureSegmentIndex: Int? = null
     var normalOutcome: RouteCalculationOutcome = RouteCalculationOutcome.Found(normalRoute())
 
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
@@ -309,6 +393,40 @@ private class FakeRoutePort : RoutePlanningPort {
         normalWormholeFlags += useWormholes
     }
 
+    override suspend fun calculateNormalRoute(
+        intent: NavigationIntent,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): NormalNavigationOutcome {
+        normalIntentCalls++
+        lastNormalIntent = intent
+        normalAnsiblexFlags += useAnsiblex
+        normalWormholeFlags += useWormholes
+        val failure = normalOutcome
+        if (failure !is RouteCalculationOutcome.Found) {
+            return NormalNavigationOutcome.SegmentFailed(intent.segments().first(), failure)
+        }
+        normalIntentFailureSegmentIndex?.let { index ->
+            val segment = intent.segments()[index]
+            return NormalNavigationOutcome.SegmentFailed(
+                segment,
+                RouteCalculationOutcome.Unreachable(segment.fromSystemId, segment.toSystemId),
+            )
+        }
+        val systems = intent.explicitStops
+        val edgeType = if (useAnsiblex) RouteEdgeType.ANSIBLEX else RouteEdgeType.STARGATE
+        val edges = systems.zipWithNext().mapIndexed { index, (from, to) ->
+            RouteEdge(
+                RouteEdgeId("${edgeType.name.lowercase()}:$from:$to:$index"),
+                RouteConnectionId("test:$from:$to:$index"),
+                from,
+                to,
+                edgeType,
+            )
+        }
+        return NormalNavigationOutcome.Found(RouteResult(systems.first(), systems.last(), systems, edges))
+    }
+
     override suspend fun calculateCapitalRoute(
         startSystemId: Int,
         destinationSystemId: Int,
@@ -322,6 +440,25 @@ private class FakeRoutePort : RoutePlanningPort {
                 JumpProfile.manual(effectiveRangeLy),
                 listOf(1, 2),
                 listOf(dev.evestaticmapplanner.core.route.CapitalRouteLeg(1, 2, 1.0)),
+            ),
+        )
+    }
+
+    override suspend fun calculateCapitalRoute(
+        intent: NavigationIntent,
+        effectiveRangeLy: Double,
+    ): CapitalNavigationOutcome {
+        capitalCalls++
+        val systems = intent.explicitStops
+        return CapitalNavigationOutcome.Found(
+            CapitalRouteResult(
+                systems.first(),
+                systems.last(),
+                JumpProfile.manual(effectiveRangeLy),
+                systems,
+                systems.zipWithNext().map { (from, to) ->
+                    dev.evestaticmapplanner.core.route.CapitalRouteLeg(from, to, 1.0)
+                },
             ),
         )
     }

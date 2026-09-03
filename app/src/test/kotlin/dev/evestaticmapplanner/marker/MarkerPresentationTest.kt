@@ -23,7 +23,8 @@ class MarkerPresentationTest {
 
     @Test
     fun `empty system context is flat strictly ordered and has no duplicate system info`() {
-        val actions = SystemContextMenuPresentationBuilder.build(null, readyState()).map { it.action }
+        val presented = SystemContextMenuPresentationBuilder.build(null, readyState())
+        val actions = presented.map { it.action }
 
         assertEquals(
             listOf(
@@ -31,14 +32,36 @@ class MarkerPresentationTest {
                 SystemContextAction.ADD_SAVED_MARKER,
                 SystemContextAction.ADD_JUMP_RANGE_OVERLAY,
                 SystemContextAction.SET_ROUTE_START,
+                SystemContextAction.ADD_ROUTE_WAYPOINT,
                 SystemContextAction.SET_ROUTE_DESTINATION,
                 SystemContextAction.SET_CAPITAL_START,
+                SystemContextAction.ADD_CAPITAL_WAYPOINT,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
                 SystemContextAction.CREATE_WORMHOLE,
             ),
             actions,
         )
         assertTrue(actions.none { it.label == "Marker ›" || it.label == "System Info" })
+        assertEquals(
+            listOf(
+                "Set as Normal Start",
+                "Add as Normal Waypoint",
+                "Set as Normal Destination",
+                "Set as Capital Start",
+                "Add as Capital Waypoint",
+                "Set as Capital Destination",
+            ),
+            presented.filter {
+                it.action in setOf(
+                    SystemContextAction.SET_ROUTE_START,
+                    SystemContextAction.ADD_ROUTE_WAYPOINT,
+                    SystemContextAction.SET_ROUTE_DESTINATION,
+                    SystemContextAction.SET_CAPITAL_START,
+                    SystemContextAction.ADD_CAPITAL_WAYPOINT,
+                    SystemContextAction.SET_CAPITAL_DESTINATION,
+                )
+            }.map { it.label },
+        )
     }
 
     @Test
@@ -68,8 +91,10 @@ class MarkerPresentationTest {
                 SystemContextAction.REMOVE_MARKER,
                 SystemContextAction.ADD_JUMP_RANGE_OVERLAY,
                 SystemContextAction.SET_ROUTE_START,
+                SystemContextAction.ADD_ROUTE_WAYPOINT,
                 SystemContextAction.SET_ROUTE_DESTINATION,
                 SystemContextAction.SET_CAPITAL_START,
+                SystemContextAction.ADD_CAPITAL_WAYPOINT,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
                 SystemContextAction.CREATE_WORMHOLE,
             ),
@@ -81,8 +106,10 @@ class MarkerPresentationTest {
                 SystemContextAction.REMOVE_MARKER,
                 SystemContextAction.ADD_JUMP_RANGE_OVERLAY,
                 SystemContextAction.SET_ROUTE_START,
+                SystemContextAction.ADD_ROUTE_WAYPOINT,
                 SystemContextAction.SET_ROUTE_DESTINATION,
                 SystemContextAction.SET_CAPITAL_START,
+                SystemContextAction.ADD_CAPITAL_WAYPOINT,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
                 SystemContextAction.CREATE_WORMHOLE,
             ),

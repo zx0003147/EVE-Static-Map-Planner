@@ -62,6 +62,26 @@ class McpTextFallbackFormatterTest {
     }
 
     @Test
+    fun `route result distinguishes ordered Waypoints from an omitted explicit Destination`() {
+        val result = buildJsonObject {
+            put("startSystemId", 1)
+            put("destinationSystemId", 3)
+            put("waypointSystemIds", JsonArray(listOf(JsonPrimitive(2), JsonPrimitive(3))))
+            put("explicitDestinationSystemId", kotlinx.serialization.json.JsonNull)
+            put("systemIds", JsonArray(listOf(JsonPrimitive(1), JsonPrimitive(2), JsonPrimitive(3))))
+            put("totalJumps", 2)
+            put("stargateJumps", 2)
+            put("ansiblexJumps", 0)
+            put("wormholeJumps", 0)
+        }
+
+        val text = McpTextFallbackFormatter.format("calculate_normal_route", result)
+
+        assertContains(text, "Required Waypoints (system IDs):\n2 -> 3")
+        assertContains(text, "Explicit Destination (system ID):\nNone (last Waypoint is the endpoint)")
+    }
+
+    @Test
     fun `Wormhole list and duplicate create summaries are human readable`() {
         val connection = buildJsonObject {
             put("connectionId", "wormhole:1:2")

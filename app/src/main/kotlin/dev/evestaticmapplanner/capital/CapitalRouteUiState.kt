@@ -14,8 +14,13 @@ data class CapitalRouteUiState(
     val toResults: List<SolarSystem> = emptyList(),
     val selectedFrom: SolarSystem? = null,
     val selectedTo: SolarSystem? = null,
+    val waypoints: List<SolarSystem> = emptyList(),
     val manualRangeText: String = "5",
     val outcome: CapitalRouteOutcome? = null,
     val activeRoute: CapitalRouteResult? = null,
     val routeSystemNames: List<String> = emptyList(),
+    val calculatedWaypointSystemIds: List<Int> = emptyList(),
+    val calculatedExplicitDestinationSystemId: Int? = null,
+    val isRouteStale: Boolean = false,
+    val navigationMessage: String? = null,
 )

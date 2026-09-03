@@ -141,17 +141,21 @@ internal class LocalControlJsonCodec {
         }
         LocalControlOperation.NORMAL_ROUTE -> {
             request.requireFields(
-                setOf("requestId", "startSystemId", "destinationSystemId", "useAnsiblex", "useWormholes"),
-                setOf("requestId", "startSystemId", "destinationSystemId", "useAnsiblex"),
+                setOf(
+                    "requestId", "startSystemId", "waypointSystemIds", "destinationSystemId", "useAnsiblex",
+                    "useWormholes",
+                ),
+                setOf("requestId", "startSystemId", "useAnsiblex"),
             )
             controlResponse(
                 service.calculateNormalRoute(
                     CalculateNormalRouteRequest(
                         request.requestId(),
                         request.int("startSystemId"),
-                        request.int("destinationSystemId"),
+                        request.optionalInt("destinationSystemId"),
                         request.boolean("useAnsiblex"),
                         request.optionalBoolean("useWormholes") ?: false,
+                        request.optionalIntArray("waypointSystemIds"),
                     ),
                 ),
                 ::normalRouteJson,
@@ -165,14 +169,18 @@ internal class LocalControlJsonCodec {
             )
         }
         LocalControlOperation.CAPITAL_ROUTE -> {
-            request.requireFields(setOf("requestId", "startSystemId", "destinationSystemId", "effectiveRangeLy"))
+            request.requireFields(
+                setOf("requestId", "startSystemId", "waypointSystemIds", "destinationSystemId", "effectiveRangeLy"),
+                setOf("requestId", "startSystemId", "effectiveRangeLy"),
+            )
             controlResponse(
                 service.calculateCapitalRoute(
                     CalculateCapitalRouteRequest(
                         request.requestId(),
                         request.int("startSystemId"),
-                        request.int("destinationSystemId"),
+                        request.optionalInt("destinationSystemId"),
                         request.double("effectiveRangeLy"),
+                        request.optionalIntArray("waypointSystemIds"),
                     ),
                 ),
                 ::capitalRouteJson,
@@ -284,16 +292,17 @@ internal class LocalControlJsonCodec {
             request.requireFields(
                 setOf(
                     "requestId", "idempotencyKey", "missionId", "startSystemId", "destinationSystemId",
-                    "useAnsiblex", "useWormholes",
+                    "waypointSystemIds", "useAnsiblex", "useWormholes",
                 ),
-                setOf("requestId", "idempotencyKey", "missionId", "startSystemId", "destinationSystemId", "useAnsiblex"),
+                setOf("requestId", "idempotencyKey", "missionId", "startSystemId", "useAnsiblex"),
             )
             controlResponse(
                 service.showNormalRoute(
                     ShowNormalRouteCommand(
                         request.requestId(), request.idempotencyKey(), request.missionId(),
-                        request.int("startSystemId"), request.int("destinationSystemId"), request.boolean("useAnsiblex"),
+                        request.int("startSystemId"), request.optionalInt("destinationSystemId"), request.boolean("useAnsiblex"),
                         request.optionalBoolean("useWormholes") ?: false,
+                        request.optionalIntArray("waypointSystemIds"),
                     ),
                 ),
                 ::missionRouteReceiptJson,
@@ -302,13 +311,18 @@ internal class LocalControlJsonCodec {
         }
         LocalControlOperation.SHOW_CAPITAL_ROUTE -> {
             request.requireFields(
-                setOf("requestId", "idempotencyKey", "missionId", "startSystemId", "destinationSystemId", "effectiveRangeLy"),
+                setOf(
+                    "requestId", "idempotencyKey", "missionId", "startSystemId", "waypointSystemIds",
+                    "destinationSystemId", "effectiveRangeLy",
+                ),
+                setOf("requestId", "idempotencyKey", "missionId", "startSystemId", "effectiveRangeLy"),
             )
             controlResponse(
                 service.showCapitalRoute(
                     ShowCapitalRouteCommand(
                         request.requestId(), request.idempotencyKey(), request.missionId(),
-                        request.int("startSystemId"), request.int("destinationSystemId"), request.double("effectiveRangeLy"),
+                        request.int("startSystemId"), request.optionalInt("destinationSystemId"),
+                        request.double("effectiveRangeLy"), request.optionalIntArray("waypointSystemIds"),
                     ),
                 ),
                 ::missionRouteReceiptJson,
@@ -541,6 +555,14 @@ private fun JsonObject.optionalBoolean(name: String): Boolean? = when (val value
     else -> invalid()
 }
 
+private fun JsonObject.optionalIntArray(name: String): List<Int> = when (val value = this[name]) {
+    null -> emptyList()
+    is JsonArray -> value.map { item ->
+        (item as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull ?: invalid()
+    }
+    else -> invalid()
+}
+
 private fun <T> JsonObject.enum(name: String, parse: (String) -> T): T =
     runCatching { parse(string(name)) }.getOrElse { invalid() }
 
@@ -659,6 +681,8 @@ private fun normalRouteJson(value: NormalRouteDto) = buildJsonObject {
     put("stargateJumps", value.stargateJumps)
     put("ansiblexJumps", value.ansiblexJumps)
     put("wormholeJumps", value.wormholeJumps)
+    put("waypointSystemIds", value.waypointSystemIds.toJsonArray())
+    put("explicitDestinationSystemId", value.explicitDestinationSystemId?.let(::JsonPrimitive) ?: JsonNull)
 }
 
 private fun wormholeConnectionJson(value: WormholeConnectionDto) = buildJsonObject {
@@ -691,6 +715,8 @@ private fun capitalRouteJson(value: CapitalRouteDto) = buildJsonObject {
     })
     put("totalJumps", value.totalJumps)
     put("totalDistanceLy", value.totalDistanceLy)
+    put("waypointSystemIds", value.waypointSystemIds.toJsonArray())
+    put("explicitDestinationSystemId", value.explicitDestinationSystemId?.let(::JsonPrimitive) ?: JsonNull)
 }
 
 private fun missionSummaryJson(value: MissionSummaryDto) = buildJsonObject {
@@ -755,13 +781,13 @@ private fun missionRouteJson(value: MissionRoute): JsonObject = when (value) {
         put("missionId", value.missionId.value)
         put("routeId", value.routeId.value)
         put("type", "NORMAL")
-        put("route", normalRouteJson(value.route.toControlDto()))
+        put("route", normalRouteJson(value.route.toControlDto(value.navigationIntent)))
     }
     is MissionRoute.Capital -> buildJsonObject {
         put("missionId", value.missionId.value)
         put("routeId", value.routeId.value)
         put("type", "CAPITAL")
-        put("route", capitalRouteJson(value.route.toControlDto()))
+        put("route", capitalRouteJson(value.route.toControlDto(value.navigationIntent)))
     }
 }
 
@@ -799,7 +825,9 @@ private fun missionMutationReceiptJson(value: MissionMutationReceipt) = buildJso
     put("missionId", value.missionId.value)
 }
 
-private fun dev.evestaticmapplanner.core.route.RouteResult.toControlDto() = NormalRouteDto(
+private fun dev.evestaticmapplanner.core.route.RouteResult.toControlDto(
+    intent: dev.evestaticmapplanner.core.route.NavigationIntent? = null,
+) = NormalRouteDto(
     startSystemId,
     destinationSystemId,
     systems,
@@ -807,9 +835,13 @@ private fun dev.evestaticmapplanner.core.route.RouteResult.toControlDto() = Norm
     stargateJumps,
     ansiblexJumps,
     wormholeJumps,
+    intent?.waypointSystemIds.orEmpty(),
+    if (intent == null) destinationSystemId else intent.destinationSystemId,
 )
 
-private fun dev.evestaticmapplanner.core.route.CapitalRouteResult.toControlDto() = CapitalRouteDto(
+private fun dev.evestaticmapplanner.core.route.CapitalRouteResult.toControlDto(
+    intent: dev.evestaticmapplanner.core.route.NavigationIntent? = null,
+) = CapitalRouteDto(
     startSystemId,
     destinationSystemId,
     profile.maxRangeLy,
@@ -817,6 +849,8 @@ private fun dev.evestaticmapplanner.core.route.CapitalRouteResult.toControlDto()
     legs.map { dev.evestaticmapplanner.control.CapitalRouteLegDto(it.fromSystemId, it.toSystemId, it.distanceLy) },
     totalJumps,
     totalDistanceLy,
+    intent?.waypointSystemIds.orEmpty(),
+    if (intent == null) destinationSystemId else intent.destinationSystemId,
 )
 
 private fun Iterable<Int>.toJsonArray() = JsonArray(map(::JsonPrimitive))

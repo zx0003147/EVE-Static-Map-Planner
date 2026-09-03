@@ -65,7 +65,11 @@ import kotlin.math.hypot
 fun StaticMapCanvas(
     state: MapUiState,
     activeRoute: RouteResult?,
+    normalWaypointSystemIds: List<Int>,
+    normalExplicitDestinationSystemId: Int?,
     capitalRoute: CapitalRouteResult?,
+    capitalWaypointSystemIds: List<Int>,
+    capitalExplicitDestinationSystemId: Int?,
     jumpOverlays: List<JumpRangeOverlay>,
     intersectionSystemIds: Set<Int>,
     ansiblexConnections: List<AnsiblexConnection>,
@@ -85,9 +89,11 @@ fun StaticMapCanvas(
     onSelect: (MapPoint) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
     onContextRouteStart: (Int) -> Unit,
+    onContextRouteWaypoint: (Int) -> Unit,
     onContextRouteDestination: (Int) -> Unit,
     onContextJumpOverlay: (Int) -> Unit,
     onContextCapitalStart: (Int) -> Unit,
+    onContextCapitalWaypoint: (Int) -> Unit,
     onContextCapitalDestination: (Int) -> Unit,
     onContextMarkerAction: (Int, MarkerContextAction) -> Unit,
     onContextSharedMarkerAction: (Int, SharedMarkerContextAction) -> Unit,
@@ -273,6 +279,45 @@ fun StaticMapCanvas(
         state.hoveredSystemId?.let(::add)
         state.selectedSystemId?.let(::add)
         activeMarkerInteractionSystemId?.let(::add)
+    }
+    val presentedRouteWaypoints = remember(
+        scene,
+        activeRoute,
+        normalWaypointSystemIds,
+        capitalRoute,
+        capitalWaypointSystemIds,
+        missionState.normalRoutes,
+        missionState.capitalRoutes,
+    ) {
+        RouteWaypointPresentationBuilder.build(
+            scene,
+            buildList {
+                if (activeRoute != null) {
+                    add(RouteWaypointSource("user-normal", RouteWaypointKind.USER_NORMAL, normalWaypointSystemIds))
+                }
+                if (capitalRoute != null) {
+                    add(RouteWaypointSource("user-capital", RouteWaypointKind.USER_CAPITAL, capitalWaypointSystemIds))
+                }
+                missionState.normalRoutes.forEach { route ->
+                    add(
+                        RouteWaypointSource(
+                            "mission-normal:${route.routeId.value}",
+                            RouteWaypointKind.MISSION_NORMAL,
+                            route.waypointSystemIds,
+                        ),
+                    )
+                }
+                missionState.capitalRoutes.forEach { route ->
+                    add(
+                        RouteWaypointSource(
+                            "mission-capital:${route.routeId.value}",
+                            RouteWaypointKind.MISSION_CAPITAL,
+                            route.waypointSystemIds,
+                        ),
+                    )
+                }
+            },
+        )
     }
     val visibleSystemNameIds = remember(
         labelPresentation.systemLabelSystemIds,
@@ -574,13 +619,25 @@ fun StaticMapCanvas(
         routeOverlay?.let { overlay ->
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
                 with(MapRenderer) {
-                    drawRoute(scene, transform, overlay)
+                    drawRoute(
+                        scene,
+                        transform,
+                        overlay,
+                        showDestination = normalExplicitDestinationSystemId != null,
+                    )
                 }
             }
         }
         projectedCapitalRoute?.let { overlay ->
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
-                with(MapRenderer) { drawCapitalRoute(scene, transform, overlay) }
+                with(MapRenderer) {
+                    drawCapitalRoute(
+                        scene,
+                        transform,
+                        overlay,
+                        showDestination = capitalExplicitDestinationSystemId != null,
+                    )
+                }
             }
         }
         projectedMissionNormalRoutes.forEachIndexed { index, overlay ->
@@ -667,6 +724,13 @@ fun StaticMapCanvas(
                     marker.screenCenter.y.toInt() - marker.ringRadiusPx.toInt() - 12,
                 ),
             )
+        }
+        if (presentedRouteWaypoints.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE_WAYPOINT)) {
+                with(MapRenderer) {
+                    drawRouteWaypoints(scene, transform, presentedRouteWaypoints, textMeasurer)
+                }
+            }
         }
         hoveredSavedMarkerChild?.let { child ->
             MapMarkerTooltip(
@@ -788,8 +852,10 @@ fun StaticMapCanvas(
                                     )
                                     SystemContextAction.ADD_JUMP_RANGE_OVERLAY -> onContextJumpOverlay(menu.systemId)
                                     SystemContextAction.SET_ROUTE_START -> onContextRouteStart(menu.systemId)
+                                    SystemContextAction.ADD_ROUTE_WAYPOINT -> onContextRouteWaypoint(menu.systemId)
                                     SystemContextAction.SET_ROUTE_DESTINATION -> onContextRouteDestination(menu.systemId)
                                     SystemContextAction.SET_CAPITAL_START -> onContextCapitalStart(menu.systemId)
+                                    SystemContextAction.ADD_CAPITAL_WAYPOINT -> onContextCapitalWaypoint(menu.systemId)
                                     SystemContextAction.SET_CAPITAL_DESTINATION -> onContextCapitalDestination(menu.systemId)
                                     SystemContextAction.CREATE_WORMHOLE -> onContextCreateWormhole(menu.systemId)
                                     SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS -> onContextManageWormholes(menu.systemId)
@@ -891,6 +957,7 @@ internal object StaticMapVisualLayerOrder {
     const val SHARED_MARKER = 2.75f
     const val ROUTE = 3f
     const val ROUTE_FOCUS = 3.5f
+    const val ROUTE_WAYPOINT = 3.75f
     const val SAVED_MARKER = 4f
     const val FEATURE_SYSTEM_MARKER = 4.5f
     const val SELECTED_SYSTEM_FOCUS = 5f

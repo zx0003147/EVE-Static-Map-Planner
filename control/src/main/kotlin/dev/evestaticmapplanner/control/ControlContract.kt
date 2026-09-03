@@ -73,6 +73,8 @@ data class NormalRouteDto(
     val stargateJumps: Int,
     val ansiblexJumps: Int,
     val wormholeJumps: Int = 0,
+    val waypointSystemIds: List<Int> = emptyList(),
+    val explicitDestinationSystemId: Int? = destinationSystemId,
 )
 
 data class WormholeConnectionDto(
@@ -103,6 +105,8 @@ data class CapitalRouteDto(
     val legs: List<CapitalRouteLegDto>,
     val totalJumps: Int,
     val totalDistanceLy: Double,
+    val waypointSystemIds: List<Int> = emptyList(),
+    val explicitDestinationSystemId: Int? = destinationSystemId,
 )
 
 data class MissionSummaryDto(
@@ -208,16 +212,18 @@ data class GetSystemMarkersRequest(override val requestId: String, val systemId:
 data class CalculateNormalRouteRequest(
     override val requestId: String,
     val startSystemId: Int,
-    val destinationSystemId: Int,
+    val destinationSystemId: Int?,
     val useAnsiblex: Boolean,
     val useWormholes: Boolean = false,
+    val waypointSystemIds: List<Int> = emptyList(),
 ) : QueryRequest
 data class ListWormholesRequest(override val requestId: String) : QueryRequest
 data class CalculateCapitalRouteRequest(
     override val requestId: String,
     val startSystemId: Int,
-    val destinationSystemId: Int,
+    val destinationSystemId: Int?,
     val effectiveRangeLy: Double,
+    val waypointSystemIds: List<Int> = emptyList(),
 ) : QueryRequest
 data class ListViewsRequest(override val requestId: String) : QueryRequest
 data class GetCurrentViewRequest(override val requestId: String) : QueryRequest
@@ -276,17 +282,19 @@ data class ShowNormalRouteCommand(
     override val idempotencyKey: String,
     val missionId: MissionId,
     val startSystemId: Int,
-    val destinationSystemId: Int,
+    val destinationSystemId: Int?,
     val useAnsiblex: Boolean,
     val useWormholes: Boolean = false,
+    val waypointSystemIds: List<Int> = emptyList(),
 ) : MutationCommand
 data class ShowCapitalRouteCommand(
     override val requestId: String,
     override val idempotencyKey: String,
     val missionId: MissionId,
     val startSystemId: Int,
-    val destinationSystemId: Int,
+    val destinationSystemId: Int?,
     val effectiveRangeLy: Double,
+    val waypointSystemIds: List<Int> = emptyList(),
 ) : MutationCommand
 data class RemoveMissionRouteCommand(
     override val requestId: String,

@@ -211,6 +211,16 @@ internal object McpTextFallbackFormatter {
         appendLine()
         appendField("From (system ID)", content.text("startSystemId"))
         appendField("To (system ID)", content.text("destinationSystemId"))
+        val waypointIds = content.array("waypointSystemIds")
+        if (waypointIds.isNotEmpty()) {
+            appendField("Required Waypoints (system IDs)", waypointIds.joinToString(" -> ") { it.toString() })
+        }
+        if ("explicitDestinationSystemId" in content) {
+            appendField(
+                "Explicit Destination (system ID)",
+                content.text("explicitDestinationSystemId") ?: "None (last Waypoint is the endpoint)",
+            )
+        }
         appendField("Jumps", content.text("totalJumps"))
         appendField("Route type", routeType)
         if (routeType == "NORMAL") {

@@ -106,14 +106,16 @@ class LocalControlClient internal constructor(
 
     suspend fun calculateNormalRoute(
         startSystemId: Int,
-        destinationSystemId: Int,
+        destinationSystemId: Int?,
         useAnsiblex: Boolean,
         useWormholes: Boolean = false,
+        waypointSystemIds: List<Int> = emptyList(),
     ): LocalControlClientResult = query(LocalControlOperation.NORMAL_ROUTE) { requestId ->
         buildJsonObject {
             put("requestId", requestId)
             put("startSystemId", startSystemId)
-            put("destinationSystemId", destinationSystemId)
+            if (destinationSystemId != null) put("destinationSystemId", destinationSystemId)
+            put("waypointSystemIds", buildJsonArray { waypointSystemIds.forEach { add(JsonPrimitive(it)) } })
             put("useAnsiblex", useAnsiblex)
             put("useWormholes", useWormholes)
         }
@@ -125,13 +127,15 @@ class LocalControlClient internal constructor(
 
     suspend fun calculateCapitalRoute(
         startSystemId: Int,
-        destinationSystemId: Int,
+        destinationSystemId: Int?,
         effectiveRangeLy: Double,
+        waypointSystemIds: List<Int> = emptyList(),
     ): LocalControlClientResult = query(LocalControlOperation.CAPITAL_ROUTE) { requestId ->
         buildJsonObject {
             put("requestId", requestId)
             put("startSystemId", startSystemId)
-            put("destinationSystemId", destinationSystemId)
+            if (destinationSystemId != null) put("destinationSystemId", destinationSystemId)
+            put("waypointSystemIds", buildJsonArray { waypointSystemIds.forEach { add(JsonPrimitive(it)) } })
             put("effectiveRangeLy", effectiveRangeLy)
         }
     }
@@ -212,14 +216,16 @@ class LocalControlClient internal constructor(
     suspend fun showNormalRoute(
         missionId: String,
         startSystemId: Int,
-        destinationSystemId: Int,
+        destinationSystemId: Int?,
         useAnsiblex: Boolean,
         useWormholes: Boolean = false,
+        waypointSystemIds: List<Int> = emptyList(),
     ): LocalControlClientResult = mutation(LocalControlOperation.SHOW_NORMAL_ROUTE) { ids ->
         ids.body {
             put("missionId", missionId)
             put("startSystemId", startSystemId)
-            put("destinationSystemId", destinationSystemId)
+            if (destinationSystemId != null) put("destinationSystemId", destinationSystemId)
+            put("waypointSystemIds", buildJsonArray { waypointSystemIds.forEach { add(JsonPrimitive(it)) } })
             put("useAnsiblex", useAnsiblex)
             put("useWormholes", useWormholes)
         }
@@ -228,13 +234,15 @@ class LocalControlClient internal constructor(
     suspend fun showCapitalRoute(
         missionId: String,
         startSystemId: Int,
-        destinationSystemId: Int,
+        destinationSystemId: Int?,
         effectiveRangeLy: Double,
+        waypointSystemIds: List<Int> = emptyList(),
     ): LocalControlClientResult = mutation(LocalControlOperation.SHOW_CAPITAL_ROUTE) { ids ->
         ids.body {
             put("missionId", missionId)
             put("startSystemId", startSystemId)
-            put("destinationSystemId", destinationSystemId)
+            if (destinationSystemId != null) put("destinationSystemId", destinationSystemId)
+            put("waypointSystemIds", buildJsonArray { waypointSystemIds.forEach { add(JsonPrimitive(it)) } })
             put("effectiveRangeLy", effectiveRangeLy)
         }
     }

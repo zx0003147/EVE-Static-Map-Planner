@@ -63,11 +63,14 @@ class RoutePlannerViewModelTest {
         assertEquals(0, viewModel.state.value.activeRoute?.ansiblexJumps)
 
         viewModel.setUseAnsiblex(true)
-        assertNull(viewModel.state.value.activeRoute)
+        assertEquals(3, viewModel.state.value.activeRoute?.totalJumps)
+        assertTrue(viewModel.state.value.isRouteStale)
         viewModel.calculateRoute()
         assertEquals(1, viewModel.state.value.activeRoute?.totalJumps)
         assertEquals(1, viewModel.state.value.activeRoute?.ansiblexJumps)
         assertEquals(listOf("Alpha", "Delta"), viewModel.state.value.routeSystemNames)
+        assertEquals(4, viewModel.state.value.calculatedExplicitDestinationSystemId)
+        assertFalse(viewModel.state.value.isRouteStale)
     }
 
     @Test
@@ -149,11 +152,123 @@ class RoutePlannerViewModelTest {
         assertEquals(0, viewModel.state.value.activeRoute?.wormholeJumps)
 
         viewModel.setUseWormholes(true)
-        assertNull(viewModel.state.value.activeRoute)
-        assertNull(viewModel.state.value.routeOutcome)
-        assertTrue(viewModel.state.value.routeSystemNames.isEmpty())
+        assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
+        assertTrue(viewModel.state.value.isRouteStale)
         viewModel.calculateRoute()
         assertEquals(1, viewModel.state.value.activeRoute?.wormholeJumps)
+        assertFalse(viewModel.state.value.isRouteStale)
+    }
+
+    @Test
+    fun `waypoint draft changes keep the calculated snapshot stale until one atomic recalculation succeeds`() = runTest {
+        val fixture = Fixture()
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.addRouteWaypoint(2)
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.calculateRoute()
+        val calculatedRoute = viewModel.state.value.activeRoute
+
+        assertEquals(listOf(2), viewModel.state.value.calculatedWaypointSystemIds)
+        viewModel.addRouteWaypoint(5)
+
+        assertEquals(calculatedRoute, viewModel.state.value.activeRoute)
+        assertEquals(listOf(2), viewModel.state.value.calculatedWaypointSystemIds)
+        assertEquals(listOf(2, 5), viewModel.state.value.waypoints.map { it.id })
+        assertTrue(viewModel.state.value.isRouteStale)
+
+        viewModel.calculateRoute()
+
+        assertEquals(calculatedRoute, viewModel.state.value.activeRoute)
+        assertEquals(listOf(2), viewModel.state.value.calculatedWaypointSystemIds)
+        assertTrue(viewModel.state.value.isRouteStale)
+        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Waypoint Echo"))
+    }
+
+    @Test
+    fun `waypoint reorder changes only the normal draft until manual recalculation`() = runTest {
+        val fixture = Fixture()
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.addRouteWaypoint(2)
+        viewModel.addRouteWaypoint(3)
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.calculateRoute()
+        val calculatedRoute = viewModel.state.value.activeRoute
+
+        viewModel.moveRouteWaypoint(fromIndex = 1, toIndex = 0)
+
+        assertEquals(listOf(3, 2), viewModel.state.value.waypoints.map(SolarSystem::id))
+        assertEquals(calculatedRoute, viewModel.state.value.activeRoute)
+        assertEquals(listOf(2, 3), viewModel.state.value.calculatedWaypointSystemIds)
+        assertTrue(viewModel.state.value.isRouteStale)
+
+        viewModel.calculateRoute()
+
+        assertEquals(listOf(3, 2), viewModel.state.value.calculatedWaypointSystemIds)
+        assertFalse(viewModel.state.value.isRouteStale)
+        assertEquals(listOf(1, 2, 3, 2, 3, 4), viewModel.state.value.activeRoute?.systems)
+    }
+
+    @Test
+    fun `normal reorder that creates adjacent duplicates is rejected without staling the route`() = runTest {
+        val fixture = Fixture()
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.addRouteWaypoint(2)
+        viewModel.addRouteWaypoint(3)
+        viewModel.addRouteWaypoint(2)
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.calculateRoute()
+        val calculatedRoute = viewModel.state.value.activeRoute
+
+        viewModel.moveRouteWaypoint(fromIndex = 2, toIndex = 1)
+
+        assertEquals(listOf(2, 3, 2), viewModel.state.value.waypoints.map(SolarSystem::id))
+        assertEquals(calculatedRoute, viewModel.state.value.activeRoute)
+        assertEquals(listOf(2, 3, 2), viewModel.state.value.calculatedWaypointSystemIds)
+        assertFalse(viewModel.state.value.isRouteStale)
+        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Adjacent"))
+    }
+
+    @Test
+    fun `adjacent waypoint duplicates are rejected but ordered non adjacent repeats are allowed`() = runTest {
+        val fixture = Fixture()
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+
+        viewModel.addRouteWaypoint(1)
+        assertTrue(viewModel.state.value.waypoints.isEmpty())
+        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Adjacent"))
+
+        viewModel.addRouteWaypoint(2)
+        viewModel.addRouteWaypoint(1)
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.calculateRoute()
+
+        assertEquals(listOf(2, 1), viewModel.state.value.calculatedWaypointSystemIds)
+        assertEquals(listOf(1, 2, 1, 2, 3, 4), viewModel.state.value.activeRoute?.systems)
+    }
+
+    @Test
+    fun `last Waypoint is effective endpoint without becoming an explicit Destination snapshot`() = runTest {
+        val fixture = Fixture()
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.addRouteWaypoint(2)
+        viewModel.addRouteWaypoint(3)
+
+        viewModel.calculateRoute()
+
+        assertEquals(3, viewModel.state.value.activeRoute?.destinationSystemId)
+        assertEquals(listOf(2, 3), viewModel.state.value.calculatedWaypointSystemIds)
+        assertEquals(null, viewModel.state.value.calculatedExplicitDestinationSystemId)
+        assertEquals(null, viewModel.state.value.selectedTo)
     }
 
     @Test
@@ -301,7 +416,7 @@ class RoutePlannerViewModelTest {
     }
 
     @Test
-    fun `planning snapshot restores Wormhole option against current global topology`() = runTest {
+    fun `planning snapshot restores its last calculated route while Wormhole topology remains global`() = runTest {
         val fixture = Fixture()
         fixture.wormholes.add(1, 4)
         val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
@@ -319,7 +434,8 @@ class RoutePlannerViewModelTest {
 
         assertTrue(viewModel.state.value.useWormholes)
         assertEquals(listOf("wormhole:1:3"), viewModel.state.value.wormholeConnections.map { it.id })
-        assertEquals(2, viewModel.state.value.activeRoute?.totalJumps)
+        assertEquals(listOf(1, 4), viewModel.state.value.activeRoute?.systems)
+        assertEquals(1, viewModel.state.value.activeRoute?.totalJumps)
         assertEquals(1, viewModel.state.value.activeRoute?.wormholeJumps)
     }
 

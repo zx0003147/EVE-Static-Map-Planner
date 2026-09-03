@@ -10,10 +10,15 @@ import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.core.route.CapitalRouteEngine
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
+import dev.evestaticmapplanner.core.route.CapitalNavigationOutcome
+import dev.evestaticmapplanner.core.route.CapitalNavigationPlanner
+import dev.evestaticmapplanner.core.route.NavigationIntent
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteGraphBuilder
 import dev.evestaticmapplanner.core.route.RouteOptions
+import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
+import dev.evestaticmapplanner.core.route.NormalNavigationPlanner
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.wormhole.AddWormholeResult
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
@@ -100,6 +105,38 @@ class ExistingPlanningPorts(
         CapitalRouteEngine(provider()).calculate(
             startSystemId,
             destinationSystemId,
+            JumpProfile.manual(effectiveRangeLy, "control-capital"),
+        )
+    }
+
+    override suspend fun calculateNormalRoute(
+        intent: NavigationIntent,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): NormalNavigationOutcome {
+        val (data, enabledSnapshot) = withContext(ioDispatcher) {
+            staticMapRepository.load() to if (useAnsiblex) {
+                ansiblexRepository?.getAll()?.filter { it.enabled }.orEmpty()
+            } else {
+                emptyList()
+            }
+        }
+        val wormholeSnapshot = if (useWormholes) wormholeSessionStore.connections.value else emptyList()
+        return withContext(calculationDispatcher) {
+            NormalNavigationPlanner().calculate(
+                RouteGraphBuilder.build(data, enabledSnapshot, wormholeSnapshot),
+                intent,
+                RouteOptions(useAnsiblex = useAnsiblex, useWormholes = useWormholes),
+            )
+        }
+    }
+
+    override suspend fun calculateCapitalRoute(
+        intent: NavigationIntent,
+        effectiveRangeLy: Double,
+    ): CapitalNavigationOutcome = withContext(calculationDispatcher) {
+        CapitalNavigationPlanner(CapitalRouteEngine(provider())).calculate(
+            intent,
             JumpProfile.manual(effectiveRangeLy, "control-capital"),
         )
     }

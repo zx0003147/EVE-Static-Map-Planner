@@ -80,33 +80,39 @@ internal object McpToolCatalog {
         },
         queryTool(
             "calculate_normal_route",
-            "Calculate a normal route with optional Ansiblex and Wormhole edges. This does not display the route or change the map.",
+            "Calculate one normal route through every ordered Waypoint. Destination is optional when at least one Waypoint is supplied. " +
+                "This does not display the route or change the map.",
             routeInput(false, false),
             objectOutput(
                 "startSystemId", "destinationSystemId", "systemIds", "totalJumps", "stargateJumps",
-                "ansiblexJumps", "wormholeJumps",
+                "ansiblexJumps", "wormholeJumps", "waypointSystemIds", "explicitDestinationSystemId",
             ),
         ) { arguments ->
-            val allowed = setOf("startSystemId", "destinationSystemId", "useAnsiblex", "useWormholes")
-            val required = setOf("startSystemId", "destinationSystemId", "useAnsiblex")
+            val allowed = setOf("startSystemId", "waypointSystemIds", "destinationSystemId", "useAnsiblex", "useWormholes")
+            val required = setOf("startSystemId", "useAnsiblex")
             val input = StrictArguments(arguments, allowed, required)
             client.calculateNormalRoute(
-                input.positiveInt("startSystemId"), input.positiveInt("destinationSystemId"), input.boolean("useAnsiblex"),
+                input.positiveInt("startSystemId"), input.optionalPositiveIntArray("waypointSystemIds"),
+                input.optionalPositiveInt("destinationSystemId"), input.boolean("useAnsiblex"),
                 input.optionalBoolean("useWormholes", false),
             )
         },
         queryTool(
             "calculate_capital_route",
-            "Calculate a capital route using an effective jump range in light-years. This does not display the route or change the map.",
+            "Calculate one capital route through every ordered Waypoint using an effective jump range in light-years. " +
+                "Destination is optional when at least one Waypoint is supplied. This does not display the route or change the map.",
             routeInput(false, true),
             objectOutput(
-                "startSystemId", "destinationSystemId", "effectiveRangeLy", "systemIds", "legs", "totalJumps", "totalDistanceLy",
+                "startSystemId", "destinationSystemId", "waypointSystemIds", "explicitDestinationSystemId",
+                "effectiveRangeLy", "systemIds", "legs",
+                "totalJumps", "totalDistanceLy",
             ),
         ) { arguments ->
-            val fields = setOf("startSystemId", "destinationSystemId", "effectiveRangeLy")
-            val input = StrictArguments(arguments, fields, fields)
+            val fields = setOf("startSystemId", "waypointSystemIds", "destinationSystemId", "effectiveRangeLy")
+            val input = StrictArguments(arguments, fields, setOf("startSystemId", "effectiveRangeLy"))
             client.calculateCapitalRoute(
-                input.positiveInt("startSystemId"), input.positiveInt("destinationSystemId"), input.range("effectiveRangeLy"),
+                input.positiveInt("startSystemId"), input.optionalPositiveIntArray("waypointSystemIds"),
+                input.optionalPositiveInt("destinationSystemId"), input.range("effectiveRangeLy"),
             )
         },
         queryTool(
@@ -226,33 +232,38 @@ internal object McpToolCatalog {
         },
         commandTool(
             "show_normal_route",
-            "Calculate and display a Mission-owned normal route using the current global Wormhole topology when requested. " +
-                "Requires an active temporary Mission.",
+            "Atomically calculate and display one Mission-owned normal route through every ordered Waypoint using the current " +
+                "global Wormhole topology when requested. Destination is optional when Waypoints are present. Requires an active Mission.",
             routeInput(true, false),
             objectOutput("missionId", "routeId", "type", "route"),
             false,
         ) { arguments ->
-            val allowed = setOf("missionId", "startSystemId", "destinationSystemId", "useAnsiblex", "useWormholes")
-            val required = setOf("missionId", "startSystemId", "destinationSystemId", "useAnsiblex")
+            val allowed = setOf(
+                "missionId", "startSystemId", "waypointSystemIds", "destinationSystemId", "useAnsiblex", "useWormholes",
+            )
+            val required = setOf("missionId", "startSystemId", "useAnsiblex")
             val input = StrictArguments(arguments, allowed, required)
             client.showNormalRoute(
                 input.opaqueId("missionId"), input.positiveInt("startSystemId"),
-                input.positiveInt("destinationSystemId"), input.boolean("useAnsiblex"),
+                input.optionalPositiveIntArray("waypointSystemIds"), input.optionalPositiveInt("destinationSystemId"),
+                input.boolean("useAnsiblex"),
                 input.optionalBoolean("useWormholes", false),
             )
         },
         commandTool(
             "show_capital_route",
-            "Calculate and display a Mission-owned capital route. Requires an active temporary Mission.",
+            "Atomically calculate and display one Mission-owned capital route through every ordered Waypoint. " +
+                "Destination is optional when Waypoints are present. Requires an active temporary Mission.",
             routeInput(true, true),
             objectOutput("missionId", "routeId", "type", "route"),
             false,
         ) { arguments ->
-            val fields = setOf("missionId", "startSystemId", "destinationSystemId", "effectiveRangeLy")
-            val input = StrictArguments(arguments, fields, fields)
+            val fields = setOf("missionId", "startSystemId", "waypointSystemIds", "destinationSystemId", "effectiveRangeLy")
+            val input = StrictArguments(arguments, fields, setOf("missionId", "startSystemId", "effectiveRangeLy"))
             client.showCapitalRoute(
                 input.opaqueId("missionId"), input.positiveInt("startSystemId"),
-                input.positiveInt("destinationSystemId"), input.range("effectiveRangeLy"),
+                input.optionalPositiveIntArray("waypointSystemIds"), input.optionalPositiveInt("destinationSystemId"),
+                input.range("effectiveRangeLy"),
             )
         },
         commandTool(
@@ -461,6 +472,13 @@ private class StrictArguments(
     fun opaqueId(name: String): String = primitiveString(name).takeIf { OPAQUE_ID.matches(it) } ?: invalid()
     fun positiveInt(name: String): Int = (values[name] as? JsonPrimitive)
         ?.takeUnless(JsonPrimitive::isString)?.intOrNull?.takeIf { it > 0 } ?: invalid()
+    fun optionalPositiveInt(name: String): Int? = if (name in values) positiveInt(name) else null
+    fun optionalPositiveIntArray(name: String): List<Int> {
+        if (name !in values) return emptyList()
+        return (values[name] as? JsonArray)?.map { item ->
+            (item as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull?.takeIf { it > 0 } ?: invalid()
+        } ?: invalid()
+    }
     fun range(name: String): Double = (values[name] as? JsonPrimitive)
         ?.takeUnless(JsonPrimitive::isString)?.doubleOrNull?.takeIf { it.isFinite() && it > 0.0 && it <= 20.0 } ?: invalid()
     fun boolean(name: String): Boolean = (values[name] as? JsonPrimitive)
@@ -555,8 +573,9 @@ private fun routeInput(includeMission: Boolean, capital: Boolean): ToolSchema {
         required += "missionId"
     }
     properties += "startSystemId" to positiveIntegerProperty()
+    properties += "waypointSystemIds" to positiveIntegerArrayProperty()
     properties += "destinationSystemId" to positiveIntegerProperty()
-    required += listOf("startSystemId", "destinationSystemId")
+    required += "startSystemId"
     if (capital) {
         properties += "effectiveRangeLy" to rangeProperty()
         required += "effectiveRangeLy"
@@ -574,6 +593,10 @@ private fun opaqueIdProperty() = buildJsonObject {
     put("type", "string"); put("pattern", "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
 }
 private fun positiveIntegerProperty() = buildJsonObject { put("type", "integer"); put("minimum", 1) }
+private fun positiveIntegerArrayProperty() = buildJsonObject {
+    put("type", "array")
+    put("items", positiveIntegerProperty())
+}
 private fun rangeProperty() = buildJsonObject { put("type", "number"); put("exclusiveMinimum", 0); put("maximum", 20) }
 private fun booleanProperty(default: Boolean? = null) = buildJsonObject {
     put("type", "boolean")

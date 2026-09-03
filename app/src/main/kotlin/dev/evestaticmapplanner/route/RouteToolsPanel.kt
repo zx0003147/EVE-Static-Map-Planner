@@ -1,12 +1,18 @@
 package dev.evestaticmapplanner.route
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -26,7 +32,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
@@ -40,6 +51,9 @@ import dev.evestaticmapplanner.feature.api.RouteActionTargetId
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
+import dev.evestaticmapplanner.core.model.SolarSystem
+import dev.evestaticmapplanner.search.CompactOutlinedTextField
+import kotlin.math.abs
 
 internal enum class ToolSidebarSection {
     JUMP_RANGE,
@@ -257,20 +271,27 @@ private fun NormalRouteSectionContent(
     onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
         SystemSearchField(
             value = state.fromQuery,
-            label = "From",
+            label = "Start",
             results = state.fromResults,
             onValueChange = viewModel::updateFromQuery,
             onSelect = viewModel::selectFrom,
+            compact = true,
+        )
+        WaypointList(
+            waypoints = state.waypoints,
+            onMove = viewModel::moveRouteWaypoint,
+            onRemove = viewModel::removeRouteWaypoint,
         )
         SystemSearchField(
             value = state.toQuery,
-            label = "To",
+            label = "Destination (optional)",
             results = state.toResults,
             onValueChange = viewModel::updateToQuery,
             onSelect = viewModel::selectTo,
+            compact = true,
         )
         NormalRouteConnectionOptions(
             state = state,
@@ -281,9 +302,18 @@ private fun NormalRouteSectionContent(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = viewModel::calculateRoute,
-                enabled = state.selectedFrom != null && state.selectedTo != null && !state.isLoading,
+                enabled = state.selectedFrom != null &&
+                    (state.selectedTo != null || state.waypoints.isNotEmpty()) && !state.isLoading,
             ) { Text("Calculate") }
-            TextButton(onClick = viewModel::clearRoute, enabled = state.routeOutcome != null) { Text("Clear") }
+            TextButton(onClick = viewModel::clearRoute, enabled = state.routeOutcome != null || state.activeRoute != null) {
+                Text("Clear")
+            }
+        }
+        if (state.isRouteStale) {
+            Text("Needs recalculation", color = Color(0xFFFFD166), style = MaterialTheme.typography.labelSmall)
+        }
+        state.navigationMessage?.let {
+            Text(it, color = Color(0xFFFFB86C), style = MaterialTheme.typography.bodySmall)
         }
         RouteSummary(state)
         if (state.activeRoute?.wormholeJumps?.let { it > 0 } == true && routeActions.isNotEmpty()) {
@@ -338,6 +368,7 @@ internal fun NormalRouteConnectionOptions(
             checked = state.useAnsiblex,
             onCheckedChange = onUseAnsiblexChanged,
             enabled = state.isAnsiblexAvailable,
+            modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE),
         )
         Text("Use Ansiblex")
     }
@@ -345,7 +376,7 @@ internal fun NormalRouteConnectionOptions(
         Checkbox(
             checked = state.useWormholes,
             onCheckedChange = onUseWormholesChanged,
-            modifier = Modifier.testTag(USE_WORMHOLES_CHECKBOX_TAG),
+            modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE).testTag(USE_WORMHOLES_CHECKBOX_TAG),
         )
         Text("Use Wormholes")
     }
@@ -354,6 +385,7 @@ internal fun NormalRouteConnectionOptions(
             checked = state.showAnsiblexLayer,
             onCheckedChange = onShowAnsiblexLayerChanged,
             enabled = state.isAnsiblexAvailable,
+            modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE),
         )
         Text("Show Ansiblex layer")
     }
@@ -369,35 +401,47 @@ private fun CapitalRouteSectionContent(
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
         SystemSearchField(
             value = state.fromQuery,
-            label = "Capital From",
+            label = "Capital Start",
             results = state.fromResults,
             onValueChange = viewModel::updateFromQuery,
             onSelect = viewModel::selectFrom,
+            compact = true,
+        )
+        WaypointList(
+            waypoints = state.waypoints,
+            onMove = viewModel::moveRouteWaypoint,
+            onRemove = viewModel::removeRouteWaypoint,
         )
         SystemSearchField(
             value = state.toQuery,
-            label = "Capital To",
+            label = "Capital Destination (optional)",
             results = state.toResults,
             onValueChange = viewModel::updateToQuery,
             onSelect = viewModel::selectTo,
+            compact = true,
         )
-        OutlinedTextField(
+        CompactOutlinedTextField(
             value = state.manualRangeText,
             onValueChange = viewModel::updateManualRange,
-            label = { Text("Effective maximum LY") },
-            singleLine = true,
+            label = "Effective maximum LY",
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = viewModel::calculate,
-                enabled = state.selectedFrom != null && state.selectedTo != null &&
+                enabled = state.selectedFrom != null && (state.selectedTo != null || state.waypoints.isNotEmpty()) &&
                     !state.isLoading && !state.isCalculating,
             ) { Text(if (state.isCalculating) "Calculating…" else "Calculate") }
             TextButton(onClick = viewModel::clear, enabled = state.outcome != null) { Text("Clear") }
+        }
+        if (state.isRouteStale) {
+            Text("Needs recalculation", color = Color(0xFFFFD166), style = MaterialTheme.typography.labelSmall)
+        }
+        state.navigationMessage?.let {
+            Text(it, color = Color(0xFFFFB86C), style = MaterialTheme.typography.bodySmall)
         }
         CapitalRouteSummary(state)
         RouteActionButtons(
@@ -427,6 +471,8 @@ private fun CapitalRouteSectionContent(
 }
 
 internal val TOOL_SIDEBAR_WIDTH = 270.dp
+internal val ROUTE_CONTROL_VERTICAL_SPACING = 5.dp
+internal val ROUTE_OPTION_CONTROL_SIZE = 32.dp
 internal const val SIDEBAR_SEARCH_LABEL = "Search system..."
 internal const val USE_WORMHOLES_CHECKBOX_TAG = "normal-route-use-wormholes"
 
@@ -447,6 +493,105 @@ private fun RouteSummary(state: RoutePlannerUiState) {
         is RouteCalculationOutcome.InvalidEndpoint -> Text("One or both route endpoints are invalid.", color = Color(0xFFFF8A80))
     }
 }
+
+@Composable
+internal fun WaypointList(
+    waypoints: List<SolarSystem>,
+    onMove: (Int, Int) -> Unit,
+    onRemove: (Int) -> Unit,
+) {
+    if (waypoints.isEmpty()) {
+        Text(
+            "Waypoints · add from a system's right-click menu",
+            color = Color(0xFF8295A6),
+            style = MaterialTheme.typography.labelSmall,
+        )
+        return
+    }
+    val rowCenters = remember(waypoints) { mutableMapOf<Int, Float>() }
+    var draggedIndex by remember(waypoints) { mutableStateOf<Int?>(null) }
+    var accumulatedDragY by remember(waypoints) { mutableStateOf(0f) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(WAYPOINT_ROW_SPACING)) {
+        Text("Waypoints", color = Color(0xFFAAB9C7), style = MaterialTheme.typography.labelSmall)
+        waypoints.forEachIndexed { index, waypoint ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(WAYPOINT_ROW_HEIGHT)
+                    .background(if (draggedIndex == index) Color(0xFF284155) else Color(0xFF1B2A38))
+                    .onGloballyPositioned { coordinates ->
+                        rowCenters[index] = coordinates.positionInParent().y + coordinates.size.height / 2f
+                    }
+                    .padding(start = 6.dp, end = 2.dp)
+                    .testTag("$WAYPOINT_ROW_TEST_TAG_PREFIX-$index"),
+            ) {
+                Text(
+                    "${index + 1}",
+                    color = Color(0xFF83C9E8),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(WAYPOINT_SEQUENCE_WIDTH),
+                )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .width(WAYPOINT_DRAG_HANDLE_WIDTH)
+                        .fillMaxHeight()
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .pointerInput(index, waypoints) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    draggedIndex = index
+                                    accumulatedDragY = 0f
+                                },
+                                onDragCancel = {
+                                    draggedIndex = null
+                                    accumulatedDragY = 0f
+                                },
+                                onDragEnd = {
+                                    val intendedCenter = rowCenters[index]?.plus(accumulatedDragY)
+                                    val target = intendedCenter?.let { center ->
+                                        rowCenters.minByOrNull { (_, rowCenter) -> abs(rowCenter - center) }?.key
+                                    } ?: index
+                                    draggedIndex = null
+                                    accumulatedDragY = 0f
+                                    onMove(index, target)
+                                },
+                            ) { change, dragAmount ->
+                                change.consume()
+                                accumulatedDragY += dragAmount.y
+                            }
+                        }
+                        .testTag("$WAYPOINT_DRAG_HANDLE_TEST_TAG_PREFIX-$index"),
+                ) {
+                    Text("::", color = Color(0xFFAAB9C7), style = MaterialTheme.typography.labelMedium)
+                }
+                Text(
+                    waypoint.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = { onRemove(index) },
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier
+                        .size(WAYPOINT_REMOVE_CONTROL_SIZE)
+                        .testTag("$WAYPOINT_REMOVE_TEST_TAG_PREFIX-$index"),
+                ) { Text("×") }
+            }
+        }
+    }
+}
+
+internal val WAYPOINT_ROW_HEIGHT = 36.dp
+internal val WAYPOINT_ROW_SPACING = 2.dp
+internal val WAYPOINT_SEQUENCE_WIDTH = 18.dp
+internal val WAYPOINT_DRAG_HANDLE_WIDTH = 32.dp
+internal val WAYPOINT_REMOVE_CONTROL_SIZE = 32.dp
+internal const val WAYPOINT_ROW_TEST_TAG_PREFIX = "route-waypoint-row"
+internal const val WAYPOINT_DRAG_HANDLE_TEST_TAG_PREFIX = "route-waypoint-drag-handle"
+internal const val WAYPOINT_REMOVE_TEST_TAG_PREFIX = "route-waypoint-remove"
 
 internal fun normalRouteSummaryText(route: dev.evestaticmapplanner.core.route.RouteResult): String = buildString {
     append(countedNoun(route.totalJumps, "jump"))

@@ -5,6 +5,10 @@ import dev.evestaticmapplanner.core.jump.JumpRangeResult
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
+import dev.evestaticmapplanner.core.route.CapitalNavigationOutcome
+import dev.evestaticmapplanner.core.route.NavigationIntent
+import dev.evestaticmapplanner.core.route.NavigationIntentValidation
+import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
 
 interface SystemReadPort {
     suspend fun searchSystems(query: String, limit: Int): List<SystemSummaryDto>
@@ -53,6 +57,64 @@ interface RoutePlanningPort {
         destinationSystemId: Int,
         effectiveRangeLy: Double,
     ): CapitalRouteOutcome
+
+    suspend fun calculateNormalRoute(
+        intent: NavigationIntent,
+        useAnsiblex: Boolean,
+        useWormholes: Boolean,
+    ): NormalNavigationOutcome {
+        val validation = intent.validate()
+        if (validation != NavigationIntentValidation.Valid) return NormalNavigationOutcome.InvalidIntent(validation)
+        val routes = mutableListOf<dev.evestaticmapplanner.core.route.RouteResult>()
+        for (segment in intent.segments()) {
+            when (
+                val outcome = calculateNormalRoute(
+                    segment.fromSystemId,
+                    segment.toSystemId,
+                    useAnsiblex,
+                    useWormholes,
+                )
+            ) {
+                is RouteCalculationOutcome.Found -> routes += outcome.route
+                is RouteCalculationOutcome.SameSystem -> routes += outcome.route
+                else -> return NormalNavigationOutcome.SegmentFailed(segment, outcome)
+            }
+        }
+        return NormalNavigationOutcome.Found(
+            dev.evestaticmapplanner.core.route.RouteResult(
+                routes.first().startSystemId,
+                routes.last().destinationSystemId,
+                routes.flatMapIndexed { index, route -> if (index == 0) route.systems else route.systems.drop(1) },
+                routes.flatMap { it.edges },
+            ),
+        )
+    }
+
+    suspend fun calculateCapitalRoute(
+        intent: NavigationIntent,
+        effectiveRangeLy: Double,
+    ): CapitalNavigationOutcome {
+        val validation = intent.validate()
+        if (validation != NavigationIntentValidation.Valid) return CapitalNavigationOutcome.InvalidIntent(validation)
+        val routes = mutableListOf<dev.evestaticmapplanner.core.route.CapitalRouteResult>()
+        for (segment in intent.segments()) {
+            when (val outcome = calculateCapitalRoute(segment.fromSystemId, segment.toSystemId, effectiveRangeLy)) {
+                is CapitalRouteOutcome.Found -> routes += outcome.route
+                is CapitalRouteOutcome.SameSystem -> routes += outcome.route
+                else -> return CapitalNavigationOutcome.SegmentFailed(segment, outcome)
+            }
+        }
+        val profile = routes.first().profile
+        return CapitalNavigationOutcome.Found(
+            dev.evestaticmapplanner.core.route.CapitalRouteResult(
+                routes.first().startSystemId,
+                routes.last().destinationSystemId,
+                profile,
+                routes.flatMapIndexed { index, route -> if (index == 0) route.systems else route.systems.drop(1) },
+                routes.flatMap { it.legs },
+            ),
+        )
+    }
 }
 
 enum class WormholeCreateStatus {

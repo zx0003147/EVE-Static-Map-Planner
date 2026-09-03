@@ -8,6 +8,12 @@ import dev.evestaticmapplanner.core.repository.AnsiblexRepository
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
+import dev.evestaticmapplanner.core.route.NavigationIntent
+import dev.evestaticmapplanner.core.route.NavigationIntentValidation
+import dev.evestaticmapplanner.core.route.NavigationSegment
+import dev.evestaticmapplanner.core.route.NavigationStopRole
+import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
+import dev.evestaticmapplanner.core.route.NormalNavigationPlanner
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.RouteGraph
@@ -39,6 +45,14 @@ data class NormalRoutePlanningSnapshot(
     val useAnsiblex: Boolean = false,
     val useWormholes: Boolean = false,
     val calculated: Boolean = false,
+    val waypointSystemIds: List<Int> = emptyList(),
+    val routeOutcome: RouteCalculationOutcome? = null,
+    val activeRoute: RouteResult? = null,
+    val routeSystemNames: List<String> = emptyList(),
+    val calculatedWaypointSystemIds: List<Int> = emptyList(),
+    val calculatedExplicitDestinationSystemId: Int? = null,
+    val isRouteStale: Boolean = false,
+    val navigationMessage: String? = null,
 )
 
 interface NormalRoutePlanningPort {
@@ -58,6 +72,7 @@ class RoutePlannerViewModel(
     private val searchDebounceMillis: Long = 180,
     private val routeEngine: NormalRouteEngine = NormalRouteEngine(),
 ) : NormalRoutePlanningPort {
+    private val navigationPlanner = NormalNavigationPlanner(routeEngine)
     private val mutableState = MutableStateFlow(
         RoutePlannerUiState(
             userDatabaseError = userDatabaseError,
@@ -95,25 +110,41 @@ class RoutePlannerViewModel(
     }
 
     fun updateFromQuery(query: String) {
-        mutableState.update { it.copy(fromQuery = query, selectedFrom = null, fromResults = emptyList()) }
+        mutableState.update { current ->
+            current.copy(
+                fromQuery = query,
+                selectedFrom = null,
+                fromResults = emptyList(),
+                isRouteStale = current.activeRoute != null,
+                navigationMessage = null,
+            )
+        }
         fromSearchJob?.cancel()
         fromSearchJob = scheduleSearch(query) { results -> mutableState.update { it.copy(fromResults = results) } }
     }
 
     fun updateToQuery(query: String) {
-        mutableState.update { it.copy(toQuery = query, selectedTo = null, toResults = emptyList()) }
+        mutableState.update { current ->
+            current.copy(
+                toQuery = query,
+                selectedTo = null,
+                toResults = emptyList(),
+                isRouteStale = current.activeRoute != null,
+                navigationMessage = null,
+            )
+        }
         toSearchJob?.cancel()
         toSearchJob = scheduleSearch(query) { results -> mutableState.update { it.copy(toResults = results) } }
     }
 
     fun selectFrom(system: SolarSystem) {
         fromSearchJob?.cancel()
-        mutableState.update { it.copy(fromQuery = system.name, selectedFrom = system, fromResults = emptyList()) }
+        updateDraft { current -> current.copy(fromQuery = system.name, selectedFrom = system, fromResults = emptyList()) }
     }
 
     fun selectTo(system: SolarSystem) {
         toSearchJob?.cancel()
-        mutableState.update { it.copy(toQuery = system.name, selectedTo = system, toResults = emptyList()) }
+        updateDraft { current -> current.copy(toQuery = system.name, selectedTo = system, toResults = emptyList()) }
     }
 
     fun setRouteStart(systemId: Int) {
@@ -124,24 +155,49 @@ class RoutePlannerViewModel(
         systemsById[systemId]?.let(::selectTo)
     }
 
+    fun addRouteWaypoint(systemId: Int) {
+        systemsById[systemId]?.let { waypoint ->
+            updateDraft { current -> current.copy(waypoints = current.waypoints + waypoint) }
+        }
+    }
+
+    fun removeRouteWaypoint(index: Int) {
+        updateDraft { current ->
+            if (index !in current.waypoints.indices) current else current.copy(
+                waypoints = current.waypoints.filterIndexed { waypointIndex, _ -> waypointIndex != index },
+            )
+        }
+    }
+
+    fun moveRouteWaypoint(fromIndex: Int, toIndex: Int) {
+        updateDraft { current ->
+            if (fromIndex !in current.waypoints.indices || toIndex !in current.waypoints.indices || fromIndex == toIndex) {
+                current
+            } else {
+                val reordered = current.waypoints.toMutableList()
+                val waypoint = reordered.removeAt(fromIndex)
+                reordered.add(toIndex, waypoint)
+                current.copy(waypoints = reordered)
+            }
+        }
+    }
+
     fun setUseAnsiblex(enabled: Boolean) {
-        mutableState.update {
-            it.copy(
-                useAnsiblex = enabled && it.isAnsiblexAvailable,
-                routeOutcome = null,
-                activeRoute = null,
-                routeSystemNames = emptyList(),
+        mutableState.update { current ->
+            current.copy(
+                useAnsiblex = enabled && current.isAnsiblexAvailable,
+                isRouteStale = current.activeRoute != null,
+                navigationMessage = null,
             )
         }
     }
 
     fun setUseWormholes(enabled: Boolean) {
-        mutableState.update {
-            it.copy(
+        mutableState.update { current ->
+            current.copy(
                 useWormholes = enabled,
-                routeOutcome = null,
-                activeRoute = null,
-                routeSystemNames = emptyList(),
+                isRouteStale = current.activeRoute != null,
+                navigationMessage = null,
             )
         }
     }
@@ -153,42 +209,73 @@ class RoutePlannerViewModel(
     fun calculateRoute() {
         val current = mutableState.value
         val start = current.selectedFrom ?: return
-        val destination = current.selectedTo ?: return
+        val intent = NavigationIntent(start.id, current.waypoints.map(SolarSystem::id), current.selectedTo?.id)
         val routeGraph = graph ?: return
-        val outcome = routeEngine.calculate(
+        val outcome = navigationPlanner.calculate(
             routeGraph,
-            start.id,
-            destination.id,
+            intent,
             RouteOptions(
                 useAnsiblex = current.useAnsiblex,
                 useWormholes = current.useWormholes,
             ),
         )
-        val route = when (outcome) {
-            is RouteCalculationOutcome.Found -> outcome.route
-            is RouteCalculationOutcome.SameSystem -> outcome.route
-            else -> null
-        }
-        mutableState.update {
-            it.copy(
-                routeOutcome = outcome,
-                activeRoute = route,
-                routeSystemNames = route?.systems?.map { id -> systemsById[id]?.name ?: id.toString() }.orEmpty(),
-            )
+        when (outcome) {
+            is NormalNavigationOutcome.Found -> mutableState.update {
+                it.copy(
+                    routeOutcome = RouteCalculationOutcome.Found(outcome.route),
+                    activeRoute = outcome.route,
+                    routeSystemNames = outcome.route.systems.map { id -> systemsById[id]?.name ?: id.toString() },
+                    calculatedWaypointSystemIds = intent.waypointSystemIds,
+                    calculatedExplicitDestinationSystemId = intent.destinationSystemId,
+                    isRouteStale = false,
+                    navigationMessage = null,
+                )
+            }
+            is NormalNavigationOutcome.InvalidIntent -> mutableState.update {
+                it.copy(
+                    isRouteStale = true,
+                    navigationMessage = validationMessage(outcome.validation),
+                )
+            }
+            is NormalNavigationOutcome.SegmentFailed -> mutableState.update {
+                it.copy(
+                    routeOutcome = if (it.activeRoute == null) outcome.cause else it.routeOutcome,
+                    isRouteStale = true,
+                    navigationMessage = segmentFailureMessage(outcome.segment),
+                )
+            }
         }
     }
 
     fun clearRoute() {
-        mutableState.update { it.copy(routeOutcome = null, activeRoute = null, routeSystemNames = emptyList()) }
+        mutableState.update {
+            it.copy(
+                routeOutcome = null,
+                activeRoute = null,
+                routeSystemNames = emptyList(),
+                calculatedWaypointSystemIds = emptyList(),
+                calculatedExplicitDestinationSystemId = null,
+                isRouteStale = false,
+                navigationMessage = null,
+            )
+        }
     }
 
     override fun planningSnapshot(): NormalRoutePlanningSnapshot = mutableState.value.let { current ->
         NormalRoutePlanningSnapshot(
             fromSystemId = current.selectedFrom?.id,
             toSystemId = current.selectedTo?.id,
+            waypointSystemIds = current.waypoints.map(SolarSystem::id),
             useAnsiblex = current.useAnsiblex,
             useWormholes = current.useWormholes,
             calculated = current.routeOutcome != null,
+            routeOutcome = current.routeOutcome,
+            activeRoute = current.activeRoute,
+            routeSystemNames = current.routeSystemNames,
+            calculatedWaypointSystemIds = current.calculatedWaypointSystemIds,
+            calculatedExplicitDestinationSystemId = current.calculatedExplicitDestinationSystemId,
+            isRouteStale = current.isRouteStale,
+            navigationMessage = current.navigationMessage,
         )
     }
 
@@ -204,11 +291,16 @@ class RoutePlannerViewModel(
                     toQuery = "",
                     selectedFrom = null,
                     selectedTo = null,
+                    waypoints = emptyList(),
                     fromResults = emptyList(),
                     toResults = emptyList(),
                     routeOutcome = null,
                     activeRoute = null,
                     routeSystemNames = emptyList(),
+                    calculatedWaypointSystemIds = emptyList(),
+                    calculatedExplicitDestinationSystemId = null,
+                    isRouteStale = false,
+                    navigationMessage = null,
                 )
             }
             return
@@ -359,23 +451,63 @@ class RoutePlannerViewModel(
     private fun applyPlanningSnapshot(snapshot: NormalRoutePlanningSnapshot) {
         val from = snapshot.fromSystemId?.let(systemsById::get)
         val to = snapshot.toSystemId?.let(systemsById::get)
+        val waypoints = snapshot.waypointSystemIds.mapNotNull(systemsById::get)
         mutableState.update {
             it.copy(
                 fromQuery = from?.name.orEmpty(),
                 toQuery = to?.name.orEmpty(),
                 selectedFrom = from,
                 selectedTo = to,
+                waypoints = waypoints,
                 fromResults = emptyList(),
                 toResults = emptyList(),
                 useAnsiblex = snapshot.useAnsiblex && it.isAnsiblexAvailable,
                 useWormholes = snapshot.useWormholes,
-                routeOutcome = null,
-                activeRoute = null,
-                routeSystemNames = emptyList(),
+                routeOutcome = snapshot.routeOutcome,
+                activeRoute = snapshot.activeRoute,
+                routeSystemNames = snapshot.routeSystemNames,
+                calculatedWaypointSystemIds = snapshot.calculatedWaypointSystemIds,
+                calculatedExplicitDestinationSystemId = snapshot.calculatedExplicitDestinationSystemId,
+                isRouteStale = snapshot.isRouteStale,
+                navigationMessage = snapshot.navigationMessage,
             )
         }
-        if (snapshot.calculated && from != null && to != null) calculateRoute()
     }
+
+    private fun updateDraft(transform: (RoutePlannerUiState) -> RoutePlannerUiState) {
+        mutableState.update { current ->
+            val proposed = transform(current)
+            if (proposed == current) return@update current
+            val validation = proposed.navigationIntentOrNull()?.validate()
+            if (validation is NavigationIntentValidation.AdjacentDuplicate) {
+                current.copy(navigationMessage = validationMessage(validation))
+            } else {
+                proposed.copy(
+                    isRouteStale = current.activeRoute != null,
+                    navigationMessage = null,
+                )
+            }
+        }
+    }
+
+    private fun RoutePlannerUiState.navigationIntentOrNull(): NavigationIntent? = selectedFrom?.let {
+        NavigationIntent(it.id, waypoints.map(SolarSystem::id), selectedTo?.id)
+    }
+
+    private fun validationMessage(validation: NavigationIntentValidation): String = when (validation) {
+        NavigationIntentValidation.Valid -> ""
+        NavigationIntentValidation.MissingTerminalStop -> "Add a Waypoint or Destination before calculating."
+        NavigationIntentValidation.InvalidSystemId -> "A navigation stop is invalid."
+        is NavigationIntentValidation.AdjacentDuplicate ->
+            "Adjacent navigation stops cannot both be ${systemsById[validation.systemId]?.name ?: validation.systemId}."
+    }
+
+    private fun segmentFailureMessage(segment: NavigationSegment): String =
+        "Unable to calculate segment: ${stopLabel(segment.fromRole, segment.fromSystemId)} → " +
+            stopLabel(segment.toRole, segment.toSystemId)
+
+    private fun stopLabel(role: NavigationStopRole, systemId: Int): String =
+        "${role.name.lowercase().replaceFirstChar(Char::uppercase)} ${systemsById[systemId]?.name ?: systemId}"
 
     private fun scheduleSearch(query: String, publish: (List<SolarSystem>) -> Unit): Job = scope.launch {
         if (query.isBlank()) {
@@ -419,6 +551,10 @@ class RoutePlannerViewModel(
                                 routeOutcome = null,
                                 activeRoute = null,
                                 routeSystemNames = emptyList(),
+                                calculatedWaypointSystemIds = emptyList(),
+                                calculatedExplicitDestinationSystemId = null,
+                                isRouteStale = false,
+                                navigationMessage = null,
                                 importPreview = null,
                                 importError = null,
                                 isImportBusy = false,
@@ -469,6 +605,17 @@ class RoutePlannerViewModel(
                         routeOutcome = if (routeInvalidated) null else current.routeOutcome,
                         activeRoute = if (routeInvalidated) null else current.activeRoute,
                         routeSystemNames = if (routeInvalidated) emptyList() else current.routeSystemNames,
+                        calculatedWaypointSystemIds = if (routeInvalidated) {
+                            emptyList()
+                        } else {
+                            current.calculatedWaypointSystemIds
+                        },
+                        calculatedExplicitDestinationSystemId = if (routeInvalidated) {
+                            null
+                        } else {
+                            current.calculatedExplicitDestinationSystemId
+                        },
+                        isRouteStale = if (routeInvalidated) false else current.isRouteStale,
                     )
                 }
             }
