@@ -605,21 +605,39 @@ object MapRenderer {
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
     ) {
-        markers.forEachIndexed { index, marker ->
-            val node = scene.nodesById[marker.systemId] ?: return@forEachIndexed
-            val base = transform.worldToScreen(node.position)
-            val center = missionMarkerBadgeCenter(
-                systemCenter = base,
-                markerIndex = index,
-                outwardSpacingPx = AI_MISSION_MARKER_OUTWARD_SPACING_DP.dp.toPx().toDouble(),
-            ).toOffset()
+        data class RenderItem(
+            val layoutInput: MissionMarkerLayoutInput,
+            val label: TextLayoutResult?,
+        )
+
+        val renderItems = markers.mapNotNull { marker ->
+            val node = scene.nodesById[marker.systemId] ?: return@mapNotNull null
+            val label = marker.label?.let { labelText ->
+                cache.label(labelText, MapLabelType.SYSTEM, preferences, textMeasurer)
+            }
+            RenderItem(
+                layoutInput = MissionMarkerLayoutInput(
+                    marker = marker,
+                    systemCenter = transform.worldToScreen(node.position),
+                    labelHeightPx = label?.size?.height?.toDouble(),
+                ),
+                label = label,
+            )
+        }
+        val presentedMarkers = MissionMarkerPresentationBuilder.build(
+            inputs = renderItems.map(RenderItem::layoutInput),
+            outwardSpacingPx = AI_MISSION_MARKER_OUTWARD_SPACING_DP.dp.toPx().toDouble(),
+        )
+
+        renderItems.zip(presentedMarkers).forEach { (renderItem, presented) ->
+            val marker = renderItem.layoutInput.marker
+            val center = presented.badgeCenter.toOffset()
             val color = markerColor(marker.color)
-            drawCircle(color.copy(alpha = 0.25f), 9f, center)
+            drawCircle(color.copy(alpha = 0.25f), AI_MISSION_MARKER_BADGE_OUTER_RADIUS_PX, center)
             drawCircle(color, 6f, center, style = Stroke(2.5f))
             drawLine(color, Offset(center.x - 8f, center.y), Offset(center.x + 8f, center.y), 1.5f)
             drawLine(color, Offset(center.x, center.y - 8f), Offset(center.x, center.y + 8f), 1.5f)
-            marker.label?.let { labelText ->
-                val label = cache.label(labelText, MapLabelType.SYSTEM, preferences, textMeasurer)
+            renderItem.label?.let { label ->
                 drawText(
                     textLayoutResult = label,
                     color = color,
@@ -960,26 +978,6 @@ private const val SAVED_MARKER_CHILD_BADGE_RADIUS_DP = 9f
 private val SHARED_MARKER_ARC_START_ANGLES = floatArrayOf(80f, 260f)
 private const val SHARED_MARKER_ARC_SWEEP_DEGREES = 120f
 private const val EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f
-
-internal fun missionMarkerBadgeCenter(
-    systemCenter: MapPoint,
-    markerIndex: Int,
-    outwardSpacingPx: Double,
-): MapPoint {
-    require(markerIndex >= 0)
-    require(outwardSpacingPx.isFinite() && outwardSpacingPx >= 0.0)
-    val diagonalOffset = AI_MISSION_MARKER_BASE_OFFSET_PX +
-        outwardSpacingPx +
-        (markerIndex % 3) * AI_MISSION_MARKER_STAGGER_PX
-    return MapPoint(
-        x = systemCenter.x + diagonalOffset,
-        y = systemCenter.y - diagonalOffset,
-    )
-}
-
-internal const val AI_MISSION_MARKER_BASE_OFFSET_PX = 11.0
-internal const val AI_MISSION_MARKER_STAGGER_PX = 3.0
-internal const val AI_MISSION_MARKER_OUTWARD_SPACING_DP = 7f
 
 internal data class SavedMarkerGlowLayer(
     val expansionDp: Float,

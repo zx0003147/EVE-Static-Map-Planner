@@ -70,8 +70,9 @@ class SharedMarkerPresentationTest {
         assertEquals(2.5f, SHARED_MARKER_BADGE_OUTWARD_OFFSET_DP)
         assertEquals(5.5f, SHARED_MARKER_BADGE_RADIUS_DP)
         assertEquals(11.0, AI_MISSION_MARKER_BASE_OFFSET_PX)
-        assertEquals(3.0, AI_MISSION_MARKER_STAGGER_PX)
         assertEquals(7f, AI_MISSION_MARKER_OUTWARD_SPACING_DP)
+        assertEquals(9f, AI_MISSION_MARKER_BADGE_OUTER_RADIUS_PX)
+        assertEquals(2.0, AI_MISSION_MARKER_ROW_GAP_PX)
         assertEquals(17.0, geometry.ringRadius(localSavedRingRadiusPx = 13.0))
         assertEquals(17.0, geometry.ringRadius(localSavedRingRadiusPx = null))
         assertEquals(19f, savedMarkerRingRenderState(SavedMarkerAppearancePreferences.Defaults).visualRadiusDp())
@@ -253,9 +254,8 @@ class SharedMarkerPresentationTest {
             missionMarkers = listOf(missionMarker(1)),
         ).single()
         val label = localLabelFixture(local)
-        val aiCenter = missionMarkerBadgeCenter(
+        val aiCenter = missionMarkerFirstBadgeCenter(
             sharedAndAi.screenCenter,
-            markerIndex = 0,
             outwardSpacingPx = 7.0,
         )
         val systemNameBounds = systemNameLabelBounds(sharedAndAi.screenCenter, MapSize(44.0, 14.0))
@@ -297,7 +297,7 @@ class SharedMarkerPresentationTest {
                 localMarkers = mapOf(1 to local),
                 missionMarkers = listOf(missionMarker(1)),
             ).single()
-            val aiCenter = missionMarkerBadgeCenter(shared.screenCenter, 0, outwardSpacingPx = 7.0)
+            val aiCenter = missionMarkerFirstBadgeCenter(shared.screenCenter, outwardSpacingPx = 7.0)
             val label = localLabelFixture(local, visibleSystemNameIds = visibleSystemNameIds)
 
             assertTrue(aiCenter.x > shared.screenCenter.x, "AI must stay right while $interaction")
@@ -321,7 +321,7 @@ class SharedMarkerPresentationTest {
                 missionMarkers = listOf(missionMarker(1)),
                 mapTransform = zoomedTransform,
             ).single()
-            val aiCenter = missionMarkerBadgeCenter(shared.screenCenter, 0, outwardSpacingPx = 7.0)
+            val aiCenter = missionMarkerFirstBadgeCenter(shared.screenCenter, outwardSpacingPx = 7.0)
             val label = localLabelFixture(local, mapTransform = zoomedTransform)
 
             assertEquals(18.0, aiCenter.x - shared.screenCenter.x, absoluteTolerance = 0.0001)
@@ -565,7 +565,7 @@ class SharedMarkerPresentationTest {
             localMarker = localMarker,
             sharedMarker = presentedSharedMarkers.singleOrNull(),
             aiCenter = missionMarkers.singleOrNull()?.let {
-                missionMarkerBadgeCenter(center, markerIndex = 0, outwardSpacingPx = 7.0)
+                missionMarkerFirstBadgeCenter(center, outwardSpacingPx = 7.0)
             },
             visualObstacles = visualObstacles,
         )
