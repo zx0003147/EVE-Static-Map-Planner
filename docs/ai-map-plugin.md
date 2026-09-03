@@ -1,6 +1,6 @@
 # EVE Map Assistant Integration
 
-EVE Map Assistant 0.5.0 is a separately distributed Codex Plugin and Skill for EVE Static Map Planner. Its source,
+EVE Map Assistant 0.7.0 is a separately distributed Codex Plugin and Skill for EVE Static Map Planner. Its source,
 marketplace metadata, Skill instructions, fixed localhost HTTP MCP definition, and Plugin-specific QA live in the
 sibling `EVE-Map-Assistant-Plugin` repository.
 
@@ -10,7 +10,7 @@ Repository: [zx0003147/EVE-Map-Assistant-Plugin](https://github.com/zx0003147/EV
 
 - Extract EVE Static Map Planner 1.0.0 or later as a complete Portable application directory.
 - Start the map and enable **Preferences > AI Control** before map operations.
-- Install or enable EVE Map Assistant Plugin 0.5.0.
+- Install or enable EVE Map Assistant Plugin 0.7.0.
 - Open a new Codex task after installing or updating the Plugin.
 
 The Plugin connects to the Streamable HTTP endpoint hosted inside the running Map JVM:
@@ -20,7 +20,7 @@ http://127.0.0.1:27892/mcp
 ```
 
 It does not bundle an MCP executable and does not require PATH, PowerShell, Java, an absolute launcher path, or a
-manual Codex MCP registration. The server binds only IPv4 loopback and exposes the same canonical 30 tools as the
+manual Codex MCP registration. The server binds only IPv4 loopback and exposes the same canonical 32 tools as the
 supported STDIO bridge.
 
 ```text
@@ -81,7 +81,7 @@ an existing Saved Marker, or alter user routes, Ansiblex connections, preference
 state.
 
 The map repository validates the application, Control API, localhost HTTP MCP, Portable launchers/ZIP, and fixed
-30-tool server contract. The Plugin repository validates the manifest, Skill, HTTP `.mcp.json`, marketplace metadata,
-and 27 natural-language behavior contracts.
+32-tool server contract. The Plugin repository validates the manifest, Skill, HTTP `.mcp.json`, marketplace metadata,
+and 54 natural-language behavior contracts.
 
 Official references: [Package your plugin](https://developers.openai.com/plugins/build/plugins), [Build skills](https://developers.openai.com/plugins/build/skills), and [Model Context Protocol](https://learn.chatgpt.com/docs/extend/mcp).

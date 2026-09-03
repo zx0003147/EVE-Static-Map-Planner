@@ -4,9 +4,9 @@
 
 **The core map works independently from local static universe data and does not require AI, ESI, or any Feature Pack. Optional integrations add AI map control through the EVE Map Assistant plugin and account-aware or live-data features through external ESI and Sovereignty Feature Packs.**
 
-Version 1.2.0 adds the optional Shared Map client and Shared Markers: Workspace-based collaboration, role-aware
-management, invite-to-device-token connection, multi-client polling, conflict protection, and clear degraded/stale
-snapshot behavior. The map remains local-first and all existing features work without a Shared Map Server.
+Version 1.3.0 adds ordered Normal and Capital waypoints, per-View navigation sessions, compact stacked AI Mission
+markers, and explicit EVE navigation sending for Normal routes. EVE sending is available through ESI Pack 1.1.0 and
+EVE Map Assistant 0.7.0; it never includes calculated transit systems and never applies to Capital routes.
 
 Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
 exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
@@ -19,7 +19,7 @@ exclude intel, killboards, application auto-update, signing, Microsoft Store/MSI
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
 - `feature-api`: Feature API compatibility family 2 contracts (current artifact `2.1.0`) and generic external Pack test fixture.
-- `mcp`: Core-owned MCP server and its fixed 30-tool catalog, including View control, session Wormhole read/create, and permission-gated Saved Marker read/create.
+- `mcp`: Core-owned MCP server and its fixed 32-tool catalog, including View control, session Wormhole read/create, permission-gated Saved Marker read/create, and explicit EVE navigation targeting.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 - `shared-client`: Compose-independent Shared Map protocol, HTTPS client, Workspace session, polling, and secure credential contracts.
 
@@ -41,11 +41,12 @@ Install the optional Pack JARs at these exact paths, then enable them under Pref
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
 ```
 
-Without any Pack, the Core map, routing, databases, and updater continue to work normally. The ESI Pack adds EVE SSO,
-multi-character location portraits, `Set EVE Destination`, and bounded explicit `Send Draft to EVE` actions. Each
-View stores one selected route-action target; both ESI actions share that selection and never auto-fallback after a
-disconnect. Map and route edits remain local until one of those actions is clicked. Add Character, Refresh Locations,
-and per-character Disconnect controls appear generically in the Feature Packs preferences page.
+Without any Pack, the Core map, routing, databases, and updater continue to work normally. ESI Pack 1.1.0 adds EVE
+SSO, multi-character location portraits, and the explicit Normal-route `Send Navigation to EVE` action. It sends only
+the ordered Waypoints and Destination from the current navigation draft, supports destination-only and waypoint-only
+drafts, and does not send calculated transit systems. Capital routes do not expose this action. Each View stores one
+selected route-action target and never auto-falls back after a disconnect. Add Character, Refresh Locations, and
+per-character Disconnect controls appear generically in the Feature Packs preferences page.
 
 See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
 
@@ -106,14 +107,14 @@ the last in-memory snapshot remains visible as stale in degraded mode; it is nev
 disk cache. Disconnecting clears Shared Marker state without affecting local markers or AI Missions.
 
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
-visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.2.0.
+visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.3.0.
 
 ## Windows x64 distribution
 
 The official Windows distribution is the installer-free Portable ZIP:
 
 ```text
-EVE-Static-Map-Planner-1.2.0-Windows-x64.zip
+EVE-Static-Map-Planner-1.3.0-Windows-x64.zip
 ```
 
 Download and extract the complete ZIP, then open:
@@ -153,7 +154,7 @@ delete the LocalAppData directory.
 ## AI / MCP integration
 
 The recommended generic integration is Streamable HTTP at `http://127.0.0.1:27892/mcp`. The server runs inside the
-Map JVM, binds only IPv4 loopback, and exposes the same fixed 30 tools as the existing bridge. The EVE Map Assistant
+Map JVM, binds only IPv4 loopback, and exposes the same fixed 32 tools as the existing bridge. The EVE Map Assistant
 Codex Plugin prefers this HTTP endpoint, so moving the Portable directory does not change Plugin configuration: stop
 the Map, move the directory, restart the Map, and open a new Codex task.
 

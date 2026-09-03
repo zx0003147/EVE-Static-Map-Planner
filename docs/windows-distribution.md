@@ -1,9 +1,9 @@
 # Windows x64 Portable ZIP distribution
 
-EVE Static Map Planner 1.2.0 is distributed for Windows x64 only as:
+EVE Static Map Planner 1.3.0 is distributed for Windows x64 only as:
 
 ```text
-EVE-Static-Map-Planner-1.2.0-Windows-x64.zip
+EVE-Static-Map-Planner-1.3.0-Windows-x64.zip
 ```
 
 The previous MSI release path is retired. The release does not require WiX, Windows Installer, a system JDK, registry
@@ -19,7 +19,7 @@ EVE Static Map Planner\
 ├─ EVE Map MCP Bridge.exe
 ├─ eve-map-mcp.exe
 ├─ app\
-│  ├─ app-1.2.0-<hash>.jar
+│  ├─ app-1.3.0-<hash>.jar
 │  ├─ feature-api-2.1.0-<hash>.jar
 │  ├─ mcp\
 │  └─ packaged resources and runtime dependencies
@@ -83,10 +83,10 @@ Outputs are placed under:
 
 ```text
 build\release\
-├─ EVE-Static-Map-Planner-1.2.0-Windows-x64.zip
-├─ EVE-Static-Map-Planner-1.2.0-Windows-x64.zip.sha256
-├─ portable-audit-1.2.0.txt
-└─ release-manifest-1.2.0.txt
+├─ EVE-Static-Map-Planner-1.3.0-Windows-x64.zip
+├─ EVE-Static-Map-Planner-1.3.0-Windows-x64.zip.sha256
+├─ portable-audit-1.3.0.txt
+└─ release-manifest-1.3.0.txt
 ```
 
 No third-party archive dependency is used.
@@ -112,7 +112,7 @@ capability. Sovereignty Pack 0.2.0 keeps its independent PackStorage, state, and
 
 ## MCP portability
 
-Codex users should use EVE Map Assistant 0.5.0, which connects to the fixed localhost HTTP endpoint hosted by the
+Codex users should use EVE Map Assistant 0.7.0, which connects to the fixed localhost HTTP endpoint hosted by the
 running Map at `http://127.0.0.1:27892/mcp`. It requires no PATH entry, absolute executable path, or manual MCP
 registration. Moving the complete Portable directory does not change the Plugin configuration: restart the Map and
 open a new Codex task.
@@ -160,7 +160,7 @@ Disconnect the ESI Pack first if desired, then manually delete `%LOCALAPPDATA%\E
 
 Automated acceptance covers clean build, ZIP audit, extraction with spaces, launch from an unrelated working
 directory, no-system-Java launch, first-run AppData creation, program-image immutability, user-data preservation,
-whole-directory movement, external Feature Packs, DPAPI regression, and the exact 30-tool MCP catalog.
+whole-directory movement, external Feature Packs, DPAPI regression, and the exact 32-tool MCP catalog.
 
 Final human product QA is limited to:
 
@@ -169,7 +169,7 @@ Final human product QA is limited to:
 3. confirm Feature Packs;
 4. Connect EVE;
 5. confirm Location;
-6. Send Draft to EVE;
+6. Send Navigation to EVE for a Normal route;
 7. restart and confirm restoration;
 8. Disconnect.
 

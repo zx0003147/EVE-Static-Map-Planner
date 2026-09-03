@@ -1,6 +1,6 @@
 # AI Map MCP transports
 
-EVE Static Map Planner exposes the same fixed 30-tool MCP server through two local transports:
+EVE Static Map Planner exposes the same fixed 32-tool MCP server through two local transports:
 
 ```text
 Streamable HTTP client -> http://127.0.0.1:27892/mcp -> MCP server in the Map JVM
@@ -137,7 +137,7 @@ elsewhere, repeat the registration with the new launcher path.
 
 ## Fixed tool surface
 
-The server exposes exactly these 30 tools:
+The server exposes exactly these 32 tools:
 
 ```text
 search_system
@@ -170,6 +170,8 @@ clear_mission_markers
 fit_mission
 clear_mission
 create_saved_marker
+list_eve_navigation_targets
+send_mission_navigation_to_eve
 ```
 
 `list_wormholes` reads every temporary bidirectional Wormhole connection in deterministic canonical order.
