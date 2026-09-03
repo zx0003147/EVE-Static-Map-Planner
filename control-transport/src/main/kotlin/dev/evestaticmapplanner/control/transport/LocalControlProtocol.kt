@@ -8,7 +8,7 @@ import java.util.Locale
 
 object LocalControlProtocol {
     const val PROTOCOL_VERSION = 1
-    const val CONTROL_API_VERSION = 2
+    const val CONTROL_API_VERSION = 3
     val SAVED_MARKER_TAGS: List<String> = SavedMarkerChildType.supportedTypes.map {
         it.key.uppercase(Locale.ROOT)
     }
@@ -27,11 +27,13 @@ data class LocalControlTimeouts(
     val query: Duration = Duration.ofSeconds(3),
     val routeOrJump: Duration = Duration.ofSeconds(15),
     val capitalRoute: Duration = Duration.ofSeconds(30),
+    val navigationSend: Duration = Duration.ofMinutes(5),
 ) {
     init {
         require(!query.isNegative && !query.isZero)
         require(!routeOrJump.isNegative && !routeOrJump.isZero)
         require(!capitalRoute.isNegative && !capitalRoute.isZero)
+        require(!navigationSend.isNegative && !navigationSend.isZero)
     }
 }
 
@@ -66,6 +68,12 @@ enum class LocalControlOperation(
     CURRENT_VIEW("/v1/query/current-view", "getCurrentView", false, TimeoutKind.QUERY),
     ACTIVE_MISSIONS("/v1/query/active-missions", "getActiveMissions", false, TimeoutKind.QUERY),
     MISSION("/v1/query/mission", "getMission", false, TimeoutKind.QUERY),
+    EVE_NAVIGATION_TARGETS(
+        "/v1/query/eve-navigation-targets",
+        "listEveNavigationTargets",
+        false,
+        TimeoutKind.QUERY,
+    ),
     BEGIN_MISSION("/v1/command/begin-mission", "beginMission", true, TimeoutKind.QUERY),
     CREATE_VIEW("/v1/command/create-view", "createView", true, TimeoutKind.QUERY),
     RENAME_VIEW("/v1/command/rename-view", "renameView", true, TimeoutKind.QUERY),
@@ -91,12 +99,19 @@ enum class LocalControlOperation(
     CLEAR_MISSION_MARKERS("/v1/command/clear-mission-markers", "clearMissionMarkers", true, TimeoutKind.QUERY),
     FIT_MISSION("/v1/command/fit-mission", "fitMission", true, TimeoutKind.QUERY),
     CLEAR_MISSION("/v1/command/clear-mission", "clearMission", true, TimeoutKind.QUERY),
+    SEND_MISSION_NAVIGATION_TO_EVE(
+        "/v1/command/send-mission-navigation-to-eve",
+        "sendMissionNavigationToEve",
+        true,
+        TimeoutKind.NAVIGATION_SEND,
+    ),
     ;
 
     internal fun timeout(config: LocalControlTimeouts): Duration = when (timeoutKind) {
         TimeoutKind.QUERY -> config.query
         TimeoutKind.ROUTE_OR_JUMP -> config.routeOrJump
         TimeoutKind.CAPITAL_ROUTE -> config.capitalRoute
+        TimeoutKind.NAVIGATION_SEND -> config.navigationSend
     }
 
     companion object {
@@ -109,6 +124,7 @@ internal enum class TimeoutKind {
     QUERY,
     ROUTE_OR_JUMP,
     CAPITAL_ROUTE,
+    NAVIGATION_SEND,
 }
 
 data class LocalControlAuditEvent(

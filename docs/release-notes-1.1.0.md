@@ -1,5 +1,8 @@
 # EVE Static Map Planner 1.1.0 release candidate
 
+> Historical release note: `2.0.0` was the Feature API artifact shipped with this release. The current additive
+> artifact is `2.1.0`; both use runtime compatibility family `2`.
+
 ## Temporary Wormhole connections
 
 - Add bidirectional, application-session Wormhole connections through the global Manager or system right-click menu.

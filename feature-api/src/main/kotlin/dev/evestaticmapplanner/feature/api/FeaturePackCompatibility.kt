@@ -46,7 +46,7 @@ class FeatureApiVersion(
     }
 }
 
-/** Current frozen v2 compatibility identity. Breaking contract changes require a new major API version. */
+/** Current frozen compatibility-family 2 identity. Breaking contract changes require a new runtime family. */
 object FeatureApiVersions {
     fun current(): FeatureApiVersion = FeatureApiVersion("2", true)
 }

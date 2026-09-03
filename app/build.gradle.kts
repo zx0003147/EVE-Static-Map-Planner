@@ -30,6 +30,7 @@ fun propertyValue(value: String): String = value
     .replace("\n", "\\n")
 
 val appVersion = providers.gradleProperty("appVersion").get()
+val featureApiArtifactVersion = providers.gradleProperty("featureApiArtifactVersion").get()
 val nativeOutputDir = providers.gradleProperty("nativeOutputDir").orNull
 val versionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 val distributionNoticeFiles = files(
@@ -578,7 +579,12 @@ val verifyPortableZip by tasks.registering {
             ?.map(File::getName)
             ?.toSet()
             .orEmpty()
-        val archiveAudit = PortableDistributionAudit.audit(zip, appVersion, expectedMcpJars)
+        val archiveAudit = PortableDistributionAudit.audit(
+            zip,
+            appVersion,
+            featureApiArtifactVersion,
+            expectedMcpJars,
+        )
 
         val extractionRoot = portableExtractionRoot.get().asFile
         val rootBuildDirectory = rootProject.layout.buildDirectory.get().asFile.canonicalFile
@@ -620,9 +626,9 @@ val verifyPortableZip by tasks.registering {
                 appendLine("main_uncompressed_size_bytes=${archiveAudit.uncompressedSize}")
                 appendLine("main_file_count=${archiveAudit.fileCount}")
                 appendLine("main_sha256=${archiveAudit.sha256}")
-                appendLine("esi_pack_version=1.0.0")
+                appendLine("esi_pack_version=1.1.0")
                 appendLine("sovereignty_pack_version=0.2.0")
-                appendLine("feature_api_version=2.0.0")
+                appendLine("feature_api_version=$featureApiArtifactVersion")
                 appendLine("msi_artifact=REMOVED")
             },
             Charsets.UTF_8,

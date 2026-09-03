@@ -89,6 +89,40 @@ class RouteSnapshot(
     }
 }
 
+/**
+ * Immutable explicit navigation intent passed to a navigation-aware Route Action provider.
+ *
+ * Only user- or Mission-authored targets are included: ordered Waypoints followed by an optional
+ * explicit Destination. The Start is retained for validation and identity, but is never a target.
+ * Calculated transit systems and calculated edge types deliberately do not appear in this model.
+ */
+class NavigationSnapshot(
+    val identity: RouteIdentity,
+    val kind: RouteKind,
+    val startSystemId: Int,
+    waypointSystemIds: List<Int>,
+    val destinationSystemId: Int?,
+) {
+    val waypointSystemIds: List<Int> = Collections.unmodifiableList(ArrayList(waypointSystemIds))
+    val orderedTargetSystemIds: List<Int> = Collections.unmodifiableList(
+        ArrayList(this.waypointSystemIds + listOfNotNull(destinationSystemId)),
+    )
+
+    init {
+        require(kind == RouteKind.NORMAL || kind == RouteKind.MISSION_NORMAL) {
+            "Navigation actions support only normal route intent"
+        }
+        require(startSystemId > 0) { "Navigation Start system ID must be positive" }
+        require(this.orderedTargetSystemIds.isNotEmpty()) {
+            "Navigation must contain at least one Waypoint or an explicit Destination"
+        }
+        require(this.orderedTargetSystemIds.all { it > 0 }) { "Navigation target system IDs must be positive" }
+        (listOf(startSystemId) + this.orderedTargetSystemIds).zipWithNext().forEach { (left, right) ->
+            require(left != right) { "Adjacent navigation stops must use different system IDs" }
+        }
+    }
+}
+
 /** Opaque Pack-owned identity for one selectable Route Action target. */
 class RouteActionTargetId(val value: String) {
     init {
@@ -138,6 +172,12 @@ class RouteActionContext(
     val targetId: RouteActionTargetId? = null,
 )
 
+/** Minimal execution context for an explicit navigation-intent action invocation. */
+class NavigationActionContext(
+    val navigation: NavigationSnapshot,
+    val targetId: RouteActionTargetId? = null,
+)
+
 /** Stable, display-neutral metadata for one Route Action. */
 class RouteActionDescriptor(
     val id: String,
@@ -165,6 +205,17 @@ interface RouteActionProvider {
     fun targets(): RouteActionTargetSnapshot? = null
 
     fun execute(context: RouteActionContext): RouteActionResult
+}
+
+/**
+ * Additive Route Action extension for providers that operate on explicit navigation intent.
+ *
+ * Existing Route Action providers remain source- and binary-compatible. Hosts must call this
+ * method only when the provider implements this interface; calculated [RouteSnapshot] execution
+ * remains available through [RouteActionProvider.execute].
+ */
+interface NavigationRouteActionProvider : RouteActionProvider {
+    fun executeNavigation(context: NavigationActionContext): RouteActionResult
 }
 
 /** Optional Host capability for registering Route Action providers. */

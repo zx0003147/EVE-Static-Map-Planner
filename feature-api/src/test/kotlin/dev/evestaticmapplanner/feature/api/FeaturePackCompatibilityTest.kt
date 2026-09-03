@@ -8,7 +8,7 @@ class FeaturePackCompatibilityTest {
     private val platform = HostPlatform("windows", "x64")
 
     @Test
-    fun `current API identity is canonical frozen v2`() {
+    fun `current runtime compatibility identity is canonical frozen family 2`() {
         val version = FeatureApiVersions.current()
 
         assertTrue(version.identifier == "2")

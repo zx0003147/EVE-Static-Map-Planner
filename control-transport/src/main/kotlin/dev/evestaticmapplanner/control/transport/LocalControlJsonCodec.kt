@@ -23,6 +23,10 @@ import dev.evestaticmapplanner.control.FocusSystemCommand
 import dev.evestaticmapplanner.control.GetActiveMissionsRequest
 import dev.evestaticmapplanner.control.GetCurrentViewRequest
 import dev.evestaticmapplanner.control.GetMissionRequest
+import dev.evestaticmapplanner.control.ListEveNavigationTargetsRequest
+import dev.evestaticmapplanner.control.EveNavigationTargetDto
+import dev.evestaticmapplanner.control.SendMissionNavigationReceipt
+import dev.evestaticmapplanner.control.SendMissionNavigationToEveCommand
 import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.GetSystemMarkersRequest
 import dev.evestaticmapplanner.control.MapControlService
@@ -274,6 +278,13 @@ internal class LocalControlJsonCodec {
                 ::systemSummaryJson,
             )
         }
+        LocalControlOperation.EVE_NAVIGATION_TARGETS -> {
+            request.requireFields(setOf("requestId"))
+            controlResponse(
+                service.listEveNavigationTargets(ListEveNavigationTargetsRequest(request.requestId())),
+                valueEncoder = { targets -> JsonArray(targets.map(::eveNavigationTargetJson)) },
+            )
+        }
         LocalControlOperation.CREATE_WORMHOLE -> {
             request.requireFields(setOf("requestId", "idempotencyKey", "fromSystemId", "toSystemId"))
             controlResponse(
@@ -415,6 +426,22 @@ internal class LocalControlJsonCodec {
         }
         LocalControlOperation.CLEAR_MISSION -> mutationWithMission(request) { requestId, key, missionId ->
             service.clearMission(ClearMissionCommand(requestId, key, missionId))
+        }
+        LocalControlOperation.SEND_MISSION_NAVIGATION_TO_EVE -> {
+            request.requireFields(setOf("requestId", "idempotencyKey", "missionId", "routeId", "characterId"))
+            controlResponse(
+                service.sendMissionNavigationToEve(
+                    SendMissionNavigationToEveCommand(
+                        request.requestId(),
+                        request.idempotencyKey(),
+                        request.missionId(),
+                        MissionRouteId(request.opaqueId("routeId")),
+                        request.opaqueId("characterId"),
+                    ),
+                ),
+                ::sendMissionNavigationReceiptJson,
+                request.missionIdValue(),
+            )
         }
     }
 
@@ -735,6 +762,22 @@ private fun planningViewJson(value: PlanningViewDto) = buildJsonObject {
     put("viewId", value.viewId)
     put("label", value.label)
     put("current", value.current)
+}
+
+private fun eveNavigationTargetJson(value: EveNavigationTargetDto) = buildJsonObject {
+    put("characterId", value.characterId)
+    put("label", value.label)
+    put("description", value.description?.let(::JsonPrimitive) ?: JsonNull)
+    put("available", value.available)
+}
+
+private fun sendMissionNavigationReceiptJson(value: SendMissionNavigationReceipt) = buildJsonObject {
+    put("missionId", value.missionId.value)
+    put("routeId", value.routeId.value)
+    put("characterId", value.characterId)
+    put("targetSystemIds", value.targetSystemIds.toJsonArray())
+    put("status", value.status.name)
+    put("message", value.message?.let(::JsonPrimitive) ?: JsonNull)
 }
 
 private fun missionJson(value: Mission) = buildJsonObject {

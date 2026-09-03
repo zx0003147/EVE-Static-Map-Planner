@@ -14,6 +14,9 @@ interface MapControlService {
     suspend fun getCurrentView(request: GetCurrentViewRequest): ControlResult<PlanningViewDto> = unsupported(request.requestId)
     suspend fun getActiveMissions(request: GetActiveMissionsRequest): ControlResult<List<MissionSummaryDto>>
     suspend fun getMission(request: GetMissionRequest): ControlResult<Mission>
+    suspend fun listEveNavigationTargets(
+        request: ListEveNavigationTargetsRequest,
+    ): ControlResult<List<EveNavigationTargetDto>> = unsupportedEveNavigation(request.requestId)
 
     suspend fun beginMission(command: BeginMissionCommand): ControlResult<MissionSummaryDto>
     suspend fun createView(command: CreateViewCommand): ControlResult<PlanningViewDto> = unsupported(command.requestId)
@@ -36,6 +39,9 @@ interface MapControlService {
     suspend fun clearMissionMarkers(command: ClearMissionMarkersCommand): ControlResult<MissionMutationReceipt>
     suspend fun fitMission(command: FitMissionCommand): ControlResult<MissionMutationReceipt>
     suspend fun clearMission(command: ClearMissionCommand): ControlResult<MissionMutationReceipt>
+    suspend fun sendMissionNavigationToEve(
+        command: SendMissionNavigationToEveCommand,
+    ): ControlResult<SendMissionNavigationReceipt> = unsupportedEveNavigation(command.requestId)
 }
 
 private fun <T> unsupported(requestId: String): ControlResult<T> = ControlResult.Failure(
@@ -46,4 +52,9 @@ private fun <T> unsupported(requestId: String): ControlResult<T> = ControlResult
 private fun <T> unsupportedWormholes(requestId: String): ControlResult<T> = ControlResult.Failure(
     requestId,
     ControlError(ControlErrorCode.APP_NOT_READY, "Wormhole session control is unavailable"),
+)
+
+private fun <T> unsupportedEveNavigation(requestId: String): ControlResult<T> = ControlResult.Failure(
+    requestId,
+    ControlError(ControlErrorCode.APP_NOT_READY, "EVE navigation sending is unavailable"),
 )

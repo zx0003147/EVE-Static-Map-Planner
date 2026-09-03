@@ -30,12 +30,20 @@ object PortableDistributionAudit {
         return "$ARCHIVE_PREFIX$appVersion$ARCHIVE_SUFFIX"
     }
 
-    fun audit(zip: Path, appVersion: String, expectedMcpJarNames: Set<String>): PortableDistributionAuditResult {
+    fun audit(
+        zip: Path,
+        appVersion: String,
+        expectedFeatureApiArtifactVersion: String,
+        expectedMcpJarNames: Set<String>,
+    ): PortableDistributionAuditResult {
         require(Files.isRegularFile(zip)) { "Missing Portable ZIP: $zip" }
         require(zip.fileName.toString() == archiveFileName(appVersion)) {
             "Portable ZIP name drift: ${zip.fileName}"
         }
         require(expectedMcpJarNames.isNotEmpty()) { "Expected MCP JAR set is empty" }
+        require(expectedFeatureApiArtifactVersion.matches(Regex("\\d+\\.\\d+\\.\\d+"))) {
+            "Invalid Feature API artifact version: $expectedFeatureApiArtifactVersion"
+        }
 
         val rootPrefix = "$ROOT_DIRECTORY/"
         val entries = ZipFile(zip.toFile()).use { archive ->
@@ -63,8 +71,15 @@ object PortableDistributionAudit {
         require(paths.count { it.matches(Regex("${Regex.escape(rootPrefix)}app/app-${Regex.escape(appVersion)}-.+\\.jar")) } == 1) {
             "Portable ZIP must contain exactly one versioned main application JAR"
         }
-        require(paths.count { it.matches(Regex("${Regex.escape(rootPrefix)}app/feature-api-2\\.0\\.0-.+\\.jar")) } == 1) {
-            "Portable ZIP must contain the Feature API 2.0.0 Host JAR"
+        require(paths.count {
+            it.matches(
+                Regex(
+                    "${Regex.escape(rootPrefix)}app/feature-api-" +
+                        "${Regex.escape(expectedFeatureApiArtifactVersion)}-.+\\.jar",
+                ),
+            )
+        } == 1) {
+            "Portable ZIP must contain the Feature API $expectedFeatureApiArtifactVersion Host JAR"
         }
         require(paths.any { it.startsWith("${rootPrefix}app/skiko-awt-runtime-windows-x64-") && it.endsWith(".jar") }) {
             "Portable ZIP is missing the Skiko Windows x64 runtime"

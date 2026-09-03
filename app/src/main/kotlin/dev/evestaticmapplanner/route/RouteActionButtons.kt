@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.feature.api.RouteActionStatus
+import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.RouteActionTargetId
 import dev.evestaticmapplanner.feature.api.RouteActionTargetSnapshot
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
@@ -31,14 +32,33 @@ internal fun RouteActionButtons(
     selectedTargetIds: Map<String, String> = emptyMap(),
     onSelectTarget: (String, String?) -> Unit = { _, _ -> },
     onInvoke: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
+) = NavigationRouteActionButtons(
+    actions = actions,
+    snapshot = snapshot,
+    navigationSnapshot = null,
+    selectedTargetIds = selectedTargetIds,
+    onSelectTarget = onSelectTarget,
+    onInvoke = onInvoke,
+    onInvokeNavigation = { _, _, _ -> },
+)
+
+@Composable
+internal fun NavigationRouteActionButtons(
+    actions: List<RouteActionUiState>,
+    snapshot: RouteSnapshot?,
+    navigationSnapshot: NavigationSnapshot?,
+    selectedTargetIds: Map<String, String>,
+    onSelectTarget: (String, String?) -> Unit,
+    onInvoke: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
+    onInvokeNavigation: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
 ) {
-    if (snapshot == null) return
-    val visible = actions.filter { snapshot.kind in it.supportedRouteKinds }
+    val routeKind = navigationSnapshot?.kind ?: snapshot?.kind ?: return
+    val visible = actions.filter { routeKind in it.supportedRouteKinds }
     if (visible.isEmpty()) return
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            "Draft only — map and route changes stay local until you press a button below.",
+            "Draft only — EVE changes only after you press a button below.",
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFFAAB9C7),
         )
@@ -58,8 +78,16 @@ internal fun RouteActionButtons(
                         ?.takeIf { selected -> selector.options.any { it.id == selected && it.available } }
                 }
                 Button(
-                    enabled = !action.busy && (action.targetSelector == null || selectedTarget != null),
-                    onClick = { onInvoke(action.key, snapshot, selectedTarget) },
+                    enabled = !action.busy &&
+                        (action.targetSelector == null || selectedTarget != null) &&
+                        (if (action.supportsNavigationIntent) navigationSnapshot != null else snapshot != null),
+                    onClick = {
+                        if (action.supportsNavigationIntent) {
+                            navigationSnapshot?.let { onInvokeNavigation(action.key, it, selectedTarget) }
+                        } else {
+                            snapshot?.let { onInvoke(action.key, it, selectedTarget) }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (action.busy) "${action.label}…" else action.label)

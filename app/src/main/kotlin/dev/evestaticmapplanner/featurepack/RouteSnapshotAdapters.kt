@@ -2,9 +2,12 @@ package dev.evestaticmapplanner.featurepack
 
 import dev.evestaticmapplanner.control.mission.MissionRoute
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.core.route.NavigationIntent
+import dev.evestaticmapplanner.core.route.NavigationIntentValidation
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.feature.api.RouteIdentity
+import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.RouteKind
 import dev.evestaticmapplanner.feature.api.RouteSegment
 import dev.evestaticmapplanner.feature.api.RouteSegmentKind
@@ -56,6 +59,24 @@ internal object RouteSnapshotAdapters {
     )
 }
 
+/** Host-private adapter for explicit authored navigation stops, independent of route calculation. */
+internal object NavigationSnapshotAdapters {
+    fun normal(
+        intent: NavigationIntent,
+        identity: RouteIdentity,
+        kind: RouteKind = RouteKind.NORMAL,
+    ): NavigationSnapshot {
+        require(intent.validate() == NavigationIntentValidation.Valid) { "Navigation intent is invalid" }
+        return NavigationSnapshot(
+            identity = identity,
+            kind = kind,
+            startSystemId = intent.startSystemId,
+            waypointSystemIds = intent.waypointSystemIds,
+            destinationSystemId = intent.destinationSystemId,
+        )
+    }
+}
+
 /**
  * Maintains opaque identities independently of Compose and the Core models. Equal active route
  * values retain identity across recomposition; a changed route receives a new identity.
@@ -65,6 +86,8 @@ internal class InteractiveRouteSnapshotAdapter(
 ) {
     private var normalRoute: RouteResult? = null
     private var normalSnapshot: RouteSnapshot? = null
+    private var normalNavigationIntent: NavigationIntent? = null
+    private var normalNavigationSnapshot: NavigationSnapshot? = null
     private var capitalRoute: CapitalRouteResult? = null
     private var capitalSnapshot: RouteSnapshot? = null
     private val missionSnapshots = linkedMapOf<MissionRouteKey, Pair<Any, RouteSnapshot>>()
@@ -86,6 +109,20 @@ internal class InteractiveRouteSnapshotAdapter(
             normalSnapshot = RouteSnapshotAdapters.normal(route, identityFactory())
         }
         return normalSnapshot
+    }
+
+    @Synchronized
+    fun normalNavigation(intent: NavigationIntent?): NavigationSnapshot? {
+        if (intent == null || intent.validate() != NavigationIntentValidation.Valid) {
+            normalNavigationIntent = intent
+            normalNavigationSnapshot = null
+            return null
+        }
+        if (intent != normalNavigationIntent) {
+            normalNavigationIntent = intent
+            normalNavigationSnapshot = NavigationSnapshotAdapters.normal(intent, identityFactory())
+        }
+        return normalNavigationSnapshot
     }
 
     @Synchronized

@@ -1,7 +1,7 @@
 # Feature Pack platform contract
 
-Feature Packs are trusted, first-party, in-process JVM extensions for EVE Static Map Planner. Core owns the frozen
-Feature API, the Host/runtime, installation and management infrastructure, generic presentation, and platform test
+Feature Packs are trusted, first-party, in-process JVM extensions for EVE Static Map Planner. Core owns the stable
+Feature API compatibility family, the Host/runtime, installation and management infrastructure, generic presentation, and platform test
 fixtures. Pack repositories own their data acquisition, domain behavior, and Pack-specific metadata.
 
 The external `EVE-Sovereignty-Pack` and `EVE-ESI-Pack` repositories are first-party implementations. Core contains no
@@ -13,14 +13,16 @@ Feature API runtime compatibility and build-time artifact identity are deliberat
 
 ```text
 Runtime compatibility contract: EVE-Feature-API-Version: 2
-Frozen: true
-Maven artifact: dev.evestaticmapplanner:feature-api:2.0.0
+Compatibility family frozen: true
+Current Maven artifact: dev.evestaticmapplanner:feature-api:2.1.0
 Desktop application version: independent
 ```
 
 `FeatureApiVersions.current()` is the sole runtime compatibility authority and returns
 `FeatureApiVersion("2", true)`. A Pack should consume the Maven artifact as `compileOnly` and use the same coordinate
-for tests. The Host remains the only runtime owner of Feature API classes.
+for tests. The Host remains the only runtime owner of Feature API classes. Artifact `2.0.0` is the immutable release
+baseline; additive, backward-compatible navigation contracts are published as `2.1.0`. The frozen flag applies to the
+runtime compatibility-family identity, not to the Maven artifact's minor version.
 
 Feature API v2 is restart-only. The Host discovers one `FeaturePackEntrypoint`, calls `start(context)`, and closes the
 returned `FeaturePackSession` when the Pack is disabled or the application shuts down. Hot installation, hot reload,
@@ -28,7 +30,7 @@ and background-worker lifecycle contracts are not part of v2.
 
 ## Build artifact verification
 
-Core's normal verification publishes Feature API `2.0.0` only to the generated, ignored
+Core's normal verification publishes Feature API `2.1.0` only to the generated, ignored
 `feature-api/build/test-maven-repository`. The verification tasks inspect the artifact and compile an independent thin
 fixture Pack by Maven coordinate:
 
@@ -110,11 +112,14 @@ Feature API v2 adds narrow capability discovery through `FeaturePackContext.capa
 empty lookup, so existing context implementations and Packs do not need mechanical lifecycle changes. Capability
 matching uses both a canonical ID and the expected Java type; it is not a general service locator.
 
-The frozen standard keys are `dynamic-overlay`, `route-action`, and `pack-controls`. Dynamic Overlay providers continue to return
+The standard compatibility-family-2 keys are `dynamic-overlay`, `route-action`, and `pack-controls`. Dynamic Overlay providers continue to return
 immutable display-neutral snapshots; `requestRefresh()` only signals that the Host should re-read one provider.
 Overlay entries may optionally carry a bounded generic image marker anchored to a system; Packs own image acquisition and
 caching while the Host owns decoding, sector composition, pin rendering, and hover presentation. Route Actions receive a
 defensive, immutable `RouteSnapshot`, may expose a shared generic target selector, and return a synchronous display-neutral result.
+Artifact `2.1.0` adds `NavigationRouteActionProvider` as an optional subinterface for explicit authored navigation
+intent. Existing `RouteActionProvider` implementations remain valid and the Host invokes the new method only after an
+explicit capability type check.
 Selected target IDs are opaque Pack-owned values and remain Host-persisted planning state. Neither
 contract exposes Compose, coroutines, coordinates, ViewModels, executors, Core route objects, database models, Control
 DTOs, ESI, OAuth, or HTTP client types. Pack Controls expose only a cheap synchronous status snapshot, generic action
@@ -179,12 +184,14 @@ The authoritative local cross-repository acceptance mechanism is Core's existing
     -SovereigntyRepo "C:\path\to\EVE-Sovereignty-Pack"
 ```
 
-It requires clean `main` worktrees. The runner publishes Feature API `2.0.0` only to Core's generated test repository,
+It requires clean `main` worktrees. The runner publishes Feature API `2.1.0` only to Core's generated test repository,
 builds the standalone Sovereignty Pack by coordinate, clean-builds Core without the Pack, runs focused Host and
 generic presentation regressions, supplies the canonical external JAR only to the explicit integration test, and
 enforces the exactly 30-tool MCP catalog. It uses fixtures/LKG data instead of live ESI and performs no remote
 publication. The external Pack must first update only its Feature API coordinate, manifest, and version expectations
-to runtime contract 2; Feature API v2 deliberately preserves its existing business Kotlin contracts.
+to runtime contract 2; Feature API family 2 deliberately preserves its existing business Kotlin contracts. Older
+Packs compiled against artifact `2.0.0` remain compatible because the loader gates on manifest family `2`, not on the
+Maven artifact minor version, and `NavigationRouteActionProvider` is optional.
 
 Future GitHub cross-repository CI can reproduce those stages only after the Sovereignty remote exists, Feature API is
 published, and package/repository permissions are configured. Normal Core CI intentionally has no Sovereignty

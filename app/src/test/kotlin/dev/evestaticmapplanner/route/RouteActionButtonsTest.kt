@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.PackId
 import dev.evestaticmapplanner.feature.api.RouteActionStatus
 import dev.evestaticmapplanner.feature.api.RouteIdentity
@@ -63,7 +64,7 @@ class RouteActionButtonsTest {
         }
 
         onNodeWithText("Send route").assertIsDisplayed().assertIsEnabled().performClick()
-        onNodeWithText("Draft only — map and route changes stay local until you press a button below.")
+        onNodeWithText("Draft only — EVE changes only after you press a button below.")
             .assertIsDisplayed()
         waitForIdle()
         assertEquals("normal-route", invoked?.identity?.value)
@@ -95,6 +96,39 @@ class RouteActionButtonsTest {
         onNodeWithText("Send Draft to EVE").performClick()
         waitForIdle()
         assertEquals(1, invocationCount)
+    }
+
+    @Test
+    fun `navigation-aware action uses current explicit draft instead of stale calculated route`() = runComposeUiTest {
+        var invokedNavigation: NavigationSnapshot? = null
+        var calculatedInvocationCount = 0
+        val currentDraft = NavigationSnapshot(
+            RouteIdentity("current-explicit-draft"),
+            RouteKind.NORMAL,
+            1,
+            listOf(4, 6),
+            9,
+        )
+        setContent {
+            MaterialTheme {
+                NavigationRouteActionButtons(
+                    actions = listOf(action("Send Navigation to EVE", supportsNavigationIntent = true)),
+                    snapshot = snapshot(RouteKind.NORMAL),
+                    navigationSnapshot = currentDraft,
+                    selectedTargetIds = emptyMap(),
+                    onSelectTarget = { _, _ -> },
+                    onInvoke = { _, _, _ -> calculatedInvocationCount++ },
+                    onInvokeNavigation = { _, navigation, _ -> invokedNavigation = navigation },
+                )
+            }
+        }
+
+        onNodeWithText("Send Navigation to EVE").assertIsEnabled().performClick()
+        waitForIdle()
+
+        assertEquals(0, calculatedInvocationCount)
+        assertEquals("current-explicit-draft", invokedNavigation?.identity?.value)
+        assertEquals(listOf(4, 6, 9), invokedNavigation?.orderedTargetSystemIds)
     }
 
     @Test
@@ -212,6 +246,7 @@ class RouteActionButtonsTest {
         message: String? = null,
         id: String = "send",
         targetSelector: RouteActionTargetSnapshot? = null,
+        supportsNavigationIntent: Boolean = false,
     ) = RouteActionUiState(
         RouteActionKey(PackId("test.pack"), id),
         label,
@@ -221,6 +256,7 @@ class RouteActionButtonsTest {
         status,
         message,
         targetSelector,
+        supportsNavigationIntent,
     )
 
     private fun targetSelector() = RouteActionTargetSnapshot(

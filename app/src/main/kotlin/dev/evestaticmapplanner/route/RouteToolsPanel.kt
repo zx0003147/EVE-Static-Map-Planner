@@ -47,6 +47,7 @@ import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.search.SystemSearchField
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.RouteActionTargetId
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
@@ -87,10 +88,12 @@ internal fun RouteToolsPanel(
     jumpViewModel: JumpOverlayViewModel,
     routeActions: List<RouteActionUiState>,
     normalRouteSnapshot: RouteSnapshot?,
+    normalNavigationSnapshot: NavigationSnapshot?,
     capitalRouteSnapshot: RouteSnapshot?,
     selectedRouteActionTargets: Map<String, String>,
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
+    onInvokeNavigationAction: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
     onFocusSystem: (Int) -> Unit,
@@ -143,9 +146,11 @@ internal fun RouteToolsPanel(
                             viewModel,
                             routeActions,
                             normalRouteSnapshot,
+                            normalNavigationSnapshot,
                             selectedRouteActionTargets,
                             onSelectRouteActionTarget,
                             onInvokeRouteAction,
+                            onInvokeNavigationAction,
                             onOpenAnsiblexManager,
                             onOpenWormholeManager,
                         )
@@ -265,9 +270,11 @@ private fun NormalRouteSectionContent(
     viewModel: RoutePlannerViewModel,
     routeActions: List<RouteActionUiState>,
     routeSnapshot: RouteSnapshot?,
+    navigationSnapshot: NavigationSnapshot?,
     selectedRouteActionTargets: Map<String, String>,
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
+    onInvokeNavigationAction: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
 ) {
@@ -316,19 +323,24 @@ private fun NormalRouteSectionContent(
             Text(it, color = Color(0xFFFFB86C), style = MaterialTheme.typography.bodySmall)
         }
         RouteSummary(state)
-        if (state.activeRoute?.wormholeJumps?.let { it > 0 } == true && routeActions.isNotEmpty()) {
+        if (
+            state.activeRoute?.wormholeJumps?.let { it > 0 } == true &&
+            routeActions.any { !it.supportsNavigationIntent }
+        ) {
             Text(
                 "Route actions unavailable for routes containing Wormholes.",
                 color = Color(0xFFFFD166),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        RouteActionButtons(
+        NavigationRouteActionButtons(
             routeActions,
             routeSnapshot,
+            navigationSnapshot,
             selectedRouteActionTargets,
             onSelectRouteActionTarget,
             onInvokeRouteAction,
+            onInvokeNavigationAction,
         )
         RouteManagerButtons(state, onOpenAnsiblexManager, onOpenWormholeManager)
         state.userDatabaseError?.let {

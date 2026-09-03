@@ -25,6 +25,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
+import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
 import dev.evestaticmapplanner.control.AppWormholeControlAdapter
 import dev.evestaticmapplanner.control.AiSavedMarkerControlAdapter
 import dev.evestaticmapplanner.control.AiMapControlLifecycleController
@@ -320,7 +321,7 @@ private fun FrameWindowScope.ReadyApplication(
         PlanningViewCoordinator(routeViewModel, capitalViewModel)
     }
     val missionMapStateStore = remember(configuration) { MissionMapStateStore() }
-    val controlLifecycle = remember(configuration, planningViewCoordinator) {
+    val controlLifecycle = remember(configuration, planningViewCoordinator, featurePackRuntime) {
         val planningPorts = ExistingPlanningPorts(
             staticMapRepository = staticRepository,
             ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
@@ -342,6 +343,9 @@ private fun FrameWindowScope.ReadyApplication(
                     missionRenderStatePort = missionMapStateStore,
                     savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
                     wormholeControlPort = AppWormholeControlAdapter(wormholeSessionStore),
+                    missionNavigationActionPort = FeaturePackMissionNavigationActionAdapter(
+                        featurePackRuntime.routeActionHost,
+                    ),
                     wormholeConnectionIds = wormholeSessionStore.connections.map { connections ->
                         connections.mapTo(mutableSetOf()) { it.id }
                     },
@@ -486,6 +490,9 @@ private fun FrameWindowScope.ReadyApplication(
     val normalRouteSnapshot = remember(routeState.activeRoute, featurePackRuntime) {
         featurePackRuntime.routeSnapshotAdapter.normal(routeState.activeRoute)
     }
+    val normalNavigationSnapshot = remember(routeState.navigationIntent, featurePackRuntime) {
+        featurePackRuntime.routeSnapshotAdapter.normalNavigation(routeState.navigationIntent)
+    }
     val capitalRouteSnapshot = remember(capitalState.activeRoute, featurePackRuntime) {
         featurePackRuntime.routeSnapshotAdapter.capital(capitalState.activeRoute)
     }
@@ -558,8 +565,10 @@ private fun FrameWindowScope.ReadyApplication(
         systemInfoState = systemInfoState,
         routeActions = routeActions,
         normalRouteSnapshot = normalRouteSnapshot,
+        normalNavigationSnapshot = normalNavigationSnapshot,
         capitalRouteSnapshot = capitalRouteSnapshot,
         onInvokeRouteAction = featurePackRuntime.routeActionHost::invoke,
+        onInvokeNavigationAction = featurePackRuntime.routeActionHost::invokeNavigation,
         viewModel = mapViewModel,
         routeViewModel = routeViewModel,
         wormholeViewModel = wormholeViewModel,

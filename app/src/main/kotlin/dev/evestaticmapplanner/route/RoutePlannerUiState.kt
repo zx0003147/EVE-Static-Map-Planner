@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.route
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
+import dev.evestaticmapplanner.core.route.NavigationIntent
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
@@ -41,4 +42,8 @@ data class RoutePlannerUiState(
 ) {
     val isAnsiblexAvailable: Boolean get() = userDatabaseError == null
     val enabledAnsiblexCount: Int get() = ansiblexConnections.count(AnsiblexConnection::enabled)
+    val navigationIntent: NavigationIntent?
+        get() = selectedFrom?.let { start ->
+            NavigationIntent(start.id, waypoints.map(SolarSystem::id), selectedTo?.id)
+        }
 }

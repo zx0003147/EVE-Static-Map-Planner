@@ -79,6 +79,7 @@ import dev.evestaticmapplanner.control.MissionMapUiState
 import dev.evestaticmapplanner.feature.api.OverlayState
 import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
+import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.RouteActionTargetId
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
@@ -112,8 +113,10 @@ internal fun StaticMapScreen(
     systemInfoState: SystemInfoState,
     routeActions: List<RouteActionUiState>,
     normalRouteSnapshot: RouteSnapshot?,
+    normalNavigationSnapshot: NavigationSnapshot?,
     capitalRouteSnapshot: RouteSnapshot?,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
+    onInvokeNavigationAction: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
     viewModel: MapViewModel,
     routeViewModel: RoutePlannerViewModel,
     wormholeViewModel: WormholeViewModel,
@@ -169,10 +172,12 @@ internal fun StaticMapScreen(
             capitalViewModel = capitalViewModel,
             routeActions = routeActions,
             normalRouteSnapshot = normalRouteSnapshot,
+            normalNavigationSnapshot = normalNavigationSnapshot,
             capitalRouteSnapshot = capitalRouteSnapshot,
             selectedRouteActionTargets = planningViewsState.currentView.selectedRouteActionTargets,
             onSelectRouteActionTarget = planningViewCoordinator::selectRouteActionTarget,
             onInvokeRouteAction = onInvokeRouteAction,
+            onInvokeNavigationAction = onInvokeNavigationAction,
             onOpenAnsiblexManager = { showAnsiblexManager = true },
             onOpenWormholeManager = { showWormholeManager = true },
             onFocusSystem = viewModel::selectAndFocusSystem,

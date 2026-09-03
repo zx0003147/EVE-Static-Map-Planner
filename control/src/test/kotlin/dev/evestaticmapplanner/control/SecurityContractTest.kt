@@ -22,6 +22,7 @@ class SecurityContractTest {
                 "clearMissionMarkers", "fitMission", "clearMission",
                 "listViews", "getCurrentView", "createView", "renameView", "switchView", "deleteView",
                 "listWormholes", "createWormhole",
+                "listEveNavigationTargets", "sendMissionNavigationToEve",
             ),
             operations,
         )

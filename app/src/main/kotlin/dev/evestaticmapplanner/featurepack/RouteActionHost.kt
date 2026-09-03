@@ -1,6 +1,9 @@
 package dev.evestaticmapplanner.featurepack
 
 import dev.evestaticmapplanner.feature.api.PackId
+import dev.evestaticmapplanner.feature.api.NavigationActionContext
+import dev.evestaticmapplanner.feature.api.NavigationRouteActionProvider
+import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.RouteActionCapability
 import dev.evestaticmapplanner.feature.api.RouteActionContext
 import dev.evestaticmapplanner.feature.api.RouteActionDescriptor
@@ -13,6 +16,7 @@ import dev.evestaticmapplanner.feature.api.RouteActionTargetSnapshot
 import dev.evestaticmapplanner.feature.api.RouteKind
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
 import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Future
 import java.util.concurrent.RejectedExecutionException
@@ -34,6 +38,7 @@ internal data class RouteActionUiState(
     val lastStatus: RouteActionStatus? = null,
     val lastMessage: String? = null,
     val targetSelector: RouteActionTargetSnapshot? = null,
+    val supportsNavigationIntent: Boolean = false,
 ) {
     val enabled: Boolean get() = !busy && (targetSelector == null || targetSelector.options.any { it.available })
 }
@@ -107,6 +112,54 @@ class RouteActionHost(
         }
     }
 
+    /** Schedules one explicit navigation-intent action without blocking the UI caller. */
+    internal fun invokeNavigation(
+        key: RouteActionKey,
+        snapshot: NavigationSnapshot,
+        targetId: RouteActionTargetId? = null,
+    ): Boolean = scheduleNavigation(key, snapshot, targetId) != null
+
+    /** Schedules one explicit navigation-intent action and exposes its eventual Pack result. */
+    internal fun invokeNavigationWithResult(
+        key: RouteActionKey,
+        snapshot: NavigationSnapshot,
+        targetId: RouteActionTargetId? = null,
+    ): CompletableFuture<RouteActionResult>? = scheduleNavigation(key, snapshot, targetId)
+
+    private fun scheduleNavigation(
+        key: RouteActionKey,
+        snapshot: NavigationSnapshot,
+        targetId: RouteActionTargetId?,
+    ): CompletableFuture<RouteActionResult>? {
+        synchronized(this) {
+            val hosted = actions[key] ?: return null
+            if (
+                hosted.closed || hosted.busy || snapshot.kind !in hosted.descriptor.supportedRouteKinds ||
+                hosted.provider !is NavigationRouteActionProvider
+            ) return null
+            if (!isValidTarget(hosted, targetId)) return null
+            hosted.busy = true
+            hosted.lastStatus = null
+            hosted.lastMessage = null
+            publishState()
+            val invocation = ActionInvocation()
+            hosted.invocation = invocation
+            try {
+                invocation.future = executor.submit { executeNavigation(hosted, snapshot, targetId, invocation) }
+            } catch (error: RejectedExecutionException) {
+                hosted.invocation = null
+                hosted.busy = false
+                hosted.lastStatus = RouteActionStatus.FAILED
+                hosted.lastMessage = GENERIC_FAILURE_MESSAGE
+                publishState()
+                invocation.result.complete(RouteActionResult(RouteActionStatus.FAILED, GENERIC_FAILURE_MESSAGE))
+                reportFailure(hosted, "schedule-navigation", error)
+                return null
+            }
+            return invocation.result
+        }
+    }
+
     private fun execute(
         hosted: HostedAction,
         snapshot: RouteSnapshot,
@@ -118,6 +171,7 @@ class RouteActionHost(
             !hosted.closed && actions[hosted.key] === hosted && hosted.invocation === invocation
         }
         if (!shouldRun) {
+            invocation.result.complete(RouteActionResult(RouteActionStatus.FAILED, ACTION_UNAVAILABLE_MESSAGE))
             invocation.completed.countDown()
             return
         }
@@ -140,6 +194,46 @@ class RouteActionHost(
                 publishState()
             }
         }
+        invocation.result.complete(result)
+        invocation.completed.countDown()
+    }
+
+    private fun executeNavigation(
+        hosted: HostedAction,
+        snapshot: NavigationSnapshot,
+        targetId: RouteActionTargetId?,
+        invocation: ActionInvocation,
+    ) {
+        invocation.started.set(true)
+        val shouldRun = synchronized(this) {
+            !hosted.closed && actions[hosted.key] === hosted && hosted.invocation === invocation
+        }
+        if (!shouldRun) {
+            invocation.result.complete(RouteActionResult(RouteActionStatus.FAILED, ACTION_UNAVAILABLE_MESSAGE))
+            invocation.completed.countDown()
+            return
+        }
+
+        val provider = hosted.provider as NavigationRouteActionProvider
+        val result = try {
+            checkNotNull(provider.executeNavigation(NavigationActionContext(snapshot, targetId))) {
+                "Navigation Route Action provider returned a null result"
+            }
+        } catch (error: Throwable) {
+            rethrowIfFatal(error)
+            reportFailure(hosted, "execute-navigation", error)
+            RouteActionResult(RouteActionStatus.FAILED, GENERIC_FAILURE_MESSAGE)
+        }
+        synchronized(this) {
+            if (!hosted.closed && actions[hosted.key] === hosted && hosted.invocation === invocation) {
+                hosted.invocation = null
+                hosted.busy = false
+                hosted.lastStatus = result.status
+                hosted.lastMessage = result.message
+                publishState()
+            }
+        }
+        invocation.result.complete(result)
         invocation.completed.countDown()
     }
 
@@ -202,6 +296,7 @@ class RouteActionHost(
     private fun cancelAndAwait(invocation: ActionInvocation?, key: RouteActionKey) {
         if (invocation == null) return
         val cancelled = invocation.future?.cancel(true) == true
+        invocation.result.complete(RouteActionResult(RouteActionStatus.FAILED, ACTION_UNAVAILABLE_MESSAGE))
         if (cancelled && !invocation.started.get()) invocation.completed.countDown()
         if (!invocation.completed.await(CALLBACK_CLOSE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
             reportFailure(
@@ -220,6 +315,7 @@ class RouteActionHost(
                 label = hosted.descriptor.label,
                 description = hosted.descriptor.description,
                 supportedRouteKinds = hosted.descriptor.supportedRouteKinds,
+                supportsNavigationIntent = hosted.provider is NavigationRouteActionProvider,
                 targetSelector = hosted.targetSelector,
                 busy = hosted.busy,
                 lastStatus = hosted.lastStatus,
@@ -271,6 +367,7 @@ class RouteActionHost(
     private class ActionInvocation {
         val started = AtomicBoolean(false)
         val completed = CountDownLatch(1)
+        val result = CompletableFuture<RouteActionResult>()
         @Volatile var future: Future<*>? = null
     }
 
@@ -295,6 +392,7 @@ class RouteActionHost(
         const val THREAD_KEEP_ALIVE_SECONDS = 15L
         const val CALLBACK_CLOSE_TIMEOUT_MILLIS = 750L
         const val GENERIC_FAILURE_MESSAGE = "Feature Pack action failed"
+        const val ACTION_UNAVAILABLE_MESSAGE = "Feature Pack action is no longer available"
     }
 }
 

@@ -1,7 +1,7 @@
 # Feature API V1 final audit and FP-COMPAT-1 (historical baseline)
 
 > This document records the frozen V1 baseline used by the automated V1-to-V2 controlled-diff test. The current
-> contract is Feature API runtime `2` / artifact `2.0.0`; see `feature-packs.md` for current guidance. References below
+> contract is Feature API runtime compatibility family `2` / artifact `2.1.0`; see `feature-packs.md` for current guidance. References below
 > to runtime `1`, artifact `1.0.0`, and the original Sovereignty artifact are intentionally historical, not current
 > build or compatibility expectations.
 

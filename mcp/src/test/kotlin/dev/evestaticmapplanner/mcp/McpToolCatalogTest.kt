@@ -17,12 +17,12 @@ import kotlin.test.assertTrue
 
 class McpToolCatalogTest {
     @Test
-    fun `capability surface is exactly the fixed thirty tools`() {
+    fun `capability surface is exactly the fixed thirty-two tools`() {
         val client = RecordingClient()
         val definitions = McpToolCatalog.definitions(client)
         val server = createMcpServer(client)
 
-        assertEquals(30, definitions.size)
+        assertEquals(32, definitions.size)
         assertEquals(McpToolCatalog.names, definitions.map { it.tool.name })
         assertEquals(McpToolCatalog.names.toSet(), server.tools.keys)
         assertTrue(server.resources.isEmpty())
@@ -241,6 +241,56 @@ class McpToolCatalogTest {
             }
         }
     }
+
+    @Test
+    fun `EVE navigation tools require explicit Mission route and character identities`() = runBlocking {
+        val client = RecordingClient()
+        val definitions = McpToolCatalog.definitions(client).associateBy { it.tool.name }
+        val list = definitions.getValue("list_eve_navigation_targets").tool
+        val send = definitions.getValue("send_mission_navigation_to_eve")
+
+        assertTrue(list.annotations?.readOnlyHint == true)
+        assertEquals(
+            listOf("missionId", "routeId", "characterId"),
+            send.tool.inputSchema.required,
+        )
+        assertTrue(send.tool.annotations?.destructiveHint == true)
+        assertTrue(send.tool.annotations?.openWorldHint == true)
+        listOf(
+            buildJsonObject { put("missionId", "m1"); put("routeId", "r1") },
+            buildJsonObject { put("missionId", "m1"); put("characterId", "9001") },
+            buildJsonObject { put("routeId", "r1"); put("characterId", "9001") },
+        ).forEach { assertFails { send.invoke(it) } }
+
+        send.invoke(JsonObject(validArguments.getValue("send_mission_navigation_to_eve")))
+        assertEquals("send_mission_navigation_to_eve", client.called)
+    }
+
+    @Test
+    fun `EVE navigation structured rejection remains an MCP error with exact targets`() {
+        val rejected = LocalControlClientResult.Success(
+            buildJsonObject {
+                put("missionId", "m1")
+                put("routeId", "r1")
+                put("characterId", "9001")
+                put("targetSystemIds", JsonArray(listOf(JsonPrimitive(2), JsonPrimitive(3))))
+                put("status", "REJECTED")
+                put("message", "Selected character is unavailable")
+            },
+            null,
+        ).toMcpResult("send_mission_navigation_to_eve", null)
+        val succeeded = LocalControlClientResult.Success(
+            buildJsonObject { put("status", "SUCCEEDED") },
+            null,
+        ).toMcpResult("send_mission_navigation_to_eve", null)
+
+        assertTrue(rejected.isError == true)
+        assertEquals(
+            listOf("2", "3"),
+            (rejected.structuredContent?.get("targetSystemIds") as JsonArray).map { (it as JsonPrimitive).content },
+        )
+        assertFalse(succeeded.isError == true)
+    }
 }
 
 private val validArguments: Map<String, Map<String, kotlinx.serialization.json.JsonElement>> = mapOf(
@@ -262,6 +312,7 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
     "delete_view" to mapOf("viewId" to JsonPrimitive("view-2")),
     "get_active_missions" to emptyMap(),
     "get_mission" to mapOf("missionId" to JsonPrimitive("m1")),
+    "list_eve_navigation_targets" to emptyMap(),
     "begin_mission" to mapOf("title" to JsonPrimitive("Operation")),
     "focus_system" to mapOf("systemId" to JsonPrimitive(1)),
     "create_wormhole" to mapOf("fromSystemId" to JsonPrimitive(1), "toSystemId" to JsonPrimitive(2)),
@@ -290,6 +341,11 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
     "create_saved_marker" to mapOf(
         "systemId" to JsonPrimitive(30000142), "color" to JsonPrimitive("GREEN"),
         "name" to JsonPrimitive("Staging"), "notes" to JsonPrimitive("Persistent"),
+    ),
+    "send_mission_navigation_to_eve" to mapOf(
+        "missionId" to JsonPrimitive("m1"),
+        "routeId" to JsonPrimitive("r1"),
+        "characterId" to JsonPrimitive("90000001"),
     ),
 )
 
@@ -349,6 +405,7 @@ private class RecordingClient : McpMapClient {
     override suspend fun deleteView(viewId: String) = result("delete_view")
     override suspend fun getActiveMissions() = result("get_active_missions")
     override suspend fun getMission(missionId: String) = result("get_mission")
+    override suspend fun listEveNavigationTargets() = result("list_eve_navigation_targets")
     override suspend fun beginMission(title: String) = result("begin_mission")
     override suspend fun createSavedMarker(
         systemId: Int,
@@ -417,5 +474,7 @@ private class RecordingClient : McpMapClient {
     override suspend fun clearMissionMarkers(missionId: String) = result("clear_mission_markers")
     override suspend fun fitMission(missionId: String) = result("fit_mission")
     override suspend fun clearMission(missionId: String) = result("clear_mission")
+    override suspend fun sendMissionNavigationToEve(missionId: String, routeId: String, characterId: String) =
+        result("send_mission_navigation_to_eve")
     override fun close() = Unit
 }

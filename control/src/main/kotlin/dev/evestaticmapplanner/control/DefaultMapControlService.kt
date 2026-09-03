@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.control
 import dev.evestaticmapplanner.control.mission.Mission
 import dev.evestaticmapplanner.control.mission.MissionRegistry
 import dev.evestaticmapplanner.control.mission.MissionRegistryFailure
+import dev.evestaticmapplanner.control.mission.MissionRoute
 import dev.evestaticmapplanner.core.jump.EligibilityVerdict
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
@@ -33,6 +34,7 @@ class DefaultMapControlService(
     private val savedMarkerControlPort: SavedMarkerControlPort = DeniedSavedMarkerControlPort,
     private val planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
     private val wormholeControlPort: WormholeControlPort = UnavailableWormholeControlPort,
+    private val missionNavigationActionPort: MissionNavigationActionPort = UnavailableMissionNavigationActionPort,
     wormholeConnectionIds: Flow<Set<String>>? = null,
 ) : MapControlService, AutoCloseable {
     private val dispatcher = MapControlCommandDispatcher(scope)
@@ -161,6 +163,15 @@ class DefaultMapControlService(
     override suspend fun getMission(request: GetMissionRequest): ControlResult<Mission> = query(request.requestId) {
         validateRequestId(request.requestId)
         registry.get(request.missionId)
+    }
+
+    override suspend fun listEveNavigationTargets(
+        request: ListEveNavigationTargetsRequest,
+    ): ControlResult<List<EveNavigationTargetDto>> = query(request.requestId) {
+        validateRequestId(request.requestId)
+        missionNavigationActionPort.listTargets().map { target ->
+            EveNavigationTargetDto(target.characterId, target.label, target.description, target.available)
+        }
     }
 
     override suspend fun beginMission(command: BeginMissionCommand): ControlResult<MissionSummaryDto> = mutation(
@@ -445,6 +456,39 @@ class DefaultMapControlService(
         registry.clearMission(command.missionId)
         publishMissions()
         success(command.requestId, MissionMutationReceipt(command.missionId))
+    }
+
+    override suspend fun sendMissionNavigationToEve(
+        command: SendMissionNavigationToEveCommand,
+    ): ControlResult<SendMissionNavigationReceipt> = mutation(
+        "sendMissionNavigationToEve",
+        command,
+        listOf(command.missionId, command.routeId, command.characterId),
+    ) {
+        validateText("characterId", command.characterId, 120, allowBlank = false)
+        val mission = registry.get(command.missionId)
+        val route = mission.routes.singleOrNull { it.routeId == command.routeId }
+            ?: throw ControlFailure(ControlErrorCode.OBJECT_NOT_FOUND, "Mission route was not found")
+        if (route !is MissionRoute.Normal) {
+            throw ControlFailure(ControlErrorCode.INVALID_ARGUMENT, "Only Mission-owned Normal routes can be sent to EVE")
+        }
+        val intent = route.navigationIntent.validated()
+        val result = missionNavigationActionPort.send(
+            routeIdentity = "mission:${command.missionId.value}:route:${command.routeId.value}",
+            intent = intent,
+            characterId = command.characterId,
+        )
+        success(
+            command.requestId,
+            SendMissionNavigationReceipt(
+                missionId = command.missionId,
+                routeId = command.routeId,
+                characterId = command.characterId,
+                targetSystemIds = intent.waypointSystemIds + listOfNotNull(intent.destinationSystemId),
+                status = result.status,
+                message = result.message,
+            ),
+        )
     }
 
     override fun close() {

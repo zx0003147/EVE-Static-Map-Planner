@@ -8,8 +8,8 @@ import kotlin.test.assertTrue
 
 class LocalControlEndpointContractTest {
     @Test
-    fun `Control API v2 keeps wire protocol v1`() {
-        assertEquals(2, LocalControlProtocol.CONTROL_API_VERSION)
+    fun `Control API v3 keeps wire protocol v1`() {
+        assertEquals(3, LocalControlProtocol.CONTROL_API_VERSION)
         assertEquals(1, LocalControlProtocol.PROTOCOL_VERSION)
     }
 
@@ -36,8 +36,8 @@ class LocalControlEndpointContractTest {
 
         assertTrue(LocalControlOperation.allowedPaths.all { it.startsWith("/v1/") })
         assertEquals(LocalControlOperation.entries.size, LocalControlOperation.allowedPaths.size)
-        assertEquals(10, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
-        assertEquals(20, LocalControlOperation.entries.count(LocalControlOperation::mutation))
+        assertEquals(11, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
+        assertEquals(21, LocalControlOperation.entries.count(LocalControlOperation::mutation))
         val savedMarkerOperations = LocalControlOperation.entries.filter {
             it.path.contains("saved-marker") || it.serviceMethod == "getSystemMarkers"
         }

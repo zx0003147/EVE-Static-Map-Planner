@@ -8,6 +8,51 @@ import kotlin.test.assertNull
 
 class RouteActionApiTest {
     @Test
+    fun `navigation snapshot exposes only exact authored targets in order`() {
+        val waypoints = mutableListOf(2, 3, 2)
+        val snapshot = NavigationSnapshot(RouteIdentity("intent"), RouteKind.NORMAL, 1, waypoints, 4)
+        waypoints.clear()
+
+        assertEquals(1, snapshot.startSystemId)
+        assertEquals(listOf(2, 3, 2), snapshot.waypointSystemIds)
+        assertEquals(listOf(2, 3, 2, 4), snapshot.orderedTargetSystemIds)
+        assertFailsWith<UnsupportedOperationException> {
+            @Suppress("UNCHECKED_CAST")
+            (snapshot.orderedTargetSystemIds as MutableList<Int>).add(5)
+        }
+    }
+
+    @Test
+    fun `navigation snapshot accepts waypoint-only and destination-only intent`() {
+        assertEquals(
+            listOf(2, 3),
+            NavigationSnapshot(RouteIdentity("waypoints"), RouteKind.MISSION_NORMAL, 1, listOf(2, 3), null)
+                .orderedTargetSystemIds,
+        )
+        assertEquals(
+            listOf(4),
+            NavigationSnapshot(RouteIdentity("destination"), RouteKind.NORMAL, 1, emptyList(), 4)
+                .orderedTargetSystemIds,
+        )
+    }
+
+    @Test
+    fun `navigation snapshot rejects empty invalid adjacent and capital intent`() {
+        assertFailsWith<IllegalArgumentException> {
+            NavigationSnapshot(RouteIdentity("empty"), RouteKind.NORMAL, 1, emptyList(), null)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            NavigationSnapshot(RouteIdentity("same-start"), RouteKind.NORMAL, 1, listOf(1), null)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            NavigationSnapshot(RouteIdentity("same-target"), RouteKind.NORMAL, 1, listOf(2, 2), null)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            NavigationSnapshot(RouteIdentity("capital"), RouteKind.CAPITAL, 1, emptyList(), 2)
+        }
+    }
+
+    @Test
     fun `route identity validates and behaves as a value`() {
         assertEquals(RouteIdentity("route-42"), RouteIdentity("route-42"))
         assertEquals("route-42", RouteIdentity("route-42").toString())

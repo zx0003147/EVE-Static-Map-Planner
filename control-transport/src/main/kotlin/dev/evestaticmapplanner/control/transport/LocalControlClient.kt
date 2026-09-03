@@ -205,6 +205,11 @@ class LocalControlClient internal constructor(
         ids.body { put("systemId", systemId) }
     }
 
+    suspend fun listEveNavigationTargets(): LocalControlClientResult =
+        query(LocalControlOperation.EVE_NAVIGATION_TARGETS) { requestId ->
+            buildJsonObject { put("requestId", requestId) }
+        }
+
     suspend fun createWormhole(fromSystemId: Int, toSystemId: Int): LocalControlClientResult =
         mutation(LocalControlOperation.CREATE_WORMHOLE) { ids ->
             ids.body {
@@ -317,6 +322,18 @@ class LocalControlClient internal constructor(
 
     suspend fun clearMission(missionId: String): LocalControlClientResult =
         mutationWithMission(LocalControlOperation.CLEAR_MISSION, missionId)
+
+    suspend fun sendMissionNavigationToEve(
+        missionId: String,
+        routeId: String,
+        characterId: String,
+    ): LocalControlClientResult = mutation(LocalControlOperation.SEND_MISSION_NAVIGATION_TO_EVE) { ids ->
+        ids.body {
+            put("missionId", missionId)
+            put("routeId", routeId)
+            put("characterId", characterId)
+        }
+    }
 
     override fun close() {
         synchronized(lifecycleLock) {
@@ -544,6 +561,7 @@ class LocalControlClient internal constructor(
         }
 
         fun clientTimeout(operation: LocalControlOperation): Duration = when (operation) {
+            LocalControlOperation.SEND_MISSION_NAVIGATION_TO_EVE -> Duration.ofSeconds(302)
             LocalControlOperation.CAPITAL_ROUTE, LocalControlOperation.SHOW_CAPITAL_ROUTE -> Duration.ofSeconds(32)
             LocalControlOperation.NORMAL_ROUTE, LocalControlOperation.SHOW_NORMAL_ROUTE,
             LocalControlOperation.SHOW_JUMP_RANGE -> Duration.ofSeconds(17)

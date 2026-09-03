@@ -320,6 +320,75 @@ class DefaultMapControlServiceTest {
             fixture.close()
         }
     }
+
+    @Test
+    fun `Mission Normal navigation sends only exact authored targets to explicit character`() = runTest {
+        val navigation = FakeMissionNavigationPort()
+        val fixture = Fixture(this, navigation)
+        try {
+            val missionId = fixture.begin().value.missionId
+            val shown = fixture.service.showNormalRoute(
+                ShowNormalRouteCommand(
+                    requestId = "show-send",
+                    idempotencyKey = "show-send",
+                    missionId = missionId,
+                    startSystemId = 1,
+                    destinationSystemId = 3,
+                    useAnsiblex = true,
+                    useWormholes = true,
+                    waypointSystemIds = listOf(2),
+                ),
+            ).success()
+            val planningCallsBeforeSend = fixture.routes.normalIntentCalls
+
+            val sent = fixture.service.sendMissionNavigationToEve(
+                SendMissionNavigationToEveCommand(
+                    "send", "send", missionId, shown.value.routeId, "90000001",
+                ),
+            ).success()
+
+            assertEquals(listOf(2, 3), sent.value.targetSystemIds)
+            assertEquals(NavigationActionExecutionStatus.SUCCEEDED, sent.value.status)
+            assertEquals("90000001", sent.value.characterId)
+            assertEquals(NavigationIntent(1, listOf(2), 3), navigation.sent.single().intent)
+            assertEquals("90000001", navigation.sent.single().characterId)
+            assertTrue(navigation.sent.single().routeIdentity.contains(shown.value.routeId.value))
+            assertEquals(planningCallsBeforeSend, fixture.routes.normalIntentCalls, "sending must not recalculate")
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `navigation target listing is safe and Capital or missing route sends are rejected`() = runTest {
+        val navigation = FakeMissionNavigationPort()
+        val fixture = Fixture(this, navigation)
+        try {
+            val targets = fixture.service.listEveNavigationTargets(ListEveNavigationTargetsRequest("targets")).success()
+            assertEquals(listOf("90000001"), targets.value.map(EveNavigationTargetDto::characterId))
+
+            val missionId = fixture.begin().value.missionId
+            val capital = fixture.service.showCapitalRoute(
+                ShowCapitalRouteCommand("capital", "capital", missionId, 1, 2, 5.0),
+            ).success()
+            val rejectedCapital = fixture.service.sendMissionNavigationToEve(
+                SendMissionNavigationToEveCommand(
+                    "send-capital", "send-capital", missionId, capital.value.routeId, "90000001",
+                ),
+            ).failure()
+            val missing = fixture.service.sendMissionNavigationToEve(
+                SendMissionNavigationToEveCommand(
+                    "send-missing", "send-missing", missionId, MissionRouteId("missing"), "90000001",
+                ),
+            ).failure()
+
+            assertEquals(ControlErrorCode.INVALID_ARGUMENT, rejectedCapital.error.code)
+            assertEquals(ControlErrorCode.OBJECT_NOT_FOUND, missing.error.code)
+            assertTrue(navigation.sent.isEmpty())
+        } finally {
+            fixture.close()
+        }
+    }
 }
 
 private data class UserStateSentinel(
@@ -330,7 +399,10 @@ private data class UserStateSentinel(
     val savedMarkers: List<String> = listOf("saved"),
 )
 
-private class Fixture(scope: kotlinx.coroutines.CoroutineScope) {
+private class Fixture(
+    scope: kotlinx.coroutines.CoroutineScope,
+    missionNavigationActionPort: MissionNavigationActionPort = UnavailableMissionNavigationActionPort,
+) {
     val routes = FakeRoutePort()
     val viewport = FakeViewportPort()
     var rendered: List<Mission> = emptyList()
@@ -349,13 +421,33 @@ private class Fixture(scope: kotlinx.coroutines.CoroutineScope) {
         },
         viewport,
         MissionRenderStatePort { rendered = it },
-        scope,
+        scope = scope,
+        missionNavigationActionPort = missionNavigationActionPort,
     )
 
     suspend fun begin(title: String = "Mission", key: String = "begin") =
         service.beginMission(BeginMissionCommand("begin-$key", key, title)).success()
 
     fun close() = service.close()
+}
+
+private class FakeMissionNavigationPort : MissionNavigationActionPort {
+    data class Send(val routeIdentity: String, val intent: NavigationIntent, val characterId: String)
+
+    val sent = mutableListOf<Send>()
+
+    override suspend fun listTargets() = listOf(
+        NavigationActionTargetDto("90000001", "Pilot", "Character ID: 90000001", true),
+    )
+
+    override suspend fun send(
+        routeIdentity: String,
+        intent: NavigationIntent,
+        characterId: String,
+    ): NavigationActionPortResult {
+        sent += Send(routeIdentity, intent, characterId)
+        return NavigationActionPortResult(NavigationActionExecutionStatus.SUCCEEDED, "Sent")
+    }
 }
 
 private class FakeSystemPort : SystemReadPort {

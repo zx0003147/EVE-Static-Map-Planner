@@ -7,6 +7,7 @@ import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.UniverseDistanceCalculator
 import dev.evestaticmapplanner.core.route.CapitalRouteLeg
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.core.route.NavigationIntent
 import dev.evestaticmapplanner.core.route.RouteConnectionId
 import dev.evestaticmapplanner.core.route.RouteEdge
 import dev.evestaticmapplanner.core.route.RouteEdgeId
@@ -87,6 +88,28 @@ class RouteSnapshotAdaptersTest {
         assertNotEquals(first?.identity, changed?.identity)
         adapter.normal(null)
         assertNotEquals(first?.identity, adapter.normal(firstRoute)?.identity)
+    }
+
+    @Test
+    fun `navigation adapter follows current draft independently of stale calculated route`() {
+        val sequence = AtomicInteger()
+        val adapter = InteractiveRouteSnapshotAdapter { RouteIdentity("intent-${sequence.incrementAndGet()}") }
+        val staleCalculated = adapter.normal(
+            normalRoute(listOf(edge(1, 9, RouteEdgeType.ANSIBLEX), edge(9, 4, RouteEdgeType.WORMHOLE))),
+        )
+        val current = adapter.normalNavigation(NavigationIntent(1, listOf(2, 3), 4))
+
+        assertNull(staleCalculated, "calculated Wormhole route remains unsupported by the legacy snapshot")
+        assertEquals(listOf(2, 3, 4), current?.orderedTargetSystemIds)
+        assertEquals(1, current?.startSystemId)
+        assertEquals(listOf(2, 3), current?.waypointSystemIds)
+        assertEquals(4, current?.destinationSystemId)
+        assertSame(current, adapter.normalNavigation(NavigationIntent(1, listOf(2, 3), 4)))
+        assertNotEquals(
+            current?.identity,
+            adapter.normalNavigation(NavigationIntent(1, listOf(5), null))?.identity,
+        )
+        assertNull(adapter.normalNavigation(NavigationIntent(1)))
     }
 
     @Test

@@ -127,6 +127,28 @@ data class PlanningViewDto(
     val current: Boolean,
 )
 
+enum class NavigationActionExecutionStatus {
+    SUCCEEDED,
+    REJECTED,
+    FAILED,
+}
+
+data class EveNavigationTargetDto(
+    val characterId: String,
+    val label: String,
+    val description: String?,
+    val available: Boolean,
+)
+
+data class SendMissionNavigationReceipt(
+    val missionId: MissionId,
+    val routeId: MissionRouteId,
+    val characterId: String,
+    val targetSystemIds: List<Int>,
+    val status: NavigationActionExecutionStatus,
+    val message: String?,
+)
+
 data class MissionRouteReceipt(
     val missionId: MissionId,
     val routeId: MissionRouteId,
@@ -229,6 +251,7 @@ data class ListViewsRequest(override val requestId: String) : QueryRequest
 data class GetCurrentViewRequest(override val requestId: String) : QueryRequest
 data class GetActiveMissionsRequest(override val requestId: String, val viewId: String? = null) : QueryRequest
 data class GetMissionRequest(override val requestId: String, val missionId: MissionId) : QueryRequest
+data class ListEveNavigationTargetsRequest(override val requestId: String) : QueryRequest
 
 data class BeginMissionCommand(
     override val requestId: String,
@@ -356,6 +379,13 @@ data class ClearMissionCommand(
     override val requestId: String,
     override val idempotencyKey: String,
     val missionId: MissionId,
+) : MutationCommand
+data class SendMissionNavigationToEveCommand(
+    override val requestId: String,
+    override val idempotencyKey: String,
+    val missionId: MissionId,
+    val routeId: MissionRouteId,
+    val characterId: String,
 ) : MutationCommand
 
 object ControlLimits {

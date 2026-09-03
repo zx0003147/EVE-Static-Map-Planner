@@ -12,6 +12,7 @@ $script:StageNumber = 0
 $script:StageCount = 8
 $script:GradleInvocationCount = 0
 $script:StartedAt = [System.Diagnostics.Stopwatch]::StartNew()
+$featureApiArtifactVersion = "2.1.0"
 
 function Write-Stage {
     param([Parameter(Mandatory = $true)][string]$Message)
@@ -244,7 +245,7 @@ try {
     Write-Host "Core:        $coreBranch $coreHead"
     Write-Host "Sovereignty: $sovBranch $sovHead"
 
-    Write-Stage "Publish and verify frozen Feature API v2 in Core's generated test Maven repository"
+    Write-Stage "Publish and verify Feature API $featureApiArtifactVersion in runtime compatibility family 2"
     Invoke-Gradle -Repository $coreRepo -Arguments @(
         ":feature-api:clean",
         ":feature-api:verifyFeatureApiPublication",
@@ -252,8 +253,13 @@ try {
         "--tests", "dev.evestaticmapplanner.feature.api.FeaturePackCompatibilityTest"
     )
     $featureApiRepository = Join-Path $coreRepo "feature-api\build\test-maven-repository"
-    $featureApiVersionDirectory = Join-Path $featureApiRepository "dev\evestaticmapplanner\feature-api\2.0.0"
-    foreach ($artifact in @("feature-api-2.0.0.jar", "feature-api-2.0.0-sources.jar", "feature-api-2.0.0.pom", "feature-api-2.0.0.module")) {
+    $featureApiVersionDirectory = Join-Path $featureApiRepository "dev\evestaticmapplanner\feature-api\$featureApiArtifactVersion"
+    foreach ($artifact in @(
+        "feature-api-$featureApiArtifactVersion.jar",
+        "feature-api-$featureApiArtifactVersion-sources.jar",
+        "feature-api-$featureApiArtifactVersion.pom",
+        "feature-api-$featureApiArtifactVersion.module"
+    )) {
         if (-not (Test-Path -LiteralPath (Join-Path $featureApiVersionDirectory $artifact) -PathType Leaf)) {
             throw "Feature API publication is missing $artifact under $featureApiVersionDirectory"
         }
@@ -265,6 +271,7 @@ try {
     Write-Stage "Build and test Sovereignty independently from Feature API Maven coordinates"
     Invoke-Gradle -Repository $sovereigntyRepoPath -Arguments @(
         "-PfeatureApiRepository=$featureApiRepository",
+        "-PfeatureApiArtifactVersion=$featureApiArtifactVersion",
         "clean",
         "check",
         "packageExternalFeaturePack"
@@ -345,7 +352,7 @@ try {
     $script:StartedAt.Stop()
     Write-Host ""
     Write-Host "PASS - repeatable cross-repository Feature Pack acceptance" -ForegroundColor Green
-    Write-Host "Feature API: dev.evestaticmapplanner:feature-api:2.0.0 (runtime contract 2, frozen)"
+    Write-Host "Feature API: dev.evestaticmapplanner:feature-api:$featureApiArtifactVersion (runtime compatibility family 2)"
     Write-Host "Pack: sovereignty.pack 0.2.0; required API 2; publisher/name verified"
     Write-Host "Host integration: API 2; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info registered and unregistered"
     Write-Host "No-Pack: no ClassLoader, storage, Public ESI, or worker"

@@ -18,7 +18,7 @@ exclude intel, killboards, application auto-update, signing, Microsoft Store/MSI
 - `control-transport`: Transport-neutral control request and response contracts.
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
-- `feature-api`: Frozen Feature API v2 contracts and generic external Pack test fixture.
+- `feature-api`: Feature API compatibility family 2 contracts (current artifact `2.1.0`) and generic external Pack test fixture.
 - `mcp`: Core-owned MCP server and its fixed 30-tool catalog, including View control, session Wormhole read/create, and permission-gated Saved Marker read/create.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 - `shared-client`: Compose-independent Shared Map protocol, HTTPS client, Workspace session, polling, and secure credential contracts.
@@ -28,7 +28,7 @@ exclude intel, killboards, application auto-update, signing, Microsoft Store/MSI
 Sovereignty and ESI are first-party external Feature Packs maintained in separate repositories. Core does not contain
 or bundle either production implementation.
 
-- Core owns the frozen Feature API v2 contract and the Feature Pack Host/runtime.
+- Core owns Feature API runtime compatibility family 2, the current `2.1.0` artifact, and the Feature Pack Host/runtime.
 - On Windows, Packs are installed below
   `%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\<pack-id>\pack.jar`.
 - Core validates manifest compatibility before creating a Pack ClassLoader.
@@ -86,8 +86,9 @@ affected current and Mission Normal Routes without recalculating them, while unr
 jump ranges, Capital Routes, and Jump Range calculations remain unchanged.
 
 AI/MCP can list and create Wormholes, but cannot update, remove, delete, clear, replace, import, export, or persist
-them. Feature API v2 remains frozen: Route Actions are unavailable for user routes containing Wormholes because the
-API has no Wormhole route-segment kind.
+them. The legacy RouteSnapshot contract in Feature API family 2 remains unchanged and has no Wormhole route-segment
+kind. Artifact `2.1.0` adds an optional navigation-intent provider capability without changing existing Route Action
+providers or the runtime compatibility family.
 
 ## Shared Map and Shared Markers
 

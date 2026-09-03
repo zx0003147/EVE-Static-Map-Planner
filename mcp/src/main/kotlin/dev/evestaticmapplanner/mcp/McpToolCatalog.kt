@@ -31,10 +31,10 @@ internal object McpToolCatalog {
     val names = listOf(
         "search_system", "get_system_info", "get_system_markers", "list_wormholes", "calculate_normal_route", "calculate_capital_route",
         "list_views", "get_current_view", "create_view", "rename_view", "switch_view", "delete_view",
-        "get_active_missions", "get_mission", "begin_mission", "focus_system", "create_wormhole", "show_normal_route",
+        "get_active_missions", "get_mission", "list_eve_navigation_targets", "begin_mission", "focus_system", "create_wormhole", "show_normal_route",
         "show_capital_route", "remove_mission_route", "clear_mission_routes", "show_jump_range",
         "remove_jump_range", "clear_mission_jump_ranges", "add_mission_marker", "remove_mission_marker",
-        "clear_mission_markers", "fit_mission", "clear_mission", "create_saved_marker",
+        "clear_mission_markers", "fit_mission", "clear_mission", "create_saved_marker", "send_mission_navigation_to_eve",
     )
 
     fun definitions(client: McpMapClient): List<McpToolDefinition> = listOf(
@@ -192,6 +192,17 @@ internal object McpToolCatalog {
         ) { arguments ->
             val input = StrictArguments(arguments, setOf("missionId"), setOf("missionId"))
             client.getMission(input.opaqueId("missionId"))
+        },
+        queryTool(
+            "list_eve_navigation_targets",
+            "List connected EVE characters that can be explicitly selected for Mission Normal navigation sending. " +
+                "This exposes safe character identity and availability only; it never sends or changes navigation.",
+            schema(emptyList()),
+            schema(listOf("targets"), "targets" to arrayProperty()),
+            "targets",
+        ) { arguments ->
+            StrictArguments(arguments, emptySet(), emptySet())
+            client.listEveNavigationTargets()
         },
         commandTool(
             "begin_mission",
@@ -393,6 +404,29 @@ internal object McpToolCatalog {
                 tags = input.optionalEnumArray("tags", SAVED_MARKER_TAGS),
             )
         },
+        commandTool(
+            "send_mission_navigation_to_eve",
+            "Replace one explicitly selected connected EVE character's navigation with the exact explicit targets " +
+                "owned by one identified Mission Normal route. Call only after the user explicitly asks to send that " +
+                "route to EVE. Never use for manual drafts or Capital routes; missionId, routeId, and characterId are required.",
+            schema(
+                listOf("missionId", "routeId", "characterId"),
+                "missionId" to opaqueIdProperty(),
+                "routeId" to opaqueIdProperty(),
+                "characterId" to opaqueIdProperty(),
+            ),
+            objectOutput("missionId", "routeId", "characterId", "targetSystemIds", "status", "message"),
+            destructive = true,
+            openWorld = true,
+        ) { arguments ->
+            val fields = setOf("missionId", "routeId", "characterId")
+            val input = StrictArguments(arguments, fields, fields)
+            client.sendMissionNavigationToEve(
+                input.opaqueId("missionId"),
+                input.opaqueId("routeId"),
+                input.opaqueId("characterId"),
+            )
+        },
     ).also { check(it.map { definition -> definition.tool.name } == names) }
 
     fun register(server: Server, client: McpMapClient) {
@@ -445,12 +479,13 @@ internal object McpToolCatalog {
         input: ToolSchema,
         output: ToolSchema,
         destructive: Boolean = true,
+        openWorld: Boolean = false,
         invoke: suspend (JsonObject) -> LocalControlClientResult,
     ) = McpToolDefinition(
         Tool(
             name = name, inputSchema = input, description = description, outputSchema = output,
             annotations = ToolAnnotations(
-                readOnlyHint = false, destructiveHint = destructive, idempotentHint = false, openWorldHint = false,
+                readOnlyHint = false, destructiveHint = destructive, idempotentHint = false, openWorldHint = openWorld,
             ),
         ),
         invoke,
@@ -502,7 +537,7 @@ private class StrictArguments(
     }
 }
 
-private fun LocalControlClientResult.toMcpResult(toolName: String, listResultKey: String?): CallToolResult = when (this) {
+internal fun LocalControlClientResult.toMcpResult(toolName: String, listResultKey: String?): CallToolResult = when (this) {
     is LocalControlClientResult.Success -> {
         val resultValue = value.toPublicToolValue(toolName)
         val structured = when {
@@ -515,7 +550,8 @@ private fun LocalControlClientResult.toMcpResult(toolName: String, listResultKey
         }
         CallToolResult(
             content = listOf(TextContent(McpTextFallbackFormatter.format(toolName, structured))),
-            isError = false,
+            isError = toolName == "send_mission_navigation_to_eve" &&
+                (structured["status"] as? JsonPrimitive)?.content != "SUCCEEDED",
             structuredContent = structured,
         )
     }

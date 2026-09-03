@@ -24,7 +24,7 @@ class PortableDistributionAuditTest {
     fun `valid portable distribution has one root and complete runtime`() {
         val zip = createPortableZip()
         try {
-            val result = PortableDistributionAudit.audit(zip, "0.6.0", mcpJars)
+            val result = PortableDistributionAudit.audit(zip, "0.6.0", "2.1.0", mcpJars)
             assertEquals(mcpJars, result.mcpJarNames)
             assertTrue(result.fileCount >= 10)
             assertTrue(result.uncompressedSize > 0)
@@ -40,7 +40,7 @@ class PortableDistributionAuditTest {
             val zip = createPortableZip(forbidden)
             try {
                 assertFailsWith<IllegalArgumentException> {
-                    PortableDistributionAudit.audit(zip, "0.6.0", mcpJars)
+                    PortableDistributionAudit.audit(zip, "0.6.0", "2.1.0", mcpJars)
                 }
             } finally {
                 Files.deleteIfExists(zip)
@@ -58,7 +58,7 @@ class PortableDistributionAuditTest {
             "${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}.exe" to "stable",
             "runtime/lib/modules" to "modules",
             "app/app-0.6.0-hash.jar" to "app",
-            "app/feature-api-2.0.0-hash.jar" to "api",
+            "app/feature-api-2.1.0-hash.jar" to "api",
             "app/skiko-awt-runtime-windows-x64-1.jar" to "skiko",
             "app/mcp/mcp-0.6.0.jar" to "mcp-main",
             "app/mcp/control-0.6.0.jar" to "control",

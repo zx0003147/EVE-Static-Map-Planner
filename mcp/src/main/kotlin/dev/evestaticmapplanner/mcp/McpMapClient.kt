@@ -42,6 +42,7 @@ internal interface McpMapClient : AutoCloseable {
     suspend fun getActiveMissions(): LocalControlClientResult
     suspend fun getActiveMissions(viewId: String?): LocalControlClientResult = getActiveMissions()
     suspend fun getMission(missionId: String): LocalControlClientResult
+    suspend fun listEveNavigationTargets(): LocalControlClientResult = unsupportedEveNavigationClientResult()
     suspend fun beginMission(title: String): LocalControlClientResult
     suspend fun beginMission(title: String, viewId: String?): LocalControlClientResult = beginMission(title)
     suspend fun createView(label: String?): LocalControlClientResult = unsupportedViewClientResult()
@@ -121,6 +122,11 @@ internal interface McpMapClient : AutoCloseable {
     suspend fun clearMissionMarkers(missionId: String): LocalControlClientResult
     suspend fun fitMission(missionId: String): LocalControlClientResult
     suspend fun clearMission(missionId: String): LocalControlClientResult
+    suspend fun sendMissionNavigationToEve(
+        missionId: String,
+        routeId: String,
+        characterId: String,
+    ): LocalControlClientResult = unsupportedEveNavigationClientResult()
 }
 
 internal class LocalMcpMapClient(
@@ -158,6 +164,7 @@ internal class LocalMcpMapClient(
     override suspend fun getActiveMissions() = client.getActiveMissions()
     override suspend fun getActiveMissions(viewId: String?) = client.getActiveMissions(viewId)
     override suspend fun getMission(missionId: String) = client.getMission(missionId)
+    override suspend fun listEveNavigationTargets() = client.listEveNavigationTargets()
     override suspend fun beginMission(title: String) = client.beginMission(title)
     override suspend fun beginMission(title: String, viewId: String?) = client.beginMission(title, viewId)
     override suspend fun createView(label: String?) = client.createView(label)
@@ -234,6 +241,8 @@ internal class LocalMcpMapClient(
     override suspend fun clearMissionMarkers(missionId: String) = client.clearMissionMarkers(missionId)
     override suspend fun fitMission(missionId: String) = client.fitMission(missionId)
     override suspend fun clearMission(missionId: String) = client.clearMission(missionId)
+    override suspend fun sendMissionNavigationToEve(missionId: String, routeId: String, characterId: String) =
+        client.sendMissionNavigationToEve(missionId, routeId, characterId)
     override fun close() = client.close()
 }
 
@@ -255,5 +264,12 @@ private fun unsupportedWaypointClientResult() = LocalControlClientResult.Failure
     dev.evestaticmapplanner.control.transport.LocalControlClientError(
         dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.INVALID_ARGUMENT,
         "Ordered Waypoints are not supported by this client",
+    ),
+)
+
+private fun unsupportedEveNavigationClientResult() = LocalControlClientResult.Failure(
+    dev.evestaticmapplanner.control.transport.LocalControlClientError(
+        dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.APP_NOT_READY,
+        "EVE navigation sending is unavailable",
     ),
 )

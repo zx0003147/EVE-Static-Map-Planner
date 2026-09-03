@@ -48,7 +48,7 @@ class WormholeTransportTest {
         }
 
         assertEquals(1, LocalControlProtocol.PROTOCOL_VERSION)
-        assertEquals(2, LocalControlProtocol.CONTROL_API_VERSION)
+        assertEquals(3, LocalControlProtocol.CONTROL_API_VERSION)
     }
 
     @Test

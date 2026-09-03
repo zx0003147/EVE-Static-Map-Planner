@@ -166,6 +166,39 @@ interface PlanningViewControlPort {
     suspend fun deleteView(viewId: String): PlanningViewDto
 }
 
+data class NavigationActionTargetDto(
+    val characterId: String,
+    val label: String,
+    val description: String?,
+    val available: Boolean,
+)
+
+data class NavigationActionPortResult(
+    val status: NavigationActionExecutionStatus,
+    val message: String?,
+)
+
+/** Generic application boundary for sending one Mission-owned Normal navigation intent. */
+interface MissionNavigationActionPort {
+    suspend fun listTargets(): List<NavigationActionTargetDto>
+    suspend fun send(routeIdentity: String, intent: NavigationIntent, characterId: String): NavigationActionPortResult
+}
+
+object UnavailableMissionNavigationActionPort : MissionNavigationActionPort {
+    override suspend fun listTargets(): List<NavigationActionTargetDto> = unavailable()
+
+    override suspend fun send(
+        routeIdentity: String,
+        intent: NavigationIntent,
+        characterId: String,
+    ): NavigationActionPortResult = unavailable()
+
+    private fun unavailable(): Nothing = throw ControlPortFailure(
+        ControlErrorCode.APP_NOT_READY,
+        "EVE navigation sending is unavailable",
+    )
+}
+
 /** Compatibility fallback for hosts that have not yet exposed multiple Views. */
 object SinglePlanningViewControlPort : PlanningViewControlPort {
     private val view = PlanningViewDto("view-1", "View 1", true)

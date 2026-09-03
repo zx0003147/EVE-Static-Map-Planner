@@ -1,6 +1,9 @@
 package dev.evestaticmapplanner.featurepack
 
 import dev.evestaticmapplanner.feature.api.PackId
+import dev.evestaticmapplanner.feature.api.NavigationActionContext
+import dev.evestaticmapplanner.feature.api.NavigationRouteActionProvider
+import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.RouteActionContext
 import dev.evestaticmapplanner.feature.api.RouteActionDescriptor
 import dev.evestaticmapplanner.feature.api.RouteActionProvider
@@ -242,6 +245,48 @@ class RouteActionHostTest {
             registration.requestTargetRefresh()
             await { host.state.value.single().targetSelector?.options?.single()?.available == false }
             assertFalse(host.invoke(key, snapshot(RouteKind.NORMAL), targetId))
+        }
+    }
+
+    @Test
+    fun `navigation-aware action receives exact explicit targets and result future`() {
+        RouteActionHost().use { host ->
+            val seen = AtomicReference<NavigationSnapshot>()
+            val provider = object : NavigationRouteActionProvider {
+                override fun descriptor() = RouteActionDescriptor(
+                    "send-navigation",
+                    "Send Navigation",
+                    null,
+                    setOf(RouteKind.NORMAL, RouteKind.MISSION_NORMAL),
+                    targetSelectorId = "send-target",
+                )
+
+                override fun targets() = targets(available = true)
+
+                override fun execute(context: RouteActionContext) =
+                    RouteActionResult(RouteActionStatus.REJECTED, "Calculated routes are not accepted")
+
+                override fun executeNavigation(context: NavigationActionContext): RouteActionResult {
+                    seen.set(context.navigation)
+                    return RouteActionResult(RouteActionStatus.SUCCEEDED, "Sent")
+                }
+            }
+            host.scopedCapability(PackId("test.pack")).register(provider)
+            val key = host.state.value.single().key
+            val navigation = NavigationSnapshot(
+                RouteIdentity("current-draft"),
+                RouteKind.MISSION_NORMAL,
+                30_000_001,
+                listOf(30_000_003, 30_000_004),
+                30_000_005,
+            )
+
+            val result = host.invokeNavigationWithResult(key, navigation, RouteActionTargetId("42"))!!.get(2, TimeUnit.SECONDS)
+
+            assertEquals(RouteActionStatus.SUCCEEDED, result.status)
+            assertEquals(listOf(30_000_003, 30_000_004, 30_000_005), seen.get().orderedTargetSystemIds)
+            assertFalse(seen.get().startSystemId in seen.get().orderedTargetSystemIds)
+            assertTrue(host.state.value.single().supportsNavigationIntent)
         }
     }
 

@@ -158,6 +158,9 @@ val verifyFeatureApiPublication by tasks.registering {
                 "dev/evestaticmapplanner/feature/api/DynamicOverlayCapability.class",
                 "dev/evestaticmapplanner/feature/api/OverlayProvider.class",
                 "dev/evestaticmapplanner/feature/api/RouteActionCapability.class",
+                "dev/evestaticmapplanner/feature/api/NavigationActionContext.class",
+                "dev/evestaticmapplanner/feature/api/NavigationRouteActionProvider.class",
+                "dev/evestaticmapplanner/feature/api/NavigationSnapshot.class",
                 "dev/evestaticmapplanner/feature/api/RouteSnapshot.class",
                 "dev/evestaticmapplanner/feature/api/SystemInfoProvider.class",
             )

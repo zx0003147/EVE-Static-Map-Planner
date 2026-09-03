@@ -31,7 +31,7 @@ class EsiPackIntegrationTest {
             val attributes = jar.manifest.mainAttributes
             assertEquals("esi.pack", attributes.getValue(FeaturePackJarManifest.PACK_ID))
             assertEquals("ESI Pack", attributes.getValue(FeaturePackJarManifest.DISPLAY_NAME))
-            assertEquals("1.0.0", attributes.getValue(FeaturePackJarManifest.VERSION))
+            assertEquals("1.1.0", attributes.getValue(FeaturePackJarManifest.VERSION))
             assertEquals("EVE Static Map Planner", attributes.getValue(FeaturePackJarManifest.PUBLISHER))
             assertEquals(
                 FeatureApiVersions.current().identifier,
@@ -83,18 +83,16 @@ class EsiPackIntegrationTest {
                 assertTrue(overlay.entries.isEmpty())
 
                 val actions = runtime.routeActionHost.state.value
-                assertEquals(2, actions.size)
+                assertEquals(1, actions.size)
                 assertEquals(setOf("esi.pack"), actions.map { it.key.packId.value }.toSet())
-                assertEquals(
-                    listOf("send-to-eve", "set-eve-destination"),
-                    actions.map { it.key.actionId },
+                assertEquals(listOf("send-to-eve"), actions.map { it.key.actionId })
+                assertEquals(listOf("Send Navigation to EVE"), actions.map { it.label })
+                assertTrue(
+                    actions.single().supportedRouteKinds == setOf(RouteKind.NORMAL, RouteKind.MISSION_NORMAL),
                 )
-                assertEquals(
-                    listOf("Send Draft to EVE", "Set EVE Destination"),
-                    actions.map { it.label },
-                )
-                assertTrue(actions.all { it.supportedRouteKinds == setOf(RouteKind.NORMAL) })
-                assertEquals(2, actionsFor(runtime, RouteKind.NORMAL).size)
+                assertTrue(actions.single().supportsNavigationIntent)
+                assertEquals(1, actionsFor(runtime, RouteKind.NORMAL).size)
+                assertEquals(1, actionsFor(runtime, RouteKind.MISSION_NORMAL).size)
                 assertTrue(actionsFor(runtime, RouteKind.CAPITAL).isEmpty())
                 assertTrue(actions.all { it.targetSelector?.label == "EVE Character" })
                 assertTrue(actions.all { it.targetSelector?.options?.isEmpty() == true })

@@ -25,6 +25,7 @@ internal object McpTextFallbackFormatter {
             "calculate_capital_route" -> formatRoute(structuredContent, "CAPITAL", "Route calculated.")
             "get_active_missions" -> formatActiveMissions(structuredContent)
             "get_mission" -> formatMission(structuredContent)
+            "list_eve_navigation_targets" -> formatEveNavigationTargets(structuredContent)
             "begin_mission" -> formatMutation("Mission created successfully.", structuredContent)
             "focus_system" -> formatMutation("Map focused successfully.", structuredContent)
             "create_wormhole" -> formatCreatedWormhole(structuredContent)
@@ -40,6 +41,7 @@ internal object McpTextFallbackFormatter {
             "fit_mission" -> formatMutation("Map fitted to mission successfully.", structuredContent)
             "clear_mission" -> formatMutation("Mission cleared successfully.", structuredContent)
             "create_saved_marker" -> formatCreatedSavedMarker(structuredContent)
+            "send_mission_navigation_to_eve" -> formatSentMissionNavigation(structuredContent)
             else -> formatGeneric(toolName, structuredContent)
         },
     )
@@ -159,6 +161,33 @@ internal object McpTextFallbackFormatter {
             appendField("Created by", marker.text("createdBy"))
         }.trimEnd()
     }
+
+    private fun formatEveNavigationTargets(content: JsonObject): String {
+        val targets = content.array("targets")
+        if (targets.isEmpty()) return "No connected EVE navigation targets are available."
+        return buildString {
+            appendLine("Found ${targets.size} EVE navigation targets.")
+            targets.forEach { element ->
+                val target = element as? JsonObject ?: return@forEach
+                appendLine()
+                appendField("Character", target.text("label"))
+                appendField("Character ID", target.text("characterId"))
+                appendField("Available", target.text("available"))
+                appendField("Details", target.text("description"))
+            }
+        }.trimEnd()
+    }
+
+    private fun formatSentMissionNavigation(content: JsonObject): String = buildString {
+        appendLine(if (content.text("status") == "SUCCEEDED") "EVE navigation replaced successfully." else "EVE navigation was not confirmed.")
+        appendLine()
+        appendField("Status", content.text("status"))
+        appendField("Message", content.text("message"))
+        appendField("Mission ID", content.text("missionId"))
+        appendField("Route ID", content.text("routeId"))
+        appendField("Character ID", content.text("characterId"))
+        appendField("Explicit target count", content.array("targetSystemIds").size.toString())
+    }.trimEnd()
 
     private fun formatWormholes(content: JsonObject): String {
         val wormholes = content.array("wormholes")
