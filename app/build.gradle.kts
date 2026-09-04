@@ -627,7 +627,7 @@ val verifyPortableZip by tasks.registering {
                 appendLine("main_file_count=${archiveAudit.fileCount}")
                 appendLine("main_sha256=${archiveAudit.sha256}")
                 appendLine("esi_pack_version=1.1.0")
-                appendLine("sovereignty_pack_version=0.2.0")
+                appendLine("sovereignty_pack_version=0.2.1")
                 appendLine("feature_api_version=$featureApiArtifactVersion")
                 appendLine("msi_artifact=REMOVED")
             },
