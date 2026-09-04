@@ -3,6 +3,9 @@ package dev.evestaticmapplanner.shared
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,15 +15,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -37,6 +34,13 @@ import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.map.sharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedMapState
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDivider as HorizontalDivider
+import dev.evestaticmapplanner.ui.EveLazyColumn
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveWindowChrome
+import dev.evestaticmapplanner.ui.EveWindowSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.ZoneId
@@ -102,14 +106,13 @@ internal fun SharedMarkerManagerWindow(
         title = "Shared Marker Manager",
         state = rememberWindowState(width = 1_050.dp, height = 620.dp),
     ) {
-        Surface(
-            color = Color(0xFF15212D),
-            contentColor = Color(0xFFD7E6F2),
+        EveWindowChrome(window)
+        EveWindowSurface(
             modifier = Modifier.fillMaxSize(),
         ) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize().padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize().padding(16.dp),
             ) {
                 Text("Shared Marker Manager", style = MaterialTheme.typography.titleLarge)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -126,7 +129,7 @@ internal fun SharedMarkerManagerWindow(
                             state.stale -> "Showing stale Shared Marker data; editing is disabled."
                             else -> "Shared Map is read-only until the connection is online."
                         },
-                        color = Color(0xFFFFB86B),
+                        color = EveColors.Warning,
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -137,20 +140,20 @@ internal fun SharedMarkerManagerWindow(
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { sort = SharedMarkerManagerSort.SYSTEM }) { Text("System") }
-                    TextButton(onClick = { sort = SharedMarkerManagerSort.UPDATED }) { Text("Updated") }
-                    TextButton(onClick = { sort = SharedMarkerManagerSort.NAME }) { Text("Name") }
+                    TextButton(onClick = { sort = SharedMarkerManagerSort.SYSTEM }, selected = sort == SharedMarkerManagerSort.SYSTEM) { Text("System") }
+                    TextButton(onClick = { sort = SharedMarkerManagerSort.UPDATED }, selected = sort == SharedMarkerManagerSort.UPDATED) { Text("Updated") }
+                    TextButton(onClick = { sort = SharedMarkerManagerSort.NAME }, selected = sort == SharedMarkerManagerSort.NAME) { Text("Name") }
                     TextButton(onClick = viewModel::refreshNow) { Text("Refresh") }
                 }
                 SharedMarkerTableHeader()
-                HorizontalDivider(color = Color(0xFF415466))
+                HorizontalDivider()
                 when {
-                    state.snapshot == null -> Text("No Shared Marker snapshot is available.", color = Color(0xFFAFC1D1))
+                    state.snapshot == null -> Text("No Shared Marker snapshot is available.", color = EveColors.SecondaryText)
                     presentation.rows.isEmpty() -> Text(
                         if (query.isBlank()) "No Shared Markers in this Workspace." else "No Shared Markers match this search.",
-                        color = Color(0xFFAFC1D1),
+                        color = EveColors.SecondaryText,
                     )
-                    else -> LazyColumn(Modifier.weight(1f).fillMaxWidth().heightIn(min = 160.dp)) {
+                    else -> EveLazyColumn(Modifier.weight(1f).fillMaxWidth().heightIn(min = 160.dp)) {
                         items(presentation.rows, key = SharedMarkerManagerRow::markerId) { row ->
                             SharedMarkerTableRow(
                                 row,
@@ -161,7 +164,7 @@ internal fun SharedMarkerManagerWindow(
                         }
                     }
                 }
-                HorizontalDivider(color = Color(0xFF415466))
+                HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(
                         enabled = presentation.selected?.systemKnown == true,
@@ -260,13 +263,22 @@ private fun SharedMarkerTableRow(
     onClick: () -> Unit,
     onDoubleClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
-            .background(if (selected) Color(0xFF29445A) else Color.Transparent)
+            .background(
+                when {
+                    selected -> EveColors.SelectedSurface
+                    hovered -> EveColors.HoverSurface
+                    else -> EveColors.PrimarySurface
+                },
+            )
+            .hoverable(interactionSource)
             .combinedClickable(onClick = onClick, onDoubleClick = onDoubleClick)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         Text(row.systemName, modifier = Modifier.width(150.dp), maxLines = 1)
         Text(row.name, modifier = Modifier.width(180.dp), maxLines = 1)

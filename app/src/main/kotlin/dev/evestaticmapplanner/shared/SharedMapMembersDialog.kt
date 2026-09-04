@@ -2,6 +2,9 @@ package dev.evestaticmapplanner.shared
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,13 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -25,10 +25,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.shared.model.SharedMember
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveLazyColumn
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
@@ -63,20 +66,32 @@ internal fun SharedMapMembersDialog(
         title = { Text("Shared Map Members") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Text(workspaceName, color = Color(0xFFAAB9C7))
+                Text(workspaceName, color = EveColors.SecondaryText)
                 Text("Members: ${state.members.size}")
-                if (state.loading) Text("Loading members…", color = Color(0xFFAAB9C7))
+                if (state.loading) Text("Loading members…", color = EveColors.SecondaryText)
                 state.error?.let {
                     Text(sharedMapErrorMessage(it), color = MaterialTheme.colorScheme.error)
                     TextButton(onClick = onClearError) { Text("Dismiss") }
                 }
-                LazyColumn(Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 330.dp)) {
+                EveLazyColumn(Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 330.dp)) {
                     items(state.members, key = SharedMember::memberId) { member ->
+                        val interactionSource = remember(member.memberId) { MutableInteractionSource() }
+                        val hovered by interactionSource.collectIsHoveredAsState()
                         Row(
                             modifier = Modifier.fillMaxWidth()
-                                .background(if (member.memberId == selectedMemberId) Color(0xFF29445A) else Color.Transparent)
-                                .clickable { selectedMemberId = member.memberId }
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                                .background(
+                                    when {
+                                        member.memberId == selectedMemberId -> EveColors.SelectedSurface
+                                        hovered -> EveColors.HoverSurface
+                                        else -> EveColors.PrimarySurface
+                                    },
+                                )
+                                .hoverable(interactionSource)
+                                .clickable(
+                                    interactionSource = interactionSource,
+                                    indication = null,
+                                ) { selectedMemberId = member.memberId }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(member.displayName, modifier = Modifier.weight(1f), maxLines = 1)
@@ -91,6 +106,7 @@ internal fun SharedMapMembersDialog(
                         SharedWorkspaceRole.entries.forEach { role ->
                             TextButton(
                                 enabled = state.busyMemberId == null && role != selected.role,
+                                selected = role == selected.role,
                                 onClick = { onChangeRole(selected.memberId, selected.version, role) },
                             ) { Text(role.name.lowercase().replaceFirstChar(Char::uppercase)) }
                         }
@@ -179,7 +195,7 @@ private fun CreateSharedMemberDialog(
                 Text("Initial role")
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     SharedWorkspaceRole.entries.forEach { option ->
-                        TextButton(enabled = !busy, onClick = { role = option }) {
+                        TextButton(enabled = !busy, selected = role == option, onClick = { role = option }) {
                             Text(if (role == option) "✓ ${option.name}" else option.name)
                         }
                     }
@@ -213,9 +229,10 @@ private fun OneTimeInviteDialog(invite: OneTimeSharedInvite, onDismiss: () -> Un
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Invite") },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (copied) Text("Copied to clipboard.", color = Color(0xFFAAB9C7))
+                if (copied) Text("Copied to clipboard.", color = EveColors.SecondaryText)
             }
         },
         confirmButton = {

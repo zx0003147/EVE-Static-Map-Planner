@@ -9,19 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -30,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.DpSize
@@ -42,6 +32,17 @@ import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
+import dev.evestaticmapplanner.ui.EveButton as Button
+import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDivider
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveLazyColumn
+import dev.evestaticmapplanner.ui.EvePanel
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
+import dev.evestaticmapplanner.ui.EveWindowChrome
+import dev.evestaticmapplanner.ui.EveWindowSurface
 import java.awt.Dimension
 import java.nio.file.Path
 import javax.swing.JFileChooser
@@ -79,6 +80,7 @@ fun AnsiblexManagerDialog(
             height = ANSIBLEX_MANAGER_DEFAULT_SIZE.height,
         ),
     ) {
+        EveWindowChrome(window)
         val density = LocalDensity.current
         val minimumWidthPx = with(density) { ANSIBLEX_MANAGER_MINIMUM_SIZE.width.roundToPx() }
         val minimumHeightPx = with(density) { ANSIBLEX_MANAGER_MINIMUM_SIZE.height.roundToPx() }
@@ -86,26 +88,25 @@ fun AnsiblexManagerDialog(
             window.minimumSize = Dimension(minimumWidthPx, minimumHeightPx)
         }
         AnsiblexManagerRoot {
-            Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Ansiblex Manager", style = MaterialTheme.typography.titleLarge)
                         Text(
                             "${state.enabledAnsiblexCount} enabled / ${state.ansiblexConnections.size} total · $userDatabasePath",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFAAB9C7),
+                            color = EveColors.SecondaryText,
                         )
                     }
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = dismissManager) { Text("Close") }
                 }
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Column(
+                EveDivider()
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    EveVerticalScrollColumn(
                         Modifier
                             .width(ANSIBLEX_MANAGER_FORM_WIDTH)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
+                            .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text("Import CSV / JSON", style = MaterialTheme.typography.titleMedium)
@@ -114,6 +115,7 @@ fun AnsiblexManagerDialog(
                                 TextButton(
                                     onClick = { viewModel.setImportMode(mode) },
                                     enabled = mode != state.importMode,
+                                    selected = mode == state.importMode,
                                 ) { Text(mode.name) }
                             }
                         }
@@ -131,12 +133,12 @@ fun AnsiblexManagerDialog(
                             )
                             Text(
                                 "+${preview.additions.size}  ~${preview.updates.size}  =${preview.unchanged.size}  -${preview.removals.size}",
-                                color = Color(0xFFBFE7F5),
+                                color = EveColors.Important,
                             )
                             preview.diagnostics.take(6).forEach { diagnostic ->
                                 Text(
                                     "${diagnostic.rowNumber?.let { "Row $it: " }.orEmpty()}${diagnostic.message}",
-                                    color = if (diagnostic.severity == ImportDiagnosticSeverity.ERROR) Color(0xFFFF8A80) else Color(0xFFFFD166),
+                                    color = if (diagnostic.severity == ImportDiagnosticSeverity.ERROR) EveColors.Error else EveColors.Warning,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -148,8 +150,8 @@ fun AnsiblexManagerDialog(
                                 TextButton(onClick = viewModel::discardImportPreview) { Text("Discard") }
                             }
                         }
-                        state.importError?.let { Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall) }
-                        HorizontalDivider()
+                        state.importError?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
+                        EveDivider()
                         Text("Manual Add", style = MaterialTheme.typography.titleMedium)
                         OutlinedTextField(manualFrom, { manualFrom = it }, label = { Text("From name or ID") }, singleLine = true)
                         OutlinedTextField(manualTo, { manualTo = it }, label = { Text("To name or ID") }, singleLine = true)
@@ -172,23 +174,23 @@ fun AnsiblexManagerDialog(
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = { confirmation = ClearConfirmation.IMPORTED }) { Text("Clear Imported") }
                         }
-                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        EveLazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(state.ansiblexConnections, key = AnsiblexConnection::id) { connection ->
                                 ConnectionRow(connection, viewModel)
                             }
                         }
-                        HorizontalDivider()
+                        EveDivider()
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Danger zone", color = Color(0xFFFF8A80), style = MaterialTheme.typography.labelSmall)
+                            Text("Danger zone", color = EveColors.Error, style = MaterialTheme.typography.labelSmall)
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = { confirmation = ClearConfirmation.ALL }) {
-                                Text("Clear All Ansiblex", color = Color(0xFFFF8A80))
+                                Text("Clear All Ansiblex", color = EveColors.Error)
                             }
                         }
                     }
                 }
                 state.managerMessage?.let {
-                    Text(it, color = Color(0xFFBFE7F5), style = MaterialTheme.typography.bodySmall)
+                    Text(it, color = EveColors.Important, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -209,11 +211,8 @@ fun AnsiblexManagerDialog(
 
 @Composable
 internal fun AnsiblexManagerRoot(content: @Composable () -> Unit) {
-    Surface(
+    EveWindowSurface(
         modifier = Modifier.fillMaxSize().testTag(ANSIBLEX_MANAGER_ROOT_TEST_TAG),
-        color = ANSIBLEX_MANAGER_BACKGROUND,
-        contentColor = Color(0xFFD7E6F2),
-        tonalElevation = 8.dp,
         content = content,
     )
 }
@@ -221,7 +220,7 @@ internal fun AnsiblexManagerRoot(content: @Composable () -> Unit) {
 internal val ANSIBLEX_MANAGER_DEFAULT_SIZE = DpSize(960.dp, 760.dp)
 internal val ANSIBLEX_MANAGER_MINIMUM_SIZE = DpSize(840.dp, 680.dp)
 internal val ANSIBLEX_MANAGER_FORM_WIDTH = 390.dp
-internal val ANSIBLEX_MANAGER_BACKGROUND = Color(0xFF15212D)
+internal val ANSIBLEX_MANAGER_BACKGROUND = EveColors.PrimarySurface
 internal const val ANSIBLEX_MANAGER_ROOT_TEST_TAG = "ansiblex-manager-root"
 
 @Composable
@@ -245,7 +244,7 @@ internal fun AnsiblexClearConfirmationDialog(
                     },
                 )
                 if (kind == ClearConfirmation.ALL) {
-                    Text("Type DELETE MANUAL to confirm:", color = Color(0xFFFF8A80))
+                    Text("Type DELETE MANUAL to confirm:", color = EveColors.Error)
                     OutlinedTextField(clearAllPhrase, onClearAllPhraseChange, singleLine = true)
                 }
             }
@@ -264,15 +263,15 @@ internal fun AnsiblexClearConfirmationDialog(
 
 @Composable
 private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlannerViewModel) {
-    Surface(tonalElevation = 2.dp) {
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    EvePanel(secondary = true, bordered = false) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(connection.enabled, { viewModel.setConnectionEnabled(connection.id, it) })
             Column(Modifier.weight(1f)) {
                 Text(connection.displayName ?: "${connection.firstSystemId} ↔ ${connection.secondSystemId}")
                 Text(
                     "${connection.firstSystemId} / ${connection.secondSystemId} · ${connection.direction.name} · ${connection.source.name}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFAAB9C7),
+                    color = EveColors.SecondaryText,
                 )
             }
             TextButton(onClick = { viewModel.deleteConnection(connection.id) }) { Text("Delete") }

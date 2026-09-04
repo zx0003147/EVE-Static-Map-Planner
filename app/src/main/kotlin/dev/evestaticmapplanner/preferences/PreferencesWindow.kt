@@ -11,18 +11,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -57,6 +48,16 @@ import dev.evestaticmapplanner.shared.SharedMapMembersDialog
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDivider as HorizontalDivider
+import dev.evestaticmapplanner.ui.EveDropdownMenu as DropdownMenu
+import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
+import dev.evestaticmapplanner.ui.EveWindowChrome
+import dev.evestaticmapplanner.ui.EveWindowSurface
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -102,14 +103,13 @@ internal fun PreferencesWindow(
         title = "Preferences",
         state = rememberWindowState(width = 650.dp, height = 720.dp),
     ) {
-        Surface(
-            color = Color(0xFF15212D),
-            contentColor = Color(0xFFD7E6F2),
+        EveWindowChrome(window)
+        EveWindowSurface(
             modifier = Modifier.fillMaxSize(),
         ) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize().padding(20.dp),
+                modifier = Modifier.fillMaxSize().padding(18.dp),
             ) {
                 Text("Preferences", style = MaterialTheme.typography.titleLarge)
                 Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -117,13 +117,15 @@ internal fun PreferencesWindow(
                         PreferencesCategory.entries.forEach { item ->
                             TextButton(
                                 onClick = { category = item },
+                                selected = category == item,
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text(item.label) }
                         }
                     }
-                    Column(
+                    EveVerticalScrollColumn(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                        modifier = Modifier.weight(1f).fillMaxWidth()
+                            .padding(start = PREFERENCES_CONTENT_START_GUTTER),
                     ) {
                         when (category) {
                             PreferencesCategory.MAP_DISPLAY -> MapDisplayPreferencesContent(
@@ -177,7 +179,7 @@ internal fun PreferencesWindow(
                         }
                     }
                 }
-                HorizontalDivider(color = Color(0xFF314252))
+                HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = onResetAll) { Text("Reset All Preferences") }
                     TextButton(onClick = onDismiss) { Text("Close") }
@@ -195,6 +197,8 @@ private enum class PreferencesCategory(val label: String) {
     OVERLAYS("Overlays"),
     SHARED_MAP("Shared Map"),
 }
+
+internal val PREFERENCES_CONTENT_START_GUTTER = 24.dp
 
 @Composable
 private fun SharedMapPreferencesContent(
@@ -238,7 +242,7 @@ private fun SharedMapPreferencesContent(
     Text("Shared Map", style = MaterialTheme.typography.titleMedium)
     Text(
         "Connect to a Shared Map Server and keep its read-only marker snapshot synchronized.",
-        color = Color(0xFFAAB9C7),
+        color = EveColors.SecondaryText,
     )
     OutlinedTextField(
         value = serverUrl,
@@ -258,7 +262,7 @@ private fun SharedMapPreferencesContent(
         modifier = Modifier.fillMaxWidth(),
     )
     Text("Status: ${sharedMapStatusLabel(state)}")
-    state.statusMessage?.let { Text(it, color = Color(0xFFAAB9C7)) }
+    state.statusMessage?.let { Text(it, color = EveColors.SecondaryText) }
     operationError?.let {
         Text(it, color = MaterialTheme.colorScheme.error)
         TextButton(onClick = onClearError) { Text("Dismiss") }
@@ -294,7 +298,7 @@ private fun SharedMapPreferencesContent(
     }
     Text("Last sync: ${state.lastSuccessfulSyncAt?.let(::formatLocalInstant) ?: "Never"}")
     Text("Shared markers: ${state.markerCount}")
-    state.snapshot?.let { Text("Revision: ${it.revision}", color = Color(0xFFAAB9C7)) }
+    state.snapshot?.let { Text("Revision: ${it.revision}", color = EveColors.SecondaryText) }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton(
@@ -320,7 +324,7 @@ private fun SharedMapPreferencesContent(
             enabled = canAdmin,
         ) { Text("Manage Members…") }
         if (!canAdmin) {
-            Text("Member management is available only while Shared Map is online.", color = Color(0xFFAAB9C7))
+            Text("Member management is available only while Shared Map is online.", color = EveColors.SecondaryText)
         }
     }
 
@@ -377,7 +381,7 @@ private fun InviteConnectDialog(
         title = { Text("Connect to Shared Map") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(serverUrl, color = Color(0xFFAAB9C7))
+                Text(serverUrl, color = EveColors.SecondaryText)
                 OutlinedTextField(
                     value = invite,
                     onValueChange = { invite = it },
@@ -386,7 +390,7 @@ private fun InviteConnectDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("The invite is used once and is not saved.", color = Color(0xFFAAB9C7))
+                Text("The invite is used once and is not saved.", color = EveColors.SecondaryText)
             }
         },
         confirmButton = {
@@ -442,31 +446,31 @@ private fun OverlayPreferencesContent(
     Text("Map Overlays", style = MaterialTheme.typography.titleMedium)
     Text(
         "Visibility changes affect map presentation only. Feature Packs remain enabled.",
-        color = Color(0xFFAAB9C7),
+        color = EveColors.SecondaryText,
     )
     if (uiState.overlays.isEmpty()) {
-        Text("No Feature Pack overlays are currently available.", color = Color(0xFFAAB9C7))
+        Text("No Feature Pack overlays are currently available.", color = EveColors.SecondaryText)
     }
     uiState.overlays.forEach { item ->
-        HorizontalDivider(color = Color(0xFF314252))
+        HorizontalDivider()
         PreferenceCheckbox(item.name, item.enabled) { enabled ->
             onChange(preferences.withEnabled(item.key, enabled))
         }
-        Text("Source: ${item.providerName}", color = Color(0xFFAAB9C7))
-        item.description?.let { Text(it, color = Color(0xFFAAB9C7)) }
-        item.providerDescription?.let { Text("Provider: $it", color = Color(0xFF71808D)) }
+        Text("Source: ${item.providerName}", color = EveColors.SecondaryText)
+        item.description?.let { Text(it, color = EveColors.SecondaryText) }
+        item.providerDescription?.let { Text("Provider: $it", color = EveColors.DisabledText) }
     }
     TextButton(onClick = onReset, enabled = preferences.disabledLayers.isNotEmpty()) {
         Text("Enable All Overlays")
     }
     if (uiState.showSovereigntyLogoPreferences) {
-        HorizontalDivider(color = Color(0xFF314252))
+        HorizontalDivider()
         Text("Sovereignty", style = MaterialTheme.typography.titleSmall)
         Text("Sovereignty Logo Emphasis Zoom", style = MaterialTheme.typography.bodyMedium)
         Text(
             "Choose the zoom level where alliance logos transition between background watermarks and " +
                 "bright political-map emblems.",
-            color = Color(0xFFAAB9C7),
+            color = EveColors.SecondaryText,
         )
         SovereigntyLogoEmphasisZoomPreference(mapDisplay.sovereigntyLogoEmphasisZoom) { emphasisZoom ->
             onMapDisplayChange(mapDisplay.copy(sovereigntyLogoEmphasisZoom = emphasisZoom))
@@ -525,7 +529,7 @@ private fun SovereigntyLogoEmphasisZoomPreference(
     )
     Text(
         "Full map range 0.01x–250x; 0.05x steps are recommended near overview zoom.",
-        color = Color(0xFF71808D),
+        color = EveColors.DisabledText,
         style = MaterialTheme.typography.bodySmall,
     )
 }
@@ -540,20 +544,20 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
     Text("Feature Packs", style = MaterialTheme.typography.titleMedium)
     Text(
         "Installed Packs are local to this Windows user. New Packs are disabled by default.",
-        color = Color(0xFFAAB9C7),
+        color = EveColors.SecondaryText,
     )
-    state.discoveryErrors.forEach { Text(it, color = Color(0xFFFFB4AB)) }
+    state.discoveryErrors.forEach { Text(it, color = EveColors.Error) }
     if (state.initialized && state.packs.isEmpty() && state.discoveryErrors.isEmpty()) {
-        Text("No Feature Packs are installed.", color = Color(0xFFAAB9C7))
+        Text("No Feature Packs are installed.", color = EveColors.SecondaryText)
     }
     state.packs.forEach { item ->
         val pack = item.pack
-        HorizontalDivider(color = Color(0xFF314252))
+        HorizontalDivider()
         Text(pack.displayName, style = MaterialTheme.typography.titleSmall)
-        Text("ID: ${pack.packId.value}", color = Color(0xFFAAB9C7))
+        Text("ID: ${pack.packId.value}", color = EveColors.SecondaryText)
         Text("Version: ${pack.version?.value ?: "Unavailable"}")
         Text("Publisher: ${pack.publisher ?: "Unavailable"}")
-        Text("Path: ${pack.path}", color = Color(0xFFAAB9C7))
+        Text("Path: ${pack.path}", color = EveColors.SecondaryText)
         Text(
             "Status: " + when {
                 pack.installationState == FeaturePackInstallationState.MISSING_JAR -> "Missing pack.jar"
@@ -563,31 +567,31 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
                 else -> "Disabled"
             },
         )
-        pack.lastError?.let { Text(it, color = Color(0xFFFFB4AB)) }
+        pack.lastError?.let { Text(it, color = EveColors.Error) }
         controls.firstOrNull { it.packId == pack.packId }?.let { control ->
             Text("Controls", style = MaterialTheme.typography.titleSmall)
             Text(
                 control.primaryText,
                 color = when (control.severity) {
-                    PackControlSeverity.NORMAL -> Color(0xFFD7E6F2)
-                    PackControlSeverity.WARNING -> Color(0xFFFFDDB0)
-                    PackControlSeverity.ERROR -> Color(0xFFFFB4AB)
+                    PackControlSeverity.NORMAL -> EveColors.PrimaryText
+                    PackControlSeverity.WARNING -> EveColors.Warning
+                    PackControlSeverity.ERROR -> EveColors.Error
                 },
             )
             control.secondaryText?.let { secondary ->
-                Text(secondary, color = Color(0xFFAAB9C7))
+                Text(secondary, color = EveColors.SecondaryText)
             }
             PackControlActionList(control.actions, control.busyActionId, viewModel::invokeControl)
             control.actions.mapNotNull { it.description }.distinct().forEach { description ->
-                Text(description, color = Color(0xFF71808D), style = MaterialTheme.typography.bodySmall)
+                Text(description, color = EveColors.DisabledText, style = MaterialTheme.typography.bodySmall)
             }
             control.lastMessage?.let { message ->
                 Text(
                     message,
                     color = if (control.lastStatus == PackControlActionStatus.FAILED) {
-                        Color(0xFFFFB4AB)
+                        EveColors.Error
                     } else {
-                        Color(0xFFAAB9C7)
+                        EveColors.SecondaryText
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -649,7 +653,7 @@ private fun MapDisplayPreferencesContent(
 ) {
     Text("Map Display", style = MaterialTheme.typography.titleMedium)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Current Zoom", color = Color(0xFFAAB9C7))
+        Text("Current Zoom", color = EveColors.SecondaryText)
         Text(currentZoom?.let { formatValue(it, 2) + "x" } ?: "—")
     }
     NumericPreferenceSlider(
@@ -668,7 +672,7 @@ private fun MapDisplayPreferencesContent(
         (mapDisplay.constellationZoomThreshold + THRESHOLD_MIN_GAP).coerceAtMost(THRESHOLD_MAX)..THRESHOLD_MAX,
         isValid = { it > mapDisplay.constellationZoomThreshold && it <= THRESHOLD_MAX },
     ) { onChange(mapDisplay.copy(systemZoomThreshold = it)) }
-    HorizontalDivider(color = Color(0xFF314252))
+    HorizontalDivider()
     FontPreferenceSliders(mapDisplay, onChange)
     TextButton(onClick = onReset) { Text("Reset Map Display") }
 }
@@ -714,7 +718,7 @@ private fun MarkerPreferencesContent(
     PreferenceCheckbox("Show Local Marker Names", preferences.showMarkerNames, preferences.showMarkers) {
         onChange(preferences.copy(showMarkerNames = it))
     }
-    HorizontalDivider(color = Color(0xFF314252))
+    HorizontalDivider()
     Text("Saved Marker Appearance", style = MaterialTheme.typography.titleSmall)
     val appearance = preferences.savedMarkerAppearance
     NumericPreferenceSlider(
@@ -768,7 +772,7 @@ private fun AiControlPreferencesContent(
     )
     Text(
         "Allows AI tools to read and create saved markers. AI cannot modify or delete existing saved markers.",
-        color = Color(0xFFAAB9C7),
+        color = EveColors.SecondaryText,
     )
     Text(
         when (status) {
@@ -779,14 +783,14 @@ private fun AiControlPreferencesContent(
             is AiControlStatus.Error -> status.message
         },
         color = when (status) {
-            is AiControlStatus.Error, AiControlStatus.AlreadyActive -> Color(0xFFFFB4AB)
-            else -> Color(0xFFAAB9C7)
+            is AiControlStatus.Error, AiControlStatus.AlreadyActive -> EveColors.Error
+            else -> EveColors.SecondaryText
         },
     )
-    if (preferenceError != null) Text(preferenceError, color = Color(0xFFFFB4AB))
+    if (preferenceError != null) Text(preferenceError, color = EveColors.Error)
     Text(
         "When enabled, a new authenticated local-only control session starts after the map is ready.",
-        color = Color(0xFFAAB9C7),
+        color = EveColors.SecondaryText,
     )
     TextButton(onClick = onReset) { Text("Reset AI Control") }
 }
@@ -800,7 +804,7 @@ private fun PreferenceCheckbox(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
-        Text(label, color = if (enabled) Color.Unspecified else Color(0xFF71808D))
+        Text(label, color = if (enabled) EveColors.PrimaryText else EveColors.DisabledText)
     }
 }
 
@@ -830,7 +834,7 @@ private fun NumericPreferenceSlider(
             Text(
                 label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (enabled) Color.Unspecified else Color(0xFF71808D),
+                color = if (enabled) EveColors.PrimaryText else EveColors.DisabledText,
             )
             Slider(
                 value = value.coerceIn(sliderRange).toFloat(),

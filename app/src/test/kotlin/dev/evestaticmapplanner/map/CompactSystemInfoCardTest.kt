@@ -301,8 +301,8 @@ class CompactSystemInfoCardTest {
         assertEquals(Alignment.BottomEnd, CompactSystemInfoCardDefaults.alignment)
         assertEquals(300, CompactSystemInfoCardDefaults.maxWidth.value.toInt())
         assertEquals(420, CompactSystemInfoCardDefaults.maxHeight.value.toInt())
-        assertEquals(16, CompactSystemInfoCardDefaults.margin.value.toInt())
-        assertEquals(12, CompactSystemInfoCardDefaults.contentPadding.value.toInt())
+        assertEquals(12, CompactSystemInfoCardDefaults.margin.value.toInt())
+        assertEquals(10, CompactSystemInfoCardDefaults.contentPadding.value.toInt())
         assertTrue(CompactSystemInfoCardDefaults.zIndex < CONTEXT_DISMISS_Z_INDEX)
         assertTrue(CONTEXT_DISMISS_Z_INDEX < CONTEXT_MENU_Z_INDEX)
     }

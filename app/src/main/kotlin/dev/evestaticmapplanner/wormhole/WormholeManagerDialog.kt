@@ -12,12 +12,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -26,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.DpSize
@@ -35,6 +30,14 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import dev.evestaticmapplanner.search.SystemSearchField
+import dev.evestaticmapplanner.ui.EveButton as Button
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDivider
+import dev.evestaticmapplanner.ui.EveLazyColumn
+import dev.evestaticmapplanner.ui.EvePanel
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveWindowChrome
+import dev.evestaticmapplanner.ui.EveWindowSurface
 import java.awt.Dimension
 
 @Composable
@@ -53,6 +56,7 @@ fun WormholeManagerDialog(
             height = WORMHOLE_MANAGER_DEFAULT_SIZE.height,
         ),
     ) {
+        EveWindowChrome(window)
         val density = LocalDensity.current
         val minimumWidthPx = with(density) { WORMHOLE_MANAGER_MINIMUM_SIZE.width.roundToPx() }
         val minimumHeightPx = with(density) { WORMHOLE_MANAGER_MINIMUM_SIZE.height.roundToPx() }
@@ -80,11 +84,8 @@ fun WormholeManagerDialog(
 
 @Composable
 internal fun WormholeManagerRoot(content: @Composable () -> Unit) {
-    Surface(
+    EveWindowSurface(
         modifier = Modifier.fillMaxSize().testTag(WORMHOLE_MANAGER_ROOT_TEST_TAG),
-        color = WORMHOLE_MANAGER_BACKGROUND,
-        contentColor = Color(0xFFD7E6F2),
-        tonalElevation = 8.dp,
         content = content,
     )
 }
@@ -99,26 +100,26 @@ internal fun WormholeManagerContent(
     val rows = remember(state.connections, state.systemNamesById) {
         WormholePresentationBuilder.rows(state.connections, state.systemNamesById)
     }
-    Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Wormhole Manager", style = MaterialTheme.typography.titleLarge)
                 Text(
                     "${state.connections.size} active session ${if (state.connections.size == 1) "connection" else "connections"}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFAAB9C7),
+                    color = EveColors.SecondaryText,
                 )
                 Text(
                     "Wormholes exist only for the current application session.",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF8FA3B4),
+                    color = EveColors.SecondaryText,
                 )
             }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onDismiss) { Text("Close") }
         }
-        HorizontalDivider(color = Color(0xFF314252))
-        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+        EveDivider()
+        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(
                 Modifier.width(WORMHOLE_MANAGER_FORM_WIDTH).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -151,14 +152,14 @@ internal fun WormholeManagerContent(
                     Text(
                         it,
                         color = if (it == WORMHOLE_ADDED_MESSAGE || it == WORMHOLE_REMOVED_MESSAGE || it.startsWith("Cleared")) {
-                            Color(0xFFBFE7F5)
+                            EveColors.Important
                         } else {
-                            Color(0xFFFF9F9F)
+                            EveColors.Error
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                state.loadError?.let { Text(it, color = Color(0xFFFF9F9F), style = MaterialTheme.typography.bodySmall) }
+                state.loadError?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
             }
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 Text("Current Wormholes", style = MaterialTheme.typography.titleMedium)
@@ -166,10 +167,10 @@ internal fun WormholeManagerContent(
                     Text(
                         "No active Wormhole connections",
                         modifier = Modifier.padding(vertical = 16.dp),
-                        color = Color(0xFFAAB9C7),
+                        color = EveColors.SecondaryText,
                     )
                 }
-                LazyColumn(
+                EveLazyColumn(
                     Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
@@ -177,7 +178,7 @@ internal fun WormholeManagerContent(
                         WormholeManagerConnectionRow(row) { viewModel.remove(row.id) }
                     }
                 }
-                HorizontalDivider(color = Color(0xFF314252))
+                EveDivider()
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.weight(1f))
                     TextButton(
@@ -193,9 +194,9 @@ internal fun WormholeManagerContent(
 
 @Composable
 private fun WormholeManagerConnectionRow(row: WormholeConnectionRow, onRemove: () -> Unit) {
-    Surface(tonalElevation = 2.dp) {
+    EvePanel(secondary = true, bordered = false) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(row.canonicalLabel, modifier = Modifier.weight(1f))
@@ -228,7 +229,7 @@ fun CreateWormholeDialog(
         title = { Text("Create Wormhole") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("From", style = MaterialTheme.typography.labelMedium, color = Color(0xFFAAB9C7))
+                Text("From", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
                 Text(
                     origin.name,
                     style = MaterialTheme.typography.titleMedium,
@@ -243,7 +244,7 @@ fun CreateWormholeDialog(
                     modifier = Modifier.fillMaxWidth(),
                     suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
                 )
-                state.quickMessage?.let { Text(it, color = Color(0xFFFF9F9F), style = MaterialTheme.typography.bodySmall) }
+                state.quickMessage?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
@@ -294,7 +295,7 @@ fun WormholeConnectionsDialog(
 internal val WORMHOLE_MANAGER_DEFAULT_SIZE = DpSize(860.dp, 640.dp)
 internal val WORMHOLE_MANAGER_MINIMUM_SIZE = DpSize(760.dp, 560.dp)
 internal val WORMHOLE_MANAGER_FORM_WIDTH = 320.dp
-internal val WORMHOLE_MANAGER_BACKGROUND = Color(0xFF15212D)
+internal val WORMHOLE_MANAGER_BACKGROUND = EveColors.PrimarySurface
 internal const val WORMHOLE_MANAGER_ROOT_TEST_TAG = "wormhole-manager-root"
 internal const val WORMHOLE_MANAGER_ADD_TEST_TAG = "wormhole-manager-add"
 internal const val WORMHOLE_MANAGER_CLEAR_ALL_TEST_TAG = "wormhole-manager-clear-all"

@@ -3,19 +3,16 @@ package dev.evestaticmapplanner.search
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +33,14 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import dev.evestaticmapplanner.core.model.SolarSystem
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDropdownMenu as DropdownMenu
+import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
+import dev.evestaticmapplanner.ui.EveDimensions
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveOutlinedTextFieldColors
+import dev.evestaticmapplanner.ui.EveShapes
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 
 enum class SearchSuggestionsPresentation {
     INLINE,
@@ -204,7 +209,8 @@ internal fun CompactOutlinedTextField(
         textStyle = textStyle,
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         interactionSource = interactionSource,
-        modifier = modifier.height(COMPACT_SEARCH_FIELD_HEIGHT),
+        modifier = modifier.defaultMinSize(minHeight = COMPACT_SEARCH_FIELD_MIN_HEIGHT)
+            .background(EveColors.InputSurface, EveShapes.small),
         decorationBox = { innerTextField ->
             CompactOutlinedDecoration(value, label, interactionSource, Modifier, innerTextField)
         },
@@ -228,7 +234,8 @@ private fun CompactOutlinedTextField(
         textStyle = textStyle,
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         interactionSource = interactionSource,
-        modifier = modifier.height(COMPACT_SEARCH_FIELD_HEIGHT),
+        modifier = modifier.defaultMinSize(minHeight = COMPACT_SEARCH_FIELD_MIN_HEIGHT)
+            .background(EveColors.InputSurface, EveShapes.small),
         decorationBox = { innerTextField ->
             CompactOutlinedDecoration(value.text, label, interactionSource, labelModifier, innerTextField)
         },
@@ -251,18 +258,17 @@ private fun CompactOutlinedDecoration(
         visualTransformation = VisualTransformation.None,
         interactionSource = interactionSource,
         label = { Text(label, modifier = labelModifier) },
+        colors = EveOutlinedTextFieldColors(),
         contentPadding = PaddingValues(
-            horizontal = COMPACT_SEARCH_HORIZONTAL_PADDING,
-            vertical = COMPACT_SEARCH_VERTICAL_PADDING,
+            horizontal = EveDimensions.InputHorizontalPadding,
+            vertical = EveDimensions.InputVerticalPadding,
         ),
     )
 }
 
 internal val SEARCH_DROPDOWN_MIN_WIDTH = 260.dp
 internal val SEARCH_DROPDOWN_MAX_WIDTH = 360.dp
-internal val COMPACT_SEARCH_FIELD_HEIGHT = 48.dp
-internal val COMPACT_SEARCH_HORIZONTAL_PADDING = 12.dp
-internal val COMPACT_SEARCH_VERTICAL_PADDING = 6.dp
+internal val COMPACT_SEARCH_FIELD_MIN_HEIGHT = EveDimensions.InputMinimumHeight
 internal const val COMPACT_SEARCH_FIELD_TEST_TAG = "compact-search-field"
 internal const val COMPACT_SEARCH_PLACEHOLDER_TEST_TAG = "compact-search-placeholder"
 internal val SYSTEM_SEARCH_POPUP_PROPERTIES = PopupProperties(focusable = false)

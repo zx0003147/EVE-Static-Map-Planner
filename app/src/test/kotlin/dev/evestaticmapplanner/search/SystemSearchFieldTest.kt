@@ -1,12 +1,16 @@
 package dev.evestaticmapplanner.search
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
@@ -22,6 +26,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Density
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.UniversePosition
@@ -217,7 +222,7 @@ class SystemSearchFieldTest {
     }
 
     @Test
-    fun `compact mode changes only the requested search field height`() = runComposeUiTest {
+    fun `compact mode keeps its label inside a readable minimum height`() = runComposeUiTest {
         setContent {
             MaterialTheme {
                 SystemSearchField(
@@ -233,7 +238,6 @@ class SystemSearchFieldTest {
         }
 
         val field = onNodeWithTag(COMPACT_SEARCH_FIELD_TEST_TAG)
-        field.assertHeightIsEqualTo(COMPACT_SEARCH_FIELD_HEIGHT)
         val fieldBounds = field.fetchSemanticsNode().boundsInRoot
         val placeholderBounds = onNodeWithTag(
             COMPACT_SEARCH_PLACEHOLDER_TEST_TAG,
@@ -242,7 +246,41 @@ class SystemSearchFieldTest {
         assertTrue(placeholderBounds.top >= fieldBounds.top)
         assertTrue(placeholderBounds.bottom <= fieldBounds.bottom)
         assertEquals(fieldBounds.center.y, placeholderBounds.center.y, absoluteTolerance = 1f)
-        assertEquals(48.dp, COMPACT_SEARCH_FIELD_HEIGHT)
+        assertTrue(fieldBounds.height >= with(density) { COMPACT_SEARCH_FIELD_MIN_HEIGHT.toPx() })
+        assertEquals(44.dp, COMPACT_SEARCH_FIELD_MIN_HEIGHT)
+    }
+
+    @Test
+    fun `compact numeric field keeps representative values readable at common Windows scales`() = runComposeUiTest {
+        var densityScale by mutableStateOf(1f)
+        var value by mutableStateOf("1")
+        setContent {
+            CompositionLocalProvider(LocalDensity provides Density(densityScale, fontScale = 1f)) {
+                MaterialTheme {
+                    CompactOutlinedTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        label = "Effective maximum LY",
+                        modifier = Modifier.fillMaxWidth().testTag(COMPACT_SEARCH_FIELD_TEST_TAG),
+                    )
+                }
+            }
+        }
+
+        for (scale in listOf(1f, 1.25f, 1.5f)) {
+            for (candidate in listOf("1", "12", "123.45")) {
+                runOnIdle {
+                    densityScale = scale
+                    value = candidate
+                }
+                waitForIdle()
+
+                val field = onNodeWithTag(COMPACT_SEARCH_FIELD_TEST_TAG)
+                field.assertTextEquals("Effective maximum LY", candidate)
+                val minimumHeightPx = COMPACT_SEARCH_FIELD_MIN_HEIGHT.value * scale
+                assertTrue(field.fetchSemanticsNode().boundsInRoot.height >= minimumHeightPx)
+            }
+        }
     }
 
     private fun system(id: Int, name: String) = SolarSystem(

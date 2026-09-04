@@ -12,15 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +35,12 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import dev.evestaticmapplanner.search.SystemSearchField
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDropdownMenu as DropdownMenu
+import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EvePanel
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 
 enum class MarkerEditorMode {
     CREATE_SAVED,
@@ -98,6 +100,7 @@ fun MarkerEditorDialog(
                         onValueChange = {},
                         label = { Text("Solar System") },
                         readOnly = true,
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else if (systemSearch != null) {
@@ -191,15 +194,13 @@ private fun SavedMarkerTagsEditor(
     val available = remember(types) { SavedMarkerChildVisuals.availableForTypes(types) }
     Text("Tags", style = MaterialTheme.typography.labelLarge)
     if (types.isEmpty()) {
-        Text("No tags assigned.", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAFC1D1))
+        Text("No tags assigned.", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
             types.forEach { type ->
                 val visual = SavedMarkerChildVisuals.resolve(type)
-                Surface(
-                    color = Color(0xFF1B2A37),
-                    border = BorderStroke(1.dp, Color(0xFF415466)),
-                    shape = MaterialTheme.shapes.small,
+                EvePanel(
+                    secondary = true,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Row(

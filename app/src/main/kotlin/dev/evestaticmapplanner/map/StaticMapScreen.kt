@@ -19,15 +19,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -39,7 +34,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
@@ -92,10 +86,17 @@ import dev.evestaticmapplanner.wormhole.WormholeConnectionsDialog
 import dev.evestaticmapplanner.wormhole.WormholeManagerDialog
 import dev.evestaticmapplanner.wormhole.WormholeUiState
 import dev.evestaticmapplanner.wormhole.WormholeViewModel
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDropdownMenu as DropdownMenu
+import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveTab
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import java.nio.file.Path
 
 @Composable
 internal fun StaticMapScreen(
+    modifier: Modifier = Modifier,
     databasePath: Path,
     userDatabasePath: Path,
     state: MapUiState,
@@ -163,7 +164,7 @@ internal fun StaticMapScreen(
             savedRemovalStarted = false
         }
     }
-    Row(Modifier.fillMaxSize().background(Color(0xFF101923))) {
+    Row(modifier.fillMaxSize().background(EveColors.MapBackground)) {
         RouteToolsPanel(
             state = routeState,
             viewModel = routeViewModel,
@@ -363,8 +364,9 @@ internal fun StaticMapScreen(
                         (if (wormholeOmitted > 0) " · wormholes: $wormholeOmitted unavailable" else "") +
                         state.focusNotice?.let { " · $it" }.orEmpty(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFAAB9C7),
-                    modifier = Modifier.fillMaxWidth().background(Color(0xFF121D28)).padding(8.dp),
+                    color = EveColors.SecondaryText,
+                    modifier = Modifier.fillMaxWidth().background(EveColors.SecondarySurface)
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
                 )
             }
         }
@@ -578,10 +580,10 @@ internal fun MapToolbarContent(
     modifier: Modifier = Modifier,
 ) {
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides MAP_TOOLBAR_BUTTON_HEIGHT) {
-        Surface(modifier = modifier, color = Color(0xFF121D28), contentColor = Color(0xFFD7E6F2)) {
+        Surface(modifier = modifier, color = EveColors.SecondarySurface, contentColor = EveColors.PrimaryText) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = MAP_TOOLBAR_VERTICAL_PADDING),
             ) {
@@ -607,11 +609,11 @@ private fun ProjectionControls(
     onSwitchProjection: (MapProjectionId) -> Unit,
 ) {
     MapProjectionId.entries.forEach { projection ->
-        if (projection == projectionId) {
-            CompactToolbarButton(onClick = {}, enabled = false) { Text(projection.displayName) }
-        } else {
-            CompactToolbarTextButton(onClick = { onSwitchProjection(projection) }) { Text(projection.displayName) }
-        }
+        CompactToolbarTab(
+            selected = projection == projectionId,
+            enabled = projection != projectionId,
+            onClick = { onSwitchProjection(projection) },
+        ) { Text(projection.displayName) }
     }
 }
 
@@ -646,11 +648,10 @@ internal fun ViewStrip(
                     }
                 },
             ) {
-                if (view.id == state.currentViewId) {
-                    CompactToolbarButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
-                } else {
-                    CompactToolbarTextButton(onClick = { onSwitch(view.id) }) { Text(view.label) }
-                }
+                CompactToolbarTab(
+                    selected = view.id == state.currentViewId,
+                    onClick = { onSwitch(view.id) },
+                ) { Text(view.label) }
                 DropdownMenu(
                     expanded = contextMenuViewId == view.id,
                     onDismissRequest = { contextMenuViewId = null },
@@ -681,14 +682,16 @@ internal fun dispatchViewWheelScroll(scroll: ScrollState, verticalDelta: Float):
     if (verticalDelta == 0f) 0f else scroll.dispatchRawDelta(verticalDelta * VIEW_SCROLL_MULTIPLIER)
 
 @Composable
-private fun CompactToolbarButton(
-    onClick: () -> Unit,
+private fun CompactToolbarTab(
+    selected: Boolean,
     enabled: Boolean = true,
+    onClick: () -> Unit,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Button(
-        onClick = onClick,
+    EveTab(
+        selected = selected,
         enabled = enabled,
+        onClick = onClick,
         modifier = Modifier.height(MAP_TOOLBAR_BUTTON_HEIGHT),
         contentPadding = MAP_TOOLBAR_CONTENT_PADDING,
         content = content,
@@ -732,7 +735,7 @@ internal const val VIEW_SCROLL_MULTIPLIER = 48f
 @Composable
 private fun CenterMessage(message: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(message, color = Color(0xFFC5D4E0), modifier = Modifier.padding(24.dp))
+        Text(message, color = EveColors.PrimaryText, modifier = Modifier.padding(24.dp))
     }
 }
 

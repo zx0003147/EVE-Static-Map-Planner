@@ -2,7 +2,10 @@ package dev.evestaticmapplanner.route
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,16 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
@@ -54,6 +48,14 @@ import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.search.CompactOutlinedTextField
+import dev.evestaticmapplanner.ui.EveButton as Button
+import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDivider
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EvePanel
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
 import kotlin.math.abs
 
 internal enum class ToolSidebarSection {
@@ -99,12 +101,10 @@ internal fun RouteToolsPanel(
     onFocusSystem: (Int) -> Unit,
 ) {
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
-    Surface(
-        color = Color(0xFF15212D),
-        contentColor = Color(0xFFD7E6F2),
+    EvePanel(
         modifier = Modifier.width(TOOL_SIDEBAR_WIDTH).fillMaxHeight(),
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SystemSearchField(
                 value = state.systemQuery,
                 label = SIDEBAR_SEARCH_LABEL,
@@ -116,13 +116,13 @@ internal fun RouteToolsPanel(
                 modifier = Modifier.fillMaxWidth(),
                 compact = true,
             )
-            HorizontalDivider(color = Color(0xFF314252))
-            Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            EveDivider()
+            EveVerticalScrollColumn(
+                Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 TOOL_SIDEBAR_SECTION_ORDER.forEachIndexed { index, section ->
-                if (index > 0) HorizontalDivider(color = Color(0xFF314252))
+                if (index > 0) EveDivider()
                 val expanded = expansionState.isExpanded(section)
                 when (section) {
                     ToolSidebarSection.JUMP_RANGE -> CollapsibleToolSection(
@@ -186,10 +186,16 @@ private fun CollapsibleToolSection(
     onToggle: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth()
+                .background(if (hovered) EveColors.HoverSurface else EveColors.PrimarySurface)
+                .hoverable(interactionSource)
+                .clickable(interactionSource = interactionSource, indication = null, onClick = onToggle)
+                .padding(vertical = 6.dp, horizontal = 2.dp),
         ) {
             Text(if (expanded) "▼" else "▶", style = MaterialTheme.typography.labelMedium)
             Text(
@@ -198,7 +204,7 @@ private fun CollapsibleToolSection(
                 modifier = Modifier.padding(start = 8.dp).weight(1f),
             )
             summary?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = Color(0xFFAAB9C7))
+                Text(it, style = MaterialTheme.typography.labelSmall, color = EveColors.SecondaryText)
             }
         }
         if (expanded) content()
@@ -256,11 +262,11 @@ private fun JumpRangeSectionContent(
         if (state.intersectionOverlayIds.isNotEmpty()) {
             Text(
                 "Intersection (${state.intersectionOverlayIds.size} overlays): ${state.intersectionSystemIds.size} systems",
-                color = Color(0xFFFFD166),
+                color = EveColors.Important,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        state.error?.let { Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall) }
+        state.error?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
     }
 }
 
@@ -317,10 +323,10 @@ private fun NormalRouteSectionContent(
             }
         }
         if (state.isRouteStale) {
-            Text("Needs recalculation", color = Color(0xFFFFD166), style = MaterialTheme.typography.labelSmall)
+            Text("Needs recalculation", color = EveColors.Important, style = MaterialTheme.typography.labelSmall)
         }
         state.navigationMessage?.let {
-            Text(it, color = Color(0xFFFFB86C), style = MaterialTheme.typography.bodySmall)
+            Text(it, color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         RouteSummary(state)
         if (
@@ -329,7 +335,7 @@ private fun NormalRouteSectionContent(
         ) {
             Text(
                 "Route actions unavailable for routes containing Wormholes.",
-                color = Color(0xFFFFD166),
+                color = EveColors.Important,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -344,10 +350,10 @@ private fun NormalRouteSectionContent(
         )
         RouteManagerButtons(state, onOpenAnsiblexManager, onOpenWormholeManager)
         state.userDatabaseError?.let {
-            Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall)
+            Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
             Text(
                 "Static map and Stargate-only routing remain available.",
-                color = Color(0xFFAAB9C7),
+                color = EveColors.SecondaryText,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -450,10 +456,10 @@ private fun CapitalRouteSectionContent(
             TextButton(onClick = viewModel::clear, enabled = state.outcome != null) { Text("Clear") }
         }
         if (state.isRouteStale) {
-            Text("Needs recalculation", color = Color(0xFFFFD166), style = MaterialTheme.typography.labelSmall)
+            Text("Needs recalculation", color = EveColors.Important, style = MaterialTheme.typography.labelSmall)
         }
         state.navigationMessage?.let {
-            Text(it, color = Color(0xFFFFB86C), style = MaterialTheme.typography.bodySmall)
+            Text(it, color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         CapitalRouteSummary(state)
         RouteActionButtons(
@@ -463,28 +469,28 @@ private fun CapitalRouteSectionContent(
             onSelectRouteActionTarget,
             onInvokeRouteAction,
         )
-        state.error?.let { Text(it, color = Color(0xFFFF8A80), style = MaterialTheme.typography.bodySmall) }
+        state.error?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
         Text(
             "Validates real XYZ geometry, manual max range, and implemented static eligibility only.",
-            color = Color(0xFFB8CAD8),
+            color = EveColors.SecondaryText,
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
             "Does not verify live cyno/type, jammer, ACL, fuel, capacitor, fatigue, scram, or server state.",
-            color = Color(0xFFFFB86C),
+            color = EveColors.Warning,
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
             "Phase 5 · Jump Range Overlays + Capital Route V1",
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF728495),
+            color = EveColors.SecondaryText,
         )
     }
 }
 
 internal val TOOL_SIDEBAR_WIDTH = 270.dp
 internal val ROUTE_CONTROL_VERTICAL_SPACING = 5.dp
-internal val ROUTE_OPTION_CONTROL_SIZE = 32.dp
+internal val ROUTE_OPTION_CONTROL_SIZE = 28.dp
 internal const val SIDEBAR_SEARCH_LABEL = "Search system..."
 internal const val USE_WORMHOLES_CHECKBOX_TAG = "normal-route-use-wormholes"
 
@@ -496,13 +502,13 @@ private fun RouteSummary(state: RoutePlannerUiState) {
             val route = outcome.route
             Text(
                 normalRouteSummaryText(route),
-                color = Color(0xFFBFE7F5),
+                color = EveColors.Important,
             )
             Text(state.routeSystemNames.joinToString(" → "), style = MaterialTheme.typography.bodySmall)
         }
         is RouteCalculationOutcome.SameSystem -> Text("Start and destination are the same system · 0 jumps")
-        is RouteCalculationOutcome.Unreachable -> Text("No route is reachable with the selected connection types.", color = Color(0xFFFFB86C))
-        is RouteCalculationOutcome.InvalidEndpoint -> Text("One or both route endpoints are invalid.", color = Color(0xFFFF8A80))
+        is RouteCalculationOutcome.Unreachable -> Text("No route is reachable with the selected connection types.", color = EveColors.Warning)
+        is RouteCalculationOutcome.InvalidEndpoint -> Text("One or both route endpoints are invalid.", color = EveColors.Error)
     }
 }
 
@@ -515,7 +521,7 @@ internal fun WaypointList(
     if (waypoints.isEmpty()) {
         Text(
             "Waypoints · add from a system's right-click menu",
-            color = Color(0xFF8295A6),
+            color = EveColors.SecondaryText,
             style = MaterialTheme.typography.labelSmall,
         )
         return
@@ -524,14 +530,14 @@ internal fun WaypointList(
     var draggedIndex by remember(waypoints) { mutableStateOf<Int?>(null) }
     var accumulatedDragY by remember(waypoints) { mutableStateOf(0f) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(WAYPOINT_ROW_SPACING)) {
-        Text("Waypoints", color = Color(0xFFAAB9C7), style = MaterialTheme.typography.labelSmall)
+        Text("Waypoints", color = EveColors.SecondaryText, style = MaterialTheme.typography.labelSmall)
         waypoints.forEachIndexed { index, waypoint ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(WAYPOINT_ROW_HEIGHT)
-                    .background(if (draggedIndex == index) Color(0xFF284155) else Color(0xFF1B2A38))
+                    .background(if (draggedIndex == index) EveColors.SelectedSurface else EveColors.SecondarySurface)
                     .onGloballyPositioned { coordinates ->
                         rowCenters[index] = coordinates.positionInParent().y + coordinates.size.height / 2f
                     }
@@ -540,7 +546,7 @@ internal fun WaypointList(
             ) {
                 Text(
                     "${index + 1}",
-                    color = Color(0xFF83C9E8),
+                    color = EveColors.PrimaryAccent,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.width(WAYPOINT_SEQUENCE_WIDTH),
                 )
@@ -576,7 +582,7 @@ internal fun WaypointList(
                         }
                         .testTag("$WAYPOINT_DRAG_HANDLE_TEST_TAG_PREFIX-$index"),
                 ) {
-                    Text("::", color = Color(0xFFAAB9C7), style = MaterialTheme.typography.labelMedium)
+                    Text("::", color = EveColors.SecondaryText, style = MaterialTheme.typography.labelMedium)
                 }
                 Text(
                     waypoint.name,
@@ -596,7 +602,7 @@ internal fun WaypointList(
     }
 }
 
-internal val WAYPOINT_ROW_HEIGHT = 36.dp
+internal val WAYPOINT_ROW_HEIGHT = 32.dp
 internal val WAYPOINT_ROW_SPACING = 2.dp
 internal val WAYPOINT_SEQUENCE_WIDTH = 18.dp
 internal val WAYPOINT_DRAG_HANDLE_WIDTH = 32.dp
@@ -623,7 +629,7 @@ private fun CapitalRouteSummary(state: CapitalRouteUiState) {
             Text(
                 "${countedNoun(outcome.route.totalJumps, "capital jump")} · " +
                     String.format(java.util.Locale.ROOT, "%.3f LY total", outcome.route.totalDistanceLy),
-                color = Color(0xFFE3C5FF),
+                color = EveColors.Important,
             )
             Text(state.routeSystemNames.joinToString(" → "), style = MaterialTheme.typography.bodySmall)
             outcome.route.legs.forEach { leg ->
@@ -635,11 +641,11 @@ private fun CapitalRouteSummary(state: CapitalRouteUiState) {
             }
         }
         is CapitalRouteOutcome.SameSystem -> Text("Start and destination are the same · 0 jumps")
-        is CapitalRouteOutcome.Unreachable -> Text("No statically eligible route within the manual range.", color = Color(0xFFFFB86C))
-        is CapitalRouteOutcome.InvalidEndpoint -> Text("One or both capital endpoints are invalid.", color = Color(0xFFFF8A80))
+        is CapitalRouteOutcome.Unreachable -> Text("No statically eligible route within the manual range.", color = EveColors.Warning)
+        is CapitalRouteOutcome.InvalidEndpoint -> Text("One or both capital endpoints are invalid.", color = EveColors.Error)
         is CapitalRouteOutcome.IneligibleEndpoint -> Text(
             "${outcome.endpoint}: ${outcome.verdict}",
-            color = Color(0xFFFFB86C),
+            color = EveColors.Warning,
             style = MaterialTheme.typography.bodySmall,
         )
     }

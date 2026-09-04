@@ -1,9 +1,11 @@
 package dev.evestaticmapplanner.marker
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
@@ -14,11 +16,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.Density
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
+import dev.evestaticmapplanner.ui.EveTheme
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -90,18 +94,21 @@ class MarkerEditorDialogTest {
     @Test
     fun `manager add editor accepts focus typing and cancel`() = runComposeUiTest {
         var systemQuery by mutableStateOf("")
+        var densityScale by mutableStateOf(1f)
         var dismissCount = 0
         setContent {
-            MaterialTheme {
-                MarkerEditorDialog(
-                    request = MarkerEditorRequest(MarkerEditorMode.CREATE_SAVED, null, null),
-                    isBusy = false,
-                    error = null,
-                    systemSearch = MarkerEditorSystemSearch(systemQuery, emptyList(), null),
-                    onSystemQueryChange = { systemQuery = it },
-                    onSave = { _, _, _ -> },
-                    onDismiss = { dismissCount++ },
-                )
+            CompositionLocalProvider(LocalDensity provides Density(densityScale, fontScale = 1f)) {
+                EveTheme {
+                    MarkerEditorDialog(
+                        request = MarkerEditorRequest(MarkerEditorMode.CREATE_SAVED, null, null),
+                        isBusy = false,
+                        error = null,
+                        systemSearch = MarkerEditorSystemSearch(systemQuery, emptyList(), null),
+                        onSystemQueryChange = { systemQuery = it },
+                        onSave = { _, _, _ -> },
+                        onDismiss = { dismissCount++ },
+                    )
+                }
             }
         }
 
@@ -117,9 +124,49 @@ class MarkerEditorDialogTest {
         onAllNodes(hasSetTextAction())[2].assertIsFocused()
         onAllNodes(hasSetTextAction())[2].performTextInput("Move supplies here")
         onAllNodes(hasSetTextAction())[2].assertTextEquals("Notes", "Move supplies here")
+
+        for (scale in listOf(1f, 1.25f, 1.5f)) {
+            runOnIdle { densityScale = scale }
+            waitForIdle()
+            val fields = onAllNodes(hasSetTextAction())
+            fields[0].performScrollTo().assertIsDisplayed().assertTextEquals("Search system", "Jita")
+            fields[1].performScrollTo().assertIsDisplayed().assertTextEquals("Name", "Market staging")
+            fields[2].performScrollTo().assertIsDisplayed().assertTextEquals("Notes", "Move supplies here")
+        }
         onNodeWithText("Cancel").performClick()
 
         assertEquals(1, dismissCount)
+    }
+
+    @Test
+    fun `map add editor keeps solar system name and notes readable at common Windows scales`() = runComposeUiTest {
+        var densityScale by mutableStateOf(1f)
+        setContent {
+            CompositionLocalProvider(LocalDensity provides Density(densityScale, fontScale = 1f)) {
+                EveTheme {
+                    MarkerEditorDialog(
+                        request = MarkerEditorRequest(MarkerEditorMode.CREATE_SAVED, 30_000_142, "Jita"),
+                        isBusy = false,
+                        error = null,
+                        onSave = { _, _, _ -> },
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+
+        val initialFields = onAllNodes(hasSetTextAction())
+        initialFields[0].performClick().performTextInput("Market staging")
+        initialFields[1].performClick().performTextInput("Move supplies here")
+
+        for (scale in listOf(1f, 1.25f, 1.5f)) {
+            runOnIdle { densityScale = scale }
+            waitForIdle()
+            val fields = onAllNodes(hasSetTextAction())
+            onNodeWithText("Jita").performScrollTo().assertIsDisplayed()
+            fields[0].performScrollTo().assertIsDisplayed().assertTextEquals("Name", "Market staging")
+            fields[1].performScrollTo().assertIsDisplayed().assertTextEquals("Notes", "Move supplies here")
+        }
     }
 
     @Test

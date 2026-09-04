@@ -3,11 +3,7 @@ package dev.evestaticmapplanner.route
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,8 +11,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import dev.evestaticmapplanner.ui.EveButton as Button
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDropdownMenu as DropdownMenu
+import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
+import dev.evestaticmapplanner.ui.EveOutlinedButton as OutlinedButton
 import dev.evestaticmapplanner.feature.api.RouteActionStatus
 import dev.evestaticmapplanner.feature.api.NavigationSnapshot
 import dev.evestaticmapplanner.feature.api.RouteActionTargetId
@@ -60,7 +60,7 @@ internal fun NavigationRouteActionButtons(
         Text(
             "Draft only — EVE changes only after you press a button below.",
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFFAAB9C7),
+            color = EveColors.SecondaryText,
         )
         visible.mapNotNull { action ->
             action.targetSelector?.let { selector -> routeActionTargetSelectionKey(action) to selector }
@@ -109,9 +109,9 @@ internal fun NavigationRouteActionButtons(
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = when (status) {
-                    RouteActionStatus.SUCCEEDED -> Color(0xFF9FE3B1)
-                    RouteActionStatus.REJECTED -> Color(0xFFFFD166)
-                    RouteActionStatus.FAILED -> Color(0xFFFF8A80)
+                    RouteActionStatus.SUCCEEDED -> EveColors.Success
+                    RouteActionStatus.REJECTED -> EveColors.Warning
+                    RouteActionStatus.FAILED -> EveColors.Error
                 },
             )
         }
@@ -132,7 +132,7 @@ private fun RouteActionTargetSelector(
     var expanded by remember(selector.selectorId) { mutableStateOf(false) }
     val selected = selector.options.firstOrNull { it.id.value == selectedTargetId }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(selector.label, style = MaterialTheme.typography.labelMedium, color = Color(0xFFD7E6F2))
+        Text(selector.label, style = MaterialTheme.typography.labelMedium, color = EveColors.PrimaryText)
         androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth()) {
             OutlinedButton(
                 onClick = { expanded = true },

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,8 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import dev.evestaticmapplanner.ui.EvePanel
 
 @Composable
 internal fun FeatureOverlayLegend(
@@ -29,15 +28,10 @@ internal fun FeatureOverlayLegend(
     if (sections.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
     val header = if (sections.size == 1) sections.single().title else "Map overlays"
-    Surface(
-        color = Color(0xE61B2A37),
-        contentColor = Color(0xFFF1F5F8),
-        shadowElevation = 4.dp,
-        modifier = modifier,
-    ) {
+    EvePanel(modifier = modifier, secondary = true) {
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(vertical = 8.dp),
+            modifier = Modifier.padding(vertical = 6.dp),
         ) {
             Text(
                 text = "$header ${if (expanded) "▾" else "▸"}",

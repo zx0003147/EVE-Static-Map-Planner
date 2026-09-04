@@ -7,11 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,10 +17,14 @@ import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.StaticDatabaseMode
 import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
 import dev.evestaticmapplanner.sde.update.SdeUpdaterPhase
+import dev.evestaticmapplanner.ui.EveButton as Button
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveOutlinedButton as OutlinedButton
+import dev.evestaticmapplanner.ui.EveWindowSurface
 
 @Composable
 fun StaticDataBootstrapScreen(state: StaticDataManagerUiState, viewModel: StaticDataManagerViewModel) {
-    Surface(Modifier.fillMaxSize()) {
+    EveWindowSurface(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize().padding(48.dp),
             verticalArrangement = Arrangement.Center,
@@ -62,7 +63,7 @@ private fun StaticDataManagerContent(state: StaticDataManagerUiState, viewModel:
         Info("Last checked", state.lastChecked ?: "Never")
         Info("Status", statusText(state))
         if (state.mode == StaticDatabaseMode.EXTERNAL) {
-            Text("Updates cannot replace this file automatically.", color = MaterialTheme.colorScheme.secondary)
+            Text("Updates cannot replace this file automatically.", color = EveColors.Warning)
         }
         if (state.phase == SdeUpdaterPhase.DOWNLOADING) {
             val total = state.totalBytes
@@ -76,7 +77,7 @@ private fun StaticDataManagerContent(state: StaticDataManagerUiState, viewModel:
             }
             Text("${formatMb(state.downloadedBytes)} / ${total?.let(::formatMb) ?: "unknown"}")
         }
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        state.error?.let { Text(it, color = EveColors.Error) }
         if (state.mode == StaticDatabaseMode.MANAGED) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
@@ -102,7 +103,7 @@ private fun StaticDataManagerContent(state: StaticDataManagerUiState, viewModel:
 @Composable
 private fun Info(label: String, value: String) {
     Column {
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = EveColors.SecondaryText)
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }

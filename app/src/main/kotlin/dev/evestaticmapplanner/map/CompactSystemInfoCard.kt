@@ -1,6 +1,5 @@
 package dev.evestaticmapplanner.map
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,12 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +34,9 @@ import dev.evestaticmapplanner.marker.markerColor
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EvePanel
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -150,10 +149,10 @@ object CompactSystemInfoPresentationBuilder {
 
 internal object CompactSystemInfoCardDefaults {
     val alignment: Alignment = Alignment.BottomEnd
-    val margin = 16.dp
+    val margin = 12.dp
     val maxWidth = 300.dp
     val maxHeight = 420.dp
-    val contentPadding = 12.dp
+    val contentPadding = 10.dp
     const val zIndex = 5f
 }
 
@@ -164,13 +163,8 @@ fun CompactSystemInfoCard(
     onEditSharedMarker: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        color = Color(0xF2182734),
-        contentColor = Color(0xFFD7E6F2),
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
-        border = BorderStroke(1.dp, Color(0xFF415466)),
+    EvePanel(
+        secondary = true,
         modifier = modifier
             .widthIn(max = CompactSystemInfoCardDefaults.maxWidth)
             .fillMaxWidth()
@@ -196,14 +190,14 @@ fun CompactSystemInfoCard(
                 Text(
                     it,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFAFC1D1),
+                    color = EveColors.SecondaryText,
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             if (presentation.isLoading) {
-                Text("Loading system details…", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+                Text("Loading system details…", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
             } else {
                 presentation.fields.forEach { field -> CompactInfoRow(field) }
             }
@@ -211,7 +205,7 @@ fun CompactSystemInfoCard(
             presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker, onEditSharedMarker) }
             if (presentation.isLoading) return@Column
             if (presentation.ansiblexConnections.isNotEmpty()) {
-                Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
+                Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
                 presentation.ansiblexConnections.forEach {
                     Text(
                         it,
@@ -223,12 +217,12 @@ fun CompactSystemInfoCard(
                 }
             }
             if (presentation.jumpOverlayLabels.isNotEmpty()) {
-                Text("Jump Overlays", style = MaterialTheme.typography.labelMedium, color = Color(0xFFFFD166))
+                Text("Jump Overlays", style = MaterialTheme.typography.labelMedium, color = EveColors.Important)
                 presentation.jumpOverlayLabels.forEach {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFFFD166),
+                        color = EveColors.Important,
                         maxLines = 1,
                         softWrap = false,
                         overflow = TextOverflow.Ellipsis,
@@ -239,14 +233,14 @@ fun CompactSystemInfoCard(
                 Text(
                     "In selected overlay intersection",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFFFD166),
+                    color = EveColors.Important,
                 )
             }
             presentation.extensionSections.forEach { section ->
                 Text(
                     section.title,
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFF9FB1C1),
+                    color = EveColors.SecondaryText,
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Ellipsis,
@@ -261,7 +255,7 @@ fun CompactSystemInfoCard(
 
 @Composable
 private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation, onEdit: (() -> Unit)?) {
-    Text("Shared Marker", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
+    Text("Shared Marker", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         SharedMarkerOwnershipBadge(marker.color)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -273,26 +267,26 @@ private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation, 
             )
             CompactInfoRow(CompactInfoField("Color", marker.color.name))
             if (marker.tags.isNotEmpty()) {
-                Text("Tags", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+                Text("Tags", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
                 Text(marker.tags.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
             }
             marker.notes?.let { notes ->
-                Text("Notes", style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+                Text("Notes", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
                 Text(notes, style = MaterialTheme.typography.bodySmall)
             }
             Text(
                 "Updated by ${marker.updatedByDisplayName}",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF91A2B2),
+                color = EveColors.SecondaryText,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(marker.updatedAtLabel, style = MaterialTheme.typography.bodySmall, color = Color(0xFF91A2B2))
+            Text(marker.updatedAtLabel, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
             if (marker.isStale) {
                 Text(
                     "Shared Map data may be stale",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFFFB86B),
+                    color = EveColors.Warning,
                 )
             }
             if (onEdit != null) {
@@ -308,24 +302,24 @@ private fun SharedMarkerOwnershipBadge(color: SharedMarkerColor) {
     Canvas(Modifier.size(24.dp)) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = size.minDimension * 0.34f
-        drawCircle(Color(0xF2111C26), radius, center)
+        drawCircle(EveColors.InputSurface, radius, center)
         drawCircle(tint, radius, center, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
         val nodeOffset = radius * 0.34f
         val nodeRadius = radius * 0.2f
         drawLine(
-            Color(0xFFF1F5F8),
+            EveColors.PrimaryText,
             Offset(center.x - nodeOffset, center.y + nodeRadius),
             Offset(center.x + nodeOffset, center.y + nodeRadius),
             1.dp.toPx(),
         )
-        drawCircle(Color(0xFFF1F5F8), nodeRadius, Offset(center.x - nodeOffset, center.y - nodeRadius * 0.5f))
-        drawCircle(Color(0xFFF1F5F8), nodeRadius, Offset(center.x + nodeOffset, center.y - nodeRadius * 0.5f))
+        drawCircle(EveColors.PrimaryText, nodeRadius, Offset(center.x - nodeOffset, center.y - nodeRadius * 0.5f))
+        drawCircle(EveColors.PrimaryText, nodeRadius, Offset(center.x + nodeOffset, center.y - nodeRadius * 0.5f))
     }
 }
 
 @Composable
 private fun CompactMarkerSection(marker: CompactMarkerPresentation) {
-    Text("Marker", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9FB1C1))
+    Text("Marker", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         Text(marker.glyph, color = markerColor(marker.color), style = MaterialTheme.typography.titleMedium)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -340,7 +334,7 @@ private fun CompactMarkerSection(marker: CompactMarkerPresentation) {
                 Text(
                     marker.persistenceLabel,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF91A2B2),
+                    color = EveColors.SecondaryText,
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Ellipsis,
@@ -369,7 +363,7 @@ private fun CompactInfoRow(field: CompactInfoField) {
         Text(
             field.label,
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF91A2B2),
+            color = EveColors.SecondaryText,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis,

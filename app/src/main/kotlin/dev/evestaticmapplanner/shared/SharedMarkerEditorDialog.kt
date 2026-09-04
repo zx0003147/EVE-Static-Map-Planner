@@ -15,10 +15,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +33,9 @@ import dev.evestaticmapplanner.shared.model.SharedMarker
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedMarkerValidation
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 
 internal enum class SharedMarkerEditorMode { CREATE, EDIT, VIEW }
 
@@ -108,6 +109,7 @@ internal fun SharedMarkerEditorDialog(
                     onValueChange = {},
                     label = { Text("Solar System") },
                     readOnly = true,
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -131,6 +133,7 @@ internal fun SharedMarkerEditorDialog(
                     label = { Text("Tags") },
                     supportingText = { Text("Comma or space separated; up to 9 lowercase tags") },
                     enabled = canWrite && !remoteDeleted && request.mode != SharedMarkerEditorMode.VIEW && !busy,
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 CommonSharedMarkerTags(
@@ -153,14 +156,14 @@ internal fun SharedMarkerEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (!canWrite && request.mode != SharedMarkerEditorMode.VIEW) {
-                    Text("Shared Map is temporarily unavailable or your role is read-only.", color = Color(0xFFFFB86B))
+                    Text("Shared Map is temporarily unavailable or your role is read-only.", color = EveColors.Warning)
                 }
                 if (remoteDeleted) {
                     Text("This Shared Marker no longer exists.", color = MaterialTheme.colorScheme.error)
                 }
                 if (conflict != null) {
                     Text("This Shared Marker was changed by another user.", color = MaterialTheme.colorScheme.error)
-                    Text("Reload the latest server version before editing again.", color = Color(0xFFAAB9C7))
+                    Text("Reload the latest server version before editing again.", color = EveColors.SecondaryText)
                 } else {
                     (localError ?: operationError?.let(::sharedMapErrorMessage))?.let {
                         Text(it, color = MaterialTheme.colorScheme.error)
@@ -307,12 +310,12 @@ private fun SharedMarkerColorPalette(
 
 @Composable
 private fun CommonSharedMarkerTags(current: List<String>, enabled: Boolean, onToggle: (String) -> Unit) {
-    Text("Common tags", style = MaterialTheme.typography.labelMedium, color = Color(0xFFAAB9C7))
+    Text("Common tags", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         COMMON_SHARED_MARKER_TAGS.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { tag ->
-                    TextButton(enabled = enabled, onClick = { onToggle(tag) }) {
+                    TextButton(enabled = enabled, selected = tag in current, onClick = { onToggle(tag) }) {
                         Text(if (tag in current) "✓ $tag" else tag)
                     }
                 }

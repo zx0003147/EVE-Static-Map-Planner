@@ -3,6 +3,9 @@ package dev.evestaticmapplanner.marker
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,15 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -37,6 +34,13 @@ import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDivider as HorizontalDivider
+import dev.evestaticmapplanner.ui.EveLazyColumn
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveWindowChrome
+import dev.evestaticmapplanner.ui.EveWindowSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -135,14 +139,13 @@ fun MarkerManagerWindow(
         title = "Marker Manager",
         state = rememberWindowState(width = 760.dp, height = 560.dp),
     ) {
-        Surface(
-            color = Color(0xFF15212D),
-            contentColor = Color(0xFFD7E6F2),
+        EveWindowChrome(window)
+        EveWindowSurface(
             modifier = Modifier.fillMaxSize(),
         ) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize().padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize().padding(16.dp),
             ) {
                 Text("Saved Marker Manager", style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(
@@ -153,18 +156,18 @@ fun MarkerManagerWindow(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 MarkerTableHeader()
-                HorizontalDivider(color = Color(0xFF415466))
+                HorizontalDivider()
                 when {
-                    markerState.isLoading -> Text("Loading saved markers…", color = Color(0xFFAFC1D1))
+                    markerState.isLoading -> Text("Loading saved markers…", color = EveColors.SecondaryText)
                     markerState.databaseError != null -> Text(
                         markerState.databaseError,
                         color = MaterialTheme.colorScheme.error,
                     )
                     presentation.rows.isEmpty() -> Text(
                         if (query.isBlank()) "No saved markers." else "No saved markers match this search.",
-                        color = Color(0xFFAFC1D1),
+                        color = EveColors.SecondaryText,
                     )
-                    else -> LazyColumn(Modifier.weight(1f).fillMaxWidth().heightIn(min = 120.dp)) {
+                    else -> EveLazyColumn(Modifier.weight(1f).fillMaxWidth().heightIn(min = 120.dp)) {
                         items(presentation.rows, key = SavedMarkerRowPresentation::systemId) { row ->
                             MarkerTableRow(
                                 row = row,
@@ -175,7 +178,7 @@ fun MarkerManagerWindow(
                         }
                     }
                 }
-                HorizontalDivider(color = Color(0xFF415466))
+                HorizontalDivider()
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -347,13 +350,22 @@ private fun MarkerTableRow(
     onClick: () -> Unit,
     onDoubleClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (selected) Color(0xFF29465C) else Color.Transparent)
+            .background(
+                when {
+                    selected -> EveColors.SelectedSurface
+                    hovered -> EveColors.HoverSurface
+                    else -> EveColors.PrimarySurface
+                },
+            )
+            .hoverable(interactionSource)
             .combinedClickable(onClick = onClick, onDoubleClick = onDoubleClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = 10.dp, vertical = 7.dp),
     ) {
         Text(row.systemName, modifier = Modifier.weight(1.2f))
         Column(modifier = Modifier.weight(1.2f)) {
@@ -370,7 +382,7 @@ internal fun SavedMarkerProvenanceBadge(createdBy: SavedMarkerCreatedBy) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF8CC8F5),
+            color = EveColors.PrimaryAccent,
         )
     }
 }

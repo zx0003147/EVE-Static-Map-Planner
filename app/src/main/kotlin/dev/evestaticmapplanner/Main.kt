@@ -1,11 +1,12 @@
 package dev.evestaticmapplanner
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +21,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.FrameWindowScope
-import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
@@ -87,6 +87,12 @@ import dev.evestaticmapplanner.shared.toPreferences
 import dev.evestaticmapplanner.staticdata.StaticDataBootstrapScreen
 import dev.evestaticmapplanner.staticdata.StaticDataManagerDialog
 import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
+import dev.evestaticmapplanner.ui.EveMenuItemSpec
+import dev.evestaticmapplanner.ui.EveMenuSpec
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveTheme
+import dev.evestaticmapplanner.ui.EveTopMenuBar
+import dev.evestaticmapplanner.ui.EveWindowChrome
 import dev.evestaticmapplanner.view.PlanningViewCoordinator
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import dev.evestaticmapplanner.wormhole.WormholeViewModel
@@ -148,7 +154,8 @@ fun main(arguments: Array<String>) {
             state = windowState,
             icon = windowIcon,
         ) {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            EveTheme {
+                EveWindowChrome(window)
                 when (val resolution = startup) {
                     is StartupResolution.Ready -> ReadyApplication(
                         resolution.configuration,
@@ -516,65 +523,70 @@ private fun FrameWindowScope.ReadyApplication(
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {
         it.persistence == MarkerPersistence.TEMPORARY
     }
-    MenuBar {
-        Menu("Marker") {
-            Item(
-                "Marker Manager…",
-                enabled = !showMarkerManager,
-                onClick = { showMarkerManager = true },
-            )
-            Item(
-                "Shared Marker Manager…",
-                enabled = !showSharedMarkerManager,
-                onClick = { showSharedMarkerManager = true },
-            )
-            Separator()
-            Item(
-                "Clear All Temporary Markers…",
-                enabled = temporaryMarkerCount > 0,
-                onClick = { confirmClearTemporaryMarkers = true },
-            )
-        }
-        Menu("Preferences") {
-            Item("Preferences…", onClick = { showPreferences = true })
-        }
-        Menu("Static Data") {
-            Item("Static Data…", enabled = !showStaticData, onClick = { showStaticData = true })
-        }
+    Column(Modifier.fillMaxSize()) {
+        EveTopMenuBar(
+            listOf(
+                EveMenuSpec(
+                    "Marker",
+                    listOf(
+                        EveMenuItemSpec("Marker Manager…", enabled = !showMarkerManager) {
+                            showMarkerManager = true
+                        },
+                        EveMenuItemSpec("Shared Marker Manager…", enabled = !showSharedMarkerManager) {
+                            showSharedMarkerManager = true
+                        },
+                        EveMenuItemSpec(
+                            "Clear All Temporary Markers…",
+                            enabled = temporaryMarkerCount > 0,
+                            separatorBefore = true,
+                        ) { confirmClearTemporaryMarkers = true },
+                    ),
+                ),
+                EveMenuSpec(
+                    "Preferences",
+                    listOf(EveMenuItemSpec("Preferences…") { showPreferences = true }),
+                ),
+                EveMenuSpec(
+                    "Static Data",
+                    listOf(EveMenuItemSpec("Static Data…", enabled = !showStaticData) { showStaticData = true }),
+                ),
+            ),
+        )
+        StaticMapScreen(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            databasePath = configuration.database.path,
+            userDatabasePath = configuration.userDatabase.path,
+            state = mapState,
+            routeState = routeState,
+            wormholeState = wormholeState,
+            jumpState = jumpState,
+            capitalState = capitalState,
+            planningViewsState = planningViewsState,
+            markerState = markerState,
+            sharedMapState = sharedMapState,
+            sharedMarkerState = sharedMarkerPresentation,
+            sharedMarkerMutation = sharedMarkerMutation,
+            missionState = missionState,
+            featureOverlayState = visibleFeatureOverlayState,
+            systemInfoState = systemInfoState,
+            routeActions = routeActions,
+            normalRouteSnapshot = normalRouteSnapshot,
+            normalNavigationSnapshot = normalNavigationSnapshot,
+            capitalRouteSnapshot = capitalRouteSnapshot,
+            onInvokeRouteAction = featurePackRuntime.routeActionHost::invoke,
+            onInvokeNavigationAction = featurePackRuntime.routeActionHost::invokeNavigation,
+            viewModel = mapViewModel,
+            routeViewModel = routeViewModel,
+            wormholeViewModel = wormholeViewModel,
+            jumpViewModel = jumpViewModel,
+            capitalViewModel = capitalViewModel,
+            planningViewCoordinator = planningViewCoordinator,
+            markerViewModel = markerViewModel,
+            sharedMapViewModel = sharedMapViewModel,
+            onFirstMapDisplayed = featurePackRuntime::onFirstMapDisplayed,
+            suppressMarkerOperationErrorDialog = showMarkerManager,
+        )
     }
-    StaticMapScreen(
-        databasePath = configuration.database.path,
-        userDatabasePath = configuration.userDatabase.path,
-        state = mapState,
-        routeState = routeState,
-        wormholeState = wormholeState,
-        jumpState = jumpState,
-        capitalState = capitalState,
-        planningViewsState = planningViewsState,
-        markerState = markerState,
-        sharedMapState = sharedMapState,
-        sharedMarkerState = sharedMarkerPresentation,
-        sharedMarkerMutation = sharedMarkerMutation,
-        missionState = missionState,
-        featureOverlayState = visibleFeatureOverlayState,
-        systemInfoState = systemInfoState,
-        routeActions = routeActions,
-        normalRouteSnapshot = normalRouteSnapshot,
-        normalNavigationSnapshot = normalNavigationSnapshot,
-        capitalRouteSnapshot = capitalRouteSnapshot,
-        onInvokeRouteAction = featurePackRuntime.routeActionHost::invoke,
-        onInvokeNavigationAction = featurePackRuntime.routeActionHost::invokeNavigation,
-        viewModel = mapViewModel,
-        routeViewModel = routeViewModel,
-        wormholeViewModel = wormholeViewModel,
-        jumpViewModel = jumpViewModel,
-        capitalViewModel = capitalViewModel,
-        planningViewCoordinator = planningViewCoordinator,
-        markerViewModel = markerViewModel,
-        sharedMapViewModel = sharedMapViewModel,
-        onFirstMapDisplayed = featurePackRuntime::onFirstMapDisplayed,
-        suppressMarkerOperationErrorDialog = showMarkerManager,
-    )
     if (showStaticData) {
         StaticDataManagerDialog(staticDataState, staticDataViewModel) { showStaticData = false }
     }
