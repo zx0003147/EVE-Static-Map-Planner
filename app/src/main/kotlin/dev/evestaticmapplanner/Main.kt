@@ -36,6 +36,8 @@ import dev.evestaticmapplanner.control.MapViewportControlAdapter
 import dev.evestaticmapplanner.control.MissionMapStateStore
 import dev.evestaticmapplanner.control.RepositorySystemReadPort
 import dev.evestaticmapplanner.control.transport.LocalControlServer
+import dev.evestaticmapplanner.core.repository.SystemSearchRepository
+import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidation
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
@@ -43,6 +45,7 @@ import dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntime
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
+import dev.evestaticmapplanner.data.db.UserDatabase
 import dev.evestaticmapplanner.data.repository.SqliteAnsiblexRepository
 import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
 import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
@@ -87,6 +90,7 @@ import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
 import dev.evestaticmapplanner.view.PlanningViewCoordinator
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import dev.evestaticmapplanner.wormhole.WormholeViewModel
+import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -221,19 +225,10 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val userComponents = remember(configuration) {
         runCatching {
-            val ansiblexRepository = SqliteAnsiblexRepository(configuration.userDatabase.path)
-            val importService = AnsiblexImportService(
+            createUserComponents(
                 userDatabasePath = configuration.userDatabase.path,
                 universeRepository = universeRepository,
                 searchRepository = searchRepository,
-            )
-            UserComponents(
-                ansiblexRepository = ansiblexRepository,
-                importService = importService,
-                savedMarkerRepository = SqliteSavedMarkerRepository(
-                    databasePath = configuration.userDatabase.path,
-                    initializeDatabase = false,
-                ),
             )
         }.also { result ->
             result.exceptionOrNull()?.let { AppDiagnostics.warning("User database initialization failed", it) }
@@ -577,6 +572,7 @@ private fun FrameWindowScope.ReadyApplication(
         planningViewCoordinator = planningViewCoordinator,
         markerViewModel = markerViewModel,
         sharedMapViewModel = sharedMapViewModel,
+        onFirstMapDisplayed = featurePackRuntime::onFirstMapDisplayed,
         suppressMarkerOperationErrorDialog = showMarkerManager,
     )
     if (showStaticData) {
@@ -710,11 +706,36 @@ private fun FrameWindowScope.ReadyApplication(
     }
 }
 
-private data class UserComponents(
+internal data class UserComponents(
     val ansiblexRepository: SqliteAnsiblexRepository,
     val importService: AnsiblexImportService,
     val savedMarkerRepository: SqliteSavedMarkerRepository,
 )
+
+internal fun createUserComponents(
+    userDatabasePath: Path,
+    universeRepository: UniverseRepository,
+    searchRepository: SystemSearchRepository,
+    databaseInitializer: (Path) -> Unit = UserDatabase::initialize,
+): UserComponents {
+    databaseInitializer(userDatabasePath)
+    return UserComponents(
+        ansiblexRepository = SqliteAnsiblexRepository(
+            databasePath = userDatabasePath,
+            initializeDatabase = false,
+        ),
+        importService = AnsiblexImportService(
+            userDatabasePath = userDatabasePath,
+            universeRepository = universeRepository,
+            searchRepository = searchRepository,
+            initializeDatabase = false,
+        ),
+        savedMarkerRepository = SqliteSavedMarkerRepository(
+            databasePath = userDatabasePath,
+            initializeDatabase = false,
+        ),
+    )
+}
 
 private fun createUpdateService(
     paths: ManagedStaticDataPaths,

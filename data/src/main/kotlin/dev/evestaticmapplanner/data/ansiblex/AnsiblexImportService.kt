@@ -24,9 +24,10 @@ class AnsiblexImportService(
     private val clock: Clock = Clock.systemUTC(),
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val transactionHook: (Connection) -> Unit = {},
+    initializeDatabase: Boolean = true,
 ) {
     init {
-        UserDatabase.initialize(userDatabasePath)
+        if (initializeDatabase) UserDatabase.initialize(userDatabasePath)
     }
 
     fun preview(file: Path, mode: AnsiblexImportMode): AnsiblexImportPreview {

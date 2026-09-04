@@ -125,6 +125,7 @@ internal fun StaticMapScreen(
     planningViewCoordinator: PlanningViewCoordinator,
     markerViewModel: MarkerViewModel,
     sharedMapViewModel: SharedMapViewModel,
+    onFirstMapDisplayed: () -> Unit,
     suppressMarkerOperationErrorDialog: Boolean = false,
 ) {
     var showAnsiblexManager by remember { mutableStateOf(false) }
@@ -328,7 +329,10 @@ internal fun StaticMapScreen(
                             viewModel.dismissContextMenu()
                         },
                         onContextDismiss = viewModel::dismissContextMenu,
-                        onFirstMapDisplayed = viewModel::onFirstMapDisplayed,
+                        onFirstMapDisplayed = {
+                            viewModel.onFirstMapDisplayed()
+                            onFirstMapDisplayed()
+                        },
                     )
                     state.scene != null -> CanvasSizeProbe(viewModel::onCanvasSizeChanged)
                 }

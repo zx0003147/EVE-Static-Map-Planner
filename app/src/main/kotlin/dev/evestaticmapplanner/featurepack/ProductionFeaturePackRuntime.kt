@@ -57,6 +57,11 @@ class ProductionFeaturePackRuntime private constructor(
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
 
+    /** Starts dynamic Pack work only after the Host has presented its first base-map frame. */
+    fun onFirstMapDisplayed() {
+        if (!closed.get()) overlayHost.enableBackgroundRefreshes()
+    }
+
     fun closeSafely(): ProductionFeaturePackCloseReport {
         if (!closed.compareAndSet(false, true)) return ProductionFeaturePackCloseReport(emptyList())
         val failures = manager.closeSafely().toMutableList()
@@ -82,12 +87,15 @@ class ProductionFeaturePackRuntime private constructor(
         ): ProductionFeaturePackRuntime {
             val normalizedRoot = packRoot.toAbsolutePath().normalize()
             val normalizedApplicationRoot = applicationRoot.toAbsolutePath().normalize()
-            val overlayHost = FeatureOverlayHost { packId, providerId, operation, error ->
-                AppDiagnostics.warning(
-                    "Dynamic Overlay failed: pack=$packId provider=$providerId operation=$operation",
-                    error,
-                )
-            }
+            val overlayHost = FeatureOverlayHost(
+                backgroundRefreshesEnabled = false,
+                failureSink = { packId, providerId, operation, error ->
+                    AppDiagnostics.warning(
+                        "Dynamic Overlay failed: pack=$packId provider=$providerId operation=$operation",
+                        error,
+                    )
+                },
+            )
             val systemInfoHost = SystemInfoHost { providerId, error ->
                 AppDiagnostics.warning("System Info provider failed: $providerId", error)
             }

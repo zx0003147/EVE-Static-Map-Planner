@@ -16,10 +16,11 @@ import java.util.UUID
 class SqliteAnsiblexRepository(
     private val databasePath: Path,
     private val clock: Clock = Clock.systemUTC(),
+    initializeDatabase: Boolean = true,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) : AnsiblexRepository {
     init {
-        UserDatabase.initialize(databasePath)
+        if (initializeDatabase) UserDatabase.initialize(databasePath)
     }
 
     override fun getAll(): List<AnsiblexConnection> = UserDatabase.open(databasePath).use { connection ->

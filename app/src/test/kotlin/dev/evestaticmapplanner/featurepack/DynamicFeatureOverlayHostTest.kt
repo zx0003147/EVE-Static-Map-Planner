@@ -18,6 +18,47 @@ import kotlin.test.assertTrue
 
 class DynamicFeatureOverlayHostTest {
     @Test
+    fun `refresh requested during startup waits for first-map release`() {
+        FeatureOverlayHost(backgroundRefreshesEnabled = false).use { host ->
+            val calls = AtomicInteger()
+            val currentSystem = AtomicInteger(30_000_001)
+            val registration = host.scopedDynamicCapability(PackId("deferred.pack")).register(
+                provider("deferred.provider", "deferred", calls, currentSystem::get),
+            )
+
+            currentSystem.set(30_000_002)
+            registration.requestRefresh()
+            Thread.sleep(50)
+
+            assertEquals(1, calls.get())
+            assertEquals(listOf(30_000_001), host.systems("deferred.provider"))
+
+            host.enableBackgroundRefreshes()
+
+            await { host.systems("deferred.provider") == listOf(30_000_002) }
+            assertEquals(2, calls.get())
+        }
+    }
+
+    @Test
+    fun `closing a queued provider before first-map release prevents refresh`() {
+        FeatureOverlayHost(backgroundRefreshesEnabled = false).use { host ->
+            val calls = AtomicInteger()
+            val registration = host.scopedDynamicCapability(PackId("deferred.pack")).register(
+                provider("deferred.provider", "deferred", calls) { 30_000_001 },
+            )
+            registration.requestRefresh()
+
+            registration.close()
+            host.enableBackgroundRefreshes()
+            Thread.sleep(50)
+
+            assertEquals(1, calls.get())
+            assertTrue(host.state.value.isEmpty)
+        }
+    }
+
+    @Test
     fun `dynamic registration publishes initial snapshot and refreshes only its provider`() {
         FeatureOverlayHost().use { host ->
             val staticCalls = AtomicInteger()

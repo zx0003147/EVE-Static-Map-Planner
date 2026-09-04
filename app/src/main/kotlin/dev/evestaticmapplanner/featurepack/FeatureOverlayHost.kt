@@ -26,9 +26,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * Application-owned aggregation boundary between external providers and map presentation.
  *
  * Each provider owns a validated last-good cache. Dynamic refresh is provider-targeted and starts
- * only after a Pack requests it; constructing an empty Host starts no thread and performs no work.
+ * only after a Pack requests it and the Host enables background execution; constructing an empty
+ * Host starts no thread and performs no work.
  */
 class FeatureOverlayHost(
+    backgroundRefreshesEnabled: Boolean = true,
     private val failureSink: (packId: PackId, providerId: String, operation: String, error: Throwable) -> Unit =
         { _, _, _, _ -> },
 ) : AutoCloseable {
@@ -44,6 +46,7 @@ class FeatureOverlayHost(
         ThreadPoolExecutor.AbortPolicy(),
     )
     private var closed = false
+    private var backgroundRefreshesEnabled = backgroundRefreshesEnabled
 
     val state: StateFlow<OverlayState> = mutableState.asStateFlow()
 
@@ -55,6 +58,16 @@ class FeatureOverlayHost(
     /** Re-publishes the combined state from validated caches without calling any provider. */
     @Synchronized
     fun refresh(): OverlayState = publishCombinedState()
+
+    /** Releases refresh requests queued while the application was waiting for its first base-map frame. */
+    @Synchronized
+    fun enableBackgroundRefreshes() {
+        if (closed || backgroundRefreshesEnabled) return
+        backgroundRefreshesEnabled = true
+        providers.values
+            .filter { it.dynamic && !it.closed && it.refreshState == RefreshState.SCHEDULED && it.invocation == null }
+            .forEach(::submitRefresh)
+    }
 
     @Synchronized
     internal fun registerStatic(packId: PackId, provider: OverlayProvider): OverlayRegistration =
@@ -101,7 +114,7 @@ class FeatureOverlayHost(
             when (hosted.refreshState) {
                 RefreshState.IDLE -> {
                     hosted.refreshState = RefreshState.SCHEDULED
-                    submitRefresh(hosted)
+                    if (backgroundRefreshesEnabled) submitRefresh(hosted)
                 }
                 RefreshState.SCHEDULED, RefreshState.RUNNING_DIRTY -> Unit
                 RefreshState.RUNNING -> hosted.refreshState = RefreshState.RUNNING_DIRTY
