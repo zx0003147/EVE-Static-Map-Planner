@@ -12,6 +12,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class SdkStdioTransportHardLimitTest {
+    private companion object {
+        // The upstream transport incrementally scans a newline-free 16 MiB frame.
+        // Leave enough headroom for contended Windows CI runners without changing the size limit.
+        const val TRANSPORT_CALLBACK_TIMEOUT_MILLIS = 30_000L
+    }
+
     @Test
     fun `official stdio transport rejects a frame larger than 16 MiB`() = runBlocking {
         val expectedMaxFrameSize = 16 * 1024 * 1024
@@ -27,10 +33,12 @@ class SdkStdioTransportHardLimitTest {
 
         try {
             transport.start()
-            val tooLong = assertIs<TooLongFrameException>(withTimeout(10_000) { failure.await() })
+            val tooLong = assertIs<TooLongFrameException>(
+                withTimeout(TRANSPORT_CALLBACK_TIMEOUT_MILLIS) { failure.await() },
+            )
             assertEquals(expectedMaxFrameSize, tooLong.maxFrameSize)
             assertTrue(tooLong.frameSize > tooLong.maxFrameSize)
-            withTimeout(10_000) { closed.await() }
+            withTimeout(TRANSPORT_CALLBACK_TIMEOUT_MILLIS) { closed.await() }
         } finally {
             runCatching { transport.close() }
         }
