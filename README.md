@@ -4,9 +4,9 @@
 
 **The core map works independently from local static universe data and does not require AI, ESI, or any Feature Pack. Optional integrations add AI map control through the EVE Map Assistant plugin and account-aware or live-data features through external ESI and Sovereignty Feature Packs.**
 
-Version 1.3.1 retains the 1.3.0 feature set and improves startup by moving noncritical work off the first-map critical
-path. Startup avoids duplicate user-database initialization, and dynamic Feature Pack refresh work begins only after
-the base map is displayed.
+Version 1.4.0 applies a restrained EVE-inspired visual restyle across the desktop shell, menus, route tools, dialogs,
+preferences, and manager windows. It also fixes clipped shared input text and Preferences content spacing while
+preserving the existing map rendering, routes, selection visuals, and interactions.
 
 Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
 exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
@@ -107,14 +107,14 @@ the last in-memory snapshot remains visible as stale in degraded mode; it is nev
 disk cache. Disconnecting clears Shared Marker state without affecting local markers or AI Missions.
 
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
-visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.3.1.
+visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.4.0.
 
 ## Windows x64 distribution
 
 The official Windows distribution is the installer-free Portable ZIP:
 
 ```text
-EVE-Static-Map-Planner-1.3.1-Windows-x64.zip
+EVE-Static-Map-Planner-1.4.0-Windows-x64.zip
 ```
 
 Download and extract the complete ZIP, then open:
