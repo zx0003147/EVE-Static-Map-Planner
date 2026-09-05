@@ -87,5 +87,7 @@ fun EveTopMenuBar(menus: List<EveMenuSpec>, modifier: Modifier = Modifier) {
             }
         }
     }
-    EveDivider()
+    EveDivider(color = TOP_MENU_DIVIDER_COLOR)
 }
+
+internal val TOP_MENU_DIVIDER_COLOR = EveColors.Border

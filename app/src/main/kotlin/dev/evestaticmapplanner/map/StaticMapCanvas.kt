@@ -59,6 +59,7 @@ import dev.evestaticmapplanner.feature.api.OverlayState
 import dev.evestaticmapplanner.shared.SharedMarkerContextAction
 import dev.evestaticmapplanner.shared.SharedMarkerContextPresentationBuilder
 import dev.evestaticmapplanner.shared.model.SharedMapState
+import dev.evestaticmapplanner.ui.EveColors
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -939,8 +940,8 @@ internal fun MapMarkerTooltip(
     offset: IntOffset,
 ) {
     Surface(
-        color = androidx.compose.ui.graphics.Color(0xF21B2A37),
-        contentColor = androidx.compose.ui.graphics.Color(0xFFF1F5F8),
+        color = EveColors.SecondarySurface,
+        contentColor = EveColors.PrimaryText,
         shadowElevation = 6.dp,
         modifier = Modifier
             .zIndex(SAVED_MARKER_TOOLTIP_Z_INDEX)

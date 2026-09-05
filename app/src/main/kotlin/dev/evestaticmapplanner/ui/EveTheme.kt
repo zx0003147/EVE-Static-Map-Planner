@@ -112,7 +112,7 @@ val EveTypography = Typography(
     labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 14.sp),
 )
 
-private val EveColorScheme = darkColorScheme(
+internal val EveColorScheme = darkColorScheme(
     primary = EveColors.PrimaryAccent,
     onPrimary = EveColors.InputSurface,
     primaryContainer = EveColors.SelectedSurface,
@@ -312,7 +312,7 @@ fun EveOutlinedTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.co
     errorTextColor = EveColors.PrimaryText,
     focusedContainerColor = EveColors.InputSurface,
     unfocusedContainerColor = EveColors.InputSurface,
-    disabledContainerColor = EveColors.InputSurface.copy(alpha = 0.7f),
+    disabledContainerColor = EveColors.InputSurface,
     errorContainerColor = EveColors.InputSurface,
     cursorColor = EveColors.PrimaryAccent,
     errorCursorColor = EveColors.Error,

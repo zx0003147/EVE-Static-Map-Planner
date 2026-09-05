@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
@@ -191,7 +192,7 @@ internal fun StaticMapScreen(
                 viewModel = viewModel,
                 planningViewCoordinator = planningViewCoordinator,
             )
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            MapCanvasViewport(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.isLoading -> CenterMessage("Loading static universe…")
                     state.error != null -> CenterMessage("Unable to load map\n${state.error}\n\nDatabase: $databasePath")
@@ -534,6 +535,14 @@ private fun MapToolbar(
             )
         }
     }
+}
+
+@Composable
+internal fun MapCanvasViewport(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(modifier.clipToBounds()) { content() }
 }
 
 @Composable

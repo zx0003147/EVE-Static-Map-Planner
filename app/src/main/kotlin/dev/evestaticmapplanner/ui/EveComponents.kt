@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
@@ -51,7 +52,7 @@ fun EvePanel(
         color = if (secondary) EveColors.SecondarySurface else EveColors.PrimarySurface,
         contentColor = EveColors.PrimaryText,
         shape = EveShapes.small,
-        border = if (bordered) BorderStroke(EveDimensions.BorderWidth, EveColors.Border.copy(alpha = 0.72f)) else null,
+        border = if (bordered) BorderStroke(EveDimensions.BorderWidth, EveColors.Border) else null,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
         content = content,
@@ -76,8 +77,11 @@ fun EveWindowSurface(
 }
 
 @Composable
-fun EveDivider(modifier: Modifier = Modifier) {
-    HorizontalDivider(modifier = modifier, thickness = EveDimensions.BorderWidth, color = EveColors.Divider)
+fun EveDivider(
+    modifier: Modifier = Modifier,
+    color: Color = EveColors.Divider,
+) {
+    HorizontalDivider(modifier = modifier, thickness = EveDimensions.BorderWidth, color = color)
 }
 
 @Composable

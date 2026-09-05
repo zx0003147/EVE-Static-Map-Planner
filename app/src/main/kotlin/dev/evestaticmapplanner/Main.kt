@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -90,6 +91,7 @@ import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
 import dev.evestaticmapplanner.ui.EveMenuItemSpec
 import dev.evestaticmapplanner.ui.EveMenuSpec
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveTheme
 import dev.evestaticmapplanner.ui.EveTopMenuBar
 import dev.evestaticmapplanner.ui.EveWindowChrome
@@ -523,7 +525,7 @@ private fun FrameWindowScope.ReadyApplication(
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {
         it.persistence == MarkerPersistence.TEMPORARY
     }
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
         EveTopMenuBar(
             listOf(
                 EveMenuSpec(
