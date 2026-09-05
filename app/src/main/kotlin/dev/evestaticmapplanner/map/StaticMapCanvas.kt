@@ -89,6 +89,7 @@ fun StaticMapCanvas(
     onHover: (MapPoint) -> Unit,
     onHoverExit: () -> Unit,
     onSelect: (MapPoint) -> Unit,
+    onFocus: (MapPoint) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
     onContextRouteStart: (Int) -> Unit,
     onContextRouteWaypoint: (Int) -> Unit,
@@ -129,6 +130,7 @@ fun StaticMapCanvas(
             onHover = onHover,
             onHoverExit = onHoverExit,
             onSelect = onSelect,
+            onFocus = onFocus,
             onContextMenu = onContextMenu,
             markerState = markerState,
             sharedMapState = sharedMapState,
@@ -599,7 +601,14 @@ fun StaticMapCanvas(
                 }
                 when (awtEvent?.button) {
                     java.awt.event.MouseEvent.BUTTON1 -> {
-                        if (pressedAt != null && !isDragging) onSelect(point)
+                        if (pressedAt != null && !isDragging) {
+                            dispatchMapClick(
+                                click = MapClick(MapPointerButton.PRIMARY, point, awtEvent.clickCount),
+                                onSelect = onSelect,
+                                onFocus = onFocus,
+                                onContextMenu = onContextMenu,
+                            )
+                        }
                         pressedAt = null
                         lastDragPosition = null
                         isDragging = false

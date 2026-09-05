@@ -104,6 +104,7 @@ internal fun Real3DMapCanvas(
     onHover: (MapPoint) -> Unit,
     onHoverExit: () -> Unit,
     onSelect: (MapPoint) -> Unit,
+    onFocus: (MapPoint) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
     onContextRouteStart: (Int) -> Unit,
     onContextRouteWaypoint: (Int) -> Unit,
@@ -465,10 +466,13 @@ internal fun Real3DMapCanvas(
             .onPointerEvent(PointerEventType.Release) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 val position = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
-                when (gesture.release(position)?.button) {
-                    MapPointerButton.PRIMARY -> onSelect(position)
-                    MapPointerButton.SECONDARY -> onContextMenu(position)
-                    null -> Unit
+                gesture.release(position, event.awtEventOrNull?.clickCount ?: 1)?.let { click ->
+                    dispatchMapClick(
+                        click = click,
+                        onSelect = onSelect,
+                        onFocus = onFocus,
+                        onContextMenu = onContextMenu,
+                    )
                 }
             }
             .onPointerEvent(PointerEventType.Exit) {

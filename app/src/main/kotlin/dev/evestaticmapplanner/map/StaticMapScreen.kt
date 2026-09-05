@@ -228,6 +228,7 @@ internal fun StaticMapScreen(
                         onHover = viewModel::hoverAt,
                         onHoverExit = viewModel::clearHover,
                         onSelect = viewModel::selectAt,
+                        onFocus = viewModel::selectAndFocusAt,
                         onContextMenu = viewModel::openContextMenuAt,
                         onContextRouteStart = {
                             routeViewModel.setRouteStart(it)

@@ -461,6 +461,11 @@ class MapViewModel(
         selectSystem(systemId)
     }
 
+    fun selectAndFocusAt(screenPosition: MapPoint) {
+        val systemId = hitTest(mutableState.value, screenPosition, SELECT_RADIUS_PX) ?: return
+        selectAndFocusSystem(systemId)
+    }
+
     fun selectSystemById(systemId: Int) {
         selectSystem(systemId)
     }

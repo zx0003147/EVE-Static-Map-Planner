@@ -445,6 +445,26 @@ class MapViewModelTest {
     }
 
     @Test
+    fun `pointer focus selects the hit system and reuses official focus behavior`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        val before = viewModel.state.value
+        val target = assertNotNull(before.scene).nodesById.getValue(2)
+        val screenPosition = MapTransform(assertNotNull(before.viewport), before.canvasSize)
+            .worldToScreen(target.position)
+
+        viewModel.selectAndFocusAt(screenPosition)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(2, state.selectedSystemId)
+        assertEquals(target.position, state.viewport?.center)
+    }
+
+    @Test
     fun `search focus raises distant zoom from current custom system threshold`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -498,7 +518,7 @@ class MapViewModelTest {
     }
 
     @Test
-    fun `search focus works in real projection without rebuilding its scene`() = runTest {
+    fun `real 3D focus moves only camera target without rebuilding its scene`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = fixture.viewModel(this, dispatcher)
@@ -508,13 +528,17 @@ class MapViewModelTest {
         advanceUntilIdle()
         val scene = assertNotNull(viewModel.state.value.scene)
         val builds = viewModel.state.value.performance.sceneBuildCount
+        viewModel.rotateBy(MapPoint(30.0, -15.0))
+        viewModel.zoomAt(MapPoint(500.0, 350.0), 1.0)
+        val cameraBeforeFocus = assertNotNull(viewModel.state.value.real3DCamera)
 
         viewModel.selectAndFocusSystem(3)
         advanceUntilIdle()
 
         val state = viewModel.state.value
+        val expectedTarget = MapPoint3.fromUniverse(scene.nodesById.getValue(3).system.position)
         assertEquals(MapProjectionId.REAL_3D, state.projectionId)
-        assertEquals(MapPoint3.fromUniverse(scene.nodesById.getValue(3).system.position), state.real3DCamera?.target)
+        assertEquals(cameraBeforeFocus.copy(target = expectedTarget), state.real3DCamera)
         assertSame(scene, state.scene)
         assertEquals(builds, state.performance.sceneBuildCount)
         assertNull(state.focusNotice)

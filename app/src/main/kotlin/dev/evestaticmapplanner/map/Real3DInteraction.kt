@@ -16,7 +16,24 @@ internal data class MapDragUpdate(
 internal data class MapClick(
     val button: MapPointerButton,
     val screenPosition: MapPoint,
+    val clickCount: Int = 1,
 )
+
+internal fun dispatchMapClick(
+    click: MapClick,
+    onSelect: (MapPoint) -> Unit,
+    onFocus: (MapPoint) -> Unit,
+    onContextMenu: (MapPoint) -> Unit,
+) {
+    when (click.button) {
+        MapPointerButton.PRIMARY -> if (click.clickCount >= 2) {
+            onFocus(click.screenPosition)
+        } else {
+            onSelect(click.screenPosition)
+        }
+        MapPointerButton.SECONDARY -> onContextMenu(click.screenPosition)
+    }
+}
 
 /** Small deterministic state machine that keeps click and drag semantics independent of Compose/AWT event quirks. */
 internal class Real3DPointerGestureTracker(
@@ -50,8 +67,8 @@ internal class Real3DPointerGestureTracker(
         }
     }
 
-    fun release(position: MapPoint): MapClick? {
-        val result = button?.takeUnless { dragging }?.let { MapClick(it, position) }
+    fun release(position: MapPoint, clickCount: Int = 1): MapClick? {
+        val result = button?.takeUnless { dragging }?.let { MapClick(it, position, clickCount) }
         cancel()
         return result
     }
