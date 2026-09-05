@@ -3,10 +3,14 @@ package dev.evestaticmapplanner.control.transport
 import dev.evestaticmapplanner.control.ControlResult
 import dev.evestaticmapplanner.control.SearchSystemsRequest
 import dev.evestaticmapplanner.control.SystemSummaryDto
+import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -41,7 +45,7 @@ class LocalControlExecutorSaturationTest {
         try {
             executor.execute {
                 businessStarted.countDown()
-                releaseBusiness.await(5, TimeUnit.SECONDS)
+                releaseBusiness.await(TEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)
             }
             assertTrue(businessStarted.await(2, TimeUnit.SECONDS))
             executor.execute { queuedCompleted.countDown() }
@@ -102,33 +106,34 @@ class LocalControlExecutorSaturationTest {
             },
         )
         server.executorFactory = { instanceId -> BoundedHttpExecutor(instanceId, 1, 1, 1, 1) }
+        val client = HttpClient.newBuilder().connectTimeout(TEST_TIMEOUT).build()
         server.start()
         val authorization = server.sessionCredentials().authorizationHeaderValue()
         val endpoint = URI.create("http://127.0.0.1:${server.port}${LocalControlOperation.SEARCH_SYSTEM.path}")
         try {
-            val first = sendAsync(endpoint, authorization, "saturation-1")
-            assertTrue(businessStarted.await(2, TimeUnit.SECONDS))
-            val second = sendAsync(endpoint, authorization, "saturation-2")
+            val first = sendAsync(client, endpoint, authorization, "saturation-1")
+            assertTrue(businessStarted.await(TEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS))
+            val second = sendAsync(client, endpoint, authorization, "saturation-2")
             awaitServerSnapshot(server) { it.businessActiveCount == 1 && it.businessPendingCount == 1 }
 
-            val busy = send(endpoint, authorization, "saturation-busy")
+            val busy = send(client, endpoint, authorization, "saturation-busy")
             assertEquals(503, busy.statusCode())
             assertTrue(busy.body().contains("APP_BUSY"))
             assertEquals(1, serviceCalls.get(), "Busy response must not call MapControlService")
-            assertTrue(busyAudited.await(2, TimeUnit.SECONDS), "Busy audit event was not observed")
+            assertTrue(
+                busyAudited.await(TEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS),
+                "Busy audit event was not observed",
+            )
             val busyAuditThreadName = assertNotNull(busyAuditThread.get())
             assertTrue(busyAuditThreadName.startsWith("local-control-busy-"))
             assertFalse(busyAuditThreadName.contains("HTTP-Dispatcher"))
+            awaitBusyResponderIdle(server)
 
-            val unauthorizedBusy = send(endpoint, null, "saturation-unauthorized")
+            val unauthorizedBusy = send(client, endpoint, null, "saturation-unauthorized")
             assertEquals(401, unauthorizedBusy.statusCode())
-            val oversizedBusy = send(
-                endpoint,
-                authorization,
-                "saturation-oversized",
-                "x".repeat(LocalControlProtocol.REQUEST_BODY_LIMIT_BYTES + 1),
-            )
-            assertEquals(413, oversizedBusy.statusCode())
+            awaitBusyResponderIdle(server)
+            assertEquals(413, sendDeclaredOversizedHeaders(endpoint, authorization))
+            awaitBusyResponderIdle(server)
 
             val saturated = assertNotNull(server.executorSnapshot())
             assertEquals(1, saturated.businessWorkerLimit)
@@ -139,9 +144,14 @@ class LocalControlExecutorSaturationTest {
             assertTrue(saturated.busyPendingCount <= 1)
 
             releaseBusiness.countDown()
-            assertEquals(200, first.get(3, TimeUnit.SECONDS).statusCode())
-            assertEquals(200, second.get(3, TimeUnit.SECONDS).statusCode())
-            val recovered = send(endpoint, authorization, "saturation-recovered")
+            assertEquals(200, first.get(TEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).statusCode())
+            assertEquals(200, second.get(TEST_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).statusCode())
+            awaitServerSnapshot(server) {
+                it.businessActiveCount == 0 &&
+                    it.businessPendingCount == 0 &&
+                    it.businessAdmissionAvailable == it.businessWorkerLimit + it.businessPendingLimit
+            }
+            val recovered = send(client, endpoint, authorization, "saturation-recovered")
             assertEquals(200, recovered.statusCode())
             assertEquals(3, serviceCalls.get())
             synchronized(serviceThreads) {
@@ -154,25 +164,73 @@ class LocalControlExecutorSaturationTest {
                 synchronized(serviceThreads) { addAll(serviceThreads) }
                 busyAuditThread.get()?.let(::add)
             }
-            server.stop()
-            assertTrue(server.lastExecutorTerminated)
-            val liveNames = Thread.getAllStackTraces().keys.filter(Thread::isAlive).map(Thread::getName).toSet()
-            assertTrue(transportThreadNames.none { it in liveNames })
+            try {
+                server.stop()
+                assertTrue(server.lastExecutorTerminated)
+                val liveNames = Thread.getAllStackTraces().keys.filter(Thread::isAlive).map(Thread::getName).toSet()
+                assertTrue(transportThreadNames.none { it in liveNames })
+            } finally {
+                client.close()
+                assertTrue(client.awaitTermination(TEST_TIMEOUT), "HTTP client did not terminate")
+            }
         }
     }
 
-    private fun sendAsync(endpoint: URI, authorization: String, requestId: String) =
-        HttpClient.newHttpClient().sendAsync(request(endpoint, authorization, requestId), HttpResponse.BodyHandlers.ofString())
+    private fun sendAsync(client: HttpClient, endpoint: URI, authorization: String, requestId: String) =
+        client.sendAsync(request(endpoint, authorization, requestId), HttpResponse.BodyHandlers.ofString())
 
     private fun send(
+        client: HttpClient,
         endpoint: URI,
         authorization: String?,
         requestId: String,
         body: String = "{\"requestId\":\"$requestId\",\"query\":\"Jita\"}",
-    ): HttpResponse<String> = HttpClient.newHttpClient().send(
-        request(endpoint, authorization, requestId, body),
-        HttpResponse.BodyHandlers.ofString(),
-    )
+    ): HttpResponse<String> = try {
+        client.send(request(endpoint, authorization, requestId, body), HttpResponse.BodyHandlers.ofString())
+    } catch (failure: IOException) {
+        throw IOException("HTTP request $requestId failed", failure)
+    }
+
+    private fun sendDeclaredOversizedHeaders(endpoint: URI, authorization: String): Int = Socket().use { socket ->
+        val timeoutMillis = TEST_TIMEOUT.toMillis().toInt()
+        socket.connect(InetSocketAddress(endpoint.host, endpoint.port), timeoutMillis)
+        socket.soTimeout = timeoutMillis
+        val headers = buildString {
+            append("POST ${endpoint.rawPath} HTTP/1.1\r\n")
+            append("Host: ${endpoint.host}:${endpoint.port}\r\n")
+            append("Authorization: $authorization\r\n")
+            append("Content-Type: application/json\r\n")
+            append("Content-Length: ${LocalControlProtocol.REQUEST_BODY_LIMIT_BYTES + 1}\r\n")
+            append("Connection: close\r\n\r\n")
+        }
+        socket.getOutputStream().apply {
+            write(headers.toByteArray(StandardCharsets.US_ASCII))
+            flush()
+        }
+
+        socket.getInputStream().bufferedReader(StandardCharsets.US_ASCII).use { reader ->
+            val statusLine = requireNotNull(reader.readLine()) { "Oversized request returned no HTTP status" }
+            val status = requireNotNull(statusLine.split(' ', limit = 3).getOrNull(1)?.toIntOrNull()) {
+                "Invalid HTTP status line: $statusLine"
+            }
+            var contentLength = 0
+            while (true) {
+                val header = requireNotNull(reader.readLine()) { "Oversized response headers ended unexpectedly" }
+                if (header.isEmpty()) break
+                if (header.startsWith("Content-Length:", ignoreCase = true)) {
+                    contentLength = header.substringAfter(':').trim().toInt()
+                }
+            }
+            val body = CharArray(contentLength)
+            var offset = 0
+            while (offset < body.size) {
+                val read = reader.read(body, offset, body.size - offset)
+                check(read >= 0) { "Oversized response body ended unexpectedly" }
+                offset += read
+            }
+            status
+        }
+    }
 
     private fun request(
         endpoint: URI,
@@ -197,11 +255,20 @@ class LocalControlExecutorSaturationTest {
         predicate: (BoundedHttpExecutorSnapshot) -> Boolean,
     ): BoundedHttpExecutorSnapshot = awaitCondition { server.executorSnapshot()?.takeIf(predicate) }
 
+    private fun awaitBusyResponderIdle(server: LocalControlServer) {
+        awaitServerSnapshot(server) { it.busyActiveCount == 0 && it.busyPendingCount == 0 }
+    }
+
     private fun <T> awaitCondition(read: () -> T?): T {
-        repeat(200) {
+        val deadline = System.nanoTime() + TEST_TIMEOUT.toNanos()
+        while (System.nanoTime() < deadline) {
             read()?.let { return it }
             Thread.sleep(10)
         }
         error("Condition was not reached")
+    }
+
+    private companion object {
+        val TEST_TIMEOUT: Duration = Duration.ofSeconds(10)
     }
 }
