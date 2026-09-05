@@ -8,6 +8,13 @@ import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
+import dev.evestaticmapplanner.core.map.MapPoint3
+import dev.evestaticmapplanner.core.map.DEFAULT_REAL_3D_PITCH_DEGREES
+import dev.evestaticmapplanner.core.map.DEFAULT_REAL_3D_YAW_DEGREES
+import dev.evestaticmapplanner.core.map.Real3DCamera
+import dev.evestaticmapplanner.core.map.Real3DCameraFitter
+import dev.evestaticmapplanner.core.map.Real3DPicker
+import dev.evestaticmapplanner.core.map.Real3DStaticGeometry
 import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
@@ -57,6 +64,9 @@ class MapViewModel(
     private var pendingFocusSystemId: Int? = null
     private var sceneBuildJob: Job? = null
     private var settingsSaveJob: Job? = null
+    private var focusAnimationJob: Job? = null
+    private var real3DGeometryScene: ProjectedMapScene? = null
+    private var real3DGeometry: Real3DStaticGeometry? = null
     private val preferencesMutation = Mutex()
 
     init {
@@ -118,11 +128,26 @@ class MapViewModel(
                 }
                 pendingFocusSystemId = null
             }
+            val real3DCamera = if (current.projectionId == MapProjectionId.REAL_3D) {
+                current.real3DCamera ?: defaultReal3DCamera(scene, size)
+            } else {
+                current.real3DCamera
+            }
+            val real3DReferenceDistance = current.real3DReferenceDistance ?: real3DCamera?.distance
             current.copy(
                 canvasSize = size,
+                real3DCamera = real3DCamera,
+                real3DReferenceDistance = real3DReferenceDistance,
                 viewports = current.viewports + (current.projectionId to viewport),
                 semanticLabelModes = current.semanticLabelModes + (
-                    current.projectionId to nextSemanticMode(current, current.projectionId, viewport.zoom)
+                    current.projectionId to if (current.projectionId == MapProjectionId.REAL_3D) {
+                        SemanticZoomPolicy.initialReal3DMode(
+                            real3DReferenceDistance?.div(real3DCamera?.distance ?: 1.0) ?: 1.0,
+                            current.appPreferences.mapDisplay,
+                        )
+                    } else {
+                        nextSemanticMode(current, current.projectionId, viewport.zoom)
+                    }
                 ),
             )
         }
@@ -158,16 +183,27 @@ class MapViewModel(
                             )
                         }
                     }
+                    val real3DCamera = if (projectionId == MapProjectionId.REAL_3D && !state.canvasSize.isEmpty) {
+                        defaultReal3DCamera(scene, state.canvasSize)
+                    } else {
+                        null
+                    }
                     state.copy(
                         projectionId = projectionId,
                         scene = scene,
+                        real3DCamera = real3DCamera,
+                        real3DReferenceDistance = real3DCamera?.distance,
                         hoveredSystemId = null,
                         contextMenu = null,
                         focusNotice = focusNotice,
                         viewports = if (viewport != null) state.viewports + (projectionId to viewport) else state.viewports,
                         semanticLabelModes = if (viewport != null) {
                             state.semanticLabelModes + (
-                                projectionId to nextSemanticMode(state, projectionId, viewport.zoom)
+                                projectionId to if (projectionId == MapProjectionId.REAL_3D) {
+                                    SemanticZoomPolicy.initialReal3DMode(1.0, state.appPreferences.mapDisplay)
+                                } else {
+                                    nextSemanticMode(state, projectionId, viewport.zoom)
+                                }
                             )
                         } else {
                             state.semanticLabelModes
@@ -186,6 +222,9 @@ class MapViewModel(
                     println("MAP_SCENE projection=${scene.projectionId} buildMs=${formatMillis(buildMillis)}")
                     println("MAP_COUNTS systems=${scene.nodes.size} edges=${scene.edges.size}")
                 }
+                if (projectionId == MapProjectionId.REAL_3D && focusSystemId != null) {
+                    animateReal3DFocusTo(focusSystemId)
+                }
             } catch (error: Throwable) {
                 mutableState.update { it.copy(error = error.message ?: "Unable to build map scene") }
             }
@@ -193,9 +232,32 @@ class MapViewModel(
     }
 
     fun fitMap() {
+        focusAnimationJob?.cancel()
         mutableState.update { current ->
             val scene = current.scene ?: return@update current
             if (current.canvasSize.isEmpty) return@update current
+            if (current.projectionId == MapProjectionId.REAL_3D) {
+                val camera = current.real3DCamera ?: defaultReal3DCamera(scene, current.canvasSize)
+                val fitted = Real3DCameraFitter.fit(
+                    points = real3DFitPoints(scene),
+                    viewportSize = current.canvasSize,
+                    yawDegrees = camera.yawDegrees,
+                    pitchDegrees = camera.pitchDegrees,
+                    verticalFieldOfViewDegrees = camera.verticalFieldOfViewDegrees,
+                )
+                val scale = (current.real3DReferenceDistance ?: camera.distance) / fitted.distance
+                return@update current.copy(
+                    real3DCamera = fitted,
+                    semanticLabelModes = current.semanticLabelModes + (
+                        MapProjectionId.REAL_3D to SemanticZoomPolicy.initialReal3DMode(
+                            scale,
+                            current.appPreferences.mapDisplay,
+                        )
+                    ),
+                    hoveredSystemId = null,
+                    contextMenu = null,
+                )
+            }
             val viewport = MapViewport.fit(scene.defaultFitBounds, current.canvasSize)
             current.copy(
                 viewports = current.viewports + (current.projectionId to viewport),
@@ -209,13 +271,26 @@ class MapViewModel(
         }
     }
 
+    fun resetView() {
+        focusAnimationJob?.cancel()
+        mutableState.update { current ->
+            if (current.projectionId != MapProjectionId.REAL_3D || current.canvasSize.isEmpty) return@update current
+            val scene = current.scene ?: return@update current
+            val camera = current.real3DCamera ?: defaultReal3DCamera(scene, current.canvasSize)
+            current.copy(
+                real3DCamera = camera.copy(
+                    yawDegrees = DEFAULT_REAL_3D_YAW_DEGREES,
+                    pitchDegrees = DEFAULT_REAL_3D_PITCH_DEGREES,
+                ),
+            )
+        }
+    }
+
     fun updateMapDisplayPreferences(preferences: MapDisplayPreferences) {
         mutableState.update { current ->
             current.copy(
                 appPreferences = current.appPreferences.copy(mapDisplay = preferences),
-                semanticLabelModes = current.viewports.mapValues { (_, viewport) ->
-                    SemanticZoomPolicy.initialMode(viewport.zoom, preferences)
-                },
+                semanticLabelModes = semanticModesForPreferences(current, preferences),
             )
         }
         schedulePreferencesSave()
@@ -226,9 +301,7 @@ class MapViewModel(
         mutableState.update { current ->
             current.copy(
                 appPreferences = current.appPreferences.copy(mapDisplay = defaults),
-                semanticLabelModes = current.viewports.mapValues { (_, viewport) ->
-                    SemanticZoomPolicy.initialMode(viewport.zoom, defaults)
-                },
+                semanticLabelModes = semanticModesForPreferences(current, defaults),
             )
         }
         schedulePreferencesSave()
@@ -296,9 +369,7 @@ class MapViewModel(
                 mutableState.update { current ->
                     current.copy(
                         appPreferences = defaults,
-                        semanticLabelModes = current.viewports.mapValues { (_, viewport) ->
-                            SemanticZoomPolicy.initialMode(viewport.zoom, defaults.mapDisplay)
-                        },
+                        semanticLabelModes = semanticModesForPreferences(current, defaults.mapDisplay),
                     )
                 }
             }
@@ -307,7 +378,22 @@ class MapViewModel(
     }
 
     fun zoomAt(screenPosition: MapPoint, scrollDelta: Double) {
+        focusAnimationJob?.cancel()
         mutableState.update { current ->
+            if (current.projectionId == MapProjectionId.REAL_3D) {
+                val camera = current.real3DCamera ?: return@update current
+                val dolly = camera.dolly(ZOOM_BASE.pow(scrollDelta))
+                val scale = (current.real3DReferenceDistance ?: camera.distance) / dolly.distance
+                val mode = current.semanticLabelModes[MapProjectionId.REAL_3D]?.let {
+                    SemanticZoomPolicy.transitionReal3D(it, scale, current.appPreferences.mapDisplay)
+                } ?: SemanticZoomPolicy.initialReal3DMode(scale, current.appPreferences.mapDisplay)
+                return@update current.copy(
+                    real3DCamera = dolly,
+                    semanticLabelModes = current.semanticLabelModes + (MapProjectionId.REAL_3D to mode),
+                    hoveredSystemId = null,
+                    contextMenu = null,
+                )
+            }
             val viewport = current.viewport ?: return@update current
             if (current.canvasSize.isEmpty) return@update current
             val transform = MapTransform(viewport, current.canvasSize)
@@ -324,10 +410,35 @@ class MapViewModel(
     }
 
     fun panBy(screenDelta: MapPoint) {
+        focusAnimationJob?.cancel()
         mutableState.update { current ->
+            if (current.projectionId == MapProjectionId.REAL_3D) {
+                val camera = current.real3DCamera ?: return@update current
+                return@update current.copy(
+                    real3DCamera = camera.panned(screenDelta, current.canvasSize),
+                    hoveredSystemId = null,
+                    contextMenu = null,
+                )
+            }
             val viewport = current.viewport ?: return@update current
             current.copy(
                 viewports = current.viewports + (current.projectionId to viewport.panBy(screenDelta)),
+                hoveredSystemId = null,
+                contextMenu = null,
+            )
+        }
+    }
+
+    fun rotateBy(screenDelta: MapPoint) {
+        focusAnimationJob?.cancel()
+        mutableState.update { current ->
+            if (current.projectionId != MapProjectionId.REAL_3D) return@update current
+            val camera = current.real3DCamera ?: return@update current
+            current.copy(
+                real3DCamera = camera.rotated(
+                    deltaYawDegrees = screenDelta.x * REAL_3D_ROTATION_DEGREES_PER_PIXEL,
+                    deltaPitchDegrees = -screenDelta.y * REAL_3D_ROTATION_DEGREES_PER_PIXEL,
+                ),
                 hoveredSystemId = null,
                 contextMenu = null,
             )
@@ -362,6 +473,11 @@ class MapViewModel(
         val scene = current.scene ?: return
         val node = scene.nodesById[systemId]
         if (node != null) {
+            if (current.projectionId == MapProjectionId.REAL_3D) {
+                focusAnimationJob?.cancel()
+                focusAnimationJob = scope.launch { animateReal3DFocusTo(systemId) }
+                return
+            }
             mutableState.update { state ->
                 val activeNode = state.scene?.nodesById?.get(systemId) ?: return@update state
                 val viewport = state.viewport ?: return@update state
@@ -381,9 +497,9 @@ class MapViewModel(
         if (current.projectionId == MapProjectionId.OFFICIAL_2D && systemId in scene.omittedSystemIds) {
             val systemName = systemNamesById[systemId] ?: systemId.toString()
             switchProjection(
-                projectionId = MapProjectionId.REAL_XZ,
+                projectionId = MapProjectionId.REAL_3D,
                 focusSystemId = systemId,
-                focusNotice = "$systemName is unavailable in Official 2D; switched to Real X-Z.",
+                focusNotice = "$systemName is unavailable in Official 2D; switched to Real 3D.",
             )
         }
     }
@@ -395,9 +511,14 @@ class MapViewModel(
         }
         selectAndFocusSystem(systemId)
         sceneBuildJob?.join()
+        focusAnimationJob?.join()
         val current = mutableState.value
         val node = current.scene?.nodesById?.get(systemId) ?: return false
-        return current.selectedSystemId == systemId && current.viewport?.center == node.position
+        return current.selectedSystemId == systemId && if (current.projectionId == MapProjectionId.REAL_3D) {
+            current.real3DCamera?.target == MapPoint3.fromUniverse(node.system.position)
+        } else {
+            current.viewport?.center == node.position
+        }
     }
 
     /** Fits caller-provided Mission visual systems and falls back from Official 2D when necessary. */
@@ -408,7 +529,7 @@ class MapViewModel(
         if (current.projectionId == MapProjectionId.OFFICIAL_2D && systemIds.any { it in current.scene.omittedSystemIds }) {
             sceneBuildJob?.cancel()
             sceneBuildJob = null
-            switchProjection(MapProjectionId.REAL_XZ, focusSystemId = null, focusNotice = null)
+            switchProjection(MapProjectionId.REAL_3D, focusSystemId = null, focusNotice = null)
             sceneBuildJob?.join()
             current = mutableState.value
         }
@@ -453,6 +574,7 @@ class MapViewModel(
 
     fun close() {
         settingsSaveJob?.cancel()
+        focusAnimationJob?.cancel()
         runBlocking(NonCancellable) {
             preferencesMutation.withLock {
                 withContext(ioDispatcher) {
@@ -499,8 +621,18 @@ class MapViewModel(
 
     private fun hitTest(state: MapUiState, screenPosition: MapPoint, radiusPx: Double): Int? {
         val scene = state.scene ?: return null
-        val viewport = state.viewport ?: return null
         if (state.canvasSize.isEmpty) return null
+        if (state.projectionId == MapProjectionId.REAL_3D) {
+            val camera = state.real3DCamera ?: return null
+            return Real3DPicker.nearestSystem(
+                geometry = real3DGeometryFor(scene),
+                camera = camera,
+                viewportSize = state.canvasSize,
+                screenPosition = screenPosition,
+                radiusPx = radiusPx,
+            )
+        }
+        val viewport = state.viewport ?: return null
         val transform = MapTransform(viewport, state.canvasSize)
         return scene.spatialIndex.nearest(
             point = transform.screenToWorld(screenPosition),
@@ -526,6 +658,17 @@ class MapViewModel(
     ): SemanticLabelMode = state.semanticLabelModes[projectionId]?.let { current ->
         SemanticZoomPolicy.transition(current, zoom, state.appPreferences.mapDisplay)
     } ?: SemanticZoomPolicy.initialMode(zoom, state.appPreferences.mapDisplay)
+
+    private fun semanticModesForPreferences(
+        state: MapUiState,
+        preferences: MapDisplayPreferences,
+    ): Map<MapProjectionId, SemanticLabelMode> = state.viewports.mapValues { (projectionId, viewport) ->
+        if (projectionId == MapProjectionId.REAL_3D) {
+            SemanticZoomPolicy.initialReal3DMode(state.real3DScale ?: 1.0, preferences)
+        } else {
+            SemanticZoomPolicy.initialMode(viewport.zoom, preferences)
+        }
+    }
 
     private fun schedulePreferencesSave() {
         settingsSaveJob?.cancel()
@@ -555,6 +698,46 @@ class MapViewModel(
         }
         return MapViewport(center = target, zoom = zoom)
     }
+
+    private fun defaultReal3DCamera(scene: ProjectedMapScene, size: MapSize): Real3DCamera =
+        Real3DCameraFitter.fit(real3DFitPoints(scene), size)
+
+    private fun real3DFitPoints(scene: ProjectedMapScene): List<MapPoint3> = scene.nodes.asSequence()
+        .filter { it.isStargateConnected }
+        .map { MapPoint3.fromUniverse(it.system.position) }
+        .toList()
+        .ifEmpty { scene.nodes.map { MapPoint3.fromUniverse(it.system.position) } }
+
+    private fun real3DGeometryFor(scene: ProjectedMapScene): Real3DStaticGeometry {
+        if (real3DGeometryScene !== scene || real3DGeometry == null) {
+            real3DGeometryScene = scene
+            real3DGeometry = Real3DStaticGeometry.from(scene)
+        }
+        return checkNotNull(real3DGeometry)
+    }
+
+    private suspend fun animateReal3DFocusTo(systemId: Int) {
+        val initial = mutableState.value
+        if (initial.projectionId != MapProjectionId.REAL_3D) return
+        val system = initial.scene?.nodesById?.get(systemId)?.system ?: return
+        val start = initial.real3DCamera?.target ?: return
+        val target = MapPoint3.fromUniverse(system.position)
+        if (start == target) return
+        repeat(REAL_3D_FOCUS_ANIMATION_STEPS) { index ->
+            delay(REAL_3D_FOCUS_FRAME_MILLIS)
+            val linear = (index + 1).toDouble() / REAL_3D_FOCUS_ANIMATION_STEPS
+            val eased = linear * linear * (3.0 - 2.0 * linear)
+            mutableState.update { state ->
+                if (state.projectionId != MapProjectionId.REAL_3D) return@update state
+                val camera = state.real3DCamera ?: return@update state
+                state.copy(
+                    real3DCamera = camera.copy(target = start + (target - start) * eased),
+                    hoveredSystemId = null,
+                    contextMenu = null,
+                )
+            }
+        }
+    }
 }
 
 private const val HOVER_RADIUS_PX = 10.0
@@ -563,4 +746,7 @@ private const val ZOOM_BASE = 1.2
 private const val MIN_ZOOM = 0.01
 private const val MAX_ZOOM = 250.0
 private const val SEARCH_FOCUS_ZOOM_MARGIN = 1.05
+private const val REAL_3D_ROTATION_DEGREES_PER_PIXEL = 0.24
+private const val REAL_3D_FOCUS_ANIMATION_STEPS = 24
+private const val REAL_3D_FOCUS_FRAME_MILLIS = 16L
 private const val SETTINGS_SAVE_DEBOUNCE_MILLIS = 150L

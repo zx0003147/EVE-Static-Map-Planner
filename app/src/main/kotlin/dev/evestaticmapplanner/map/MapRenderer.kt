@@ -642,6 +642,22 @@ object MapRenderer {
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
+    ) = drawMissionMarkersAtScreenPositions(
+        markers = markers,
+        textMeasurer = textMeasurer,
+        cache = cache,
+        preferences = preferences,
+        screenPosition = { systemId ->
+            scene.nodesById[systemId]?.position?.let(transform::worldToScreen)
+        },
+    )
+
+    fun DrawScope.drawMissionMarkersAtScreenPositions(
+        markers: List<MissionMarker>,
+        textMeasurer: TextMeasurer,
+        cache: MapRenderCache,
+        preferences: MapDisplayPreferences,
+        screenPosition: (Int) -> MapPoint?,
     ) {
         data class RenderItem(
             val layoutInput: MissionMarkerLayoutInput,
@@ -649,14 +665,14 @@ object MapRenderer {
         )
 
         val renderItems = markers.mapNotNull { marker ->
-            val node = scene.nodesById[marker.systemId] ?: return@mapNotNull null
+            val center = screenPosition(marker.systemId) ?: return@mapNotNull null
             val label = marker.label?.let { labelText ->
                 cache.label(labelText, MapLabelType.SYSTEM, preferences, textMeasurer)
             }
             RenderItem(
                 layoutInput = MissionMarkerLayoutInput(
                     marker = marker,
-                    systemCenter = transform.worldToScreen(node.position),
+                    systemCenter = center,
                     labelHeightPx = label?.size?.height?.toDouble(),
                 ),
                 label = label,
@@ -948,21 +964,22 @@ private val REGION_BACKGROUND_LABEL_BASE_COLOR = Color(0xFFD7E6F2)
 private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
-private val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
-private val ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(floatArrayOf(6f, 5f))
+internal val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
+internal val ANSIBLEX_NETWORK_DASH_PATTERN = floatArrayOf(6f, 5f)
+private val ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(ANSIBLEX_NETWORK_DASH_PATTERN)
 internal val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
 internal val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
 internal val WORMHOLE_PEACOCK_TEAL = Color(0xFF32D6C5)
 internal val ROUTE_WORMHOLE_COLOR = WORMHOLE_PEACOCK_TEAL
 internal val ROUTE_ANSIBLEX_DASH_PATTERN = listOf(12f, 7f)
 private val ROUTE_ANSIBLEX_DASH_EFFECT = PathEffect.dashPathEffect(ROUTE_ANSIBLEX_DASH_PATTERN.toFloatArray())
-private val ROUTE_START_COLOR = Color(0xFF57E389)
-private val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
+internal val ROUTE_START_COLOR = Color(0xFF57E389)
+internal val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
 internal val CAPITAL_ROUTE_COLOR = Color(0xFFB388FF)
-private val CAPITAL_START_COLOR = Color(0xFFA98BFF)
-private val CAPITAL_DESTINATION_COLOR = Color(0xFFFF7EB6)
+internal val CAPITAL_START_COLOR = Color(0xFFA98BFF)
+internal val CAPITAL_DESTINATION_COLOR = Color(0xFFFF7EB6)
 private val INTERSECTION_COLOR = Color(0xFFFFD166)
-private val JUMP_OVERLAY_COLORS = listOf(
+internal val JUMP_OVERLAY_COLORS = listOf(
     Color(0xFF57E389),
     Color(0xFF42D6F5),
     Color(0xFFFF9F43),
@@ -989,7 +1006,7 @@ internal fun routeLegRenderStyle(type: RouteEdgeType): RouteLegRenderStyle = whe
     RouteEdgeType.ANSIBLEX -> RouteLegRenderStyle(ROUTE_ANSIBLEX_COLOR, 4f, ROUTE_ANSIBLEX_DASH_PATTERN)
     RouteEdgeType.WORMHOLE -> RouteLegRenderStyle(ROUTE_WORMHOLE_COLOR, 4f, null)
 }
-private val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
+internal val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {
     MapLabelType.SYSTEM -> LABEL_COLOR
     MapLabelType.REGION_PRIMARY -> REGION_LABEL_BASE_COLOR.copy(alpha = MapLabelStyleResolver.resolve(type, preferences).alpha)
@@ -1000,9 +1017,9 @@ internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences):
 }
 
 private const val MAP_CONTENT_CULL_MARGIN_PX = 80.0
-private const val WORMHOLE_NETWORK_LINE_ALPHA = 0.68f
-private const val WORMHOLE_NETWORK_LINE_WIDTH_PX = 1.25f
-private const val WORMHOLE_NETWORK_CHEVRON_WIDTH_PX = 1.35f
+internal const val WORMHOLE_NETWORK_LINE_ALPHA = 0.68f
+internal const val WORMHOLE_NETWORK_LINE_WIDTH_PX = 1.25f
+internal const val WORMHOLE_NETWORK_CHEVRON_WIDTH_PX = 1.35f
 private const val WORMHOLE_ACTIVE_ROUTE_CHEVRON_WIDTH_PX = 2f
 private const val WORMHOLE_ACTIVE_ROUTE_CENTER_RADIUS_PX = 1.6f
 private val WORMHOLE_ACTIVE_ROUTE_MARKER_COLOR = Color(0xFFF0FFFC)

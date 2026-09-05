@@ -3,7 +3,7 @@ package dev.evestaticmapplanner.map
 import dev.evestaticmapplanner.core.map.MapProjection
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StargateConnection
@@ -47,7 +47,7 @@ class FeatureOverlayEmblemCandidateTest {
 
     @Test
     fun `anchor is an owned interior cell with deterministic boundary clearance in both projections`() {
-        listOf(OfficialPosition2DProjection, RealXzProjection).forEach { projection ->
+        listOf(OfficialPosition2DProjection, Real3DCanonicalProjection).forEach { projection ->
             val projectedScene = scene(projection, includeSecondLargeComponent = false)
             val overlay = overlay(projectedScene.nodes.map { it.system.id })
             val snapshot = FeatureOverlayPresentationBuilder.assignmentSnapshot(overlay, projectedScene)

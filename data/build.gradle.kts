@@ -48,3 +48,15 @@ tasks.register<JavaExec>("phase5Acceptance") {
     }
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
+
+tasks.register<JavaExec>("real3DPerformanceProfile") {
+    group = "verification"
+    description = "Profiles the Real 3D projection hot path against an explicit static.db"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.evestaticmapplanner.data.qa.Real3DPerformanceCliKt")
+    val profileDatabase = providers.gradleProperty("real3DProfileDatabase")
+    doFirst {
+        args = listOf(profileDatabase.orNull ?: error("Provide -Preal3DProfileDatabase=<static.db>"))
+    }
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}

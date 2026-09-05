@@ -49,11 +49,41 @@ object MarkerMapPresentationBuilder {
         childOrbitRadiusPx: Double = 38.0,
         systemNameVisibleIds: Set<Int> = emptySet(),
     ): List<PresentedMapMarker> {
+        return buildAtScreenPositions(
+            scene = scene,
+            visibleSystemIds = visibleSystemIds,
+            markersBySystemId = markersBySystemId,
+            preferences = preferences,
+            semanticMode = semanticMode,
+            offsetPx = offsetPx,
+            childrenByParentSystemId = childrenByParentSystemId,
+            expandedSystemIds = expandedSystemIds,
+            childOrbitRadiusPx = childOrbitRadiusPx,
+            systemNameVisibleIds = systemNameVisibleIds,
+            screenPosition = { systemId ->
+                scene.nodesById[systemId]?.position?.let(transform::worldToScreen)
+            },
+        )
+    }
+
+    fun buildAtScreenPositions(
+        scene: ProjectedMapScene,
+        visibleSystemIds: Collection<Int>,
+        markersBySystemId: Map<Int, Marker>,
+        preferences: MarkerPreferences,
+        semanticMode: SemanticLabelMode,
+        offsetPx: Double,
+        screenPosition: (Int) -> MapPoint?,
+        childrenByParentSystemId: Map<Int, List<SavedMarkerChild>> = emptyMap(),
+        expandedSystemIds: Set<Int> = emptySet(),
+        childOrbitRadiusPx: Double = 38.0,
+        systemNameVisibleIds: Set<Int> = emptySet(),
+    ): List<PresentedMapMarker> {
         if (!preferences.showMarkers) return emptyList()
         return visibleSystemIds.mapNotNull { systemId ->
             val marker = markersBySystemId[systemId] ?: return@mapNotNull null
             val node = scene.nodesById[systemId] ?: return@mapNotNull null
-            val systemPosition = transform.worldToScreen(node.position)
+            val systemPosition = screenPosition(systemId) ?: return@mapNotNull null
             val saved = marker.persistence == MarkerPersistence.SAVED
             PresentedMapMarker(
                 marker = marker,

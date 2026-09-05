@@ -55,7 +55,7 @@ class FeatureOverlayEmblemsTest {
         assertTrue(FeatureOverlayEmblemLod.alpha(0.70) in 0.83f..0.85f)
         assertEquals(EMBLEM_MAX_ALPHA, FeatureOverlayEmblemLod.alpha(0.65))
 
-        val overview = FeatureOverlayEmblemLod.placements(listOf(candidate()), transform(REAL_XZ_FIT_ZOOM)).single()
+        val overview = FeatureOverlayEmblemLod.placements(listOf(candidate()), transform(REAL_3D_CANONICAL_FIT_ZOOM)).single()
         assertTrue(overview.alpha > 0f)
         assertTrue(overview.sizePx >= EMBLEM_MIN_RENDERED_SIZE_PX)
         assertTrue(overview.sizePx <= EMBLEM_MAX_SIZE_PX)
@@ -63,17 +63,17 @@ class FeatureOverlayEmblemsTest {
 
     @Test
     fun `measured REAL X-Z zoom levels follow detail medium and bright overview policy`() {
-        assertEquals(0f, FeatureOverlayEmblemLod.alpha(REAL_XZ_DETAIL_ZOOM))
+        assertEquals(0f, FeatureOverlayEmblemLod.alpha(REAL_3D_CANONICAL_DETAIL_ZOOM))
 
-        val mediumAlpha = FeatureOverlayEmblemLod.alpha(REAL_XZ_MEDIUM_ZOOM)
+        val mediumAlpha = FeatureOverlayEmblemLod.alpha(REAL_3D_CANONICAL_MEDIUM_ZOOM)
         assertTrue(mediumAlpha > 0f)
         assertTrue(mediumAlpha < EMBLEM_MAX_ALPHA)
 
-        assertEquals(EMBLEM_MAX_ALPHA, FeatureOverlayEmblemLod.alpha(REAL_XZ_FIT_ZOOM))
-        assertTrue(FeatureOverlayEmblemLod.alpha(REAL_XZ_SCREENSHOT_OVERVIEW_ZOOM) >= 0.87f)
-        assertEquals(EMBLEM_MAX_ALPHA, FeatureOverlayEmblemLod.alpha(REAL_XZ_MAXIMUM_OUT_ZOOM))
+        assertEquals(EMBLEM_MAX_ALPHA, FeatureOverlayEmblemLod.alpha(REAL_3D_CANONICAL_FIT_ZOOM))
+        assertTrue(FeatureOverlayEmblemLod.alpha(REAL_3D_CANONICAL_SCREENSHOT_OVERVIEW_ZOOM) >= 0.87f)
+        assertEquals(EMBLEM_MAX_ALPHA, FeatureOverlayEmblemLod.alpha(REAL_3D_CANONICAL_MAXIMUM_OUT_ZOOM))
         assertTrue(
-            FeatureOverlayEmblemLod.placements(listOf(candidate()), transform(REAL_XZ_SCREENSHOT_OVERVIEW_ZOOM))
+            FeatureOverlayEmblemLod.placements(listOf(candidate()), transform(REAL_3D_CANONICAL_SCREENSHOT_OVERVIEW_ZOOM))
                 .single().sizePx >= EMBLEM_MIN_RENDERED_SIZE_PX,
         )
     }
@@ -129,7 +129,7 @@ class FeatureOverlayEmblemsTest {
     @Test
     fun `ready emblem preserves the selected interior anchor`() {
         val candidate = candidate()
-        val placement = FeatureOverlayEmblemLod.placements(listOf(candidate), transform(REAL_XZ_FIT_ZOOM)).single()
+        val placement = FeatureOverlayEmblemLod.placements(listOf(candidate), transform(REAL_3D_CANONICAL_FIT_ZOOM)).single()
         val image = ImageBitmap(8, 8)
 
         val ready = FeatureOverlayEmblemLod.readyEmblems(
@@ -159,7 +159,7 @@ class FeatureOverlayEmblemsTest {
         val transforms = listOf(
             transform(1.0, center = MapPoint(100.0, 100.0)),
             transform(0.6, center = MapPoint(80.0, 120.0)),
-            transform(REAL_XZ_FIT_ZOOM, center = MapPoint(140.0, 70.0)),
+            transform(REAL_3D_CANONICAL_FIT_ZOOM, center = MapPoint(140.0, 70.0)),
         )
 
         val anchors = transforms.map { current ->
@@ -286,8 +286,8 @@ class FeatureOverlayEmblemsTest {
         )
 
         val officialRequest = repository.request(REFERENCE)
-        val realXzRequest = repository.request(REFERENCE)
-        assertSame(officialRequest, realXzRequest)
+        val real3DRequest = repository.request(REFERENCE)
+        assertSame(officialRequest, real3DRequest)
         runCurrent()
         assertEquals(1, loads)
 
@@ -413,11 +413,11 @@ class FeatureOverlayEmblemsTest {
     )
 
     private companion object {
-        const val REAL_XZ_DETAIL_ZOOM = 6.813138602009427
-        const val REAL_XZ_MEDIUM_ZOOM = 1.5845182865666516
-        const val REAL_XZ_FIT_ZOOM = 0.5306519681842408
-        const val REAL_XZ_SCREENSHOT_OVERVIEW_ZOOM = 0.4422099734868673
-        const val REAL_XZ_MAXIMUM_OUT_ZOOM = 0.01
+        const val REAL_3D_CANONICAL_DETAIL_ZOOM = 6.813138602009427
+        const val REAL_3D_CANONICAL_MEDIUM_ZOOM = 1.5845182865666516
+        const val REAL_3D_CANONICAL_FIT_ZOOM = 0.5306519681842408
+        const val REAL_3D_CANONICAL_SCREENSHOT_OVERVIEW_ZOOM = 0.4422099734868673
+        const val REAL_3D_CANONICAL_MAXIMUM_OUT_ZOOM = 0.01
         val REFERENCE = PresentationEmblemReference(
             "eve-alliance:42",
             "https://images.evetech.net/alliances/42/logo?size=256",

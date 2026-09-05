@@ -40,7 +40,7 @@ class MapSceneBuilderTest {
 
     @Test
     fun `real scene retains remote systems but default fit uses connected systems`() {
-        val scene = MapSceneBuilder().build(data, RealXzProjection)
+        val scene = MapSceneBuilder().build(data, Real3DCanonicalProjection)
 
         assertEquals(3, scene.nodes.size)
         assertTrue(scene.sceneBounds.contains(scene.nodesById.getValue(3).position))
@@ -50,7 +50,7 @@ class MapSceneBuilderTest {
 
     @Test
     fun `scene edge keeps projected endpoints and bounds`() {
-        val scene = MapSceneBuilder().build(data, RealXzProjection)
+        val scene = MapSceneBuilder().build(data, Real3DCanonicalProjection)
         val edge = scene.edges.single()
 
         assertEquals(1, edge.firstSystemId)
@@ -65,11 +65,11 @@ class MapSceneBuilderTest {
 
         val official = cache.get(MapProjectionId.OFFICIAL_2D)
         val officialAgain = cache.get(MapProjectionId.OFFICIAL_2D)
-        val real = cache.get(MapProjectionId.REAL_XZ)
+        val real = cache.get(MapProjectionId.REAL_3D)
 
         assertTrue(official === officialAgain)
         assertTrue(official !== real)
-        assertEquals(setOf(MapProjectionId.OFFICIAL_2D, MapProjectionId.REAL_XZ), cache.cachedProjectionIds())
+        assertEquals(setOf(MapProjectionId.OFFICIAL_2D, MapProjectionId.REAL_3D), cache.cachedProjectionIds())
         assertTrue(official.regions.single() === officialAgain.regions.single())
         assertNotEquals(official.regions.single().canonicalAnchor, real.regions.single().canonicalAnchor)
     }
@@ -94,7 +94,7 @@ class MapSceneBuilderTest {
         )
 
         val official = MapSceneBuilder().build(hierarchyData, OfficialPosition2DProjection)
-        val real = MapSceneBuilder().build(hierarchyData, RealXzProjection)
+        val real = MapSceneBuilder().build(hierarchyData, Real3DCanonicalProjection)
 
         assertEquals(setOf(1), official.regions.map { it.id }.toSet())
         assertEquals(setOf(10), official.constellations.map { it.id }.toSet())

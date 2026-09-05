@@ -38,6 +38,9 @@ class PreferencesStoreTest {
         assertEquals(MapDisplayPreferences.Defaults, AppPreferences.Defaults.mapDisplay)
         assertEquals(2.0, MapDisplayPreferences.Defaults.constellationZoomThreshold)
         assertEquals(6.0, MapDisplayPreferences.Defaults.systemZoomThreshold)
+        assertEquals(1.8, MapDisplayPreferences.Defaults.real3DConstellationScaleThreshold)
+        assertEquals(4.5, MapDisplayPreferences.Defaults.real3DSystemScaleThreshold)
+        assertTrue(MapDisplayPreferences.Defaults.real3DStargateVisibilityFilteringEnabled)
         assertEquals(16f, MapDisplayPreferences.Defaults.regionPrimaryFontSizeSp)
         assertEquals(20f, MapDisplayPreferences.Defaults.regionBackgroundFontSizeSp)
         assertEquals(0.07f, MapDisplayPreferences.Defaults.regionBackgroundAlpha)
@@ -63,6 +66,9 @@ class PreferencesStoreTest {
             mapDisplay = MapDisplayPreferences(
                 constellationZoomThreshold = 3.25,
                 systemZoomThreshold = 9.5,
+                real3DConstellationScaleThreshold = 2.25,
+                real3DSystemScaleThreshold = 7.5,
+                real3DStargateVisibilityFilteringEnabled = false,
                 regionPrimaryFontSizeSp = 17f,
                 regionBackgroundFontSizeSp = 22f,
                 regionBackgroundAlpha = 0.12f,
@@ -101,6 +107,15 @@ class PreferencesStoreTest {
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.savedMarkerAccessEnabled=true" })
         assertTrue(Files.readString(path).lineSequence().any {
             it == "mapDisplay.sovereigntyLogoEmphasisZoom=0.85"
+        })
+        assertTrue(Files.readString(path).lineSequence().any {
+            it == "mapDisplay.real3DConstellationScaleThreshold=2.25"
+        })
+        assertTrue(Files.readString(path).lineSequence().any {
+            it == "mapDisplay.real3DSystemScaleThreshold=7.5"
+        })
+        assertTrue(Files.readString(path).lineSequence().any {
+            it == "mapDisplay.real3DStargateVisibilityFilteringEnabled=false"
         })
         assertTrue(Files.readString(path).lineSequence().any {
             it == "overlay.disabledLayers=fixture.provider/first,fixture.provider/second"
@@ -145,6 +160,7 @@ class PreferencesStoreTest {
             mapDisplay.constellationFontSizeSp=15
             mapDisplay.systemFontSizeSp=12
             mapDisplay.sovereigntyLogoEmphasisZoom=not-a-mode
+            mapDisplay.real3DStargateVisibilityFilteringEnabled=invalid
             future.unknown.preference=ignored
             """.trimIndent(),
         )
@@ -159,6 +175,7 @@ class PreferencesStoreTest {
         assertEquals(15f, loaded.constellationFontSizeSp)
         assertEquals(12f, loaded.systemFontSizeSp)
         assertEquals(0.75, loaded.sovereigntyLogoEmphasisZoom)
+        assertTrue(loaded.real3DStargateVisibilityFilteringEnabled)
     }
 
     @Test

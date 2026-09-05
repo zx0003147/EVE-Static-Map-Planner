@@ -1078,6 +1078,23 @@ internal fun parsePresentationColor(value: String?): Color? {
     return parsePresentationMetadata(value).color
 }
 
+internal data class FeatureOverlay3DStyle(
+    val color: Color?,
+    val ownerKey: String?,
+    val emblemReference: PresentationEmblemReference?,
+    val markerOnly: Boolean,
+)
+
+internal fun parseFeatureOverlay3DStyle(value: String?): FeatureOverlay3DStyle =
+    parsePresentationMetadata(value).let { metadata ->
+        FeatureOverlay3DStyle(
+            color = metadata.color,
+            ownerKey = metadata.ownerKey,
+            emblemReference = metadata.emblemReference,
+            markerOnly = metadata.markerOnly,
+        )
+    }
+
 private fun parsePresentationMetadata(value: String?): PresentationMetadata {
     var color: Color? = null
     var ownerKey: String? = null

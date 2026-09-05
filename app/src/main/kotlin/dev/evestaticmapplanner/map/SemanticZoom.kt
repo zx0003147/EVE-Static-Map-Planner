@@ -66,6 +66,41 @@ object SemanticZoomPolicy {
         preferences.systemZoomThreshold * HYSTERESIS_RETURN_RATIO,
         preferences.constellationZoomThreshold,
     )
+
+    fun initialReal3DMode(scale: Double, preferences: MapDisplayPreferences): SemanticLabelMode = when {
+        scale >= preferences.real3DSystemScaleThreshold -> SemanticLabelMode.SYSTEM
+        scale >= preferences.real3DConstellationScaleThreshold -> SemanticLabelMode.CONSTELLATION
+        else -> SemanticLabelMode.REGION_ONLY
+    }
+
+    fun transitionReal3D(
+        current: SemanticLabelMode,
+        scale: Double,
+        preferences: MapDisplayPreferences,
+    ): SemanticLabelMode {
+        val constellationReturn = preferences.real3DConstellationScaleThreshold * HYSTERESIS_RETURN_RATIO
+        val systemReturn = maxOf(
+            preferences.real3DSystemScaleThreshold * HYSTERESIS_RETURN_RATIO,
+            preferences.real3DConstellationScaleThreshold,
+        )
+        return when (current) {
+            SemanticLabelMode.REGION_ONLY -> when {
+                scale >= preferences.real3DSystemScaleThreshold -> SemanticLabelMode.SYSTEM
+                scale >= preferences.real3DConstellationScaleThreshold -> SemanticLabelMode.CONSTELLATION
+                else -> SemanticLabelMode.REGION_ONLY
+            }
+            SemanticLabelMode.CONSTELLATION -> when {
+                scale >= preferences.real3DSystemScaleThreshold -> SemanticLabelMode.SYSTEM
+                scale <= constellationReturn -> SemanticLabelMode.REGION_ONLY
+                else -> SemanticLabelMode.CONSTELLATION
+            }
+            SemanticLabelMode.SYSTEM -> when {
+                scale <= constellationReturn -> SemanticLabelMode.REGION_ONLY
+                scale <= systemReturn -> SemanticLabelMode.CONSTELLATION
+                else -> SemanticLabelMode.SYSTEM
+            }
+        }
+    }
 }
 
 // Users choose only the two enter thresholds. Return thresholds are derived to keep the UI stable.

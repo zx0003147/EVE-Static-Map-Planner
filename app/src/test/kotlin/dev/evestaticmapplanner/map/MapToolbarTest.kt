@@ -52,7 +52,7 @@ class MapToolbarTest {
         onNodeWithTag(TOOLBAR_TAG).assertHeightIsEqualTo(MAP_TOOLBAR_EXPECTED_HEIGHT)
         assertEquals(40, MAP_TOOLBAR_EXPECTED_HEIGHT.value.toInt())
         assertTrue(MAP_TOOLBAR_EXPECTED_HEIGHT < 56.dp)
-        listOf("Official 2D", "Real X-Z", "View 1", "View 2", "+", "Fit Map").forEach {
+        listOf("Official 2D", "Real 3D", "View 1", "View 2", "+", "Fit Map").forEach {
             onNodeWithText(it).assertIsDisplayed()
         }
         onNodeWithText("✎").assertDoesNotExist()
@@ -63,13 +63,13 @@ class MapToolbarTest {
             "+ must remain after the final View tab",
         )
 
-        onNodeWithText("Real X-Z").performClick()
+        onNodeWithText("Real 3D").performClick()
         onNodeWithText("View 2").performMouseInput { rightClick() }
         onNodeWithText("Rename").assertIsDisplayed().performClick()
         onNodeWithText("View 2").performMouseInput { rightClick() }
         onNodeWithText("Delete").assertIsDisplayed().performClick()
         assertEquals(
-            listOf("projection:REAL_XZ", "rename:view-2", "delete:view-2"),
+            listOf("projection:REAL_3D", "rename:view-2", "delete:view-2"),
             calls,
             "right-click actions must target View 2 without switching the current View",
         )
@@ -80,7 +80,7 @@ class MapToolbarTest {
 
         assertEquals(
             listOf(
-                "projection:REAL_XZ",
+                "projection:REAL_3D",
                 "rename:view-2",
                 "delete:view-2",
                 "switch:view-2",
@@ -154,7 +154,7 @@ class MapToolbarTest {
             .assertWidthIsEqualTo(360.dp)
             .assertHeightIsEqualTo(MAP_TOOLBAR_EXPECTED_HEIGHT)
         onNodeWithText("Official 2D").assertIsDisplayed()
-        onNodeWithText("Real X-Z").assertIsDisplayed()
+        onNodeWithText("Real 3D").assertIsDisplayed()
         onNodeWithText("Fit Map").assertIsDisplayed().performClick()
 
         onNode(hasScrollAction())

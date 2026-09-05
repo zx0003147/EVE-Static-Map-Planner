@@ -133,16 +133,37 @@ object SharedMarkerMapPresentationBuilder {
         geometry: SharedMarkerVisualGeometry,
         localSavedRingRadiusPx: Double,
     ): List<PresentedSharedMarker> {
+        return buildAtScreenPositions(
+            visibleSystemIds = visibleSystemIds,
+            state = state,
+            localMarkersBySystemId = localMarkersBySystemId,
+            missionMarkers = missionMarkers,
+            geometry = geometry,
+            localSavedRingRadiusPx = localSavedRingRadiusPx,
+            screenPosition = { systemId ->
+                scene.nodesById[systemId]?.position?.let(transform::worldToScreen)
+            },
+        )
+    }
+
+    fun buildAtScreenPositions(
+        visibleSystemIds: Collection<Int>,
+        state: SharedMarkerPresentationState,
+        localMarkersBySystemId: Map<Int, Marker>,
+        missionMarkers: List<MissionMarker>,
+        geometry: SharedMarkerVisualGeometry,
+        localSavedRingRadiusPx: Double,
+        screenPosition: (Int) -> MapPoint?,
+    ): List<PresentedSharedMarker> {
         if (!state.isVisible || state.markersBySystemId.isEmpty()) return emptyList()
         val visible = visibleSystemIds.toHashSet()
         val aiSystemIds = missionMarkers.asSequence().map(MissionMarker::systemId).toHashSet()
         return state.markersBySystemId.values.asSequence()
             .filter { it.systemId in visible }
             .mapNotNull { marker ->
-                val node = scene.nodesById[marker.systemId] ?: return@mapNotNull null
                 val localSaved = localMarkersBySystemId[marker.systemId]
                     ?.persistence == MarkerPersistence.SAVED
-                val center = transform.worldToScreen(node.position)
+                val center = screenPosition(marker.systemId) ?: return@mapNotNull null
                 val radius = geometry.ringRadius(localSavedRingRadiusPx.takeIf { localSaved })
                 PresentedSharedMarker(
                     marker = marker,

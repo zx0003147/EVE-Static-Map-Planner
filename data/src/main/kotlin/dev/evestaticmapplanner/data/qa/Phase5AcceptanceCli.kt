@@ -13,7 +13,7 @@ import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlayBuilder
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlayBuilder
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.route.CapitalRouteEngine
@@ -104,7 +104,7 @@ fun main(arguments: Array<String>) {
     println("ZARZAKH origin=${verdictName(policy.evaluateOrigin(zarzakh))} destination=${verdictName(policy.evaluateDestination(zarzakh))}")
 
     val official = MapSceneBuilder().build(map, OfficialPosition2DProjection)
-    val real = MapSceneBuilder().build(map, RealXzProjection)
+    val real = MapSceneBuilder().build(map, Real3DCanonicalProjection)
     val qaOverlays = listOf(
         JumpRangeOverlay("A", oneDq.id, profile7, a),
         JumpRangeOverlay("B", nol.id, profile7, b),
@@ -116,7 +116,7 @@ fun main(arguments: Array<String>) {
             "capitalOmittedLegs=${ProjectedCapitalRouteOverlayBuilder.build(multi, official).omittedLegCount}",
     )
     println(
-        "PROJECTION_REAL_XZ systems=${real.nodes.size} omitted=${real.omittedSystemIds.size} " +
+        "PROJECTION_REAL_3D_CANONICAL systems=${real.nodes.size} omitted=${real.omittedSystemIds.size} " +
             "overlayOmitted=${qaOverlays.sumOf { ProjectedJumpRangeOverlayBuilder.build(it, real).omittedSystemIds.size }} " +
             "capitalOmittedLegs=${ProjectedCapitalRouteOverlayBuilder.build(multi, real).omittedLegCount}",
     )

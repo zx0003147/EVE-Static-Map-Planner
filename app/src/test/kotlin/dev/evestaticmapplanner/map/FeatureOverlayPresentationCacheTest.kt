@@ -3,7 +3,7 @@ package dev.evestaticmapplanner.map
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
@@ -32,7 +32,7 @@ class FeatureOverlayPresentationCacheTest {
     @Test
     fun `coordinator rejects out of order publication and reuses completed projection cache`() = runTest {
         val officialScene = scene(OfficialPosition2DProjection)
-        val realScene = scene(RealXzProjection)
+        val realScene = scene(Real3DCanonicalProjection)
         val overlay = overlay(owner = "alliance-a")
         val officialKey = FeatureOverlayGeometryKey.from(officialScene, overlay)
         val realKey = FeatureOverlayGeometryKey.from(realScene, overlay)
@@ -70,7 +70,7 @@ class FeatureOverlayPresentationCacheTest {
     @Test
     fun `stale projection result is cached but cannot replace the current projection`() {
         val officialScene = scene(OfficialPosition2DProjection)
-        val realScene = scene(RealXzProjection)
+        val realScene = scene(Real3DCanonicalProjection)
         val overlay = overlay(owner = "alliance-a")
         val officialKey = FeatureOverlayGeometryKey.from(officialScene, overlay)
         val realKey = FeatureOverlayGeometryKey.from(realScene, overlay)
@@ -101,7 +101,7 @@ class FeatureOverlayPresentationCacheTest {
     fun `geometry key changes for projection scene layout or visible ownership`() {
         val officialScene = scene(OfficialPosition2DProjection)
         val rebuiltOfficialScene = scene(OfficialPosition2DProjection, coordinateOffset = 5.0)
-        val realScene = scene(RealXzProjection)
+        val realScene = scene(Real3DCanonicalProjection)
         val firstOverlay = overlay(owner = "alliance-a")
         val changedOverlay = overlay(owner = "alliance-b")
         val first = FeatureOverlayGeometryKey.from(officialScene, firstOverlay)

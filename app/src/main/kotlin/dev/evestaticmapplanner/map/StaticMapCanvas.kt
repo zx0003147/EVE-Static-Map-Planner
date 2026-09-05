@@ -41,6 +41,7 @@ import androidx.compose.ui.zIndex
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
+import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.route.RouteResult
@@ -84,6 +85,7 @@ fun StaticMapCanvas(
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
     onPan: (MapPoint) -> Unit,
+    onRotate: (MapPoint) -> Unit,
     onHover: (MapPoint) -> Unit,
     onHoverExit: () -> Unit,
     onSelect: (MapPoint) -> Unit,
@@ -105,6 +107,49 @@ fun StaticMapCanvas(
     val scene = state.scene ?: return
     val viewport = state.viewport ?: return
     if (state.canvasSize.isEmpty) return
+    if (state.projectionId == MapProjectionId.REAL_3D) {
+        Real3DMapCanvas(
+            state = state,
+            activeRoute = activeRoute,
+            normalWaypointSystemIds = normalWaypointSystemIds,
+            normalExplicitDestinationSystemId = normalExplicitDestinationSystemId,
+            capitalRoute = capitalRoute,
+            capitalWaypointSystemIds = capitalWaypointSystemIds,
+            capitalExplicitDestinationSystemId = capitalExplicitDestinationSystemId,
+            jumpOverlays = jumpOverlays,
+            ansiblexConnections = ansiblexConnections,
+            showAnsiblexLayer = showAnsiblexLayer,
+            missionState = missionState,
+            featureOverlayState = featureOverlayState,
+            onCanvasSizeChanged = onCanvasSizeChanged,
+            onFirstMapDisplayed = onFirstMapDisplayed,
+            onZoom = onZoom,
+            onPan = onPan,
+            onRotate = onRotate,
+            onHover = onHover,
+            onHoverExit = onHoverExit,
+            onSelect = onSelect,
+            onContextMenu = onContextMenu,
+            markerState = markerState,
+            sharedMapState = sharedMapState,
+            sharedMarkerState = sharedMarkerState,
+            wormholeConnections = wormholeConnections,
+            compactSystemInfo = compactSystemInfo,
+            onContextRouteStart = onContextRouteStart,
+            onContextRouteWaypoint = onContextRouteWaypoint,
+            onContextRouteDestination = onContextRouteDestination,
+            onContextJumpOverlay = onContextJumpOverlay,
+            onContextCapitalStart = onContextCapitalStart,
+            onContextCapitalWaypoint = onContextCapitalWaypoint,
+            onContextCapitalDestination = onContextCapitalDestination,
+            onContextMarkerAction = onContextMarkerAction,
+            onContextSharedMarkerAction = onContextSharedMarkerAction,
+            onContextCreateWormhole = onContextCreateWormhole,
+            onContextManageWormholes = onContextManageWormholes,
+            onContextDismiss = onContextDismiss,
+        )
+        return
+    }
     val transform = remember(viewport, state.canvasSize) { MapTransform(viewport, state.canvasSize) }
     val textMeasurer = rememberTextMeasurer()
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
@@ -880,7 +925,7 @@ fun StaticMapCanvas(
 }
 
 @Composable
-private fun MapMarkerTooltip(
+internal fun MapMarkerTooltip(
     lines: List<String>,
     offset: IntOffset,
 ) {

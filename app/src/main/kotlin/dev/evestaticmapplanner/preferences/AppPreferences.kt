@@ -69,6 +69,9 @@ data class SavedMarkerAppearancePreferences(
 data class MapDisplayPreferences(
     val constellationZoomThreshold: Double = DEFAULT_CONSTELLATION_ZOOM_THRESHOLD,
     val systemZoomThreshold: Double = DEFAULT_SYSTEM_ZOOM_THRESHOLD,
+    val real3DConstellationScaleThreshold: Double = DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD,
+    val real3DSystemScaleThreshold: Double = DEFAULT_REAL_3D_SYSTEM_SCALE_THRESHOLD,
+    val real3DStargateVisibilityFilteringEnabled: Boolean = true,
     val regionPrimaryFontSizeSp: Float = DEFAULT_REGION_PRIMARY_FONT_SIZE_SP,
     val regionBackgroundFontSizeSp: Float = DEFAULT_REGION_BACKGROUND_FONT_SIZE_SP,
     val regionBackgroundAlpha: Float = DEFAULT_REGION_BACKGROUND_ALPHA,
@@ -91,6 +94,16 @@ data class MapDisplayPreferences(
         ) {
             "System threshold must be greater than constellation threshold"
         }
+        require(
+            real3DConstellationScaleThreshold.isFinite() &&
+                real3DConstellationScaleThreshold > 0.0 &&
+                real3DConstellationScaleThreshold <= MAX_ZOOM_THRESHOLD,
+        ) { "Real 3D constellation threshold must be greater than zero" }
+        require(
+            real3DSystemScaleThreshold.isFinite() &&
+                real3DConstellationScaleThreshold < real3DSystemScaleThreshold &&
+                real3DSystemScaleThreshold <= MAX_ZOOM_THRESHOLD,
+        ) { "Real 3D system threshold must be greater than its constellation threshold" }
         require(regionPrimaryFontSizeSp.isFinite() && regionPrimaryFontSizeSp in 1f..MAX_FONT_SIZE_SP)
         require(regionBackgroundFontSizeSp.isFinite() && regionBackgroundFontSizeSp in 1f..MAX_FONT_SIZE_SP)
         require(regionBackgroundAlpha.isFinite() && regionBackgroundAlpha in 0f..1f)
@@ -152,10 +165,29 @@ class PropertiesPreferencesStore(
         } else {
             defaults.constellationZoomThreshold to defaults.systemZoomThreshold
         }
+        val real3DConstellationThreshold = properties.validDouble(
+            KEY_REAL_3D_CONSTELLATION_THRESHOLD,
+            defaults.real3DConstellationScaleThreshold,
+        ) { it > 0.0 && it <= MAX_ZOOM_THRESHOLD }
+        val real3DSystemThreshold = properties.validDouble(
+            KEY_REAL_3D_SYSTEM_THRESHOLD,
+            defaults.real3DSystemScaleThreshold,
+        ) { it > 0.0 && it <= MAX_ZOOM_THRESHOLD }
+        val real3DThresholds = if (real3DConstellationThreshold < real3DSystemThreshold) {
+            real3DConstellationThreshold to real3DSystemThreshold
+        } else {
+            defaults.real3DConstellationScaleThreshold to defaults.real3DSystemScaleThreshold
+        }
         return AppPreferences(
             mapDisplay = MapDisplayPreferences(
                 constellationZoomThreshold = thresholds.first,
                 systemZoomThreshold = thresholds.second,
+                real3DConstellationScaleThreshold = real3DThresholds.first,
+                real3DSystemScaleThreshold = real3DThresholds.second,
+                real3DStargateVisibilityFilteringEnabled = properties.validBoolean(
+                    KEY_REAL_3D_STARGATE_VISIBILITY_FILTERING_ENABLED,
+                    defaults.real3DStargateVisibilityFilteringEnabled,
+                ),
                 regionPrimaryFontSizeSp = properties.validFloat(
                     KEY_REGION_PRIMARY_FONT_SIZE,
                     defaults.regionPrimaryFontSizeSp,
@@ -246,6 +278,15 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_CONSTELLATION_THRESHOLD, mapDisplay.constellationZoomThreshold.toString())
                 setProperty(KEY_SYSTEM_THRESHOLD, mapDisplay.systemZoomThreshold.toString())
+                setProperty(
+                    KEY_REAL_3D_CONSTELLATION_THRESHOLD,
+                    mapDisplay.real3DConstellationScaleThreshold.toString(),
+                )
+                setProperty(KEY_REAL_3D_SYSTEM_THRESHOLD, mapDisplay.real3DSystemScaleThreshold.toString())
+                setProperty(
+                    KEY_REAL_3D_STARGATE_VISIBILITY_FILTERING_ENABLED,
+                    mapDisplay.real3DStargateVisibilityFilteringEnabled.toString(),
+                )
                 setProperty(KEY_REGION_PRIMARY_FONT_SIZE, mapDisplay.regionPrimaryFontSizeSp.toString())
                 setProperty(KEY_REGION_BACKGROUND_FONT_SIZE, mapDisplay.regionBackgroundFontSizeSp.toString())
                 setProperty(KEY_REGION_BACKGROUND_ALPHA, mapDisplay.regionBackgroundAlpha.toString())
@@ -337,6 +378,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
 const val SETTINGS_VERSION = "1"
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
+const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
+const val DEFAULT_REAL_3D_SYSTEM_SCALE_THRESHOLD = 4.5
 const val DEFAULT_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 0.75
 const val MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 0.01
 const val MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 250.0
@@ -361,6 +404,10 @@ const val MAX_SAVED_MARKER_GLOW_STRENGTH = 1f
 private const val KEY_SETTINGS_VERSION = "settings.version"
 private const val KEY_CONSTELLATION_THRESHOLD = "mapDisplay.constellationZoomThreshold"
 private const val KEY_SYSTEM_THRESHOLD = "mapDisplay.systemZoomThreshold"
+private const val KEY_REAL_3D_CONSTELLATION_THRESHOLD = "mapDisplay.real3DConstellationScaleThreshold"
+private const val KEY_REAL_3D_SYSTEM_THRESHOLD = "mapDisplay.real3DSystemScaleThreshold"
+private const val KEY_REAL_3D_STARGATE_VISIBILITY_FILTERING_ENABLED =
+    "mapDisplay.real3DStargateVisibilityFilteringEnabled"
 private const val KEY_REGION_PRIMARY_FONT_SIZE = "mapDisplay.regionPrimaryFontSizeSp"
 private const val KEY_REGION_BACKGROUND_FONT_SIZE = "mapDisplay.regionBackgroundFontSizeSp"
 private const val KEY_REGION_BACKGROUND_ALPHA = "mapDisplay.regionBackgroundAlpha"

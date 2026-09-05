@@ -11,6 +11,19 @@ preserving the existing map rendering, routes, selection visuals, and interactio
 Core remains offline-capable. Optional ESI functionality is supplied only by the external ESI Pack; V1 continues to
 exclude intel, killboards, application auto-update, signing, Microsoft Store/MSIX, and non-Windows distributions.
 
+## Map projections and controls
+
+The map toolbar offers `Official 2D` and `Real 3D`. Official 2D retains the schematic layout and its existing
+pan/zoom behavior. Real 3D uses the SDE universe X/Y/Z coordinates with perspective projection; its default view is
+X horizontal, Z vertical, and Y in depth so the initial shape remains familiar.
+
+In Real 3D, left-drag pans the camera target, right-drag rotates yaw/pitch, and the mouse wheel dollies through the
+map. `Fit Map` preserves the current viewing angle while reframing the universe; `Reset View` restores the default
+X/Z-facing camera. Clicking, right-click context actions, routes, jump ranges, markers, Wormholes, Shared Markers,
+and Feature Pack overlays work in both projections. Camera position and orientation are intentionally not persisted.
+
+See `docs/real-3d-performance.md` for the repeatable full-universe CPU projection profile.
+
 ## Modules
 
 - `app`: Compose Desktop UI, startup coordination, diagnostics, and Windows native distribution configuration.

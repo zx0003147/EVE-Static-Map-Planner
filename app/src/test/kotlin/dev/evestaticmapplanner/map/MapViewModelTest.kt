@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
+import dev.evestaticmapplanner.core.map.MapPoint3
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SchematicPosition
@@ -68,7 +69,7 @@ class MapViewModelTest {
         advanceUntilIdle()
         viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
 
-        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
         advanceUntilIdle()
 
         val scene = assertNotNull(viewModel.state.value.scene)
@@ -87,7 +88,7 @@ class MapViewModelTest {
         viewModel.panBy(MapPoint(50.0, 20.0))
         val officialViewport = viewModel.state.value.viewport
 
-        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
         advanceUntilIdle()
         viewModel.panBy(MapPoint(-30.0, 15.0))
         val realViewport = viewModel.state.value.viewport
@@ -111,16 +112,16 @@ class MapViewModelTest {
         viewModel.zoomAt(MapSize(1000.0, 700.0).center, 100.0)
         assertEquals(SemanticLabelMode.REGION_ONLY, viewModel.state.value.semanticLabelMode)
 
-        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
         advanceUntilIdle()
-        assertEquals(SemanticLabelMode.SYSTEM, viewModel.state.value.semanticLabelMode)
+        assertEquals(SemanticLabelMode.REGION_ONLY, viewModel.state.value.semanticLabelMode)
 
         viewModel.switchProjection(MapProjectionId.OFFICIAL_2D)
         advanceUntilIdle()
         assertEquals(SemanticLabelMode.REGION_ONLY, viewModel.state.value.semanticLabelMode)
         assertEquals(
-            SemanticLabelMode.SYSTEM,
-            viewModel.state.value.semanticLabelModes.getValue(MapProjectionId.REAL_XZ),
+            SemanticLabelMode.REGION_ONLY,
+            viewModel.state.value.semanticLabelModes.getValue(MapProjectionId.REAL_3D),
         )
     }
 
@@ -254,7 +255,7 @@ class MapViewModelTest {
         viewModel.zoomAt(MapSize(1000.0, 700.0).center, 100.0)
         assertEquals(0.01, viewModel.state.value.viewport?.zoom)
 
-        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
         advanceUntilIdle()
         val shared = MapDisplayPreferences(
             constellationZoomThreshold = 0.02,
@@ -263,7 +264,7 @@ class MapViewModelTest {
         viewModel.updateMapDisplayPreferences(shared)
 
         assertEquals(shared, viewModel.state.value.appPreferences.mapDisplay)
-        assertEquals(SemanticLabelMode.SYSTEM, viewModel.state.value.semanticLabelMode)
+        assertEquals(SemanticLabelMode.REGION_ONLY, viewModel.state.value.semanticLabelMode)
         assertEquals(
             SemanticLabelMode.REGION_ONLY,
             viewModel.state.value.semanticLabelModes.getValue(MapProjectionId.OFFICIAL_2D),
@@ -503,7 +504,7 @@ class MapViewModelTest {
         val viewModel = fixture.viewModel(this, dispatcher)
         advanceUntilIdle()
         viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
-        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
         advanceUntilIdle()
         val scene = assertNotNull(viewModel.state.value.scene)
         val builds = viewModel.state.value.performance.sceneBuildCount
@@ -512,8 +513,8 @@ class MapViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.state.value
-        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
-        assertEquals(scene.nodesById.getValue(3).position, state.viewport?.center)
+        assertEquals(MapProjectionId.REAL_3D, state.projectionId)
+        assertEquals(MapPoint3.fromUniverse(scene.nodesById.getValue(3).system.position), state.real3DCamera?.target)
         assertSame(scene, state.scene)
         assertEquals(builds, state.performance.sceneBuildCount)
         assertNull(state.focusNotice)
@@ -526,10 +527,10 @@ class MapViewModelTest {
         val viewModel = fixture.viewModel(this, dispatcher)
         advanceUntilIdle()
         viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
-        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
         advanceUntilIdle()
         val realScene = assertNotNull(viewModel.state.value.scene)
-        val realViewportBefore = assertNotNull(viewModel.state.value.viewport)
+        val realCameraBefore = assertNotNull(viewModel.state.value.real3DCamera)
         val builds = viewModel.state.value.performance.sceneBuildCount
         viewModel.switchProjection(MapProjectionId.OFFICIAL_2D)
         advanceUntilIdle()
@@ -539,14 +540,14 @@ class MapViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.state.value
-        val expectedPosition = realScene.nodesById.getValue(3).position
-        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
+        val expectedPosition = MapPoint3.fromUniverse(realScene.nodesById.getValue(3).system.position)
+        assertEquals(MapProjectionId.REAL_3D, state.projectionId)
         assertEquals(3, state.selectedSystemId)
         assertEquals("Remote", state.selectedSystemDetails?.system?.name)
-        assertEquals(expectedPosition, state.viewport?.center)
-        assertNotEquals(MapPoint(0.0, 0.0), state.viewport?.center)
-        assertEquals(realViewportBefore.zoom, state.viewport?.zoom)
-        assertTrue(state.focusNotice?.contains("switched to Real X-Z") == true)
+        assertEquals(expectedPosition, state.real3DCamera?.target)
+        assertNotEquals(MapPoint3.Zero, state.real3DCamera?.target)
+        assertEquals(realCameraBefore.distance, state.real3DCamera?.distance)
+        assertTrue(state.focusNotice?.contains("switched to Real 3D") == true)
         assertSame(realScene, state.scene)
         assertEquals(builds, state.performance.sceneBuildCount)
     }
@@ -564,9 +565,12 @@ class MapViewModelTest {
 
         assertTrue(completion.await())
         val state = viewModel.state.value
-        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
+        assertEquals(MapProjectionId.REAL_3D, state.projectionId)
         assertEquals(3, state.selectedSystemId)
-        assertEquals(state.scene?.nodesById?.getValue(3)?.position, state.viewport?.center)
+        assertEquals(
+            state.scene?.nodesById?.getValue(3)?.system?.position?.let(MapPoint3::fromUniverse),
+            state.real3DCamera?.target,
+        )
     }
 
     @Test
@@ -576,7 +580,7 @@ class MapViewModelTest {
         val viewModel = fixture.viewModel(this, dispatcher)
         advanceUntilIdle()
         viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
-        viewModel.switchProjection(MapProjectionId.REAL_XZ)
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
         advanceUntilIdle()
         val realScene = assertNotNull(viewModel.state.value.scene)
         val buildCount = viewModel.state.value.performance.sceneBuildCount
@@ -590,10 +594,44 @@ class MapViewModelTest {
         val state = viewModel.state.value
         val first = realScene.nodesById.getValue(1).position
         val third = realScene.nodesById.getValue(3).position
-        assertEquals(MapProjectionId.REAL_XZ, state.projectionId)
+        assertEquals(MapProjectionId.REAL_3D, state.projectionId)
         assertEquals(MapPoint((first.x + third.x) / 2.0, (first.y + third.y) / 2.0), state.viewport?.center)
         assertSame(realScene, state.scene)
         assertEquals(buildCount, state.performance.sceneBuildCount)
+    }
+
+    @Test
+    fun `real 3D controls mutate only camera state and reset restores default orientation`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
+        advanceUntilIdle()
+        val initial = assertNotNull(viewModel.state.value.real3DCamera)
+        val canonicalViewport = viewModel.state.value.viewport
+
+        viewModel.panBy(MapPoint(30.0, -20.0))
+        val panned = assertNotNull(viewModel.state.value.real3DCamera)
+        viewModel.rotateBy(MapPoint(25.0, -10.0))
+        val rotated = assertNotNull(viewModel.state.value.real3DCamera)
+        viewModel.zoomAt(MapPoint(500.0, 350.0), 1.0)
+        val dolly = assertNotNull(viewModel.state.value.real3DCamera)
+
+        assertNotEquals(initial.target, panned.target)
+        assertNotEquals(panned.yawDegrees, rotated.yawDegrees)
+        assertNotEquals(rotated.pitchDegrees, initial.pitchDegrees)
+        assertTrue(dolly.distance > rotated.distance)
+        assertEquals(canonicalViewport, viewModel.state.value.viewport)
+
+        viewModel.resetView()
+        val reset = assertNotNull(viewModel.state.value.real3DCamera)
+        assertEquals(0.0, reset.yawDegrees)
+        assertEquals(0.0, reset.pitchDegrees)
+        assertEquals(dolly.copy(yawDegrees = 0.0, pitchDegrees = 0.0), reset)
+        assertNotEquals(initial.target, reset.target)
+        assertEquals(canonicalViewport, viewModel.state.value.viewport)
     }
 }
 

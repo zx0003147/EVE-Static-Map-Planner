@@ -27,7 +27,7 @@ class ProjectedRouteOverlayTest {
             NormalRouteEngine().calculate(RouteGraphBuilder.build(data), 1, 3),
         ).route
         val official = MapSceneBuilder().build(data, OfficialPosition2DProjection)
-        val real = MapSceneBuilder().build(data, RealXzProjection)
+        val real = MapSceneBuilder().build(data, Real3DCanonicalProjection)
 
         val officialOverlay = ProjectedRouteOverlayBuilder.build(route, official)
         val realOverlay = ProjectedRouteOverlayBuilder.build(route, real)

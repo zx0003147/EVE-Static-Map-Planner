@@ -3,7 +3,7 @@ package dev.evestaticmapplanner.map
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapProjection
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.UniversePosition
@@ -103,7 +103,7 @@ class MapConnectionGeometryTest {
             schematicY = 58.0,
         )
 
-        listOf(OfficialPosition2DProjection, RealXzProjection).forEach { projection ->
+        listOf(OfficialPosition2DProjection, Real3DCanonicalProjection).forEach { projection ->
             assertProjectionCurve(projection, first, second)
         }
     }

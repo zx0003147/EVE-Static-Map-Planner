@@ -6,7 +6,7 @@ import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
@@ -246,7 +246,7 @@ class MarkerMapPresentationTest {
             constellations = listOf(Constellation(10, 100, "Kimotoro", UniversePosition(0.0, 0.0, 0.0), null)),
         )
         val official = MapSceneBuilder().build(data, OfficialPosition2DProjection)
-        val real = MapSceneBuilder().build(data, RealXzProjection)
+        val real = MapSceneBuilder().build(data, Real3DCanonicalProjection)
         val marker = Marker.temporary(2)
         val officialTransform = MapTransform(MapViewport(official.defaultFitBounds.center, 1.0), MapSize(800.0, 600.0))
         val realTransform = MapTransform(MapViewport(real.nodesById.getValue(2).position, 1.0), MapSize(800.0, 600.0))

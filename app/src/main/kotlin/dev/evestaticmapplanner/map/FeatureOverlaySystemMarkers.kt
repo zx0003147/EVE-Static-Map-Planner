@@ -38,6 +38,13 @@ internal data class PresentedOverlaySystemMarker(
     val tooltipLines: List<String>,
 )
 
+internal data class DecodedOverlaySystemMarker(
+    val systemId: Int,
+    val images: List<ImageBitmap>,
+    val overflowCount: Int,
+    val tooltipLines: List<String>,
+)
+
 internal data class OverlaySystemMarkerGeometry(
     val portraitRect: Rect,
     val pinBaseLeft: Offset,
@@ -49,23 +56,45 @@ internal fun presentOverlaySystemMarkers(
     state: OverlayState,
     scene: ProjectedMapScene,
     transform: MapTransform,
-): List<PresentedOverlaySystemMarker> = state.layers.flatMap { layer ->
+): List<PresentedOverlaySystemMarker> = positionOverlaySystemMarkers(
+    decodeOverlaySystemMarkers(state, scene.nodesById.keys),
+    screenPosition = { systemId ->
+        scene.nodesById[systemId]?.position?.let(transform::worldToScreen)
+    },
+)
+
+internal fun decodeOverlaySystemMarkers(
+    state: OverlayState,
+    knownSystemIds: Set<Int>,
+): List<DecodedOverlaySystemMarker> = state.layers.flatMap { layer ->
     layer.entries.mapNotNull { entry ->
         val marker = entry.systemMarker ?: return@mapNotNull null
         if (entry.visibility != OverlayEntryVisibility.VISIBLE) return@mapNotNull null
-        val node = scene.nodesById[entry.systemId]?.position?.let(transform::worldToScreen)?.toOffset()
-            ?: return@mapNotNull null
+        if (entry.systemId !in knownSystemIds) return@mapNotNull null
         val images = decodeOverlaySystemMarkerImages(marker.images)
         if (images.isEmpty()) return@mapNotNull null
-        PresentedOverlaySystemMarker(
+        DecodedOverlaySystemMarker(
             entry.systemId,
-            Offset(node.x, node.y - OverlaySystemMarkerVisuals.CENTER_TO_NODE_PX),
-            node,
             images,
             marker.overflowCount,
             marker.tooltipLines,
         )
     }
+}
+
+internal fun positionOverlaySystemMarkers(
+    markers: List<DecodedOverlaySystemMarker>,
+    screenPosition: (Int) -> MapPoint?,
+): List<PresentedOverlaySystemMarker> = markers.mapNotNull { marker ->
+    val node = screenPosition(marker.systemId)?.toOffset() ?: return@mapNotNull null
+    PresentedOverlaySystemMarker(
+        marker.systemId,
+        Offset(node.x, node.y - OverlaySystemMarkerVisuals.CENTER_TO_NODE_PX),
+        node,
+        marker.images,
+        marker.overflowCount,
+        marker.tooltipLines,
+    )
 }
 
 internal fun hitTestOverlaySystemMarker(

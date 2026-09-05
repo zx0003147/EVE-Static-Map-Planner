@@ -21,12 +21,12 @@ class MapProjectionTest {
     fun `real projection uses x and z and retains large coordinate separation`() {
         val system = testSystem(1, x = 8.239e18, z = -1.0045e19)
 
-        assertEquals(MapPoint(8239.0, 10045.0), RealXzProjection.project(system))
+        assertEquals(MapPoint(8239.0, 10045.0), Real3DCanonicalProjection.project(system))
     }
 
     @Test
     fun `projection lookup returns both supported implementations`() {
         assertEquals(MapProjectionId.OFFICIAL_2D, projectionFor(MapProjectionId.OFFICIAL_2D).id)
-        assertEquals(MapProjectionId.REAL_XZ, projectionFor(MapProjectionId.REAL_XZ).id)
+        assertEquals(MapProjectionId.REAL_3D, projectionFor(MapProjectionId.REAL_3D).id)
     }
 }

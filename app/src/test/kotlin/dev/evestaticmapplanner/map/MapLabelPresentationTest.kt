@@ -6,7 +6,7 @@ import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SchematicPosition
@@ -224,7 +224,7 @@ class MapLabelPresentationTest {
             constellations = listOf(constellation(10, 1)),
         )
         val official = MapSceneBuilder().build(data, OfficialPosition2DProjection)
-        val real = MapSceneBuilder().build(data, RealXzProjection)
+        val real = MapSceneBuilder().build(data, Real3DCanonicalProjection)
 
         val officialPresentation = present(
             official,

@@ -463,6 +463,18 @@ private fun OverlayPreferencesContent(
     TextButton(onClick = onReset, enabled = preferences.disabledLayers.isNotEmpty()) {
         Text("Enable All Overlays")
     }
+    HorizontalDivider()
+    Text("Real 3D Stargate Visibility", style = MaterialTheme.typography.titleSmall)
+    Text(
+        "Controls normal stargate connection visibility in Real 3D mode.",
+        color = EveColors.SecondaryText,
+    )
+    PreferenceCheckbox(
+        "Focused Region + Adjacent Regions",
+        mapDisplay.real3DStargateVisibilityFilteringEnabled,
+    ) { enabled ->
+        onMapDisplayChange(mapDisplay.copy(real3DStargateVisibilityFilteringEnabled = enabled))
+    }
     if (uiState.showSovereigntyLogoPreferences) {
         HorizontalDivider()
         Text("Sovereignty", style = MaterialTheme.typography.titleSmall)
@@ -657,7 +669,7 @@ private fun MapDisplayPreferencesContent(
         Text(currentZoom?.let { formatValue(it, 2) + "x" } ?: "—")
     }
     NumericPreferenceSlider(
-        "Constellation Zoom Threshold",
+        "2D Constellation Zoom Threshold",
         mapDisplay.constellationZoomThreshold,
         "x",
         2,
@@ -665,13 +677,29 @@ private fun MapDisplayPreferencesContent(
         isValid = { it >= THRESHOLD_MIN && it < mapDisplay.systemZoomThreshold },
     ) { onChange(mapDisplay.copy(constellationZoomThreshold = it)) }
     NumericPreferenceSlider(
-        "System Zoom Threshold",
+        "2D System Zoom Threshold",
         mapDisplay.systemZoomThreshold,
         "x",
         2,
         (mapDisplay.constellationZoomThreshold + THRESHOLD_MIN_GAP).coerceAtMost(THRESHOLD_MAX)..THRESHOLD_MAX,
         isValid = { it > mapDisplay.constellationZoomThreshold && it <= THRESHOLD_MAX },
     ) { onChange(mapDisplay.copy(systemZoomThreshold = it)) }
+    NumericPreferenceSlider(
+        "3D Constellation Zoom Threshold",
+        mapDisplay.real3DConstellationScaleThreshold,
+        "x",
+        2,
+        THRESHOLD_MIN..(mapDisplay.real3DSystemScaleThreshold - THRESHOLD_MIN_GAP).coerceAtLeast(THRESHOLD_MIN),
+        isValid = { it >= THRESHOLD_MIN && it < mapDisplay.real3DSystemScaleThreshold },
+    ) { onChange(mapDisplay.copy(real3DConstellationScaleThreshold = it)) }
+    NumericPreferenceSlider(
+        "3D System Zoom Threshold",
+        mapDisplay.real3DSystemScaleThreshold,
+        "x",
+        2,
+        (mapDisplay.real3DConstellationScaleThreshold + THRESHOLD_MIN_GAP).coerceAtMost(THRESHOLD_MAX)..THRESHOLD_MAX,
+        isValid = { it > mapDisplay.real3DConstellationScaleThreshold && it <= THRESHOLD_MAX },
+    ) { onChange(mapDisplay.copy(real3DSystemScaleThreshold = it)) }
     HorizontalDivider()
     FontPreferenceSliders(mapDisplay, onChange)
     TextButton(onClick = onReset) { Text("Reset Map Display") }

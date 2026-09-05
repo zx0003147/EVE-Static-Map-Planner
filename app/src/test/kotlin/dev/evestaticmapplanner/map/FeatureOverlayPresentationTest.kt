@@ -5,7 +5,7 @@ import dev.evestaticmapplanner.core.map.MapProjection
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StargateConnection
@@ -441,7 +441,7 @@ class FeatureOverlayPresentationTest {
             entry(NEARBY_GAP_A, "Alliance A", COLOR_A),
         ))
 
-        listOf(OfficialPosition2DProjection, RealXzProjection).forEach { projection ->
+        listOf(OfficialPosition2DProjection, Real3DCanonicalProjection).forEach { projection ->
             val projectedScene = scene(projection)
             val territories = FeatureOverlayPresentationBuilder.build(overlayState, projectedScene).territories
             val snapshot = FeatureOverlayPresentationBuilder.assignmentSnapshot(overlayState, projectedScene)
@@ -459,7 +459,7 @@ class FeatureOverlayPresentationTest {
             entry(A2, "Alliance A", COLOR_A, ownerKey = "alliance:1001"),
         ))
 
-        listOf(OfficialPosition2DProjection, RealXzProjection).forEach { projection ->
+        listOf(OfficialPosition2DProjection, Real3DCanonicalProjection).forEach { projection ->
             val projectedScene = scene(projection)
             val snapshot = FeatureOverlayPresentationBuilder.assignmentSnapshot(overlayState, projectedScene)
             val voidPosition = projectedScene.nodesById.getValue(VOID_SYSTEM).position

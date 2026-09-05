@@ -4,7 +4,20 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 
 enum class MapProjectionId(val displayName: String) {
     OFFICIAL_2D("Official 2D"),
-    REAL_XZ("Real X-Z"),
+    REAL_3D("Real 3D"),
+    ;
+
+    companion object {
+        /** Keeps source and persisted-setting compatibility with the replaced Real X-Z mode. */
+        @Deprecated("Real X-Z was replaced by Real 3D", ReplaceWith("REAL_3D"))
+        val REAL_XZ: MapProjectionId = REAL_3D
+
+        fun fromPersistedValue(value: String?): MapProjectionId = when (value) {
+            "REAL_XZ", "REAL_3D" -> REAL_3D
+            "OFFICIAL_2D" -> OFFICIAL_2D
+            else -> OFFICIAL_2D
+        }
+    }
 }
 
 interface MapProjection {
@@ -21,8 +34,9 @@ object OfficialPosition2DProjection : MapProjection {
     }
 }
 
-object RealXzProjection : MapProjection {
-    override val id = MapProjectionId.REAL_XZ
+/** Canonical X/Z layout used for non-rendering presentation geometry in Real 3D mode. */
+object Real3DCanonicalProjection : MapProjection {
+    override val id = MapProjectionId.REAL_3D
 
     override fun project(system: SolarSystem): MapPoint = MapPoint(
         x = system.position.x / MAP_COORDINATE_UNIT,
@@ -30,9 +44,12 @@ object RealXzProjection : MapProjection {
     )
 }
 
+@Deprecated("Real X-Z was replaced by Real 3D", ReplaceWith("Real3DCanonicalProjection"))
+val RealXzProjection: MapProjection = Real3DCanonicalProjection
+
 fun projectionFor(id: MapProjectionId): MapProjection = when (id) {
     MapProjectionId.OFFICIAL_2D -> OfficialPosition2DProjection
-    MapProjectionId.REAL_XZ -> RealXzProjection
+    MapProjectionId.REAL_3D -> Real3DCanonicalProjection
 }
 
 private const val MAP_COORDINATE_UNIT = 1_000_000_000_000_000.0

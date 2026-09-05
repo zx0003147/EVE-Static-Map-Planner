@@ -224,6 +224,7 @@ internal fun StaticMapScreen(
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
                         onZoom = viewModel::zoomAt,
                         onPan = viewModel::panBy,
+                        onRotate = viewModel::rotateBy,
                         onHover = viewModel::hoverAt,
                         onHoverExit = viewModel::clearHover,
                         onSelect = viewModel::selectAt,
@@ -342,7 +343,7 @@ internal fun StaticMapScreen(
                 val routeOverlay = rendererNormalRoute
                     ?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
                 val routeWarning = routeOverlay?.takeIf { it.omittedSystemIds.isNotEmpty() }?.let {
-                    " · route: ${it.omittedSystemIds.size} systems / ${it.omittedLegCount} legs unavailable; use Real X-Z"
+                    " · route: ${it.omittedSystemIds.size} systems / ${it.omittedLegCount} legs unavailable; use Real 3D"
                 }.orEmpty()
                 val jumpOmitted = jumpState.overlays.sumOf {
                     ProjectedJumpRangeOverlayBuilder.build(it, scene).omittedSystemIds.size
@@ -521,6 +522,7 @@ private fun MapToolbar(
         onRenameView = { view -> renameViewId = view.id },
         onDeleteView = planningViewCoordinator::deleteView,
         onFitMap = viewModel::fitMap,
+        onResetView = viewModel::resetView,
     )
     renameViewId?.let { id ->
         planningViewsState.views.firstOrNull { it.id == id }?.let { view ->
@@ -576,6 +578,7 @@ internal fun MapToolbarContent(
     onRenameView: (PlanningView) -> Unit,
     onDeleteView: (PlanningViewId) -> Boolean,
     onFitMap: () -> Unit,
+    onResetView: () -> Unit = {},
     viewScrollState: ScrollState? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -598,6 +601,9 @@ internal fun MapToolbarContent(
                     modifier = Modifier.weight(1f),
                 )
                 CompactToolbarTextButton(onClick = onFitMap, enabled = fitEnabled) { Text("Fit Map") }
+                if (projectionId == MapProjectionId.REAL_3D) {
+                    CompactToolbarTextButton(onClick = onResetView, enabled = fitEnabled) { Text("Reset View") }
+                }
             }
         }
     }

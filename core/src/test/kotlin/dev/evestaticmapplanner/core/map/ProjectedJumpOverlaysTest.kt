@@ -19,7 +19,7 @@ class ProjectedJumpOverlaysTest {
     private val data = StaticMapData(systems, listOf(StargateConnection.between(1, 3)))
 
     @Test
-    fun `OFFICIAL_2D reports omitted overlay systems while REAL_XZ projects all`() {
+    fun `OFFICIAL_2D reports omitted overlay systems while Real 3D canonical geometry projects all`() {
         val overlay = JumpRangeOverlay("A", 1, JumpProfile.manual(5.0), setOf(2, 3))
         val official = ProjectedJumpRangeOverlayBuilder.build(
             overlay,
@@ -27,7 +27,7 @@ class ProjectedJumpOverlaysTest {
         )
         val real = ProjectedJumpRangeOverlayBuilder.build(
             overlay,
-            MapSceneBuilder().build(data, RealXzProjection),
+            MapSceneBuilder().build(data, Real3DCanonicalProjection),
         )
 
         assertEquals(setOf(2), official.omittedSystemIds)
@@ -55,7 +55,7 @@ class ProjectedJumpOverlaysTest {
         )
         val real = ProjectedCapitalRouteOverlayBuilder.build(
             route,
-            MapSceneBuilder().build(data, RealXzProjection),
+            MapSceneBuilder().build(data, Real3DCanonicalProjection),
         )
 
         assertEquals(2, official.omittedLegCount)

@@ -5,7 +5,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
-import dev.evestaticmapplanner.core.map.RealXzProjection
+import dev.evestaticmapplanner.core.map.Real3DCanonicalProjection
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
@@ -127,14 +127,14 @@ fun main(arguments: Array<String>) {
     )
     val real = ProjectedRouteOverlayBuilder.build(
         overlayRoute,
-        MapSceneBuilder().build(map, RealXzProjection),
+        MapSceneBuilder().build(map, Real3DCanonicalProjection),
     )
     println(
         "OVERLAY_OFFICIAL legs=${official.legs.size} omittedSystems=${official.omittedSystemIds.size} " +
             "omittedLegs=${official.omittedLegCount}",
     )
     println(
-        "OVERLAY_REAL_XZ legs=${real.legs.size} omittedSystems=${real.omittedSystemIds.size} " +
+        "OVERLAY_REAL_3D_CANONICAL legs=${real.legs.size} omittedSystems=${real.omittedSystemIds.size} " +
             "omittedLegs=${real.omittedLegCount}",
     )
     println("USER_DB path=$userDatabase schemaVersion=1")

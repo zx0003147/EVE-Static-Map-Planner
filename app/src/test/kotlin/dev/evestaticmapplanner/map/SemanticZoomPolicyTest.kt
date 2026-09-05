@@ -7,6 +7,21 @@ import kotlin.test.assertFailsWith
 
 class SemanticZoomPolicyTest {
     @Test
+    fun `real 3D uses independent scale thresholds`() {
+        val preferences = MapDisplayPreferences(
+            constellationZoomThreshold = 20.0,
+            systemZoomThreshold = 30.0,
+            real3DConstellationScaleThreshold = 1.5,
+            real3DSystemScaleThreshold = 4.0,
+        )
+
+        assertEquals(SemanticLabelMode.REGION_ONLY, SemanticZoomPolicy.initialReal3DMode(1.49, preferences))
+        assertEquals(SemanticLabelMode.CONSTELLATION, SemanticZoomPolicy.initialReal3DMode(1.5, preferences))
+        assertEquals(SemanticLabelMode.SYSTEM, SemanticZoomPolicy.initialReal3DMode(4.0, preferences))
+        assertEquals(SemanticLabelMode.REGION_ONLY, SemanticZoomPolicy.initialMode(10.0, preferences))
+    }
+
+    @Test
     fun `custom thresholds control semantic entry modes`() {
         val preferences = MapDisplayPreferences(
             constellationZoomThreshold = 3.5,

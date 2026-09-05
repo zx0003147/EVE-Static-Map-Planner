@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
+import dev.evestaticmapplanner.core.map.Real3DCamera
 import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.preferences.AppPreferences
 
@@ -28,6 +29,8 @@ data class MapUiState(
     val canvasSize: MapSize = MapSize(0.0, 0.0),
     val viewports: Map<MapProjectionId, MapViewport> = emptyMap(),
     val semanticLabelModes: Map<MapProjectionId, SemanticLabelMode> = emptyMap(),
+    val real3DCamera: Real3DCamera? = null,
+    val real3DReferenceDistance: Double? = null,
     val appPreferences: AppPreferences = AppPreferences.Defaults,
     val hoveredSystemId: Int? = null,
     val selectedSystemId: Int? = null,
@@ -38,7 +41,14 @@ data class MapUiState(
 ) {
     val viewport: MapViewport? get() = viewports[projectionId]
     val semanticLabelMode: SemanticLabelMode
-        get() = semanticLabelModes[projectionId]
-            ?: viewport?.zoom?.let { SemanticZoomPolicy.initialMode(it, appPreferences.mapDisplay) }
-            ?: SemanticLabelMode.REGION_ONLY
+        get() = semanticLabelModes[projectionId] ?: if (projectionId == MapProjectionId.REAL_3D) {
+            real3DScale?.let { SemanticZoomPolicy.initialReal3DMode(it, appPreferences.mapDisplay) }
+                ?: SemanticLabelMode.REGION_ONLY
+        } else {
+            viewport?.zoom?.let { SemanticZoomPolicy.initialMode(it, appPreferences.mapDisplay) }
+                ?: SemanticLabelMode.REGION_ONLY
+        }
+
+    val real3DScale: Double?
+        get() = real3DCamera?.distance?.let { distance -> real3DReferenceDistance?.div(distance) }
 }
