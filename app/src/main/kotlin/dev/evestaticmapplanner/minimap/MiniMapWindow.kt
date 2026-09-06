@@ -2,7 +2,10 @@ package dev.evestaticmapplanner.minimap
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +40,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -75,6 +77,8 @@ import dev.evestaticmapplanner.ui.presentCharacterPortraits
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import com.sun.jna.Platform
+import java.awt.MouseInfo
+import java.awt.Window as AwtWindow
 
 @OptIn(FlowPreview::class)
 @Composable
@@ -116,11 +120,11 @@ internal fun MiniMapWindow(
             } else null
         }.debounce(250).collect { updated ->
             val placed = updated?.let {
-                if (viewModel.state.value.preferences.snapToScreenEdges) {
-                    MiniMapWindowPlacement.snap(it, AwtMiniMapWorkAreaProvider.workAreas())
-                } else {
-                    it
-                }
+                MiniMapWindowPlacement.afterMove(
+                    bounds = it,
+                    workAreas = AwtMiniMapWorkAreaProvider.workAreas(),
+                    snapEnabled = viewModel.state.value.preferences.snapToScreenEdges,
+                )
             }
             if (placed != null && placed != updated) {
                 windowState.position = WindowPosition.Absolute(placed.x.dp, placed.y.dp)
@@ -161,18 +165,8 @@ internal fun MiniMapWindow(
             }
             EveTheme {
                 if (!hud) EveWindowChrome(window)
-                val density = LocalDensity.current
                 val dragModifier = if (hud && !locked) {
-                    Modifier.pointerInput(windowState, density) {
-                        detectDragGestures { change, delta ->
-                            change.consume()
-                            val position = windowState.position as? WindowPosition.Absolute ?: return@detectDragGestures
-                            windowState.position = WindowPosition.Absolute(
-                                position.x + with(density) { delta.x.toDp() },
-                                position.y + with(density) { delta.y.toDp() },
-                            )
-                        }
-                    }
+                    Modifier.moveAwtWindow(window)
                 } else {
                     Modifier
                 }
@@ -189,7 +183,7 @@ internal fun MiniMapWindow(
                             onBindCurrentWindow = onBindCurrentWindow,
                         )
                         if (hud && !locked) {
-                            MiniMapResizeGrip(windowState, Modifier.align(Alignment.BottomEnd))
+                            MiniMapResizeGrip(window, Modifier.align(Alignment.BottomEnd))
                         }
                     }
                 }
@@ -401,26 +395,60 @@ internal fun MiniMapContent(
 
 @Composable
 private fun MiniMapResizeGrip(
-    windowState: androidx.compose.ui.window.WindowState,
+    window: AwtWindow,
     modifier: Modifier = Modifier,
 ) {
-    val density = LocalDensity.current
     Canvas(
-        modifier.size(18.dp).pointerInput(windowState, density) {
-            detectDragGestures { change, delta ->
-                change.consume()
-                windowState.size = DpSize(
-                    (windowState.size.width + with(density) { delta.x.toDp() }).coerceIn(280.dp, 2_000.dp),
-                    (windowState.size.height + with(density) { delta.y.toDp() }).coerceIn(240.dp, 2_000.dp),
-                )
-            }
-        },
+        modifier.size(18.dp).resizeAwtWindow(window),
     ) {
         val color = EveColors.SecondaryText.copy(alpha = 0.7f)
         drawLine(color, Offset(size.width * 0.45f, size.height), Offset(size.width, size.height * 0.45f), 1f)
         drawLine(color, Offset(size.width * 0.7f, size.height), Offset(size.width, size.height * 0.7f), 1f)
     }
 }
+
+private fun Modifier.moveAwtWindow(window: AwtWindow): Modifier = pointerInput(window) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val pointerAtStart = currentAwtPointerLocation() ?: return@awaitEachGesture
+        val session = MiniMapWindowDragSession(
+            pointerAtStart = pointerAtStart,
+            windowAtStart = MiniMapScreenPoint(window.x, window.y),
+        )
+        drag(down.id) { change ->
+            change.consume()
+            currentAwtPointerLocation()?.let(session::positionAt)?.let { position ->
+                window.setLocation(position.x, position.y)
+            }
+        }
+    }
+}
+
+private fun Modifier.resizeAwtWindow(window: AwtWindow): Modifier = pointerInput(window) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val pointerAtStart = currentAwtPointerLocation() ?: return@awaitEachGesture
+        val session = MiniMapWindowResizeSession(
+            pointerAtStart = pointerAtStart,
+            sizeAtStart = MiniMapWindowPixelSize(window.width, window.height),
+        )
+        drag(down.id) { change ->
+            change.consume()
+            currentAwtPointerLocation()?.let { pointer ->
+                session.sizeAt(pointer, MINI_MAP_MINIMUM_SIZE, MINI_MAP_MAXIMUM_SIZE)
+            }?.let { size ->
+                window.setSize(size.width, size.height)
+            }
+        }
+    }
+}
+
+private fun currentAwtPointerLocation(): MiniMapScreenPoint? = runCatching {
+    MouseInfo.getPointerInfo()?.location?.let { MiniMapScreenPoint(it.x, it.y) }
+}.getOrNull()
+
+private val MINI_MAP_MINIMUM_SIZE = MiniMapWindowPixelSize(width = 280, height = 240)
+private val MINI_MAP_MAXIMUM_SIZE = MiniMapWindowPixelSize(width = 2_000, height = 2_000)
 
 @Composable
 private fun CharacterPortraitAvatar(character: TrackedCharacterSnapshot?) {

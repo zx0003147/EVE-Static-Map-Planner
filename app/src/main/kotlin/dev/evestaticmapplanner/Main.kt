@@ -77,6 +77,7 @@ import dev.evestaticmapplanner.platform.windows.minimaphud.WindowsMiniMapGlobalH
 import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.preferences.PreferencesCategory
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
 import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
@@ -101,8 +102,6 @@ import dev.evestaticmapplanner.shared.toPreferences
 import dev.evestaticmapplanner.staticdata.StaticDataBootstrapScreen
 import dev.evestaticmapplanner.staticdata.StaticDataManagerDialog
 import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
-import dev.evestaticmapplanner.ui.EveMenuItemSpec
-import dev.evestaticmapplanner.ui.EveMenuSpec
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveTheme
@@ -620,6 +619,7 @@ private fun FrameWindowScope.ReadyApplication(
     val uiScope = rememberCoroutineScope()
     var showStaticData by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
+    var selectedPreferencesCategory by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
     var showMarkerManager by remember { mutableStateOf(false) }
     var showSharedMarkerManager by remember { mutableStateOf(false) }
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
@@ -634,40 +634,27 @@ private fun FrameWindowScope.ReadyApplication(
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {
         it.persistence == MarkerPersistence.TEMPORARY
     }
+    val openPreferences: (PreferencesCategory) -> Unit = { category ->
+        selectedPreferencesCategory = category
+        showPreferences = true
+    }
     Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
         EveTopMenuBar(
-            listOf(
-                EveMenuSpec(
-                    "Marker",
-                    listOf(
-                        EveMenuItemSpec("Marker Manager…", enabled = !showMarkerManager) {
-                            showMarkerManager = true
-                        },
-                        EveMenuItemSpec("Shared Marker Manager…", enabled = !showSharedMarkerManager) {
-                            showSharedMarkerManager = true
-                        },
-                        EveMenuItemSpec(
-                            "Clear All Temporary Markers…",
-                            enabled = temporaryMarkerCount > 0,
-                            separatorBefore = true,
-                        ) { confirmClearTemporaryMarkers = true },
-                    ),
+            plannerTopMenus(
+                state = PlannerTopMenuState(
+                    markerManagerOpen = showMarkerManager,
+                    sharedMarkerManagerOpen = showSharedMarkerManager,
+                    temporaryMarkerCount = temporaryMarkerCount,
+                    miniMapEnabled = miniMapState.preferences.enabled,
+                    staticDataOpen = showStaticData,
                 ),
-                EveMenuSpec(
-                    "Mini-map",
-                    listOf(
-                        EveMenuItemSpec(
-                            if (miniMapState.preferences.enabled) "Hide Mini-map" else "Show Mini-map",
-                        ) { miniMapViewModel.setEnabled(!miniMapState.preferences.enabled) },
-                    ),
-                ),
-                EveMenuSpec(
-                    "Preferences",
-                    listOf(EveMenuItemSpec("Preferences…") { showPreferences = true }),
-                ),
-                EveMenuSpec(
-                    "Static Data",
-                    listOf(EveMenuItemSpec("Static Data…", enabled = !showStaticData) { showStaticData = true }),
+                actions = PlannerTopMenuActions(
+                    openMarkerManager = { showMarkerManager = true },
+                    openSharedMarkerManager = { showSharedMarkerManager = true },
+                    clearTemporaryMarkers = { confirmClearTemporaryMarkers = true },
+                    toggleMiniMap = { miniMapViewModel.setEnabled(!miniMapState.preferences.enabled) },
+                    openPreferences = openPreferences,
+                    openStaticData = { showStaticData = true },
                 ),
             ),
         )
@@ -736,6 +723,8 @@ private fun FrameWindowScope.ReadyApplication(
         PreferencesWindow(
             currentZoom = mapState.viewport?.zoom,
             preferences = mapState.appPreferences,
+            selectedCategory = selectedPreferencesCategory,
+            onCategoryChange = { selectedPreferencesCategory = it },
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
             onMarkerChange = mapViewModel::updateMarkerPreferences,
             onMiniMapChange = { requested ->

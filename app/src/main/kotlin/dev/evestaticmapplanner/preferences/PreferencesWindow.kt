@@ -69,6 +69,8 @@ import java.util.Locale
 internal fun PreferencesWindow(
     currentZoom: Double?,
     preferences: AppPreferences,
+    selectedCategory: PreferencesCategory,
+    onCategoryChange: (PreferencesCategory) -> Unit,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     onMarkerChange: (MarkerPreferences) -> Unit,
     onMiniMapChange: (MiniMapPreferences) -> Unit,
@@ -103,7 +105,6 @@ internal fun PreferencesWindow(
     onResetAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var category by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
     Window(
         onCloseRequest = onDismiss,
         title = "Preferences",
@@ -122,8 +123,8 @@ internal fun PreferencesWindow(
                     Column(Modifier.width(150.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         PreferencesCategory.entries.forEach { item ->
                             TextButton(
-                                onClick = { category = item },
-                                selected = category == item,
+                                onClick = { onCategoryChange(item) },
+                                selected = selectedCategory == item,
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text(item.label) }
                         }
@@ -133,7 +134,7 @@ internal fun PreferencesWindow(
                         modifier = Modifier.weight(1f).fillMaxWidth()
                             .padding(start = PREFERENCES_CONTENT_START_GUTTER),
                     ) {
-                        when (category) {
+                        when (selectedCategory) {
                             PreferencesCategory.MAP_DISPLAY -> MapDisplayPreferencesContent(
                                 currentZoom,
                                 preferences.mapDisplay,
@@ -201,7 +202,7 @@ internal fun PreferencesWindow(
     }
 }
 
-private enum class PreferencesCategory(val label: String) {
+internal enum class PreferencesCategory(val label: String) {
     MAP_DISPLAY("Map Display"),
     MARKER("Marker"),
     MINI_MAP("Mini-map"),

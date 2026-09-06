@@ -52,4 +52,24 @@ class MiniMapWindowPlacementTest {
         assertEquals(-1280f, snapped.x)
         assertEquals(0f, snapped.y)
     }
+
+    @Test
+    fun `completed movement snaps when snapping is enabled`() {
+        val moved = MiniMapWindowBounds(7f, 120f, 420f, 360f)
+
+        assertEquals(
+            moved.copy(x = 0f),
+            MiniMapWindowPlacement.afterMove(moved, listOf(primary), snapEnabled = true),
+        )
+    }
+
+    @Test
+    fun `completed movement remains exact when snapping is disabled`() {
+        val moved = MiniMapWindowBounds(7f, 120f, 420f, 360f)
+
+        assertEquals(
+            moved,
+            MiniMapWindowPlacement.afterMove(moved, listOf(primary), snapEnabled = false),
+        )
+    }
 }

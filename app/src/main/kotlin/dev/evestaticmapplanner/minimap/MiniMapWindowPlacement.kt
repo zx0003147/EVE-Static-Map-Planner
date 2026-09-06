@@ -37,6 +37,12 @@ internal object AwtMiniMapWorkAreaProvider : MiniMapWorkAreaProvider {
 }
 
 internal object MiniMapWindowPlacement {
+    fun afterMove(
+        bounds: MiniMapWindowBounds,
+        workAreas: List<MiniMapScreenWorkArea>,
+        snapEnabled: Boolean,
+    ): MiniMapWindowBounds = if (snapEnabled) snap(bounds, workAreas) else bounds
+
     fun recover(bounds: MiniMapWindowBounds, workAreas: List<MiniMapScreenWorkArea>): MiniMapWindowBounds {
         val target = bestArea(bounds, workAreas) ?: return bounds
         val maxX = (target.right - bounds.width).coerceAtLeast(target.x)
