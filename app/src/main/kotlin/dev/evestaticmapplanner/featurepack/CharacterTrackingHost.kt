@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.featurepack
 
 import dev.evestaticmapplanner.feature.api.CharacterTrackingCapability
 import dev.evestaticmapplanner.feature.api.CharacterTrackingProvider
+import dev.evestaticmapplanner.feature.api.CharacterTrackingPriority
 import dev.evestaticmapplanner.feature.api.CharacterTrackingRegistration
 import dev.evestaticmapplanner.feature.api.CharacterTrackingSnapshot
 import dev.evestaticmapplanner.feature.api.PackId
@@ -34,6 +35,26 @@ class CharacterTrackingHost(
 
     @Synchronized
     fun provider(packId: PackId): CharacterTrackingProvider? = providers[packId]?.provider
+
+    /** Applies a scheduling hint without exposing which Pack owns the character. */
+    @Synchronized
+    fun setPriority(characterId: Long, priority: CharacterTrackingPriority): Boolean = providers
+        .map { (packId, hosted) ->
+            runCatching { hosted.provider.setPriority(characterId, priority) }
+                .onFailure { failureSink(packId, "setPriority", it) }
+                .getOrDefault(false)
+        }
+        .any { it }
+
+    /** Requests Pack-owned refresh scheduling; this method never performs ESI I/O itself. */
+    @Synchronized
+    fun requestRefresh(characterId: Long): Boolean = providers
+        .map { (packId, hosted) ->
+            runCatching { hosted.provider.requestRefresh(characterId) }
+                .onFailure { failureSink(packId, "requestRefresh", it) }
+                .getOrDefault(false)
+        }
+        .any { it }
 
     private fun refresh(packId: PackId) = synchronized(this) {
         val hosted = providers[packId] ?: return@synchronized

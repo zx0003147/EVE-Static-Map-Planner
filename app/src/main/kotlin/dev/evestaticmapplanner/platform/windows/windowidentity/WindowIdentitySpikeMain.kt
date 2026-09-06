@@ -19,7 +19,7 @@ internal object WindowIdentitySpikeMain {
 
         println("EVE Client Identity Spike")
         println("Mode: EVENT_SYSTEM_FOREGROUND / WINEVENT_OUTOFCONTEXT")
-        println("Startup + watchdog fallback: GetForegroundWindow every 5 seconds")
+        println("Startup + watchdog fallback: GetForegroundWindow every 2 seconds")
         println("Own PID: ${ProcessHandle.current().pid()}")
         println("Duration: ${duration.seconds} seconds")
         println("No process memory, injection, hooks inside EVE, OCR, credentials, or network access are used.")

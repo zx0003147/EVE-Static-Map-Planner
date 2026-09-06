@@ -63,6 +63,23 @@ class MiniMapViewModelTest {
     }
 
     @Test
+    fun `pinned mode ignores automatic changes until AUTO is restored`() {
+        val viewModel = MiniMapViewModel()
+        viewModel.updateScene(scene())
+        viewModel.updateCharacters(listOf(
+            character(1, "Alpha", 1, TrackedCharacterLocationStatus.CURRENT),
+            character(2, "Bravo", 2, TrackedCharacterLocationStatus.CURRENT),
+        ))
+        viewModel.setAutomaticCharacter(2)
+        viewModel.setPinnedCharacter(1)
+        viewModel.setAutomaticCharacter(2)
+        assertEquals(1, viewModel.state.value.followedCharacterId)
+
+        viewModel.setFollowMode(MiniMapFollowMode.AUTO)
+        assertEquals(2, viewModel.state.value.followedCharacterId)
+    }
+
+    @Test
     fun `range resize show hide and viewport remain independent from main map`() {
         val viewModel = MiniMapViewModel()
         viewModel.updateScene(scene())

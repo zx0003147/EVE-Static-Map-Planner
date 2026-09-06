@@ -121,7 +121,7 @@ internal class WindowsForegroundWindowSnapshotReader(
  * and window metadata are deliberately resolved by the listener on a separate worker thread.
  */
 internal class WindowsForegroundWindowMonitor(
-    private val watchdogIntervalSeconds: Long = 5,
+    private val watchdogIntervalSeconds: Long = 2,
 ) : ForegroundWindowMonitor {
     private val lifecycleLock = Any()
     private val lastObservedHwnd = AtomicLong(0)

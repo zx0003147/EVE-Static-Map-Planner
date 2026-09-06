@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.featurepack
 
 import dev.evestaticmapplanner.feature.api.CharacterTrackingProvider
+import dev.evestaticmapplanner.feature.api.CharacterTrackingPriority
 import dev.evestaticmapplanner.feature.api.CharacterTrackingSnapshot
 import dev.evestaticmapplanner.feature.api.PackId
 import dev.evestaticmapplanner.feature.api.TrackedCharacterAuthorizationState
@@ -49,12 +50,43 @@ class CharacterTrackingHostTest {
         host.close()
     }
 
+    @Test
+    fun `foreground scheduling hint reaches only the Pack that owns the character`() {
+        val host = CharacterTrackingHost()
+        val first = MutableProvider(listOf(character(1, "Alpha", 30_000_001)))
+        val second = MutableProvider(listOf(character(2, "Bravo", 30_000_002)))
+        val firstRegistration = host.scopedCapability(PackId("first.pack")).register(first)
+        val secondRegistration = host.scopedCapability(PackId("second.pack")).register(second)
+
+        assertTrue(host.setPriority(2, CharacterTrackingPriority.HIGH))
+        assertTrue(host.requestRefresh(2))
+        assertEquals(emptyList(), first.priorities)
+        assertEquals(listOf(2L to CharacterTrackingPriority.HIGH), second.priorities)
+        assertEquals(listOf(2L), second.refreshes)
+
+        firstRegistration.close()
+        secondRegistration.close()
+        host.close()
+    }
+
     private class MutableProvider(var characters: List<TrackedCharacterSnapshot>) : CharacterTrackingProvider {
         var failure: Throwable? = null
+        val priorities = mutableListOf<Pair<Long, CharacterTrackingPriority>>()
+        val refreshes = mutableListOf<Long>()
         override fun snapshot(): CharacterTrackingSnapshot {
             failure?.let { throw it }
             return CharacterTrackingSnapshot(characters)
         }
+
+        override fun setPriority(characterId: Long, priority: CharacterTrackingPriority): Boolean =
+            characters.any { it.characterId == characterId }.also { owned ->
+                if (owned) priorities += characterId to priority
+            }
+
+        override fun requestRefresh(characterId: Long?): Boolean =
+            characterId != null && characters.any { it.characterId == characterId }.also { owned ->
+                if (owned) refreshes += characterId
+            }
     }
 
     private fun character(id: Long, name: String, systemId: Int) = TrackedCharacterSnapshot(

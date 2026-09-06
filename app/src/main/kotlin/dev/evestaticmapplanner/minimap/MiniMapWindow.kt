@@ -46,6 +46,7 @@ import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
+import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveTheme
 import dev.evestaticmapplanner.ui.EveWindowChrome
@@ -60,6 +61,8 @@ import kotlin.math.sin
 fun MiniMapWindow(
     state: MiniMapUiState,
     viewModel: MiniMapViewModel,
+    automaticFollowDiagnostic: String,
+    onBindCurrentWindow: (Long) -> String,
     onClose: () -> Unit,
 ) {
     val bounds = state.preferences.windowBounds
@@ -97,7 +100,7 @@ fun MiniMapWindow(
             EveWindowChrome(window)
             Surface(Modifier.fillMaxSize(), color = EveColors.PrimarySurface) {
                 Column(Modifier.fillMaxSize()) {
-                    MiniMapControls(state, viewModel)
+                    MiniMapControls(state, viewModel, automaticFollowDiagnostic, onBindCurrentWindow)
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         val diagnostic = state.diagnostic
                         if (diagnostic != null) {
@@ -117,8 +120,15 @@ fun MiniMapWindow(
 }
 
 @Composable
-private fun MiniMapControls(state: MiniMapUiState, viewModel: MiniMapViewModel) {
+private fun MiniMapControls(
+    state: MiniMapUiState,
+    viewModel: MiniMapViewModel,
+    automaticFollowDiagnostic: String,
+    onBindCurrentWindow: (Long) -> String,
+) {
     var characterMenu by remember { mutableStateOf(false) }
+    var bindMenu by remember { mutableStateOf(false) }
+    var bindingFeedback by remember { mutableStateOf<String?>(null) }
     val available = state.characters.filter { it.trackingEnabled }
     Column(Modifier.fillMaxWidth().background(EveColors.SecondarySurface).padding(horizontal = 8.dp, vertical = 5.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -138,11 +148,40 @@ private fun MiniMapControls(state: MiniMapUiState, viewModel: MiniMapViewModel) 
                     }
                 }
             }
+            TextButton(onClick = { viewModel.setFollowMode(MiniMapFollowMode.AUTO) }) {
+                Text(if (state.preferences.followMode == MiniMapFollowMode.AUTO) "[AUTO]" else "AUTO")
+            }
+            Box {
+                TextButton(onClick = { bindMenu = true }) { Text("Bind…") }
+                DropdownMenu(expanded = bindMenu, onDismissRequest = { bindMenu = false }) {
+                    available.forEach { character ->
+                        DropdownMenuItem(
+                            text = { Text(character.characterName) },
+                            onClick = {
+                                bindingFeedback = onBindCurrentWindow(character.characterId)
+                                bindMenu = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             (1..5).forEach { hops ->
                 TextButton(onClick = { viewModel.setRange(hops) }) {
                     Text(if (hops == state.preferences.stargateHops) "[$hops]" else "$hops")
                 }
             }
+        }
+        if (state.preferences.followMode == MiniMapFollowMode.AUTO) {
+            Text(
+                automaticFollowDiagnostic,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        bindingFeedback?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
         }
         state.followedCharacter?.let { character ->
             Text(

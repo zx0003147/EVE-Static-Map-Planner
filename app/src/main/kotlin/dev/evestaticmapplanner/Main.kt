@@ -24,6 +24,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.sun.jna.Platform
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
@@ -43,6 +44,7 @@ import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidation
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
 import dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntime
+import dev.evestaticmapplanner.feature.api.CharacterTrackingPriority
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
@@ -64,6 +66,9 @@ import dev.evestaticmapplanner.marker.application.AiSavedMarkerApplicationServic
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerPermissionPolicy
 import dev.evestaticmapplanner.minimap.MiniMapViewModel
 import dev.evestaticmapplanner.minimap.MiniMapWindow
+import dev.evestaticmapplanner.minimap.CharacterFollowState
+import dev.evestaticmapplanner.minimap.ForegroundCharacterFollowCoordinator
+import dev.evestaticmapplanner.minimap.ManualWindowBindingResult
 import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
@@ -106,6 +111,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 fun main(arguments: Array<String>) {
@@ -261,6 +267,28 @@ private fun FrameWindowScope.ReadyApplication(
     val miniMapViewModel = remember(configuration, mapViewModel) {
         MiniMapViewModel(persistPreferences = mapViewModel::updateMiniMapPreferences)
     }
+    val foregroundCharacterFollow = remember(configuration) {
+        if (Platform.isWindows()) ForegroundCharacterFollowCoordinator() else null
+    }
+    DisposableEffect(foregroundCharacterFollow) {
+        foregroundCharacterFollow?.let { coordinator ->
+            runCatching {
+                coordinator.start { failure ->
+                    AppDiagnostics.warning("Foreground EVE character follow reported a failure", failure)
+                }
+            }
+                .onFailure { AppDiagnostics.warning("Foreground EVE character follow could not start", it) }
+        }
+        onDispose {
+            runCatching { foregroundCharacterFollow?.close() }
+                .onFailure { AppDiagnostics.warning("Foreground EVE character follow did not close cleanly", it) }
+        }
+    }
+    val foregroundFollowStateFlow = remember(foregroundCharacterFollow) {
+        foregroundCharacterFollow?.state ?: MutableStateFlow(CharacterFollowState())
+    }
+    val foregroundFollowState by foregroundFollowStateFlow.collectAsState()
+    var previousHighPriorityCharacterId by remember { mutableStateOf<Long?>(null) }
     val sharedMapScope = remember(configuration) {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     }
@@ -447,6 +475,22 @@ private fun FrameWindowScope.ReadyApplication(
     }
     LaunchedEffect(trackedCharacters, miniMapViewModel) {
         miniMapViewModel.updateCharacters(trackedCharacters)
+        foregroundCharacterFollow?.updateCharacters(trackedCharacters)
+    }
+    LaunchedEffect(foregroundFollowState.followedCharacterId, miniMapViewModel) {
+        val nextCharacterId = foregroundFollowState.followedCharacterId
+        previousHighPriorityCharacterId?.takeIf { it != nextCharacterId }?.let { previousCharacterId ->
+            featurePackRuntime.characterTrackingHost.setPriority(
+                previousCharacterId,
+                CharacterTrackingPriority.NORMAL,
+            )
+        }
+        nextCharacterId?.let { characterId ->
+            featurePackRuntime.characterTrackingHost.setPriority(characterId, CharacterTrackingPriority.HIGH)
+            featurePackRuntime.characterTrackingHost.requestRefresh(characterId)
+        }
+        previousHighPriorityCharacterId = nextCharacterId
+        miniMapViewModel.setAutomaticCharacter(foregroundFollowState.followedCharacterId)
     }
     LaunchedEffect(mapState.appPreferences.miniMap, miniMapViewModel) {
         miniMapViewModel.restorePreferences(mapState.appPreferences.miniMap)
@@ -617,6 +661,14 @@ private fun FrameWindowScope.ReadyApplication(
         MiniMapWindow(
             state = miniMapState,
             viewModel = miniMapViewModel,
+            automaticFollowDiagnostic = foregroundFollowState.diagnostic,
+            onBindCurrentWindow = { characterId ->
+                when (val result = foregroundCharacterFollow?.bindCurrentWindow(characterId)) {
+                    ManualWindowBindingResult.Bound -> "Current EVE client session bound"
+                    is ManualWindowBindingResult.Rejected -> result.reason
+                    null -> "Foreground client detection is unavailable on this platform"
+                }
+            },
             onClose = { miniMapViewModel.setEnabled(false) },
         )
     }
