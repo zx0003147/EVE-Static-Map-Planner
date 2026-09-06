@@ -14,7 +14,7 @@ The Control API and fixed HTTP MCP catalog expose `list_views`, `get_current_vie
 
 The localhost HTTP MCP endpoint remains `http://127.0.0.1:27892/mcp`; View support does not change the plugin transport.
 
-Route Action target selection is generic and keyed by Pack plus selector ID. ESI Pack 1.1.0 contributes one
+Route Action target selection is generic and keyed by Pack plus selector ID. ESI Pack 1.2.0 contributes one
 `EVE Character` selector for `Send Navigation to EVE`. Core keeps only the opaque target ID in the current in-memory
 View. If the selected target disappears, Core keeps that ID visible as unavailable and disables the action; it never
 substitutes another available target.

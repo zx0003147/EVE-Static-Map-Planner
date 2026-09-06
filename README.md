@@ -54,12 +54,12 @@ Install the optional Pack JARs at these exact paths, then enable them under Pref
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
 ```
 
-Without any Pack, the Core map, routing, databases, and updater continue to work normally. ESI Pack 1.1.0 adds EVE
-SSO, multi-character location portraits, and the explicit Normal-route `Send Navigation to EVE` action. It sends only
+Without any Pack, the Core map, routing, databases, and updater continue to work normally. ESI Pack 1.2.0 adds EVE
+SSO, typed multi-character location tracking, portraits, and the explicit Normal-route `Send Navigation to EVE` action. It sends only
 the ordered Waypoints and Destination from the current navigation draft, supports destination-only and waypoint-only
 drafts, and does not send calculated transit systems. Capital routes do not expose this action. Each View stores one
 selected route-action target and never auto-falls back after a disconnect. Add Character, Refresh Locations, and
-per-character Disconnect controls appear generically in the Feature Packs preferences page.
+per-character tracking and Disconnect controls appear generically in the Feature Packs preferences page.
 
 See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
 

@@ -31,7 +31,7 @@ class EsiPackIntegrationTest {
             val attributes = jar.manifest.mainAttributes
             assertEquals("esi.pack", attributes.getValue(FeaturePackJarManifest.PACK_ID))
             assertEquals("ESI Pack", attributes.getValue(FeaturePackJarManifest.DISPLAY_NAME))
-            assertEquals("1.1.0", attributes.getValue(FeaturePackJarManifest.VERSION))
+            assertEquals("1.2.0", attributes.getValue(FeaturePackJarManifest.VERSION))
             assertEquals("EVE Static Map Planner", attributes.getValue(FeaturePackJarManifest.PUBLISHER))
             assertEquals(
                 FeatureApiVersions.current().identifier,
