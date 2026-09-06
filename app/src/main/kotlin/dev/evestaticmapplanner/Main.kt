@@ -274,19 +274,22 @@ private fun FrameWindowScope.ReadyApplication(
     val miniMapViewModel = remember(configuration, mapViewModel) {
         MiniMapViewModel(persistPreferences = mapViewModel::updateMiniMapPreferences)
     }
-    val miniMapHudController = remember(configuration) {
+    val characterTrackingAvailable by featurePackRuntime.characterTrackingHost.availability.collectAsState()
+    val miniMapHudController = remember(configuration, characterTrackingAvailable) {
         MiniMapHudController(if (Platform.isWindows()) WindowsMiniMapGlobalHotkey() else null)
     }
-    DisposableEffect(miniMapHudController, miniMapViewModel) {
-        miniMapHudController.start {
-            EventQueue.invokeLater {
-                val current = miniMapViewModel.state.value.preferences
-                if (current.enabled) {
-                    val next = when (current.interactionMode) {
-                        MiniMapInteractionMode.INTERACTIVE -> MiniMapInteractionMode.HUD_LOCKED
-                        MiniMapInteractionMode.HUD_LOCKED -> MiniMapInteractionMode.INTERACTIVE
+    DisposableEffect(miniMapHudController, miniMapViewModel, characterTrackingAvailable) {
+        if (characterTrackingAvailable) {
+            miniMapHudController.start {
+                EventQueue.invokeLater {
+                    val current = miniMapViewModel.state.value.preferences
+                    if (featurePackRuntime.characterTrackingHost.availability.value && current.enabled) {
+                        val next = when (current.interactionMode) {
+                            MiniMapInteractionMode.INTERACTIVE -> MiniMapInteractionMode.HUD_LOCKED
+                            MiniMapInteractionMode.HUD_LOCKED -> MiniMapInteractionMode.INTERACTIVE
+                        }
+                        miniMapViewModel.updatePreferences(current.copy(interactionMode = next), fit = false)
                     }
-                    miniMapViewModel.updatePreferences(current.copy(interactionMode = next), fit = false)
                 }
             }
         }
@@ -637,6 +640,17 @@ private fun FrameWindowScope.ReadyApplication(
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {
         it.persistence == MarkerPersistence.TEMPORARY
     }
+    val miniMapCapabilityUi = miniMapCapabilityUiDecision(
+        characterTrackingAvailable = characterTrackingAvailable,
+        miniMapEnabled = miniMapState.preferences.enabled,
+        settingsWindowOpen = miniMapSettingsWindow.isOpen,
+    )
+    LaunchedEffect(miniMapCapabilityUi.disableMiniMap, miniMapCapabilityUi.closeSettingsWindow) {
+        if (miniMapCapabilityUi.disableMiniMap) miniMapViewModel.setEnabled(false)
+        if (miniMapCapabilityUi.closeSettingsWindow) {
+            miniMapSettingsWindow = miniMapSettingsWindow.close()
+        }
+    }
     Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
         EveTopMenuBar(
             plannerTopMenus(
@@ -644,6 +658,7 @@ private fun FrameWindowScope.ReadyApplication(
                     markerManagerOpen = showMarkerManager,
                     sharedMarkerManagerOpen = showSharedMarkerManager,
                     temporaryMarkerCount = temporaryMarkerCount,
+                    characterTrackingAvailable = characterTrackingAvailable,
                     miniMapEnabled = miniMapState.preferences.enabled,
                     staticDataOpen = showStaticData,
                 ),
@@ -652,8 +667,16 @@ private fun FrameWindowScope.ReadyApplication(
                     openSharedMarkerManager = { showSharedMarkerManager = true },
                     clearTemporaryMarkers = { confirmClearTemporaryMarkers = true },
                     openMarkerSettings = { markerSettingsWindow = markerSettingsWindow.show() },
-                    toggleMiniMap = { miniMapViewModel.setEnabled(!miniMapState.preferences.enabled) },
-                    openMiniMapSettings = { miniMapSettingsWindow = miniMapSettingsWindow.show() },
+                    toggleMiniMap = {
+                        if (characterTrackingAvailable) {
+                            miniMapViewModel.setEnabled(!miniMapState.preferences.enabled)
+                        }
+                    },
+                    openMiniMapSettings = {
+                        if (characterTrackingAvailable) {
+                            miniMapSettingsWindow = miniMapSettingsWindow.show()
+                        }
+                    },
                     openPreferences = { showPreferences = true },
                     openStaticData = { showStaticData = true },
                 ),
@@ -694,7 +717,7 @@ private fun FrameWindowScope.ReadyApplication(
             suppressMarkerOperationErrorDialog = showMarkerManager,
         )
     }
-    if (miniMapState.preferences.enabled) {
+    if (miniMapCapabilityUi.showMiniMapWindow) {
         MiniMapWindow(
             state = miniMapState,
             viewModel = miniMapViewModel,
@@ -818,7 +841,7 @@ private fun FrameWindowScope.ReadyApplication(
             onDismiss = { markerSettingsWindow = markerSettingsWindow.close() },
         )
     }
-    if (miniMapSettingsWindow.isOpen) {
+    if (miniMapCapabilityUi.showSettingsWindow) {
         MiniMapSettingsWindow(
             preferences = mapState.appPreferences.miniMap,
             onChange = { requested ->

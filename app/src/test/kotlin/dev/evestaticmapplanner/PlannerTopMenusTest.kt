@@ -13,6 +13,7 @@ class PlannerTopMenusTest {
                 markerManagerOpen = false,
                 sharedMarkerManagerOpen = false,
                 temporaryMarkerCount = 0,
+                characterTrackingAvailable = true,
                 miniMapEnabled = true,
                 staticDataOpen = false,
             ),

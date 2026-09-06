@@ -112,6 +112,27 @@ class MiniMapWindowTest {
         onNodeWithText("Tracking", substring = true).assertDoesNotExist()
     }
 
+    @Test
+    fun `available capability with no authorized characters shows connection guidance`() = runComposeUiTest {
+        val viewModel = MiniMapViewModel()
+        viewModel.updateCharacters(emptyList())
+        setContent {
+            EveTheme {
+                Box(Modifier.size(420.dp, 360.dp)) {
+                    MiniMapContent(
+                        state = viewModel.state.value,
+                        viewModel = viewModel,
+                        automaticFollowDiagnostic = "unused",
+                        onBindCurrentWindow = { "unused" },
+                    )
+                }
+            }
+        }
+
+        onNodeWithText("No tracked characters", substring = true).assertIsDisplayed()
+        onNodeWithText("Connect a character in ESI Pack first.", substring = true).assertIsDisplayed()
+    }
+
     private fun state(
         character: TrackedCharacterSnapshot,
         mode: MiniMapFollowMode = MiniMapFollowMode.AUTO,

@@ -201,6 +201,8 @@ class MiniMapViewModel(
                 characterGroups = groups,
                 viewport = viewport,
                 diagnostic = when {
+                    current.characters.isEmpty() ->
+                        "No tracked characters\nConnect a character in ESI Pack first."
                     followedId == null -> "Select a character to follow"
                     followed == null -> "Followed character is unavailable"
                     !followed.trackingEnabled -> "Tracking is disabled for ${followed.characterName}"

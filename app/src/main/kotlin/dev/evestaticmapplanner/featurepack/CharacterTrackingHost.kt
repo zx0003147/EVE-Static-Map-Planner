@@ -18,9 +18,12 @@ class CharacterTrackingHost(
 ) : AutoCloseable {
     private val providers = linkedMapOf<PackId, HostedProvider>()
     private val mutableState = MutableStateFlow<List<TrackedCharacterSnapshot>>(emptyList())
+    private val mutableAvailability = MutableStateFlow(false)
     private var closed = false
 
     val state: StateFlow<List<TrackedCharacterSnapshot>> = mutableState.asStateFlow()
+    /** Independent from character count: true only while a Pack has a live typed provider registration. */
+    val availability: StateFlow<Boolean> = mutableAvailability.asStateFlow()
 
     internal fun scopedCapability(packId: PackId) = ScopedCharacterTrackingCapability(packId, this)
 
@@ -68,6 +71,7 @@ class CharacterTrackingHost(
     }
 
     private fun publish() {
+        mutableAvailability.value = providers.isNotEmpty()
         mutableState.value = providers.values.flatMap { it.lastGood.characters }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, TrackedCharacterSnapshot::characterName)
                 .thenBy(TrackedCharacterSnapshot::characterId))

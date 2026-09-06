@@ -182,7 +182,10 @@ class MiniMapViewModelTest {
 
         viewModel.updateCharacters(emptyList())
         assertNull(viewModel.state.value.slice)
-        assertEquals("Followed character is unavailable", viewModel.state.value.diagnostic)
+        assertEquals(
+            "No tracked characters\nConnect a character in ESI Pack first.",
+            viewModel.state.value.diagnostic,
+        )
     }
 
     private fun scene() = MapSceneBuilder().build(

@@ -11,6 +11,7 @@ import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CharacterTrackingHostTest {
@@ -22,14 +23,17 @@ class CharacterTrackingHostTest {
         val firstRegistration = host.scopedCapability(PackId("first.pack")).register(first)
         val secondRegistration = host.scopedCapability(PackId("second.pack")).register(second)
 
+        assertTrue(host.availability.value)
         assertEquals(listOf("Alpha", "Bravo"), host.state.value.map { it.characterName })
         first.characters = listOf(character(2, "Bravo", 30_000_003))
         firstRegistration.requestRefresh()
         assertEquals(30_000_003, host.state.value.first { it.characterId == 2L }.solarSystemId)
 
         firstRegistration.close()
+        assertTrue(host.availability.value)
         assertEquals(listOf("Alpha"), host.state.value.map { it.characterName })
         secondRegistration.close()
+        assertFalse(host.availability.value)
         assertTrue(host.state.value.isEmpty())
         host.close()
     }

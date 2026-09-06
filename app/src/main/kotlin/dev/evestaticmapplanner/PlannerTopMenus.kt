@@ -7,6 +7,7 @@ internal data class PlannerTopMenuState(
     val markerManagerOpen: Boolean,
     val sharedMarkerManagerOpen: Boolean,
     val temporaryMarkerCount: Int,
+    val characterTrackingAvailable: Boolean,
     val miniMapEnabled: Boolean,
     val staticDataOpen: Boolean,
 )
@@ -25,7 +26,7 @@ internal data class PlannerTopMenuActions(
 internal fun plannerTopMenus(
     state: PlannerTopMenuState,
     actions: PlannerTopMenuActions,
-): List<EveMenuSpec> = listOf(
+): List<EveMenuSpec> = listOfNotNull(
     EveMenuSpec(
         "Marker",
         listOf(
@@ -62,7 +63,7 @@ internal fun plannerTopMenus(
                 onClick = actions.openMiniMapSettings,
             ),
         ),
-    ),
+    ).takeIf { state.characterTrackingAvailable },
     EveMenuSpec(
         "Preferences",
         listOf(EveMenuItemSpec("Preferences…", onClick = actions.openPreferences)),
