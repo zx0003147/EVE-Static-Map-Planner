@@ -1,14 +1,13 @@
 package dev.evestaticmapplanner
 
-import dev.evestaticmapplanner.preferences.PreferencesCategory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class PlannerTopMenusTest {
     @Test
-    fun `feature menus expose direct shortcuts into the shared preferences window`() {
-        val destinations = mutableListOf<PreferencesCategory>()
+    fun `feature menus open dedicated settings while Preferences remains general`() {
+        val opened = mutableListOf<String>()
         val menus = plannerTopMenus(
             state = PlannerTopMenuState(
                 markerManagerOpen = false,
@@ -21,8 +20,10 @@ class PlannerTopMenusTest {
                 openMarkerManager = {},
                 openSharedMarkerManager = {},
                 clearTemporaryMarkers = {},
+                openMarkerSettings = { opened += "marker-settings" },
                 toggleMiniMap = {},
-                openPreferences = destinations::add,
+                openMiniMapSettings = { opened += "mini-map-settings" },
+                openPreferences = { opened += "general-preferences" },
                 openStaticData = {},
             ),
         )
@@ -36,11 +37,11 @@ class PlannerTopMenusTest {
                 "Marker Manager…",
                 "Shared Marker Manager…",
                 "Clear All Temporary Markers…",
-                "Marker Preferences…",
+                "Marker Settings…",
             ),
             markerItems.map { it.label },
         )
-        assertEquals(listOf("Hide Mini-map", "Mini-map Preferences…"), miniMapItems.map { it.label })
+        assertEquals(listOf("Hide Mini-map", "Mini-map Settings…"), miniMapItems.map { it.label })
         assertTrue(markerItems.last().separatorBefore)
         assertTrue(miniMapItems.last().separatorBefore)
 
@@ -48,8 +49,8 @@ class PlannerTopMenusTest {
         miniMapItems.last().onClick()
         allPreferencesItems.single().onClick()
         assertEquals(
-            listOf(PreferencesCategory.MARKER, PreferencesCategory.MINI_MAP, PreferencesCategory.MAP_DISPLAY),
-            destinations,
+            listOf("marker-settings", "mini-map-settings", "general-preferences"),
+            opened,
         )
     }
 }

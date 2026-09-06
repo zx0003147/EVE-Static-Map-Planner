@@ -69,12 +69,7 @@ import java.util.Locale
 internal fun PreferencesWindow(
     currentZoom: Double?,
     preferences: AppPreferences,
-    selectedCategory: PreferencesCategory,
-    onCategoryChange: (PreferencesCategory) -> Unit,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
-    onMarkerChange: (MarkerPreferences) -> Unit,
-    onMiniMapChange: (MiniMapPreferences) -> Unit,
-    miniMapHudState: MiniMapHudRuntimeState,
     aiControlStatus: AiControlStatus,
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
@@ -98,13 +93,12 @@ internal fun PreferencesWindow(
     onAiControlChange: (Boolean) -> Unit,
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
     onResetMapDisplay: () -> Unit,
-    onResetMarker: () -> Unit,
-    onResetMiniMap: () -> Unit,
     onResetAiControl: () -> Unit,
     onResetOverlayVisibility: () -> Unit,
     onResetAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var selectedCategory by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
     Window(
         onCloseRequest = onDismiss,
         title = "Preferences",
@@ -123,7 +117,7 @@ internal fun PreferencesWindow(
                     Column(Modifier.width(150.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         PreferencesCategory.entries.forEach { item ->
                             TextButton(
-                                onClick = { onCategoryChange(item) },
+                                onClick = { selectedCategory = item },
                                 selected = selectedCategory == item,
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text(item.label) }
@@ -140,17 +134,6 @@ internal fun PreferencesWindow(
                                 preferences.mapDisplay,
                                 onMapDisplayChange,
                                 onResetMapDisplay,
-                            )
-                            PreferencesCategory.MARKER -> MarkerPreferencesContent(
-                                preferences.marker,
-                                onMarkerChange,
-                                onResetMarker,
-                            )
-                            PreferencesCategory.MINI_MAP -> MiniMapPreferencesContent(
-                                preferences = preferences.miniMap,
-                                onChange = onMiniMapChange,
-                                hudRuntimeState = miniMapHudState,
-                                onReset = onResetMiniMap,
                             )
                             PreferencesCategory.AI_CONTROL -> AiControlPreferencesContent(
                                 preferences.aiControl,
@@ -204,8 +187,6 @@ internal fun PreferencesWindow(
 
 internal enum class PreferencesCategory(val label: String) {
     MAP_DISPLAY("Map Display"),
-    MARKER("Marker"),
-    MINI_MAP("Mini-map"),
     AI_CONTROL("AI Control"),
     FEATURE_PACKS("Feature Packs"),
     OVERLAYS("Overlays"),
@@ -745,12 +726,12 @@ private fun FontPreferenceSliders(mapDisplay: MapDisplayPreferences, onChange: (
 }
 
 @Composable
-private fun MarkerPreferencesContent(
+internal fun MarkerPreferencesContent(
     preferences: MarkerPreferences,
     onChange: (MarkerPreferences) -> Unit,
     onReset: () -> Unit,
 ) {
-    Text("Marker", style = MaterialTheme.typography.titleMedium)
+    Text("Marker Settings", style = MaterialTheme.typography.titleMedium)
     PreferenceCheckbox("Show Local Markers", preferences.showMarkers) {
         onChange(preferences.copy(showMarkers = it))
     }
@@ -805,7 +786,7 @@ internal fun MiniMapPreferencesContent(
     ),
     onReset: () -> Unit,
 ) {
-    Text("Mini-map Preferences", style = MaterialTheme.typography.titleMedium)
+    Text("Mini-map Settings", style = MaterialTheme.typography.titleMedium)
     Text(
         "Controls the compact character-following map. Changes apply immediately to an open Mini-map.",
         color = EveColors.SecondaryText,

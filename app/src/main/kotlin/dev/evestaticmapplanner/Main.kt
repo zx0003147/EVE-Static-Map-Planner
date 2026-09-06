@@ -77,7 +77,9 @@ import dev.evestaticmapplanner.platform.windows.minimaphud.WindowsMiniMapGlobalH
 import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
-import dev.evestaticmapplanner.preferences.PreferencesCategory
+import dev.evestaticmapplanner.preferences.FeatureSettingsWindowState
+import dev.evestaticmapplanner.preferences.MarkerSettingsWindow
+import dev.evestaticmapplanner.preferences.MiniMapSettingsWindow
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
 import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
@@ -619,7 +621,8 @@ private fun FrameWindowScope.ReadyApplication(
     val uiScope = rememberCoroutineScope()
     var showStaticData by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
-    var selectedPreferencesCategory by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
+    var markerSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
+    var miniMapSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
     var showMarkerManager by remember { mutableStateOf(false) }
     var showSharedMarkerManager by remember { mutableStateOf(false) }
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
@@ -633,10 +636,6 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {
         it.persistence == MarkerPersistence.TEMPORARY
-    }
-    val openPreferences: (PreferencesCategory) -> Unit = { category ->
-        selectedPreferencesCategory = category
-        showPreferences = true
     }
     Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
         EveTopMenuBar(
@@ -652,8 +651,10 @@ private fun FrameWindowScope.ReadyApplication(
                     openMarkerManager = { showMarkerManager = true },
                     openSharedMarkerManager = { showSharedMarkerManager = true },
                     clearTemporaryMarkers = { confirmClearTemporaryMarkers = true },
+                    openMarkerSettings = { markerSettingsWindow = markerSettingsWindow.show() },
                     toggleMiniMap = { miniMapViewModel.setEnabled(!miniMapState.preferences.enabled) },
-                    openPreferences = openPreferences,
+                    openMiniMapSettings = { miniMapSettingsWindow = miniMapSettingsWindow.show() },
+                    openPreferences = { showPreferences = true },
                     openStaticData = { showStaticData = true },
                 ),
             ),
@@ -723,17 +724,7 @@ private fun FrameWindowScope.ReadyApplication(
         PreferencesWindow(
             currentZoom = mapState.viewport?.zoom,
             preferences = mapState.appPreferences,
-            selectedCategory = selectedPreferencesCategory,
-            onCategoryChange = { selectedPreferencesCategory = it },
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
-            onMarkerChange = mapViewModel::updateMarkerPreferences,
-            onMiniMapChange = { requested ->
-                miniMapViewModel.updatePreferences(
-                    requested.copy(interactionMode = miniMapHudController.safeMode(requested.interactionMode)),
-                    fit = false,
-                )
-            },
-            miniMapHudState = miniMapHudState,
             aiControlStatus = aiControlStatus,
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,
@@ -782,8 +773,6 @@ private fun FrameWindowScope.ReadyApplication(
                 }
             },
             onResetMapDisplay = mapViewModel::resetMapDisplayPreferences,
-            onResetMarker = mapViewModel::resetMarkerPreferences,
-            onResetMiniMap = mapViewModel::resetMiniMapPreferences,
             onResetAiControl = {
                 uiScope.launch {
                     aiPreferenceError = null
@@ -818,6 +807,30 @@ private fun FrameWindowScope.ReadyApplication(
                 }
             },
             onDismiss = { showPreferences = false },
+        )
+    }
+    if (markerSettingsWindow.isOpen) {
+        MarkerSettingsWindow(
+            preferences = mapState.appPreferences.marker,
+            onChange = mapViewModel::updateMarkerPreferences,
+            onReset = mapViewModel::resetMarkerPreferences,
+            focusRequest = markerSettingsWindow.focusRequest,
+            onDismiss = { markerSettingsWindow = markerSettingsWindow.close() },
+        )
+    }
+    if (miniMapSettingsWindow.isOpen) {
+        MiniMapSettingsWindow(
+            preferences = mapState.appPreferences.miniMap,
+            onChange = { requested ->
+                miniMapViewModel.updatePreferences(
+                    requested.copy(interactionMode = miniMapHudController.safeMode(requested.interactionMode)),
+                    fit = false,
+                )
+            },
+            hudRuntimeState = miniMapHudState,
+            onReset = mapViewModel::resetMiniMapPreferences,
+            focusRequest = miniMapSettingsWindow.focusRequest,
+            onDismiss = { miniMapSettingsWindow = miniMapSettingsWindow.close() },
         )
     }
     if (showMarkerManager) {

@@ -29,7 +29,7 @@ class MiniMapPreferencesContentTest {
             }
         }
 
-        onNodeWithText("Mini-map Preferences").assertIsDisplayed()
+        onNodeWithText("Mini-map Settings").assertIsDisplayed()
         onNodeWithText("Visible range").assertIsDisplayed()
         (1..5).forEach { onNodeWithText(it.toString()).assertIsDisplayed() }
         onNodeWithText("Visual only.", substring = true).assertIsDisplayed()

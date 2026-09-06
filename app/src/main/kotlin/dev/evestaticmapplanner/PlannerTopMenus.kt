@@ -1,6 +1,5 @@
 package dev.evestaticmapplanner
 
-import dev.evestaticmapplanner.preferences.PreferencesCategory
 import dev.evestaticmapplanner.ui.EveMenuItemSpec
 import dev.evestaticmapplanner.ui.EveMenuSpec
 
@@ -16,8 +15,10 @@ internal data class PlannerTopMenuActions(
     val openMarkerManager: () -> Unit,
     val openSharedMarkerManager: () -> Unit,
     val clearTemporaryMarkers: () -> Unit,
+    val openMarkerSettings: () -> Unit,
     val toggleMiniMap: () -> Unit,
-    val openPreferences: (PreferencesCategory) -> Unit,
+    val openMiniMapSettings: () -> Unit,
+    val openPreferences: () -> Unit,
     val openStaticData: () -> Unit,
 )
 
@@ -44,25 +45,27 @@ internal fun plannerTopMenus(
                 separatorBefore = true,
                 onClick = actions.clearTemporaryMarkers,
             ),
-            EveMenuItemSpec("Marker Preferences…", separatorBefore = true) {
-                actions.openPreferences(PreferencesCategory.MARKER)
-            },
+            EveMenuItemSpec(
+                "Marker Settings…",
+                separatorBefore = true,
+                onClick = actions.openMarkerSettings,
+            ),
         ),
     ),
     EveMenuSpec(
         "Mini-map",
         listOf(
             EveMenuItemSpec(if (state.miniMapEnabled) "Hide Mini-map" else "Show Mini-map", onClick = actions.toggleMiniMap),
-            EveMenuItemSpec("Mini-map Preferences…", separatorBefore = true) {
-                actions.openPreferences(PreferencesCategory.MINI_MAP)
-            },
+            EveMenuItemSpec(
+                "Mini-map Settings…",
+                separatorBefore = true,
+                onClick = actions.openMiniMapSettings,
+            ),
         ),
     ),
     EveMenuSpec(
         "Preferences",
-        listOf(EveMenuItemSpec("Preferences…") {
-            actions.openPreferences(PreferencesCategory.MAP_DISPLAY)
-        }),
+        listOf(EveMenuItemSpec("Preferences…", onClick = actions.openPreferences)),
     ),
     EveMenuSpec(
         "Static Data",
