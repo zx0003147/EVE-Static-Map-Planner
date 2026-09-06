@@ -130,6 +130,10 @@ private fun MiniMapControls(
     var bindMenu by remember { mutableStateOf(false) }
     var bindingFeedback by remember { mutableStateOf<String?>(null) }
     val available = state.characters.filter { it.trackingEnabled }
+    val currentCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.CURRENT }
+    val staleCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.STALE }
+    val degradedCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.DEGRADED }
+    val unknownCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.UNKNOWN }
     Column(Modifier.fillMaxWidth().background(EveColors.SecondarySurface).padding(horizontal = 8.dp, vertical = 5.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Box {
@@ -172,6 +176,15 @@ private fun MiniMapControls(
                     Text(if (hops == state.preferences.stargateHops) "[$hops]" else "$hops")
                 }
             }
+            TextButton(
+                onClick = {
+                    viewModel.updatePreferences(
+                        state.preferences.copy(includeAnsiblexEdges = !state.preferences.includeAnsiblexEdges),
+                    )
+                },
+            ) {
+                Text(if (state.preferences.includeAnsiblexEdges) "[JB visual]" else "JB visual")
+            }
         }
         if (state.preferences.followMode == MiniMapFollowMode.AUTO) {
             Text(
@@ -185,13 +198,25 @@ private fun MiniMapControls(
         }
         state.followedCharacter?.let { character ->
             Text(
-                "${character.characterName} · ${character.locationStatus.name} · ${state.preferences.stargateHops} Stargate hops",
+                "${state.preferences.followMode} · ${character.characterName} · ${character.locationStatus.name} · " +
+                    "${state.preferences.stargateHops} Stargate hops",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (character.locationStatus == TrackedCharacterLocationStatus.CURRENT) {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 } else MaterialTheme.colorScheme.tertiary,
             )
+            Text(
+                "Validated ${character.lastValidatedAt ?: "never"} · Error ${character.lastErrorCategory ?: "none"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+        Text(
+            "Tracking ${available.size}/${state.characters.size} · current $currentCount · stale $staleCount · " +
+                "degraded $degradedCount · unknown $unknownCount · Ansiblex is visual-only",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -221,6 +246,16 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
         val viewport = state.viewport ?: return@Canvas
         if (state.canvasSize.isEmpty) return@Canvas
         val transform = MapTransform(viewport, state.canvasSize)
+        state.ansiblexVisualEdges.forEach { edge ->
+            val first = transform.worldToScreen(edge.first)
+            val second = transform.worldToScreen(edge.second)
+            drawLine(
+                color = Color(0xFFB56DFF),
+                start = Offset(first.x.toFloat(), first.y.toFloat()),
+                end = Offset(second.x.toFloat(), second.y.toFloat()),
+                strokeWidth = 1.8f,
+            )
+        }
         slice.edges.forEach { edge ->
             val first = transform.worldToScreen(edge.first)
             val second = transform.worldToScreen(edge.second)

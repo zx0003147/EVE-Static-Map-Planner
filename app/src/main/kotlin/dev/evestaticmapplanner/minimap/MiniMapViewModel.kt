@@ -1,16 +1,20 @@
 package dev.evestaticmapplanner.minimap
 
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.map.HopNeighborhoodExtractor
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.MiniMapSlice
+import dev.evestaticmapplanner.core.map.MiniMapSliceEdge
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapPreferences
+import dev.evestaticmapplanner.core.route.RouteConnectionId
+import dev.evestaticmapplanner.core.route.RouteEdgeType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +31,7 @@ data class MiniMapUiState(
     val characters: List<TrackedCharacterSnapshot> = emptyList(),
     val followedCharacterId: Long? = null,
     val slice: MiniMapSlice? = null,
+    val ansiblexVisualEdges: List<MiniMapSliceEdge> = emptyList(),
     val characterGroups: List<MiniMapCharacterGroup> = emptyList(),
     val canvasSize: MapSize = MapSize(0.0, 0.0),
     val viewport: MapViewport? = null,
@@ -43,6 +48,7 @@ class MiniMapViewModel(
 ) {
     private val mutableState = MutableStateFlow(MiniMapUiState(preferences = initialPreferences))
     private var scene: ProjectedMapScene? = null
+    private var ansiblexConnections: List<AnsiblexConnection> = emptyList()
     private var automaticCharacterId: Long? = null
 
     val state: StateFlow<MiniMapUiState> = mutableState.asStateFlow()
@@ -55,6 +61,13 @@ class MiniMapViewModel(
 
     fun updateCharacters(characters: List<TrackedCharacterSnapshot>) {
         mutableState.update { it.copy(characters = characters) }
+        rebuild(fit = false)
+    }
+
+    /** Receives the already-loaded Route state; no repository or database is opened here. */
+    fun updateAnsiblexConnections(connections: List<AnsiblexConnection>) {
+        if (ansiblexConnections == connections) return
+        ansiblexConnections = connections
         rebuild(fit = false)
     }
 
@@ -155,6 +168,23 @@ class MiniMapViewModel(
                     }
                     .sortedBy(MiniMapCharacterGroup::systemId)
             }.orEmpty()
+            val ansiblexVisualEdges = if (slice != null && current.preferences.includeAnsiblexEdges) {
+                ansiblexConnections.asSequence()
+                    .filter(AnsiblexConnection::enabled)
+                    .filter { it.firstSystemId in slice.includedSystemIds && it.secondSystemId in slice.includedSystemIds }
+                    .map { connection ->
+                        MiniMapSliceEdge(
+                            RouteConnectionId("ansiblex:${connection.id}"),
+                            connection.firstSystemId,
+                            connection.secondSystemId,
+                            RouteEdgeType.ANSIBLEX,
+                            currentScene!!.nodesById.getValue(connection.firstSystemId).position,
+                            currentScene.nodesById.getValue(connection.secondSystemId).position,
+                        )
+                    }
+                    .sortedWith(compareBy(MiniMapSliceEdge::firstSystemId, MiniMapSliceEdge::secondSystemId))
+                    .toList()
+            } else emptyList()
             val viewport = when {
                 slice == null || current.canvasSize.isEmpty -> null
                 fit || current.slice?.centerSystemId != slice.centerSystemId ||
@@ -164,6 +194,7 @@ class MiniMapViewModel(
             current.copy(
                 followedCharacterId = followedId,
                 slice = slice,
+                ansiblexVisualEdges = ansiblexVisualEdges,
                 characterGroups = groups,
                 viewport = viewport,
                 diagnostic = when {

@@ -1,5 +1,8 @@
 package dev.evestaticmapplanner.minimap
 
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.MapSize
@@ -80,6 +83,28 @@ class MiniMapViewModelTest {
     }
 
     @Test
+    fun `Ansiblex is opt-in visual-only and never expands the Stargate neighborhood`() {
+        val viewModel = MiniMapViewModel()
+        viewModel.updateScene(scene())
+        viewModel.updateCanvasSize(MapSize(400.0, 300.0))
+        viewModel.updateCharacters(listOf(character(1, "Alpha", 1, TrackedCharacterLocationStatus.CURRENT)))
+        viewModel.updateAnsiblexConnections(listOf(
+            ansiblex("inside", 1, 2),
+            ansiblex("outside", 1, 7),
+            ansiblex("disabled", 2, 3, enabled = false),
+        ))
+        viewModel.setPinnedCharacter(1)
+        viewModel.setRange(1)
+
+        assertEquals(setOf(1, 2), viewModel.state.value.slice?.includedSystemIds)
+        assertTrue(viewModel.state.value.ansiblexVisualEdges.isEmpty())
+
+        viewModel.updatePreferences(viewModel.state.value.preferences.copy(includeAnsiblexEdges = true))
+        assertEquals(setOf(1, 2), viewModel.state.value.slice?.includedSystemIds)
+        assertEquals(listOf("ansiblex:inside"), viewModel.state.value.ansiblexVisualEdges.map { it.connectionId.value })
+    }
+
+    @Test
     fun `range resize show hide and viewport remain independent from main map`() {
         val viewModel = MiniMapViewModel()
         viewModel.updateScene(scene())
@@ -152,5 +177,19 @@ class MiniMapViewModelTest {
         TrackedCharacterOnlineState.UNKNOWN,
         null,
         null,
+    )
+
+    private fun ansiblex(id: String, first: Int, second: Int, enabled: Boolean = true) = AnsiblexConnection(
+        id,
+        first,
+        second,
+        AnsiblexDirection.BIDIRECTIONAL,
+        null,
+        null,
+        AnsiblexSource.MANUAL,
+        null,
+        enabled,
+        Instant.EPOCH,
+        Instant.EPOCH,
     )
 }
