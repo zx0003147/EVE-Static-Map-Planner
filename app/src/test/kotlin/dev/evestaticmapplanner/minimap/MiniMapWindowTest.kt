@@ -15,6 +15,7 @@ import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.feature.api.TrackedCharacterOnlineState
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
+import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.preferences.MiniMapPreferences
 import dev.evestaticmapplanner.ui.EveTheme
 import java.time.Instant
@@ -83,6 +84,32 @@ class MiniMapWindowTest {
             "Location unavailable · UNKNOWN",
             miniMapLocationLine(state(character(TrackedCharacterLocationStatus.UNKNOWN))),
         )
+    }
+
+    @Test
+    fun `locked HUD keeps core identity and mode while hiding interactive chrome`() = runComposeUiTest {
+        val state = state(character(TrackedCharacterLocationStatus.CURRENT), MiniMapFollowMode.AUTO)
+        setContent {
+            EveTheme {
+                Box(Modifier.size(420.dp, 360.dp)) {
+                    MiniMapContent(
+                        state = state,
+                        viewModel = MiniMapViewModel(),
+                        automaticFollowDiagnostic = "unused",
+                        hudPresentation = true,
+                        hudOpacity = 0.6f,
+                        interactionMode = MiniMapInteractionMode.HUD_LOCKED,
+                        onBindCurrentWindow = { "unused" },
+                    )
+                }
+            }
+        }
+
+        onNodeWithText("Pandogodzilla").assertIsDisplayed()
+        onNodeWithText("S1 · CURRENT").assertIsDisplayed()
+        onNodeWithText("AUTO").assertIsDisplayed()
+        onNodeWithContentDescription("Mini-map options").assertDoesNotExist()
+        onNodeWithText("Tracking", substring = true).assertDoesNotExist()
     }
 
     private fun state(

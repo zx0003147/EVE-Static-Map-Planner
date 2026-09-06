@@ -42,6 +42,9 @@ import dev.evestaticmapplanner.featurepack.PackControlActionUiState
 import dev.evestaticmapplanner.feature.api.PackControlActionStatus
 import dev.evestaticmapplanner.feature.api.PackControlSeverity
 import dev.evestaticmapplanner.feature.api.OverlayState
+import dev.evestaticmapplanner.minimap.MINI_MAP_RECOVERY_HOTKEY_LABEL
+import dev.evestaticmapplanner.minimap.MiniMapHudRuntimeState
+import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.shared.SharedAdminUiState
 import dev.evestaticmapplanner.shared.SharedMapMembersDialog
@@ -69,6 +72,7 @@ internal fun PreferencesWindow(
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     onMarkerChange: (MarkerPreferences) -> Unit,
     onMiniMapChange: (MiniMapPreferences) -> Unit,
+    miniMapHudState: MiniMapHudRuntimeState,
     aiControlStatus: AiControlStatus,
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
@@ -142,9 +146,10 @@ internal fun PreferencesWindow(
                                 onResetMarker,
                             )
                             PreferencesCategory.MINI_MAP -> MiniMapPreferencesContent(
-                                preferences.miniMap,
-                                onMiniMapChange,
-                                onResetMiniMap,
+                                preferences = preferences.miniMap,
+                                onChange = onMiniMapChange,
+                                hudRuntimeState = miniMapHudState,
+                                onReset = onResetMiniMap,
                             )
                             PreferencesCategory.AI_CONTROL -> AiControlPreferencesContent(
                                 preferences.aiControl,
@@ -794,6 +799,9 @@ private fun MarkerPreferencesContent(
 internal fun MiniMapPreferencesContent(
     preferences: MiniMapPreferences,
     onChange: (MiniMapPreferences) -> Unit,
+    hudRuntimeState: MiniMapHudRuntimeState = MiniMapHudRuntimeState(
+        hotkeyStatus = MiniMapRecoveryHotkeyStatus.REGISTERED,
+    ),
     onReset: () -> Unit,
 ) {
     Text("Mini-map Preferences", style = MaterialTheme.typography.titleMedium)
@@ -826,7 +834,63 @@ internal fun MiniMapPreferencesContent(
         color = EveColors.SecondaryText,
         style = MaterialTheme.typography.bodySmall,
     )
+    HorizontalDivider()
+    Text("Window style", style = MaterialTheme.typography.titleSmall)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        MiniMapWindowStyle.entries.forEach { style ->
+            TextButton(
+                onClick = { onChange(preferences.copy(windowStyle = style)) },
+                selected = preferences.windowStyle == style,
+            ) {
+                Text(if (style == MiniMapWindowStyle.STANDARD) "Standard" else "HUD")
+            }
+        }
+    }
+    Text(
+        "HUD uses a borderless translucent surface; Standard keeps the normal Planner window frame.",
+        color = EveColors.SecondaryText,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text("Interaction", style = MaterialTheme.typography.titleSmall)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextButton(
+            onClick = { onChange(preferences.copy(interactionMode = MiniMapInteractionMode.INTERACTIVE)) },
+            selected = preferences.interactionMode == MiniMapInteractionMode.INTERACTIVE,
+        ) { Text("Interactive") }
+        TextButton(
+            onClick = { onChange(preferences.copy(interactionMode = MiniMapInteractionMode.HUD_LOCKED)) },
+            selected = preferences.interactionMode == MiniMapInteractionMode.HUD_LOCKED,
+            enabled = hudRuntimeState.canLock,
+        ) { Text("HUD Locked") }
+    }
+    Text(
+        "Recovery hotkey: $MINI_MAP_RECOVERY_HOTKEY_LABEL · ${hotkeyStatusLabel(hudRuntimeState)}",
+        color = if (hudRuntimeState.canLock) EveColors.SecondaryText else EveColors.Important,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    hudRuntimeState.diagnostic?.let {
+        Text(it, color = EveColors.Important, style = MaterialTheme.typography.bodySmall)
+    }
+    Text("HUD opacity: ${(preferences.hudOpacity * 100).toInt()}%", style = MaterialTheme.typography.titleSmall)
+    Slider(
+        value = preferences.hudOpacity,
+        onValueChange = { onChange(preferences.copy(hudOpacity = it.coerceIn(0.4f, 1f))) },
+        valueRange = 0.4f..1f,
+        steps = 5,
+        enabled = preferences.windowStyle == MiniMapWindowStyle.HUD,
+    )
+    PreferenceCheckbox("Snap to screen edges", preferences.snapToScreenEdges) {
+        onChange(preferences.copy(snapToScreenEdges = it))
+    }
     TextButton(onClick = onReset) { Text("Reset Mini-map") }
+}
+
+private fun hotkeyStatusLabel(state: MiniMapHudRuntimeState): String = when (state.hotkeyStatus) {
+    MiniMapRecoveryHotkeyStatus.NOT_STARTED -> "starting"
+    MiniMapRecoveryHotkeyStatus.REGISTERED -> "ready"
+    MiniMapRecoveryHotkeyStatus.FAILED -> "unavailable"
+    MiniMapRecoveryHotkeyStatus.UNSUPPORTED -> "unsupported"
+    MiniMapRecoveryHotkeyStatus.CLOSED -> "stopped"
 }
 
 @Composable

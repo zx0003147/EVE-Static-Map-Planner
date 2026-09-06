@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,6 +37,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -52,7 +56,9 @@ import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
+import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
+import dev.evestaticmapplanner.platform.windows.minimaphud.WindowsMiniMapWindowStyles
 import dev.evestaticmapplanner.ui.CharacterPortraitSegment
 import dev.evestaticmapplanner.ui.CharacterPortraitStack
 import dev.evestaticmapplanner.ui.EveColors
@@ -68,22 +74,36 @@ import dev.evestaticmapplanner.ui.drawCharacterPortraitDisc
 import dev.evestaticmapplanner.ui.presentCharacterPortraits
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
+import com.sun.jna.Platform
 
 @OptIn(FlowPreview::class)
 @Composable
-fun MiniMapWindow(
+internal fun MiniMapWindow(
     state: MiniMapUiState,
     viewModel: MiniMapViewModel,
     automaticFollowDiagnostic: String,
     onBindCurrentWindow: (Long) -> String,
+    hudRuntimeState: MiniMapHudRuntimeState,
+    onNativeWindowFailure: (Throwable) -> Unit,
     onClose: () -> Unit,
 ) {
     val bounds = state.preferences.windowBounds
+    val initialBounds = remember {
+        MiniMapWindowPlacement.recover(bounds, AwtMiniMapWorkAreaProvider.workAreas())
+    }
     val windowState = rememberWindowState(
-        position = WindowPosition.Absolute(bounds.x.dp, bounds.y.dp),
-        size = DpSize(bounds.width.dp, bounds.height.dp),
+        position = WindowPosition.Absolute(initialBounds.x.dp, initialBounds.y.dp),
+        size = DpSize(initialBounds.width.dp, initialBounds.height.dp),
     )
-    LaunchedEffect(windowState) {
+    LaunchedEffect(initialBounds) {
+        if (initialBounds != viewModel.state.value.preferences.windowBounds) {
+            viewModel.updatePreferences(
+                viewModel.state.value.preferences.copy(windowBounds = initialBounds),
+                fit = false,
+            )
+        }
+    }
+    LaunchedEffect(windowState, state.preferences.snapToScreenEdges) {
         snapshotFlow {
             val position = windowState.position
             if (position is WindowPosition.Absolute) {
@@ -95,24 +115,85 @@ fun MiniMapWindow(
                 )
             } else null
         }.debounce(250).collect { updated ->
-            if (updated != null && updated != viewModel.state.value.preferences.windowBounds) {
+            val placed = updated?.let {
+                if (viewModel.state.value.preferences.snapToScreenEdges) {
+                    MiniMapWindowPlacement.snap(it, AwtMiniMapWorkAreaProvider.workAreas())
+                } else {
+                    it
+                }
+            }
+            if (placed != null && placed != updated) {
+                windowState.position = WindowPosition.Absolute(placed.x.dp, placed.y.dp)
+            }
+            if (placed != null && placed != viewModel.state.value.preferences.windowBounds) {
                 viewModel.updatePreferences(
-                    viewModel.state.value.preferences.copy(windowBounds = updated),
+                    viewModel.state.value.preferences.copy(windowBounds = placed),
                     fit = false,
                 )
             }
         }
     }
-    Window(
-        onCloseRequest = onClose,
-        title = "EVE Mini-map",
-        state = windowState,
-        alwaysOnTop = true,
-    ) {
-        EveTheme {
-            EveWindowChrome(window)
-            EveWindowSurface(Modifier.fillMaxSize()) {
-                MiniMapContent(state, viewModel, automaticFollowDiagnostic, onBindCurrentWindow)
+    val behavior = resolveMiniMapWindowBehavior(state.preferences, hudRuntimeState)
+    val interactionMode = behavior.interactionMode
+    val hud = behavior.hudPresentation
+    val locked = behavior.clickThrough
+    key(hud) {
+        Window(
+            onCloseRequest = onClose,
+            title = "EVE Mini-map",
+            state = windowState,
+            alwaysOnTop = true,
+            undecorated = hud,
+            transparent = hud,
+            focusable = behavior.focusable,
+        ) {
+            var nativeStyleFailed by remember(window) { mutableStateOf(false) }
+            SideEffect {
+                if (Platform.isWindows() && !nativeStyleFailed) {
+                    WindowsMiniMapWindowStyles.apply(window, clickThrough = behavior.clickThrough).onFailure { failure ->
+                        nativeStyleFailed = true
+                        onNativeWindowFailure(failure)
+                    }
+                }
+            }
+            DisposableEffect(window) {
+                onDispose { if (Platform.isWindows()) WindowsMiniMapWindowStyles.restore(window) }
+            }
+            EveTheme {
+                if (!hud) EveWindowChrome(window)
+                val density = LocalDensity.current
+                val dragModifier = if (hud && !locked) {
+                    Modifier.pointerInput(windowState, density) {
+                        detectDragGestures { change, delta ->
+                            change.consume()
+                            val position = windowState.position as? WindowPosition.Absolute ?: return@detectDragGestures
+                            windowState.position = WindowPosition.Absolute(
+                                position.x + with(density) { delta.x.toDp() },
+                                position.y + with(density) { delta.y.toDp() },
+                            )
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+                val content: @Composable () -> Unit = {
+                    Box(Modifier.fillMaxSize()) {
+                        MiniMapContent(
+                            state,
+                            viewModel,
+                            automaticFollowDiagnostic,
+                            hudPresentation = hud,
+                            hudOpacity = state.preferences.hudOpacity,
+                            interactionMode = interactionMode,
+                            headerModifier = dragModifier,
+                            onBindCurrentWindow = onBindCurrentWindow,
+                        )
+                        if (hud && !locked) {
+                            MiniMapResizeGrip(windowState, Modifier.align(Alignment.BottomEnd))
+                        }
+                    }
+                }
+                if (hud) content() else EveWindowSurface(Modifier.fillMaxSize()) { content() }
             }
         }
     }
@@ -123,6 +204,10 @@ internal fun MiniMapContent(
     state: MiniMapUiState,
     viewModel: MiniMapViewModel,
     automaticFollowDiagnostic: String,
+    hudPresentation: Boolean = false,
+    hudOpacity: Float = 1f,
+    interactionMode: MiniMapInteractionMode = MiniMapInteractionMode.INTERACTIVE,
+    headerModifier: Modifier = Modifier,
     onBindCurrentWindow: (Long) -> String,
 ) {
     var characterMenuExpanded by remember { mutableStateOf(false) }
@@ -133,13 +218,23 @@ internal fun MiniMapContent(
     var bindingFeedback by remember { mutableStateOf<String?>(null) }
     val available = state.characters.filter { it.trackingEnabled }
 
-    Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
+    val backgroundAlpha = if (hudPresentation) hudOpacity else 1f
+    val locked = interactionMode == MiniMapInteractionMode.HUD_LOCKED
+    Column(Modifier.fillMaxSize()) {
         Row(
-            modifier = Modifier.fillMaxWidth().background(EveColors.SecondarySurface)
+            modifier = Modifier.fillMaxWidth().background(EveColors.SecondarySurface.copy(alpha = backgroundAlpha))
                 .padding(horizontal = 7.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            if (hudPresentation && !locked) {
+                Text(
+                    "⋮",
+                    modifier = headerModifier.width(12.dp),
+                    color = EveColors.SecondaryText,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
             Box(Modifier.weight(1f)) {
                 EveTextButton(
                     onClick = { characterMenuExpanded = true },
@@ -165,7 +260,7 @@ internal fun MiniMapContent(
                     }
                 }
                 EveDropdownMenu(
-                    expanded = characterMenuExpanded,
+                    expanded = characterMenuExpanded && !locked,
                     onDismissRequest = { characterMenuExpanded = false },
                 ) {
                     if (available.isEmpty()) {
@@ -187,7 +282,7 @@ internal fun MiniMapContent(
                     }
                 }
             }
-            Box {
+            if (!locked) Box {
                 EveTextButton(
                     onClick = { followModeMenuExpanded = true },
                     selected = true,
@@ -215,8 +310,15 @@ internal fun MiniMapContent(
                         },
                     )
                 }
+            } else {
+                Text(
+                    state.preferences.followMode.name,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = EveColors.PrimaryAccent,
+                )
             }
-            Box {
+            if (!locked) Box {
                 EveTextButton(
                     onClick = { optionsMenuExpanded = true },
                     modifier = Modifier.semantics { contentDescription = "Mini-map options" },
@@ -269,11 +371,14 @@ internal fun MiniMapContent(
             }
         }
         EveDivider()
-        if (diagnosticsExpanded) {
+        if (diagnosticsExpanded && !locked) {
             MiniMapDiagnostics(state, automaticFollowDiagnostic, bindingFeedback)
             EveDivider()
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(
+            Modifier.weight(1f).fillMaxWidth()
+                .background(EveColors.PrimarySurface.copy(alpha = backgroundAlpha)),
+        ) {
             val diagnostic = state.diagnostic
             if (diagnostic != null) {
                 EvePanel(
@@ -291,6 +396,29 @@ internal fun MiniMapContent(
                 MiniMapCanvas(state, viewModel)
             }
         }
+    }
+}
+
+@Composable
+private fun MiniMapResizeGrip(
+    windowState: androidx.compose.ui.window.WindowState,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    Canvas(
+        modifier.size(18.dp).pointerInput(windowState, density) {
+            detectDragGestures { change, delta ->
+                change.consume()
+                windowState.size = DpSize(
+                    (windowState.size.width + with(density) { delta.x.toDp() }).coerceIn(280.dp, 2_000.dp),
+                    (windowState.size.height + with(density) { delta.y.toDp() }).coerceIn(240.dp, 2_000.dp),
+                )
+            }
+        },
+    ) {
+        val color = EveColors.SecondaryText.copy(alpha = 0.7f)
+        drawLine(color, Offset(size.width * 0.45f, size.height), Offset(size.width, size.height * 0.45f), 1f)
+        drawLine(color, Offset(size.width * 0.7f, size.height), Offset(size.width, size.height * 0.7f), 1f)
     }
 }
 

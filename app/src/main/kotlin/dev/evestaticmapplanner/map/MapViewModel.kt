@@ -329,6 +329,10 @@ class MapViewModel(
             current.copy(
                 stargateHops = defaults.stargateHops,
                 includeAnsiblexEdges = defaults.includeAnsiblexEdges,
+                windowStyle = defaults.windowStyle,
+                interactionMode = defaults.interactionMode,
+                hudOpacity = defaults.hudOpacity,
+                snapToScreenEdges = defaults.snapToScreenEdges,
             ),
         )
     }

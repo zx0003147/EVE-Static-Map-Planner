@@ -25,12 +25,36 @@ class PreferencesStoreTest {
             pinnedCharacterId = 90_000_001,
             windowBounds = MiniMapWindowBounds(-900f, 125f, 510f, 390f),
             includeAnsiblexEdges = true,
+            windowStyle = MiniMapWindowStyle.HUD,
+            interactionMode = MiniMapInteractionMode.HUD_LOCKED,
+            hudOpacity = 0.64f,
+            snapToScreenEdges = false,
         )
         val store = PropertiesPreferencesStore(path)
         store.save(AppPreferences.Defaults.copy(miniMap = expected))
 
         assertEquals(expected, store.load().miniMap)
         root.toFile().deleteRecursively()
+    }
+
+    @Test
+    fun `invalid Mini-map HUD mode falls back to Standard and Interactive`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(
+            path,
+            """
+            settings.version=1
+            miniMap.window.style=GLASS
+            miniMap.interaction.mode=HUD_LOCKED
+            miniMap.hud.opacity=not-a-number
+            """.trimIndent(),
+        )
+
+        val loaded = PropertiesPreferencesStore(path).load().miniMap
+
+        assertEquals(MiniMapWindowStyle.STANDARD, loaded.windowStyle)
+        assertEquals(MiniMapInteractionMode.INTERACTIVE, loaded.interactionMode)
+        assertEquals(0.88f, loaded.hudOpacity)
     }
     @Test
     fun `Shared Map settings persist only non-sensitive configuration`() = withTemporaryDirectory { root ->

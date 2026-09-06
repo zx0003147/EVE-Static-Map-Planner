@@ -77,6 +77,20 @@ class ForegroundCharacterFollowCoordinatorTest {
     }
 
     @Test
+    fun `focusing the Planner Mini-map retains the AUTO followed character`() {
+        val fixture = fixture()
+        fixture.coordinator.updateCharacters(listOf(character(1, "Alpha")))
+        fixture.start()
+        fixture.emit(snapshot(10, "Alpha"))
+
+        fixture.emit(snapshot(99, null, ForegroundWindowClassification.NON_EVE, ownProcess = true))
+
+        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertTrue(fixture.coordinator.state.value.diagnostic.contains("retaining"))
+        fixture.close()
+    }
+
+    @Test
     fun `unauthorized exact name is never followed and removal plus reconnect are explicit`() {
         val fixture = fixture()
         fixture.coordinator.updateCharacters(listOf(character(1, "Alpha")))
@@ -206,6 +220,7 @@ class ForegroundCharacterFollowCoordinatorTest {
         classification: ForegroundWindowClassification = ForegroundWindowClassification.EVE_GAME_CHARACTER,
         pid: Long = hwnd + 1_000,
         startSecond: Long = hwnd,
+        ownProcess: Boolean = false,
     ) = ForegroundWindowSnapshot(
         capturedAt = Instant.EPOCH,
         hwnd = hwnd,
@@ -216,7 +231,7 @@ class ForegroundCharacterFollowCoordinatorTest {
         processPath = "C:\\EVE\\exefile.exe",
         processName = "exefile.exe",
         processStartTime = Instant.EPOCH.plusSeconds(startSecond),
-        isOwnProcess = false,
+        isOwnProcess = ownProcess,
         classification = classification,
         characterName = characterName,
         reason = "fixture",

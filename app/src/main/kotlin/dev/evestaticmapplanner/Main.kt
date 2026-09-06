@@ -25,6 +25,7 @@ import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.sun.jna.Platform
+import java.awt.EventQueue
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
@@ -69,6 +70,11 @@ import dev.evestaticmapplanner.minimap.MiniMapWindow
 import dev.evestaticmapplanner.minimap.CharacterFollowState
 import dev.evestaticmapplanner.minimap.ForegroundCharacterFollowCoordinator
 import dev.evestaticmapplanner.minimap.ManualWindowBindingResult
+import dev.evestaticmapplanner.minimap.MiniMapHudController
+import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
+import dev.evestaticmapplanner.minimap.afterNativeHudFailure
+import dev.evestaticmapplanner.platform.windows.minimaphud.WindowsMiniMapGlobalHotkey
+import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
@@ -266,6 +272,27 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val miniMapViewModel = remember(configuration, mapViewModel) {
         MiniMapViewModel(persistPreferences = mapViewModel::updateMiniMapPreferences)
+    }
+    val miniMapHudController = remember(configuration) {
+        MiniMapHudController(if (Platform.isWindows()) WindowsMiniMapGlobalHotkey() else null)
+    }
+    DisposableEffect(miniMapHudController, miniMapViewModel) {
+        miniMapHudController.start {
+            EventQueue.invokeLater {
+                val current = miniMapViewModel.state.value.preferences
+                if (current.enabled) {
+                    val next = when (current.interactionMode) {
+                        MiniMapInteractionMode.INTERACTIVE -> MiniMapInteractionMode.HUD_LOCKED
+                        MiniMapInteractionMode.HUD_LOCKED -> MiniMapInteractionMode.INTERACTIVE
+                    }
+                    miniMapViewModel.updatePreferences(current.copy(interactionMode = next), fit = false)
+                }
+            }
+        }
+        onDispose {
+            runCatching(miniMapHudController::close)
+                .onFailure { AppDiagnostics.warning("Mini-map recovery hotkey did not close cleanly", it) }
+        }
     }
     val foregroundCharacterFollow = remember(configuration) {
         if (Platform.isWindows()) ForegroundCharacterFollowCoordinator() else null
@@ -470,6 +497,25 @@ private fun FrameWindowScope.ReadyApplication(
     val mapState by mapViewModel.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
+    val miniMapHudState by miniMapHudController.state.collectAsState()
+    LaunchedEffect(miniMapHudState.hotkeyStatus) {
+        if (miniMapHudState.hotkeyStatus == MiniMapRecoveryHotkeyStatus.FAILED) {
+            miniMapHudState.diagnostic?.let(AppDiagnostics::warning)
+        }
+    }
+    LaunchedEffect(miniMapHudState.hotkeyStatus, miniMapState.preferences.interactionMode) {
+        if (
+            miniMapHudState.hotkeyStatus in setOf(
+                MiniMapRecoveryHotkeyStatus.FAILED,
+                MiniMapRecoveryHotkeyStatus.UNSUPPORTED,
+            ) && miniMapState.preferences.interactionMode == MiniMapInteractionMode.HUD_LOCKED
+        ) {
+            miniMapViewModel.updatePreferences(
+                miniMapState.preferences.copy(interactionMode = MiniMapInteractionMode.INTERACTIVE),
+                fit = false,
+            )
+        }
+    }
     LaunchedEffect(mapState.scene, miniMapViewModel) {
         miniMapViewModel.updateScene(mapState.scene)
     }
@@ -672,6 +718,14 @@ private fun FrameWindowScope.ReadyApplication(
                     null -> "Foreground client detection is unavailable on this platform"
                 }
             },
+            hudRuntimeState = miniMapHudState,
+            onNativeWindowFailure = { failure ->
+                AppDiagnostics.warning("Mini-map native HUD style failed; restoring Standard + Interactive", failure)
+                miniMapViewModel.updatePreferences(
+                    miniMapViewModel.state.value.preferences.afterNativeHudFailure(),
+                    fit = false,
+                )
+            },
             onClose = { miniMapViewModel.setEnabled(false) },
         )
     }
@@ -684,7 +738,13 @@ private fun FrameWindowScope.ReadyApplication(
             preferences = mapState.appPreferences,
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
             onMarkerChange = mapViewModel::updateMarkerPreferences,
-            onMiniMapChange = mapViewModel::updateMiniMapPreferences,
+            onMiniMapChange = { requested ->
+                miniMapViewModel.updatePreferences(
+                    requested.copy(interactionMode = miniMapHudController.safeMode(requested.interactionMode)),
+                    fit = false,
+                )
+            },
+            miniMapHudState = miniMapHudState,
             aiControlStatus = aiControlStatus,
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,

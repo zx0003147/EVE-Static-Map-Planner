@@ -21,6 +21,8 @@ import dev.evestaticmapplanner.feature.api.TrackedCharacterOnlineState
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapPreferences
+import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
+import dev.evestaticmapplanner.preferences.MiniMapWindowStyle
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +31,23 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MiniMapViewModelTest {
+    @Test
+    fun `HUD presentation preferences publish and persist immediately`() {
+        val persisted = mutableListOf<MiniMapPreferences>()
+        val viewModel = MiniMapViewModel(persistPreferences = persisted::add)
+        val updated = viewModel.state.value.preferences.copy(
+            windowStyle = MiniMapWindowStyle.HUD,
+            interactionMode = MiniMapInteractionMode.HUD_LOCKED,
+            hudOpacity = 0.7f,
+            snapToScreenEdges = false,
+        )
+
+        viewModel.updatePreferences(updated)
+
+        assertEquals(updated, viewModel.state.value.preferences)
+        assertEquals(listOf(updated), persisted)
+    }
+
     @Test
     fun `pinned character builds shared-scene slice and aggregates same-system characters`() {
         val persisted = mutableListOf<MiniMapPreferences>()

@@ -259,22 +259,43 @@ class PropertiesPreferencesStore(
                     ?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 80 }
                     ?: DEFAULT_SHARED_MAP_DEVICE_NAME,
             ),
-            miniMap = MiniMapPreferences(
-                enabled = properties.validBoolean(KEY_MINI_MAP_ENABLED, false),
-                stargateHops = properties.getProperty(KEY_MINI_MAP_HOPS)?.toIntOrNull()?.takeIf { it in 1..5 } ?: 2,
-                followMode = properties.getProperty(KEY_MINI_MAP_FOLLOW_MODE)?.let {
-                    runCatching { MiniMapFollowMode.valueOf(it) }.getOrNull()
-                } ?: MiniMapFollowMode.AUTO,
-                pinnedCharacterId = properties.getProperty(KEY_MINI_MAP_PINNED_CHARACTER_ID)
-                    ?.toLongOrNull()?.takeIf { it > 0 },
-                windowBounds = MiniMapWindowBounds(
-                    x = properties.validFloat(KEY_MINI_MAP_WINDOW_X, 80f) { it in -20_000f..20_000f },
-                    y = properties.validFloat(KEY_MINI_MAP_WINDOW_Y, 80f) { it in -20_000f..20_000f },
-                    width = properties.validFloat(KEY_MINI_MAP_WINDOW_WIDTH, 420f) { it in 280f..2_000f },
-                    height = properties.validFloat(KEY_MINI_MAP_WINDOW_HEIGHT, 360f) { it in 240f..2_000f },
-                ),
-                includeAnsiblexEdges = properties.validBoolean(KEY_MINI_MAP_INCLUDE_ANSIBLEX, false),
-            ),
+            miniMap = run {
+                val rawWindowStyle = properties.getProperty(KEY_MINI_MAP_WINDOW_STYLE)
+                val parsedWindowStyle = rawWindowStyle?.let {
+                    runCatching { MiniMapWindowStyle.valueOf(it) }.getOrNull()
+                }
+                val rawInteractionMode = properties.getProperty(KEY_MINI_MAP_INTERACTION_MODE)
+                val parsedInteractionMode = rawInteractionMode?.let {
+                    runCatching { MiniMapInteractionMode.valueOf(it) }.getOrNull()
+                }
+                val safeWindowSettings =
+                    (rawWindowStyle == null || parsedWindowStyle != null) &&
+                        (rawInteractionMode == null || parsedInteractionMode != null)
+                MiniMapPreferences(
+                    enabled = properties.validBoolean(KEY_MINI_MAP_ENABLED, false),
+                    stargateHops = properties.getProperty(KEY_MINI_MAP_HOPS)?.toIntOrNull()?.takeIf { it in 1..5 } ?: 2,
+                    followMode = properties.getProperty(KEY_MINI_MAP_FOLLOW_MODE)?.let {
+                        runCatching { MiniMapFollowMode.valueOf(it) }.getOrNull()
+                    } ?: MiniMapFollowMode.AUTO,
+                    pinnedCharacterId = properties.getProperty(KEY_MINI_MAP_PINNED_CHARACTER_ID)
+                        ?.toLongOrNull()?.takeIf { it > 0 },
+                    windowBounds = MiniMapWindowBounds(
+                        x = properties.validFloat(KEY_MINI_MAP_WINDOW_X, 80f) { it in -20_000f..20_000f },
+                        y = properties.validFloat(KEY_MINI_MAP_WINDOW_Y, 80f) { it in -20_000f..20_000f },
+                        width = properties.validFloat(KEY_MINI_MAP_WINDOW_WIDTH, 420f) { it in 280f..2_000f },
+                        height = properties.validFloat(KEY_MINI_MAP_WINDOW_HEIGHT, 360f) { it in 240f..2_000f },
+                    ),
+                    includeAnsiblexEdges = properties.validBoolean(KEY_MINI_MAP_INCLUDE_ANSIBLEX, false),
+                    windowStyle = if (safeWindowSettings) parsedWindowStyle ?: MiniMapWindowStyle.STANDARD else MiniMapWindowStyle.STANDARD,
+                    interactionMode = if (safeWindowSettings) {
+                        parsedInteractionMode ?: MiniMapInteractionMode.INTERACTIVE
+                    } else {
+                        MiniMapInteractionMode.INTERACTIVE
+                    },
+                    hudOpacity = properties.validFloat(KEY_MINI_MAP_HUD_OPACITY, 0.88f) { it in 0.4f..1f },
+                    snapToScreenEdges = properties.validBoolean(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, true),
+                )
+            },
         )
     }
 
@@ -336,6 +357,10 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_MINI_MAP_WINDOW_WIDTH, miniMap.windowBounds.width.toString())
                 setProperty(KEY_MINI_MAP_WINDOW_HEIGHT, miniMap.windowBounds.height.toString())
                 setProperty(KEY_MINI_MAP_INCLUDE_ANSIBLEX, miniMap.includeAnsiblexEdges.toString())
+                setProperty(KEY_MINI_MAP_WINDOW_STYLE, miniMap.windowStyle.name)
+                setProperty(KEY_MINI_MAP_INTERACTION_MODE, miniMap.interactionMode.name)
+                setProperty(KEY_MINI_MAP_HUD_OPACITY, miniMap.hudOpacity.toString())
+                setProperty(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, miniMap.snapToScreenEdges.toString())
             }
             Files.newOutputStream(temporary).use {
                 properties.store(it, "EVE Static Map Planner preferences")
@@ -463,3 +488,7 @@ private const val KEY_MINI_MAP_WINDOW_Y = "miniMap.window.y"
 private const val KEY_MINI_MAP_WINDOW_WIDTH = "miniMap.window.width"
 private const val KEY_MINI_MAP_WINDOW_HEIGHT = "miniMap.window.height"
 private const val KEY_MINI_MAP_INCLUDE_ANSIBLEX = "miniMap.includeAnsiblexEdges"
+private const val KEY_MINI_MAP_WINDOW_STYLE = "miniMap.window.style"
+private const val KEY_MINI_MAP_INTERACTION_MODE = "miniMap.interaction.mode"
+private const val KEY_MINI_MAP_HUD_OPACITY = "miniMap.hud.opacity"
+private const val KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES = "miniMap.snapToScreenEdges"
