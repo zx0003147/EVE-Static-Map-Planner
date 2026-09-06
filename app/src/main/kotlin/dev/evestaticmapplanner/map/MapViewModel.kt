@@ -23,6 +23,7 @@ import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.preferences.DefaultPreferencesStore
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
+import dev.evestaticmapplanner.preferences.MiniMapPreferences
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SharedMapPreferences
@@ -310,6 +311,13 @@ class MapViewModel(
     fun updateMarkerPreferences(preferences: MarkerPreferences) {
         mutableState.update { current ->
             current.copy(appPreferences = current.appPreferences.copy(marker = preferences))
+        }
+        schedulePreferencesSave()
+    }
+
+    fun updateMiniMapPreferences(preferences: MiniMapPreferences) {
+        mutableState.update { current ->
+            current.copy(appPreferences = current.appPreferences.copy(miniMap = preferences))
         }
         schedulePreferencesSave()
     }

@@ -62,6 +62,8 @@ import dev.evestaticmapplanner.marker.MarkerManagerWindow
 import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerApplicationService
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerPermissionPolicy
+import dev.evestaticmapplanner.minimap.MiniMapViewModel
+import dev.evestaticmapplanner.minimap.MiniMapWindow
 import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.PreferencesWindow
@@ -256,6 +258,9 @@ private fun FrameWindowScope.ReadyApplication(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }
+    val miniMapViewModel = remember(configuration, mapViewModel) {
+        MiniMapViewModel(persistPreferences = mapViewModel::updateMiniMapPreferences)
+    }
     val sharedMapScope = remember(configuration) {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     }
@@ -435,6 +440,17 @@ private fun FrameWindowScope.ReadyApplication(
     }
 
     val mapState by mapViewModel.state.collectAsState()
+    val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
+    val miniMapState by miniMapViewModel.state.collectAsState()
+    LaunchedEffect(mapState.scene, miniMapViewModel) {
+        miniMapViewModel.updateScene(mapState.scene)
+    }
+    LaunchedEffect(trackedCharacters, miniMapViewModel) {
+        miniMapViewModel.updateCharacters(trackedCharacters)
+    }
+    LaunchedEffect(mapState.appPreferences.miniMap, miniMapViewModel) {
+        miniMapViewModel.restorePreferences(mapState.appPreferences.miniMap)
+    }
     val sharedMapState by sharedMapViewModel.state.collectAsState()
     val sharedMapOperationError by sharedMapViewModel.operationError.collectAsState()
     val sharedMarkerMutation by sharedMapViewModel.markerMutation.collectAsState()
@@ -545,6 +561,14 @@ private fun FrameWindowScope.ReadyApplication(
                     ),
                 ),
                 EveMenuSpec(
+                    "Mini-map",
+                    listOf(
+                        EveMenuItemSpec(
+                            if (miniMapState.preferences.enabled) "Hide Mini-map" else "Show Mini-map",
+                        ) { miniMapViewModel.setEnabled(!miniMapState.preferences.enabled) },
+                    ),
+                ),
+                EveMenuSpec(
                     "Preferences",
                     listOf(EveMenuItemSpec("Preferences…") { showPreferences = true }),
                 ),
@@ -587,6 +611,13 @@ private fun FrameWindowScope.ReadyApplication(
             sharedMapViewModel = sharedMapViewModel,
             onFirstMapDisplayed = featurePackRuntime::onFirstMapDisplayed,
             suppressMarkerOperationErrorDialog = showMarkerManager,
+        )
+    }
+    if (miniMapState.preferences.enabled) {
+        MiniMapWindow(
+            state = miniMapState,
+            viewModel = miniMapViewModel,
+            onClose = { miniMapViewModel.setEnabled(false) },
         )
     }
     if (showStaticData) {

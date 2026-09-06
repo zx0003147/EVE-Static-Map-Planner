@@ -9,8 +9,28 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import dev.evestaticmapplanner.preferences.MiniMapFollowMode
+import dev.evestaticmapplanner.preferences.MiniMapPreferences
+import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
 
 class PreferencesStoreTest {
+    @Test
+    fun `mini-map settings round trip including negative monitor coordinates`() {
+        val root = createTempDirectory("mini-map-preferences")
+        val path = root.resolve("settings.properties")
+        val expected = MiniMapPreferences(
+            enabled = true,
+            stargateHops = 5,
+            followMode = MiniMapFollowMode.PINNED,
+            pinnedCharacterId = 90_000_001,
+            windowBounds = MiniMapWindowBounds(-900f, 125f, 510f, 390f),
+        )
+        val store = PropertiesPreferencesStore(path)
+        store.save(AppPreferences.Defaults.copy(miniMap = expected))
+
+        assertEquals(expected, store.load().miniMap)
+        root.toFile().deleteRecursively()
+    }
     @Test
     fun `Shared Map settings persist only non-sensitive configuration`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")

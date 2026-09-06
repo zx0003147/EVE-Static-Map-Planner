@@ -13,6 +13,7 @@ data class AppPreferences(
     val aiControl: AiControlPreferences = AiControlPreferences.Defaults,
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
+    val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
 ) {
     companion object {
         val Defaults = AppPreferences()
@@ -258,6 +259,22 @@ class PropertiesPreferencesStore(
                     ?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 80 }
                     ?: DEFAULT_SHARED_MAP_DEVICE_NAME,
             ),
+            miniMap = MiniMapPreferences(
+                enabled = properties.validBoolean(KEY_MINI_MAP_ENABLED, false),
+                stargateHops = properties.getProperty(KEY_MINI_MAP_HOPS)?.toIntOrNull()?.takeIf { it in 1..5 } ?: 2,
+                followMode = properties.getProperty(KEY_MINI_MAP_FOLLOW_MODE)?.let {
+                    runCatching { MiniMapFollowMode.valueOf(it) }.getOrNull()
+                } ?: MiniMapFollowMode.AUTO,
+                pinnedCharacterId = properties.getProperty(KEY_MINI_MAP_PINNED_CHARACTER_ID)
+                    ?.toLongOrNull()?.takeIf { it > 0 },
+                windowBounds = MiniMapWindowBounds(
+                    x = properties.validFloat(KEY_MINI_MAP_WINDOW_X, 80f) { it in -20_000f..20_000f },
+                    y = properties.validFloat(KEY_MINI_MAP_WINDOW_Y, 80f) { it in -20_000f..20_000f },
+                    width = properties.validFloat(KEY_MINI_MAP_WINDOW_WIDTH, 420f) { it in 280f..2_000f },
+                    height = properties.validFloat(KEY_MINI_MAP_WINDOW_HEIGHT, 360f) { it in 240f..2_000f },
+                ),
+                includeAnsiblexEdges = properties.validBoolean(KEY_MINI_MAP_INCLUDE_ANSIBLEX, false),
+            ),
         )
     }
 
@@ -274,6 +291,7 @@ class PropertiesPreferencesStore(
             val aiControl = preferences.aiControl
             val overlayVisibility = preferences.overlayVisibility
             val sharedMap = preferences.sharedMap
+            val miniMap = preferences.miniMap
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_CONSTELLATION_THRESHOLD, mapDisplay.constellationZoomThreshold.toString())
@@ -309,6 +327,15 @@ class PropertiesPreferencesStore(
                 sharedMap.serverUrl?.let { setProperty(KEY_SHARED_MAP_SERVER_URL, it) }
                 sharedMap.selectedWorkspaceId?.let { setProperty(KEY_SHARED_MAP_SELECTED_WORKSPACE_ID, it) }
                 setProperty(KEY_SHARED_MAP_DEVICE_NAME, sharedMap.deviceName)
+                setProperty(KEY_MINI_MAP_ENABLED, miniMap.enabled.toString())
+                setProperty(KEY_MINI_MAP_HOPS, miniMap.stargateHops.toString())
+                setProperty(KEY_MINI_MAP_FOLLOW_MODE, miniMap.followMode.name)
+                miniMap.pinnedCharacterId?.let { setProperty(KEY_MINI_MAP_PINNED_CHARACTER_ID, it.toString()) }
+                setProperty(KEY_MINI_MAP_WINDOW_X, miniMap.windowBounds.x.toString())
+                setProperty(KEY_MINI_MAP_WINDOW_Y, miniMap.windowBounds.y.toString())
+                setProperty(KEY_MINI_MAP_WINDOW_WIDTH, miniMap.windowBounds.width.toString())
+                setProperty(KEY_MINI_MAP_WINDOW_HEIGHT, miniMap.windowBounds.height.toString())
+                setProperty(KEY_MINI_MAP_INCLUDE_ANSIBLEX, miniMap.includeAnsiblexEdges.toString())
             }
             Files.newOutputStream(temporary).use {
                 properties.store(it, "EVE Static Map Planner preferences")
@@ -427,3 +454,12 @@ private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"
 private const val KEY_SHARED_MAP_DEVICE_NAME = "sharedMap.deviceName"
+private const val KEY_MINI_MAP_ENABLED = "miniMap.enabled"
+private const val KEY_MINI_MAP_HOPS = "miniMap.stargateHops"
+private const val KEY_MINI_MAP_FOLLOW_MODE = "miniMap.followMode"
+private const val KEY_MINI_MAP_PINNED_CHARACTER_ID = "miniMap.pinnedCharacterId"
+private const val KEY_MINI_MAP_WINDOW_X = "miniMap.window.x"
+private const val KEY_MINI_MAP_WINDOW_Y = "miniMap.window.y"
+private const val KEY_MINI_MAP_WINDOW_WIDTH = "miniMap.window.width"
+private const val KEY_MINI_MAP_WINDOW_HEIGHT = "miniMap.window.height"
+private const val KEY_MINI_MAP_INCLUDE_ANSIBLEX = "miniMap.includeAnsiblexEdges"
