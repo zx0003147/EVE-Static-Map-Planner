@@ -3,6 +3,7 @@ import dev.evestaticmapplanner.packaging.PortableDistributionAudit
 import dev.evestaticmapplanner.packaging.WindowsAppImageIntegration
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.bundling.Zip
 import org.gradle.api.tasks.testing.Test
 import java.io.File
@@ -164,6 +165,15 @@ tasks.test {
             systemProperty("esi.pack.jar", file(configuredPath).absolutePath)
         }
     }
+}
+
+tasks.register<JavaExec>("runWindowIdentitySpike") {
+    group = "verification"
+    description = "Runs the removable Windows foreground EVE client identity diagnostic."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.evestaticmapplanner.platform.windows.windowidentity.WindowIdentitySpikeMain")
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    standardInput = System.`in`
 }
 
 kotlin {
