@@ -24,6 +24,7 @@ class PreferencesStoreTest {
             followMode = MiniMapFollowMode.PINNED,
             pinnedCharacterId = 90_000_001,
             windowBounds = MiniMapWindowBounds(-900f, 125f, 510f, 390f),
+            includeAnsiblexEdges = true,
         )
         val store = PropertiesPreferencesStore(path)
         store.save(AppPreferences.Defaults.copy(miniMap = expected))

@@ -45,6 +45,7 @@ class MiniMapViewModelTest {
 
         val state = viewModel.state.value
         assertEquals(MiniMapFollowMode.PINNED, state.preferences.followMode)
+        assertEquals("S1", state.followedSystemName)
         assertEquals(setOf(1, 2, 3), state.slice?.includedSystemIds)
         assertEquals(2, state.characterGroups.size)
         assertEquals(
@@ -125,6 +126,29 @@ class MiniMapViewModelTest {
         assertTrue(viewModel.state.value.preferences.enabled)
         viewModel.setEnabled(false)
         assertTrue(!viewModel.state.value.preferences.enabled)
+    }
+
+    @Test
+    fun `restored Preferences update an open Mini-map range and Ansiblex presentation immediately`() {
+        val viewModel = MiniMapViewModel()
+        viewModel.updateScene(scene())
+        viewModel.updateCanvasSize(MapSize(400.0, 300.0))
+        viewModel.updateCharacters(listOf(character(1, "Alpha", 1, TrackedCharacterLocationStatus.CURRENT)))
+        viewModel.updateAnsiblexConnections(listOf(ansiblex("inside", 1, 2)))
+        viewModel.setAutomaticCharacter(1)
+
+        viewModel.restorePreferences(
+            MiniMapPreferences(
+                enabled = true,
+                stargateHops = 1,
+                followMode = MiniMapFollowMode.AUTO,
+                includeAnsiblexEdges = true,
+            ),
+        )
+
+        assertEquals(1, viewModel.state.value.slice?.maxHops)
+        assertEquals(setOf(1, 2), viewModel.state.value.slice?.includedSystemIds)
+        assertEquals(listOf("ansiblex:inside"), viewModel.state.value.ansiblexVisualEdges.map { it.connectionId.value })
     }
 
     @Test

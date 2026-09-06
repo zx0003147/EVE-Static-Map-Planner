@@ -322,6 +322,17 @@ class MapViewModel(
         schedulePreferencesSave()
     }
 
+    fun resetMiniMapPreferences() {
+        val defaults = MiniMapPreferences.Defaults
+        val current = mutableState.value.appPreferences.miniMap
+        updateMiniMapPreferences(
+            current.copy(
+                stargateHops = defaults.stargateHops,
+                includeAnsiblexEdges = defaults.includeAnsiblexEdges,
+            ),
+        )
+    }
+
     fun resetMarkerPreferences() {
         mutableState.update { current ->
             current.copy(appPreferences = current.appPreferences.copy(marker = MarkerPreferences.Defaults))

@@ -684,6 +684,7 @@ private fun FrameWindowScope.ReadyApplication(
             preferences = mapState.appPreferences,
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
             onMarkerChange = mapViewModel::updateMarkerPreferences,
+            onMiniMapChange = mapViewModel::updateMiniMapPreferences,
             aiControlStatus = aiControlStatus,
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,
@@ -733,6 +734,7 @@ private fun FrameWindowScope.ReadyApplication(
             },
             onResetMapDisplay = mapViewModel::resetMapDisplayPreferences,
             onResetMarker = mapViewModel::resetMarkerPreferences,
+            onResetMiniMap = mapViewModel::resetMiniMapPreferences,
             onResetAiControl = {
                 uiScope.launch {
                     aiPreferenceError = null

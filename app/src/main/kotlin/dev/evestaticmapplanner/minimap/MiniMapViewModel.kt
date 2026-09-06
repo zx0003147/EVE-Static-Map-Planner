@@ -30,6 +30,7 @@ data class MiniMapUiState(
     val preferences: MiniMapPreferences = MiniMapPreferences.Defaults,
     val characters: List<TrackedCharacterSnapshot> = emptyList(),
     val followedCharacterId: Long? = null,
+    val followedSystemName: String? = null,
     val slice: MiniMapSlice? = null,
     val ansiblexVisualEdges: List<MiniMapSliceEdge> = emptyList(),
     val characterGroups: List<MiniMapCharacterGroup> = emptyList(),
@@ -141,6 +142,7 @@ class MiniMapViewModel(
             val followed = current.characters.firstOrNull { it.characterId == followedId }
             val followedSystemId = followed?.solarSystemId
             val currentScene = scene
+            val followedSystemName = followedSystemId?.let { currentScene?.nodesById?.get(it)?.system?.name }
             val slice = when {
                 followed == null -> null
                 !followed.trackingEnabled -> null
@@ -193,6 +195,7 @@ class MiniMapViewModel(
             }
             current.copy(
                 followedCharacterId = followedId,
+                followedSystemName = followedSystemName,
                 slice = slice,
                 ansiblexVisualEdges = ansiblexVisualEdges,
                 characterGroups = groups,

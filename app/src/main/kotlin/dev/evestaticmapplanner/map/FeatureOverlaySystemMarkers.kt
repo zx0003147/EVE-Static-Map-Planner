@@ -3,31 +3,25 @@ package dev.evestaticmapplanner.map
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.sp
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.feature.api.OverlayEntryVisibility
 import dev.evestaticmapplanner.feature.api.OverlayImage
 import dev.evestaticmapplanner.feature.api.OverlayState
+import dev.evestaticmapplanner.ui.CharacterPortraitSegment
+import dev.evestaticmapplanner.ui.CharacterPortraitStack
+import dev.evestaticmapplanner.ui.centeredPortraitCrop
+import dev.evestaticmapplanner.ui.drawCharacterPortraitDisc
+import dev.evestaticmapplanner.ui.portraitSeparatorSegments
 import org.jetbrains.skia.Image
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.min
-import kotlin.math.sin
 
 internal data class PresentedOverlaySystemMarker(
     val systemId: Int,
@@ -120,7 +114,6 @@ internal fun DrawScope.drawOverlaySystemMarkers(
 private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMarker, textMeasurer: TextMeasurer) {
     val radius = OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX
     val geometry = overlaySystemMarkerGeometry(marker)
-    val portraitRect = geometry.portraitRect
     val shadowCenter = marker.center + Offset(0f, OverlaySystemMarkerVisuals.SHADOW_OFFSET_PX)
     val pinPath = Path().apply {
         moveTo(geometry.pinBaseLeft.x, geometry.pinBaseLeft.y)
@@ -132,66 +125,15 @@ private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMark
     drawCircle(Color(0x66000000), radius + OverlaySystemMarkerVisuals.SHADOW_RADIUS_EXTRA_PX, shadowCenter)
     drawPath(pinPath, Color(0xFF24364B))
     drawCircle(Color(0xFF24364B), radius + OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX, marker.center)
-
-    val count = marker.images.size
-    marker.images.forEachIndexed { index, image ->
-        val clip = if (count == 1) {
-            Path().apply { addOval(portraitRect) }
-        } else {
-            val sweep = 360f / count
-            Path().apply {
-                moveTo(marker.center.x, marker.center.y)
-                arcTo(portraitRect, -90f + sweep * index, sweep, false)
-                close()
-            }
-        }
-        val crop = centeredSquareCrop(image)
-        clipPath(clip) {
-            translate(portraitRect.left, portraitRect.top) {
-                drawImage(
-                    image = image,
-                    srcOffset = crop.first,
-                    srcSize = crop.second,
-                    dstOffset = IntOffset.Zero,
-                    dstSize = IntSize((radius * 2).toInt(), (radius * 2).toInt()),
-                    filterQuality = FilterQuality.High,
-                )
-            }
-        }
-    }
-    if (count > 1) {
-        val portraitClip = Path().apply { addOval(portraitRect) }
-        clipPath(portraitClip) {
-            overlaySystemMarkerSeparatorSegments(marker).forEach { (start, end) ->
-                drawLine(
-                    color = OverlaySystemMarkerVisuals.SEPARATOR_COLOR,
-                    start = start,
-                    end = end,
-                    strokeWidth = OverlaySystemMarkerVisuals.SEPARATOR_WIDTH_PX,
-                )
-            }
-        }
-    }
-    drawCircle(
-        Color(0xFFE6F4FF),
-        radius + OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX / 2f,
-        marker.center,
-        style = Stroke(OverlaySystemMarkerVisuals.OUTER_BORDER_WIDTH_PX),
+    drawCharacterPortraitDisc(
+        stack = CharacterPortraitStack(
+            segments = marker.images.map { CharacterPortraitSegment(it, "?") },
+            overflowCount = marker.overflowCount,
+        ),
+        center = marker.center,
+        radius = radius,
+        textMeasurer = textMeasurer,
     )
-    drawCircle(
-        Color(0x66FFFFFF),
-        radius - 3f,
-        marker.center + Offset(0f, -2f),
-        style = Stroke(OverlaySystemMarkerVisuals.HIGHLIGHT_WIDTH_PX),
-    )
-
-    if (marker.overflowCount > 0) {
-        val badgeCenter = marker.center + Offset(radius - 1f, -radius + 2f)
-        drawCircle(Color(0xFF0B1724), 6f, badgeCenter)
-        drawCircle(Color.White, 6f, badgeCenter, style = Stroke(1f))
-        val text = textMeasurer.measure("+${marker.overflowCount}", TextStyle(Color.White, 7.sp))
-        drawText(text, topLeft = badgeCenter - Offset(text.size.width / 2f, text.size.height / 2f))
-    }
 }
 
 internal fun overlaySystemMarkerGeometry(marker: PresentedOverlaySystemMarker): OverlaySystemMarkerGeometry {
@@ -219,21 +161,10 @@ internal fun overlaySystemMarkerPortraitRect(marker: PresentedOverlaySystemMarke
     overlaySystemMarkerGeometry(marker).portraitRect
 
 internal fun overlaySystemMarkerSeparatorSegments(marker: PresentedOverlaySystemMarker): List<Pair<Offset, Offset>> {
-    if (marker.images.size <= 1) return emptyList()
-    val sweep = 360f / marker.images.size
-    return List(marker.images.size) { index ->
-        val angle = (-90f + sweep * index) * PI.toFloat() / 180f
-        marker.center to Offset(
-            marker.center.x + cos(angle) * OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX,
-            marker.center.y + sin(angle) * OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX,
-        )
-    }
+    return portraitSeparatorSegments(marker.center, OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX, marker.images.size)
 }
 
-internal fun centeredSquareCrop(image: ImageBitmap): Pair<IntOffset, IntSize> {
-    val side = min(image.width, image.height)
-    return IntOffset((image.width - side) / 2, (image.height - side) / 2) to IntSize(side, side)
-}
+internal fun centeredSquareCrop(image: ImageBitmap): Pair<IntOffset, IntSize> = centeredPortraitCrop(image)
 
 private fun dev.evestaticmapplanner.core.map.MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())
 

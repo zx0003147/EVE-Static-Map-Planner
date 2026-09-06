@@ -68,6 +68,7 @@ internal fun PreferencesWindow(
     preferences: AppPreferences,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     onMarkerChange: (MarkerPreferences) -> Unit,
+    onMiniMapChange: (MiniMapPreferences) -> Unit,
     aiControlStatus: AiControlStatus,
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
@@ -92,6 +93,7 @@ internal fun PreferencesWindow(
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
     onResetMapDisplay: () -> Unit,
     onResetMarker: () -> Unit,
+    onResetMiniMap: () -> Unit,
     onResetAiControl: () -> Unit,
     onResetOverlayVisibility: () -> Unit,
     onResetAll: () -> Unit,
@@ -138,6 +140,11 @@ internal fun PreferencesWindow(
                                 preferences.marker,
                                 onMarkerChange,
                                 onResetMarker,
+                            )
+                            PreferencesCategory.MINI_MAP -> MiniMapPreferencesContent(
+                                preferences.miniMap,
+                                onMiniMapChange,
+                                onResetMiniMap,
                             )
                             PreferencesCategory.AI_CONTROL -> AiControlPreferencesContent(
                                 preferences.aiControl,
@@ -192,6 +199,7 @@ internal fun PreferencesWindow(
 private enum class PreferencesCategory(val label: String) {
     MAP_DISPLAY("Map Display"),
     MARKER("Marker"),
+    MINI_MAP("Mini-map"),
     AI_CONTROL("AI Control"),
     FEATURE_PACKS("Feature Packs"),
     OVERLAYS("Overlays"),
@@ -780,6 +788,45 @@ private fun MarkerPreferencesContent(
         enabled = appearance.glowEnabled,
     ) { onChange(preferences.copy(savedMarkerAppearance = appearance.copy(glowStrength = it.toFloat()))) }
     TextButton(onClick = onReset) { Text("Reset Marker") }
+}
+
+@Composable
+internal fun MiniMapPreferencesContent(
+    preferences: MiniMapPreferences,
+    onChange: (MiniMapPreferences) -> Unit,
+    onReset: () -> Unit,
+) {
+    Text("Mini-map Preferences", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Controls the compact character-following map. Changes apply immediately to an open Mini-map.",
+        color = EveColors.SecondaryText,
+    )
+    Text("Visible range", style = MaterialTheme.typography.titleSmall)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        (1..5).forEach { hops ->
+            TextButton(
+                onClick = { onChange(preferences.copy(stargateHops = hops)) },
+                selected = preferences.stargateHops == hops,
+            ) {
+                Text(hops.toString())
+            }
+        }
+    }
+    Text(
+        "${preferences.stargateHops} Stargate ${if (preferences.stargateHops == 1) "hop" else "hops"}",
+        color = EveColors.SecondaryText,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    HorizontalDivider()
+    PreferenceCheckbox("Show Ansiblex connections", preferences.includeAnsiblexEdges) {
+        onChange(preferences.copy(includeAnsiblexEdges = it))
+    }
+    Text(
+        "Visual only. Ansiblex connections do not expand the Stargate-hop neighborhood.",
+        color = EveColors.SecondaryText,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    TextButton(onClick = onReset) { Text("Reset Mini-map") }
 }
 
 @Composable

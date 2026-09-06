@@ -6,17 +6,16 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,17 +23,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,16 +50,24 @@ import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
-import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
+import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
+import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
+import dev.evestaticmapplanner.ui.CharacterPortraitSegment
+import dev.evestaticmapplanner.ui.CharacterPortraitStack
 import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveDivider
+import dev.evestaticmapplanner.ui.EveDropdownMenu
+import dev.evestaticmapplanner.ui.EveDropdownMenuItem
+import dev.evestaticmapplanner.ui.EvePanel
+import dev.evestaticmapplanner.ui.EveTextButton
 import dev.evestaticmapplanner.ui.EveTheme
 import dev.evestaticmapplanner.ui.EveWindowChrome
+import dev.evestaticmapplanner.ui.EveWindowSurface
+import dev.evestaticmapplanner.ui.drawCharacterPortraitDisc
+import dev.evestaticmapplanner.ui.presentCharacterPortraits
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 @OptIn(FlowPreview::class)
 @Composable
@@ -98,135 +111,290 @@ fun MiniMapWindow(
     ) {
         EveTheme {
             EveWindowChrome(window)
-            Surface(Modifier.fillMaxSize(), color = EveColors.PrimarySurface) {
-                Column(Modifier.fillMaxSize()) {
-                    MiniMapControls(state, viewModel, automaticFollowDiagnostic, onBindCurrentWindow)
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        val diagnostic = state.diagnostic
-                        if (diagnostic != null) {
-                            Text(
-                                diagnostic,
-                                modifier = Modifier.padding(16.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            MiniMapCanvas(state, viewModel)
-                        }
-                    }
-                }
+            EveWindowSurface(Modifier.fillMaxSize()) {
+                MiniMapContent(state, viewModel, automaticFollowDiagnostic, onBindCurrentWindow)
             }
         }
     }
 }
 
 @Composable
-private fun MiniMapControls(
+internal fun MiniMapContent(
     state: MiniMapUiState,
     viewModel: MiniMapViewModel,
     automaticFollowDiagnostic: String,
     onBindCurrentWindow: (Long) -> String,
 ) {
-    var characterMenu by remember { mutableStateOf(false) }
-    var bindMenu by remember { mutableStateOf(false) }
+    var characterMenuExpanded by remember { mutableStateOf(false) }
+    var followModeMenuExpanded by remember { mutableStateOf(false) }
+    var optionsMenuExpanded by remember { mutableStateOf(false) }
+    var bindMenuExpanded by remember { mutableStateOf(false) }
+    var diagnosticsExpanded by remember { mutableStateOf(false) }
     var bindingFeedback by remember { mutableStateOf<String?>(null) }
     val available = state.characters.filter { it.trackingEnabled }
-    val currentCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.CURRENT }
-    val staleCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.STALE }
-    val degradedCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.DEGRADED }
-    val unknownCount = available.count { it.locationStatus == TrackedCharacterLocationStatus.UNKNOWN }
-    Column(Modifier.fillMaxWidth().background(EveColors.SecondarySurface).padding(horizontal = 8.dp, vertical = 5.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box {
-                Button(onClick = { characterMenu = true }) {
-                    Text(state.followedCharacter?.characterName ?: "Select character")
-                }
-                DropdownMenu(expanded = characterMenu, onDismissRequest = { characterMenu = false }) {
-                    available.forEach { character ->
-                        DropdownMenuItem(
-                            text = { Text(character.characterName) },
-                            onClick = {
-                                viewModel.setPinnedCharacter(character.characterId)
-                                characterMenu = false
-                            },
+
+    Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().background(EveColors.SecondarySurface)
+                .padding(horizontal = 7.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Box(Modifier.weight(1f)) {
+                EveTextButton(
+                    onClick = { characterMenuExpanded = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                ) {
+                    CharacterPortraitAvatar(state.followedCharacter)
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            state.followedCharacter?.characterName ?: "Select character",
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            miniMapLocationLine(state),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = miniMapStatusColor(state.followedCharacter?.locationStatus),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-            }
-            TextButton(onClick = { viewModel.setFollowMode(MiniMapFollowMode.AUTO) }) {
-                Text(if (state.preferences.followMode == MiniMapFollowMode.AUTO) "[AUTO]" else "AUTO")
+                EveDropdownMenu(
+                    expanded = characterMenuExpanded,
+                    onDismissRequest = { characterMenuExpanded = false },
+                ) {
+                    if (available.isEmpty()) {
+                        EveDropdownMenuItem(
+                            text = { Text("No tracked characters") },
+                            enabled = false,
+                            onClick = {},
+                        )
+                    } else {
+                        available.forEach { character ->
+                            EveDropdownMenuItem(
+                                text = { Text(character.characterName) },
+                                onClick = {
+                                    viewModel.setPinnedCharacter(character.characterId)
+                                    characterMenuExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
             }
             Box {
-                TextButton(onClick = { bindMenu = true }) { Text("Bind…") }
-                DropdownMenu(expanded = bindMenu, onDismissRequest = { bindMenu = false }) {
+                EveTextButton(
+                    onClick = { followModeMenuExpanded = true },
+                    selected = true,
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text(state.preferences.followMode.name, style = MaterialTheme.typography.labelMedium)
+                }
+                EveDropdownMenu(
+                    expanded = followModeMenuExpanded,
+                    onDismissRequest = { followModeMenuExpanded = false },
+                ) {
+                    EveDropdownMenuItem(
+                        text = { Text("AUTO — Follow foreground EVE client") },
+                        onClick = {
+                            viewModel.setFollowMode(MiniMapFollowMode.AUTO)
+                            followModeMenuExpanded = false
+                        },
+                    )
+                    EveDropdownMenuItem(
+                        text = { Text("PINNED — Keep current character") },
+                        enabled = state.followedCharacter != null,
+                        onClick = {
+                            state.followedCharacter?.let { viewModel.setPinnedCharacter(it.characterId) }
+                            followModeMenuExpanded = false
+                        },
+                    )
+                }
+            }
+            Box {
+                EveTextButton(
+                    onClick = { optionsMenuExpanded = true },
+                    modifier = Modifier.semantics { contentDescription = "Mini-map options" },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text("•••", style = MaterialTheme.typography.labelLarge)
+                }
+                EveDropdownMenu(
+                    expanded = optionsMenuExpanded,
+                    onDismissRequest = { optionsMenuExpanded = false },
+                ) {
+                    EveDropdownMenuItem(
+                        text = { Text(if (diagnosticsExpanded) "Hide diagnostics" else "Show diagnostics") },
+                        onClick = {
+                            diagnosticsExpanded = !diagnosticsExpanded
+                            optionsMenuExpanded = false
+                        },
+                    )
+                    EveDivider()
+                    EveDropdownMenuItem(
+                        text = { Text("Bind current EVE client…") },
+                        enabled = available.isNotEmpty(),
+                        onClick = {
+                            optionsMenuExpanded = false
+                            bindMenuExpanded = true
+                        },
+                    )
+                }
+                EveDropdownMenu(
+                    expanded = bindMenuExpanded,
+                    onDismissRequest = { bindMenuExpanded = false },
+                ) {
+                    Text(
+                        "Temporarily bind this EVE client to:",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = EveColors.SecondaryText,
+                    )
                     available.forEach { character ->
-                        DropdownMenuItem(
+                        EveDropdownMenuItem(
                             text = { Text(character.characterName) },
                             onClick = {
                                 bindingFeedback = onBindCurrentWindow(character.characterId)
-                                bindMenu = false
+                                bindMenuExpanded = false
+                                diagnosticsExpanded = true
                             },
                         )
                     }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            (1..5).forEach { hops ->
-                TextButton(onClick = { viewModel.setRange(hops) }) {
-                    Text(if (hops == state.preferences.stargateHops) "[$hops]" else "$hops")
-                }
-            }
-            TextButton(
-                onClick = {
-                    viewModel.updatePreferences(
-                        state.preferences.copy(includeAnsiblexEdges = !state.preferences.includeAnsiblexEdges),
+        EveDivider()
+        if (diagnosticsExpanded) {
+            MiniMapDiagnostics(state, automaticFollowDiagnostic, bindingFeedback)
+            EveDivider()
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            val diagnostic = state.diagnostic
+            if (diagnostic != null) {
+                EvePanel(
+                    modifier = Modifier.align(Alignment.Center).padding(18.dp),
+                    secondary = true,
+                ) {
+                    Text(
+                        diagnostic,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        color = EveColors.SecondaryText,
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                },
-            ) {
-                Text(if (state.preferences.includeAnsiblexEdges) "[JB visual]" else "JB visual")
+                }
+            } else {
+                MiniMapCanvas(state, viewModel)
             }
         }
-        if (state.preferences.followMode == MiniMapFollowMode.AUTO) {
-            Text(
-                automaticFollowDiagnostic,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    }
+}
+
+@Composable
+private fun CharacterPortraitAvatar(character: TrackedCharacterSnapshot?) {
+    val textMeasurer = rememberTextMeasurer()
+    val stack = remember(character) {
+        if (character == null) {
+            CharacterPortraitStack(listOf(CharacterPortraitSegment(null, "?")), 0)
+        } else {
+            presentCharacterPortraits(listOf(character))
         }
-        bindingFeedback?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-        }
-        state.followedCharacter?.let { character ->
-            Text(
-                "${state.preferences.followMode} · ${character.characterName} · ${character.locationStatus.name} · " +
-                    "${state.preferences.stargateHops} Stargate hops",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (character.locationStatus == TrackedCharacterLocationStatus.CURRENT) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else MaterialTheme.colorScheme.tertiary,
-            )
-            Text(
-                "Validated ${character.lastValidatedAt ?: "never"} · Error ${character.lastErrorCategory ?: "none"}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Text(
-            "Tracking ${available.size}/${state.characters.size} · current $currentCount · stale $staleCount · " +
-                "degraded $degradedCount · unknown $unknownCount · Ansiblex is visual-only",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    }
+    Canvas(
+        Modifier.size(38.dp).semantics {
+            contentDescription = "${character?.characterName ?: "Unknown character"} portrait"
+        },
+    ) {
+        drawCharacterPortraitDisc(
+            stack = stack,
+            center = center,
+            radius = size.minDimension / 2f - 2f,
+            textMeasurer = textMeasurer,
+            borderColor = miniMapStatusColor(character?.locationStatus),
+            alpha = if (character?.locationStatus == TrackedCharacterLocationStatus.STALE) 0.7f else 1f,
         )
     }
+}
+
+@Composable
+private fun MiniMapDiagnostics(
+    state: MiniMapUiState,
+    automaticFollowDiagnostic: String,
+    bindingFeedback: String?,
+) {
+    val available = state.characters.filter { it.trackingEnabled }
+    val counts = TrackedCharacterLocationStatus.entries.associateWith { status ->
+        available.count { it.locationStatus == status }
+    }
+    EvePanel(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+        secondary = true,
+    ) {
+        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Diagnostics", style = MaterialTheme.typography.labelMedium, color = EveColors.PrimaryAccent)
+            if (state.preferences.followMode == MiniMapFollowMode.AUTO) {
+                Text(automaticFollowDiagnostic, style = MaterialTheme.typography.labelSmall, color = EveColors.SecondaryText)
+            }
+            Text(
+                "Tracking ${available.size}/${state.characters.size} · current ${counts.getValue(TrackedCharacterLocationStatus.CURRENT)} · " +
+                    "stale ${counts.getValue(TrackedCharacterLocationStatus.STALE)} · " +
+                    "degraded ${counts.getValue(TrackedCharacterLocationStatus.DEGRADED)} · " +
+                    "unknown ${counts.getValue(TrackedCharacterLocationStatus.UNKNOWN)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = EveColors.SecondaryText,
+            )
+            state.followedCharacter?.let { character ->
+                Text(
+                    "Validated ${character.lastValidatedAt ?: "never"} · Error ${character.lastErrorCategory ?: "none"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = EveColors.SecondaryText,
+                )
+            }
+            Text(
+                "${state.preferences.stargateHops} Stargate hops · Ansiblex ${if (state.preferences.includeAnsiblexEdges) "visible" else "hidden"} (visual-only)",
+                style = MaterialTheme.typography.labelSmall,
+                color = EveColors.SecondaryText,
+            )
+            bindingFeedback?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = EveColors.Important)
+            }
+        }
+    }
+}
+
+internal fun miniMapLocationLine(state: MiniMapUiState): String {
+    val character = state.followedCharacter ?: return "No character selected · UNKNOWN"
+    val status = character.locationStatus
+    val system = state.followedSystemName ?: if (character.solarSystemId == null) "Location unavailable" else "Unknown system"
+    return when (status) {
+        TrackedCharacterLocationStatus.STALE -> "Last known: $system · STALE"
+        TrackedCharacterLocationStatus.CURRENT -> "$system · CURRENT"
+        TrackedCharacterLocationStatus.DEGRADED -> "$system · DEGRADED"
+        TrackedCharacterLocationStatus.UNKNOWN -> "$system · UNKNOWN"
+    }
+}
+
+internal fun miniMapStatusColor(status: TrackedCharacterLocationStatus?): Color = when (status) {
+    TrackedCharacterLocationStatus.CURRENT -> EveColors.Success
+    TrackedCharacterLocationStatus.STALE -> EveColors.Warning
+    TrackedCharacterLocationStatus.DEGRADED -> EveColors.Error
+    TrackedCharacterLocationStatus.UNKNOWN, null -> EveColors.SecondaryText
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
     val textMeasurer = rememberTextMeasurer()
+    val portraitStacks = remember(state.characterGroups) {
+        state.characterGroups.associateWith { presentCharacterPortraits(it.characters) }
+    }
     Canvas(
         Modifier.fillMaxSize()
-            .background(Color(0xFF081018))
+            .background(EveColors.InputSurface)
             .onSizeChanged { viewModel.updateCanvasSize(MapSize(it.width.toDouble(), it.height.toDouble())) }
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
@@ -250,17 +418,17 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
             val first = transform.worldToScreen(edge.first)
             val second = transform.worldToScreen(edge.second)
             drawLine(
-                color = Color(0xFFB56DFF),
+                color = EveColors.CapitalAccent.copy(alpha = 0.78f),
                 start = Offset(first.x.toFloat(), first.y.toFloat()),
                 end = Offset(second.x.toFloat(), second.y.toFloat()),
-                strokeWidth = 1.8f,
+                strokeWidth = 1.6f,
             )
         }
         slice.edges.forEach { edge ->
             val first = transform.worldToScreen(edge.first)
             val second = transform.worldToScreen(edge.second)
             drawLine(
-                color = Color(0xFF345065),
+                color = EveColors.Border,
                 start = Offset(first.x.toFloat(), first.y.toFloat()),
                 end = Offset(second.x.toFloat(), second.y.toFloat()),
                 strokeWidth = 1.2f,
@@ -270,52 +438,50 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
             val point = transform.worldToScreen(node.position)
             val center = Offset(point.x.toFloat(), point.y.toFloat())
             val isCenter = node.system.id == slice.centerSystemId
-            drawCircle(if (isCenter) Color(0xFF54D7FF) else securityColor(node.system.securityStatus),
-                radius = if (isCenter) 6f else 3.5f, center = center)
+            drawCircle(
+                if (isCenter) EveColors.PrimaryAccent else securityColor(node.system.securityStatus),
+                radius = if (isCenter) 5.5f else 3.2f,
+                center = center,
+            )
             val label = textMeasurer.measure(
                 node.system.name,
-                TextStyle(color = Color(0xFFDCE8EF), fontSize = 10.sp),
+                TextStyle(color = EveColors.PrimaryText, fontSize = 10.sp),
             )
             drawText(label, topLeft = Offset(center.x + 5f, center.y - label.size.height / 2f))
         }
         state.characterGroups.forEach { group ->
             val node = slice.nodes.firstOrNull { it.system.id == group.systemId } ?: return@forEach
             val point = transform.worldToScreen(node.position)
+            val nodeCenter = Offset(point.x.toFloat(), point.y.toFloat())
+            val markerCenter = nodeCenter + Offset(0f, -17f)
             val current = group.characters.any { it.locationStatus == TrackedCharacterLocationStatus.CURRENT }
-            val color = if (group.containsFollowedCharacter) Color(0xFFFFD166) else Color(0xFFE783FF)
-            drawCircle(
-                color.copy(alpha = if (current) 1f else 0.45f),
-                radius = if (group.containsFollowedCharacter) 10f else 7f,
-                center = Offset(point.x.toFloat(), point.y.toFloat()),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (group.containsFollowedCharacter) 3f else 2f),
-            )
-            group.characters.forEachIndexed { index, character ->
-                val angle = (2.0 * PI * index / group.characters.size) - PI / 2.0
-                val markerDistance = if (group.containsFollowedCharacter) 14f else 11f
-                drawCircle(
-                    color = color.copy(
-                        alpha = if (character.locationStatus == TrackedCharacterLocationStatus.CURRENT) 1f else 0.4f,
-                    ),
-                    radius = 2.5f,
-                    center = Offset(
-                        point.x.toFloat() + cos(angle).toFloat() * markerDistance,
-                        point.y.toFloat() + sin(angle).toFloat() * markerDistance,
-                    ),
-                )
+            val accent = if (group.containsFollowedCharacter) EveColors.Important else EveColors.PrimaryAccent
+            val alpha = if (current) 1f else 0.55f
+            val pin = Path().apply {
+                moveTo(markerCenter.x - 4f, markerCenter.y + 10f)
+                lineTo(nodeCenter.x, nodeCenter.y)
+                lineTo(markerCenter.x + 4f, markerCenter.y + 10f)
+                close()
             }
-            if (group.characters.size > 1) {
-                val count = textMeasurer.measure(
-                    group.characters.size.toString(),
-                    TextStyle(color = color, fontSize = 9.sp),
-                )
-                drawText(count, topLeft = Offset(point.x.toFloat() - count.size.width / 2f, point.y.toFloat() + 10f))
+            drawPath(pin, EveColors.InputSurface.copy(alpha = alpha))
+            drawCircle(EveColors.InputSurface.copy(alpha = alpha), 12f, markerCenter)
+            drawCharacterPortraitDisc(
+                stack = portraitStacks.getValue(group),
+                center = markerCenter,
+                radius = 10f,
+                textMeasurer = textMeasurer,
+                borderColor = accent,
+                alpha = alpha,
+            )
+            if (group.containsFollowedCharacter) {
+                drawCircle(accent.copy(alpha = 0.48f), 14f, markerCenter, style = Stroke(2f))
             }
         }
     }
 }
 
 private fun securityColor(security: Double): Color = when {
-    security >= 0.5 -> Color(0xFF66D17A)
-    security > 0.0 -> Color(0xFFFFC857)
-    else -> Color(0xFFE05A5A)
+    security >= 0.5 -> Color(0xFF66B77A)
+    security > 0.0 -> EveColors.Warning
+    else -> EveColors.Error
 }
