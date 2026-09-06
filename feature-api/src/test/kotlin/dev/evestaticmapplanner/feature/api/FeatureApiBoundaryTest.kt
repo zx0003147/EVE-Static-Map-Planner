@@ -92,6 +92,12 @@ class FeatureApiBoundaryTest {
     private companion object {
         const val API_PACKAGE = "dev.evestaticmapplanner.feature.api"
         val EXPECTED_PUBLIC_TYPES = sortedSetOf(
+            "$API_PACKAGE.CharacterTrackingCapability",
+            "$API_PACKAGE.CharacterTrackingPriority",
+            "$API_PACKAGE.CharacterTrackingProvider",
+            "$API_PACKAGE.CharacterTrackingProvider\$DefaultImpls",
+            "$API_PACKAGE.CharacterTrackingRegistration",
+            "$API_PACKAGE.CharacterTrackingSnapshot",
             "$API_PACKAGE.CoreVersion",
             "$API_PACKAGE.FeatureApiVersion",
             "$API_PACKAGE.FeatureApiVersions",
@@ -166,6 +172,11 @@ class FeatureApiBoundaryTest {
             "$API_PACKAGE.SystemInfoSection",
             "$API_PACKAGE.SystemInfoSnapshot",
             "$API_PACKAGE.SystemInfoState",
+            "$API_PACKAGE.TrackedCharacterAuthorizationState",
+            "$API_PACKAGE.TrackedCharacterErrorCategory",
+            "$API_PACKAGE.TrackedCharacterLocationStatus",
+            "$API_PACKAGE.TrackedCharacterOnlineState",
+            "$API_PACKAGE.TrackedCharacterSnapshot",
         )
         val FORBIDDEN_PREFIXES = listOf(
             "androidx.",

@@ -12,7 +12,7 @@ $script:StageNumber = 0
 $script:StageCount = 8
 $script:GradleInvocationCount = 0
 $script:StartedAt = [System.Diagnostics.Stopwatch]::StartNew()
-$featureApiArtifactVersion = "2.1.0"
+$featureApiArtifactVersion = "2.2.0"
 
 function Write-Stage {
     param([Parameter(Mandatory = $true)][string]$Message)

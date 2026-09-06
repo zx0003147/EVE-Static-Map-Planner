@@ -163,6 +163,8 @@ val verifyFeatureApiPublication by tasks.registering {
                 "dev/evestaticmapplanner/feature/api/NavigationSnapshot.class",
                 "dev/evestaticmapplanner/feature/api/RouteSnapshot.class",
                 "dev/evestaticmapplanner/feature/api/SystemInfoProvider.class",
+                "dev/evestaticmapplanner/feature/api/CharacterTrackingProvider.class",
+                "dev/evestaticmapplanner/feature/api/TrackedCharacterSnapshot.class",
             )
             check(entries.containsAll(expectedClasses)) {
                 "Published Feature API JAR is missing public contract classes: ${expectedClasses - entries.toSet()}"

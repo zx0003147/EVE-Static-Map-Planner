@@ -10,18 +10,21 @@ internal class PackFeatureCapabilityLookup(
     private val dynamicOverlay: ScopedDynamicOverlayCapability,
     private val routeAction: ScopedRouteActionCapability,
     private val packControls: ScopedPackControlCapability,
+    private val characterTracking: ScopedCharacterTrackingCapability,
 ) : FeatureCapabilityLookup, AutoCloseable {
     override fun <T : FeatureCapability> find(key: FeatureCapabilityKey<T>): T? {
         val capability: FeatureCapability = when (key) {
             StandardFeatureCapabilities.DYNAMIC_OVERLAY -> dynamicOverlay
             StandardFeatureCapabilities.ROUTE_ACTION -> routeAction
             StandardFeatureCapabilities.PACK_CONTROLS -> packControls
+            StandardFeatureCapabilities.CHARACTER_TRACKING -> characterTracking
             else -> return null
         }
         return key.type.takeIf { it.isInstance(capability) }?.cast(capability)
     }
 
     override fun close() {
+        characterTracking.close()
         packControls.close()
         routeAction.close()
         dynamicOverlay.close()

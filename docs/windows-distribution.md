@@ -20,7 +20,7 @@ EVE Static Map Planner\
 ├─ eve-map-mcp.exe
 ├─ app\
 │  ├─ app-1.4.0-<hash>.jar
-│  ├─ feature-api-2.1.0-<hash>.jar
+│  ├─ feature-api-2.2.0-<hash>.jar
 │  ├─ mcp\
 │  └─ packaged resources and runtime dependencies
 └─ runtime\
@@ -106,8 +106,8 @@ Feature Packs remain separate release artifacts and are never placed in the main
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
 ```
 
-Feature API runtime compatibility family 2 remains stable; the bundled Host artifact is `2.1.0`. ESI Pack 1.1.0
-consumes artifact `2.1.0`, while older family-2 Packs remain loadable without adopting the optional navigation
+Feature API runtime compatibility family 2 remains stable; the bundled Host artifact is `2.2.0`. ESI Pack 1.2.0
+consumes artifact `2.2.0`, while older family-2 Packs remain loadable without adopting optional navigation or tracking
 capability. Sovereignty Pack 0.2.1 keeps its independent PackStorage, state, and lifecycle behavior.
 
 ## MCP portability

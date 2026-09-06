@@ -69,6 +69,11 @@ object StandardFeatureCapabilities {
         FeatureCapabilityId("pack-controls"),
         PackControlCapability::class.java,
     )
+
+    val CHARACTER_TRACKING = FeatureCapabilityKey(
+        FeatureCapabilityId("character-tracking"),
+        CharacterTrackingCapability::class.java,
+    )
 }
 
 private object EmptyFeatureCapabilityLookup : FeatureCapabilityLookup {

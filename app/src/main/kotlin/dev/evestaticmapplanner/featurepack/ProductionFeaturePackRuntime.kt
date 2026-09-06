@@ -53,6 +53,7 @@ class ProductionFeaturePackRuntime private constructor(
     val systemInfoHost: SystemInfoHost,
     val routeActionHost: RouteActionHost,
     val packControlHost: PackControlHost,
+    val characterTrackingHost: CharacterTrackingHost,
     internal val routeSnapshotAdapter: InteractiveRouteSnapshotAdapter,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
@@ -67,6 +68,8 @@ class ProductionFeaturePackRuntime private constructor(
         val failures = manager.closeSafely().toMutableList()
         runCatching { packControlHost.close() }
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Pack Control Host close failed", it) }
+        runCatching { characterTrackingHost.close() }
+            .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Character Tracking Host close failed", it) }
         runCatching { routeActionHost.close() }
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Route Action Host close failed", it) }
         runCatching { overlayHost.close() }
@@ -111,6 +114,9 @@ class ProductionFeaturePackRuntime private constructor(
                     error,
                 )
             }
+            val characterTrackingHost = CharacterTrackingHost { packId, operation, error ->
+                AppDiagnostics.warning("Character Tracking failed: pack=$packId operation=$operation", error)
+            }
             val routeSnapshotAdapter = InteractiveRouteSnapshotAdapter()
             val stateStore = PropertiesFeaturePackManagerStateStore(
                 normalizedApplicationRoot.resolve("feature-pack-manager.properties"),
@@ -127,6 +133,7 @@ class ProductionFeaturePackRuntime private constructor(
                     systemInfoHost,
                     routeActionHost,
                     packControlHost,
+                    characterTrackingHost,
                 ),
                 host = host,
             )
@@ -138,6 +145,7 @@ class ProductionFeaturePackRuntime private constructor(
                     systemInfoHost,
                     routeActionHost,
                     packControlHost,
+                    characterTrackingHost,
                     routeSnapshotAdapter,
                 )
             }
@@ -157,6 +165,7 @@ class ProductionFeaturePackRuntime private constructor(
                 systemInfoHost,
                 routeActionHost,
                 packControlHost,
+                characterTrackingHost,
                 routeSnapshotAdapter,
             )
         }
@@ -168,6 +177,7 @@ class ProductionFeaturePackRuntime private constructor(
             systemInfoHost: SystemInfoHost,
             routeActionHost: RouteActionHost,
             packControlHost: PackControlHost,
+            characterTrackingHost: CharacterTrackingHost,
         ) = FeaturePackContextFactory { descriptor ->
             ProductionFeaturePackContext(
                 applicationRoot.toAbsolutePath().normalize(),
@@ -179,6 +189,7 @@ class ProductionFeaturePackRuntime private constructor(
                     overlayHost.scopedDynamicCapability(descriptor.packId),
                     routeActionHost.scopedCapability(descriptor.packId),
                     packControlHost.scopedCapability(descriptor.packId),
+                    characterTrackingHost.scopedCapability(descriptor.packId),
                 ),
             )
         }
