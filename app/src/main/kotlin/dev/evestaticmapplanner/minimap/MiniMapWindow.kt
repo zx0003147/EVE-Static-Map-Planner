@@ -56,13 +56,17 @@ import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
-import dev.evestaticmapplanner.core.map.ProjectedRouteLeg
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import dev.evestaticmapplanner.map.QuadraticMapConnectionGeometry
 import dev.evestaticmapplanner.map.StraightMapConnectionGeometry
+import dev.evestaticmapplanner.map.MINI_MAP_ROUTE_ARROW_MIN_LENGTH_PX
+import dev.evestaticmapplanner.map.MINI_MAP_ROUTE_ARROW_SCALE
+import dev.evestaticmapplanner.map.MISSION_CAPITAL_COLORS
+import dev.evestaticmapplanner.map.MISSION_ROUTE_COLORS
 import dev.evestaticmapplanner.map.activeRouteConnectionGeometry
+import dev.evestaticmapplanner.map.drawDirectionalRouteArrows
 import dev.evestaticmapplanner.map.routeLegRenderStyle
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
@@ -597,7 +601,7 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
                 strokeWidth = 1.6f,
             )
         }
-        drawMiniMapRoute(state.visibleRouteLegs, transform)
+        drawMiniMapRoutes(state.visibleRouteOverlays, transform)
         slice.nodes.forEach { node ->
             val point = transform.worldToScreen(node.position)
             val center = Offset(point.x.toFloat(), point.y.toFloat())
@@ -644,27 +648,38 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMiniMapRoute(
-    legs: List<ProjectedRouteLeg>,
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMiniMapRoutes(
+    overlays: List<MiniMapRouteOverlay>,
     transform: MapTransform,
 ) {
     val curvedPath = Path()
-    legs.forEach { leg ->
-        val style = routeLegRenderStyle(leg.edge.type)
-        val geometry = activeRouteConnectionGeometry(
-            firstSystemId = leg.edge.fromSystemId,
-            secondSystemId = leg.edge.toSystemId,
-            edgeType = leg.edge.type,
-            start = transform.worldToScreen(leg.from),
-            end = transform.worldToScreen(leg.to),
-        )
-        val width = style.strokeWidth * MINI_MAP_ROUTE_WIDTH_SCALE
+    miniMapDirectionalRouteRenderItems(overlays).forEach { item ->
+        val segment = item.segment
+        val style = item.style
+        val start = transform.worldToScreen(segment.from)
+        val end = transform.worldToScreen(segment.to)
+        val geometry = if (item.kind == MiniMapRouteKind.USER_NORMAL) {
+            activeRouteConnectionGeometry(
+                firstSystemId = segment.fromSystemId,
+                secondSystemId = segment.toSystemId,
+                edgeType = checkNotNull(segment.edgeType),
+                start = start,
+                end = end,
+            )
+        } else {
+            StraightMapConnectionGeometry(start, end)
+        }
+        val width = style.referenceStrokeWidth * MINI_MAP_ROUTE_WIDTH_SCALE
+        val pathEffect = style.dashPattern?.let { pattern ->
+            PathEffect.dashPathEffect(pattern.map { it * MINI_MAP_ROUTE_WIDTH_SCALE }.toFloatArray())
+        }
         when (geometry) {
             is StraightMapConnectionGeometry -> drawLine(
                 color = style.color,
                 start = Offset(geometry.start.x.toFloat(), geometry.start.y.toFloat()),
                 end = Offset(geometry.end.x.toFloat(), geometry.end.y.toFloat()),
                 strokeWidth = width,
+                pathEffect = pathEffect,
             )
             is QuadraticMapConnectionGeometry -> {
                 curvedPath.reset()
@@ -678,16 +693,68 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMiniMapRoute(
                 drawPath(
                     curvedPath,
                     color = style.color,
-                    style = Stroke(
-                        width = width,
-                        pathEffect = style.dashPattern?.let { pattern ->
-                            PathEffect.dashPathEffect(pattern.map { it * MINI_MAP_ROUTE_WIDTH_SCALE }.toFloatArray())
-                        },
-                    ),
+                    style = Stroke(width = width, pathEffect = pathEffect),
                 )
             }
         }
+        drawDirectionalRouteArrows(
+            geometry = geometry,
+            color = style.color,
+            strokeWidth = width,
+            scale = MINI_MAP_ROUTE_ARROW_SCALE,
+            sizeReferenceStrokeWidth = style.referenceStrokeWidth,
+            minimumReadableLengthPx = MINI_MAP_ROUTE_ARROW_MIN_LENGTH_PX,
+        )
     }
+}
+
+internal data class MiniMapDirectionalRouteRenderItem(
+    val kind: MiniMapRouteKind,
+    val segment: MiniMapRouteSegment,
+    val style: MiniMapRouteRenderStyle,
+)
+
+internal fun miniMapDirectionalRouteRenderItems(
+    overlays: List<MiniMapRouteOverlay>,
+): List<MiniMapDirectionalRouteRenderItem> = overlays.flatMap { overlay ->
+    overlay.segments.map { segment ->
+        MiniMapDirectionalRouteRenderItem(
+            kind = overlay.kind,
+            segment = segment,
+            style = miniMapRouteRenderStyle(overlay.kind, overlay.styleIndex, segment.edgeType),
+        )
+    }
+}
+
+internal data class MiniMapRouteRenderStyle(
+    val color: Color,
+    val referenceStrokeWidth: Float,
+    val dashPattern: List<Float>?,
+)
+
+internal fun miniMapRouteRenderStyle(
+    kind: MiniMapRouteKind,
+    styleIndex: Int,
+    edgeType: RouteEdgeType?,
+): MiniMapRouteRenderStyle = when (kind) {
+    MiniMapRouteKind.USER_NORMAL -> {
+        val routeStyle = routeLegRenderStyle(checkNotNull(edgeType))
+        MiniMapRouteRenderStyle(
+            color = routeStyle.color,
+            referenceStrokeWidth = routeStyle.strokeWidth,
+            dashPattern = routeStyle.dashPattern,
+        )
+    }
+    MiniMapRouteKind.MISSION_NORMAL -> MiniMapRouteRenderStyle(
+        color = MISSION_ROUTE_COLORS[styleIndex % MISSION_ROUTE_COLORS.size],
+        referenceStrokeWidth = 5f,
+        dashPattern = listOf(14f, 5f),
+    )
+    MiniMapRouteKind.MISSION_CAPITAL -> MiniMapRouteRenderStyle(
+        color = MISSION_CAPITAL_COLORS[styleIndex % MISSION_CAPITAL_COLORS.size],
+        referenceStrokeWidth = 5f,
+        dashPattern = listOf(4f, 4f),
+    )
 }
 
 private const val MINI_MAP_ROUTE_WIDTH_SCALE = 0.8f

@@ -1193,6 +1193,7 @@ private fun DrawScope.drawReal3DRoute(
                 )
             }
         }
+        drawDirectionalRouteArrows(connection, style.color, style.strokeWidth)
         if (leg.edge.type == RouteEdgeType.WORMHOLE) {
             drawCircle(
                 color = Color(0xFFF0FFFC),
@@ -1216,12 +1217,17 @@ private fun DrawScope.drawReal3DCapitalRoute(
     showDestination: Boolean,
 ) {
     overlay.legs.forEach { leg ->
+        val geometry = StraightMapConnectionGeometry(
+            start = leg.segment.first.screen,
+            end = leg.segment.second.screen,
+        )
         drawLine(
             color = CAPITAL_ROUTE_COLOR,
-            start = leg.segment.first.screen.toOffset(),
-            end = leg.segment.second.screen.toOffset(),
+            start = geometry.start.toOffset(),
+            end = geometry.end.toOffset(),
             strokeWidth = 4f,
         )
+        drawDirectionalRouteArrows(geometry, CAPITAL_ROUTE_COLOR, 4f)
     }
     drawReal3DRouteEndpoint(frame, overlay.route.startSystemId, CAPITAL_START_COLOR, 13f, 9f)
     if (showDestination) {
@@ -1234,13 +1240,18 @@ private fun DrawScope.drawReal3DMissionRoute(
     color: Color,
 ) {
     overlay.legs.forEach { leg ->
+        val geometry = StraightMapConnectionGeometry(
+            start = leg.segment.first.screen,
+            end = leg.segment.second.screen,
+        )
         drawLine(
             color = color,
-            start = leg.segment.first.screen.toOffset(),
-            end = leg.segment.second.screen.toOffset(),
+            start = geometry.start.toOffset(),
+            end = geometry.end.toOffset(),
             strokeWidth = 5f,
             pathEffect = REAL_3D_MISSION_ROUTE_DASH_EFFECT,
         )
+        drawDirectionalRouteArrows(geometry, color, 5f)
     }
 }
 
@@ -1249,13 +1260,18 @@ private fun DrawScope.drawReal3DMissionCapitalRoute(
     color: Color,
 ) {
     overlay.legs.forEach { leg ->
+        val geometry = StraightMapConnectionGeometry(
+            start = leg.segment.first.screen,
+            end = leg.segment.second.screen,
+        )
         drawLine(
             color = color,
-            start = leg.segment.first.screen.toOffset(),
-            end = leg.segment.second.screen.toOffset(),
+            start = geometry.start.toOffset(),
+            end = geometry.end.toOffset(),
             strokeWidth = 5f,
             pathEffect = REAL_3D_MISSION_CAPITAL_DASH_EFFECT,
         )
+        drawDirectionalRouteArrows(geometry, color, 5f)
     }
 }
 

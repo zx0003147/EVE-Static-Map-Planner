@@ -575,6 +575,9 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val markerState by markerViewModel.state.collectAsState()
     val missionState by missionMapStateStore.state.collectAsState()
+    LaunchedEffect(missionState.normalRoutes, missionState.capitalRoutes, miniMapViewModel) {
+        miniMapViewModel.updateMissionRoutes(missionState.normalRoutes, missionState.capitalRoutes)
+    }
     val sharedMarkerPresentation = remember(
         sharedMapState.snapshot,
         sharedMapState.stale,

@@ -448,6 +448,11 @@ object MapRenderer {
                     )
                 }
             }
+            drawDirectionalRouteArrows(
+                geometry = geometry,
+                color = style.color,
+                strokeWidth = style.strokeWidth,
+            )
         }
         scene.nodesById[overlay.route.startSystemId]?.let { node ->
             val center = transform.worldToScreen(node.position).toOffset()
@@ -533,12 +538,17 @@ object MapRenderer {
         showDestination: Boolean = true,
     ) {
         overlay.legs.forEach { leg ->
+            val geometry = StraightMapConnectionGeometry(
+                start = transform.worldToScreen(leg.from),
+                end = transform.worldToScreen(leg.to),
+            )
             drawLine(
                 color = CAPITAL_ROUTE_COLOR,
-                start = transform.worldToScreen(leg.from).toOffset(),
-                end = transform.worldToScreen(leg.to).toOffset(),
+                start = geometry.start.toOffset(),
+                end = geometry.end.toOffset(),
                 strokeWidth = 4f,
             )
+            drawDirectionalRouteArrows(geometry, CAPITAL_ROUTE_COLOR, 4f)
         }
         scene.nodesById[overlay.route.startSystemId]?.let { node ->
             val center = transform.worldToScreen(node.position).toOffset()
@@ -557,26 +567,36 @@ object MapRenderer {
     fun DrawScope.drawMissionRoute(transform: MapTransform, overlay: ProjectedRouteOverlay, index: Int) {
         val color = MISSION_ROUTE_COLORS[index % MISSION_ROUTE_COLORS.size]
         overlay.legs.forEach { leg ->
+            val geometry = StraightMapConnectionGeometry(
+                start = transform.worldToScreen(leg.from),
+                end = transform.worldToScreen(leg.to),
+            )
             drawLine(
                 color = color,
-                start = transform.worldToScreen(leg.from).toOffset(),
-                end = transform.worldToScreen(leg.to).toOffset(),
+                start = geometry.start.toOffset(),
+                end = geometry.end.toOffset(),
                 strokeWidth = 5f,
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 5f)),
             )
+            drawDirectionalRouteArrows(geometry, color, 5f)
         }
     }
 
     fun DrawScope.drawMissionCapitalRoute(transform: MapTransform, overlay: ProjectedCapitalRouteOverlay, index: Int) {
         val color = MISSION_CAPITAL_COLORS[index % MISSION_CAPITAL_COLORS.size]
         overlay.legs.forEach { leg ->
+            val geometry = StraightMapConnectionGeometry(
+                start = transform.worldToScreen(leg.from),
+                end = transform.worldToScreen(leg.to),
+            )
             drawLine(
                 color = color,
-                start = transform.worldToScreen(leg.from).toOffset(),
-                end = transform.worldToScreen(leg.to).toOffset(),
+                start = geometry.start.toOffset(),
+                end = geometry.end.toOffset(),
                 strokeWidth = 5f,
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)),
             )
+            drawDirectionalRouteArrows(geometry, color, 5f)
         }
     }
 
