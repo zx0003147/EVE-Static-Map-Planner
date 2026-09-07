@@ -35,7 +35,7 @@ object HopNeighborhoodExtractor {
         allowedEdgeTypes: Set<RouteEdgeType> = setOf(RouteEdgeType.STARGATE),
         additionalEdges: List<RouteEdge> = emptyList(),
     ): MiniMapSlice {
-        require(maxHops in 1..5) { "Mini-map Stargate hops must be between 1 and 5" }
+        require(maxHops in 1..5) { "Mini-map hops must be between 1 and 5" }
         require(centerSystemId in scene.nodesById) { "Mini-map center is absent from the projected scene" }
 
         val directed = buildList {

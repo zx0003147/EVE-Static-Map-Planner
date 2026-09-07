@@ -9,11 +9,14 @@ import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.MiniMapSlice
 import dev.evestaticmapplanner.core.map.MiniMapSliceEdge
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
+import dev.evestaticmapplanner.core.map.ProjectedRouteLeg
+import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
+import dev.evestaticmapplanner.core.route.AnsiblexRouteEdgeBuilder
+import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapPreferences
-import dev.evestaticmapplanner.core.route.RouteConnectionId
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +36,8 @@ data class MiniMapUiState(
     val followedSystemName: String? = null,
     val slice: MiniMapSlice? = null,
     val ansiblexVisualEdges: List<MiniMapSliceEdge> = emptyList(),
+    val activeRoute: RouteResult? = null,
+    val visibleRouteLegs: List<ProjectedRouteLeg> = emptyList(),
     val characterGroups: List<MiniMapCharacterGroup> = emptyList(),
     val canvasSize: MapSize = MapSize(0.0, 0.0),
     val viewport: MapViewport? = null,
@@ -69,6 +74,13 @@ class MiniMapViewModel(
     fun updateAnsiblexConnections(connections: List<AnsiblexConnection>) {
         if (ansiblexConnections == connections) return
         ansiblexConnections = connections
+        rebuild(fit = false)
+    }
+
+    /** Displays the main planner's already-calculated route; no route is calculated here. */
+    fun updateActiveRoute(route: RouteResult?) {
+        if (mutableState.value.activeRoute === route) return
+        mutableState.update { it.copy(activeRoute = route) }
         rebuild(fit = false)
     }
 
@@ -148,11 +160,24 @@ class MiniMapViewModel(
                 !followed.trackingEnabled -> null
                 followedSystemId == null -> null
                 currentScene?.nodesById?.containsKey(followedSystemId) != true -> null
-                else -> HopNeighborhoodExtractor.extract(
-                    currentScene,
-                    followedSystemId,
-                    current.preferences.stargateHops,
-                )
+                else -> {
+                    val includeAnsiblex = current.preferences.includeAnsiblexEdges
+                    HopNeighborhoodExtractor.extract(
+                        currentScene,
+                        followedSystemId,
+                        current.preferences.stargateHops,
+                        allowedEdgeTypes = if (includeAnsiblex) {
+                            setOf(RouteEdgeType.STARGATE, RouteEdgeType.ANSIBLEX)
+                        } else {
+                            setOf(RouteEdgeType.STARGATE)
+                        },
+                        additionalEdges = if (includeAnsiblex) {
+                            AnsiblexRouteEdgeBuilder.build(ansiblexConnections)
+                        } else {
+                            emptyList()
+                        },
+                    )
+                }
             }
             val groups = slice?.let { miniSlice ->
                 current.characters.asSequence()
@@ -170,27 +195,21 @@ class MiniMapViewModel(
                     }
                     .sortedBy(MiniMapCharacterGroup::systemId)
             }.orEmpty()
-            val ansiblexVisualEdges = if (slice != null && current.preferences.includeAnsiblexEdges) {
-                ansiblexConnections.asSequence()
-                    .filter(AnsiblexConnection::enabled)
-                    .filter { it.firstSystemId in slice.includedSystemIds && it.secondSystemId in slice.includedSystemIds }
-                    .map { connection ->
-                        MiniMapSliceEdge(
-                            RouteConnectionId("ansiblex:${connection.id}"),
-                            connection.firstSystemId,
-                            connection.secondSystemId,
-                            RouteEdgeType.ANSIBLEX,
-                            currentScene!!.nodesById.getValue(connection.firstSystemId).position,
-                            currentScene.nodesById.getValue(connection.secondSystemId).position,
-                        )
-                    }
-                    .sortedWith(compareBy(MiniMapSliceEdge::firstSystemId, MiniMapSliceEdge::secondSystemId))
-                    .toList()
-            } else emptyList()
+            val ansiblexVisualEdges = slice?.edges.orEmpty().filter { it.type == RouteEdgeType.ANSIBLEX }
+            val visibleRouteLegs = if (slice != null && currentScene != null && current.activeRoute != null) {
+                ProjectedRouteOverlayBuilder.build(current.activeRoute, currentScene).legs.filter { leg ->
+                    leg.edge.fromSystemId in slice.includedSystemIds &&
+                        leg.edge.toSystemId in slice.includedSystemIds
+                }
+            } else {
+                emptyList()
+            }
             val viewport = when {
                 slice == null || current.canvasSize.isEmpty -> null
                 fit || current.slice?.centerSystemId != slice.centerSystemId ||
-                    current.slice.maxHops != slice.maxHops -> MapViewport.fit(slice.localBounds, current.canvasSize, MINI_MAP_PADDING)
+                    current.slice.maxHops != slice.maxHops ||
+                    current.slice.includedSystemIds != slice.includedSystemIds ->
+                    MapViewport.fit(slice.localBounds, current.canvasSize, MINI_MAP_PADDING)
                 else -> current.viewport
             }
             current.copy(
@@ -198,6 +217,7 @@ class MiniMapViewModel(
                 followedSystemName = followedSystemName,
                 slice = slice,
                 ansiblexVisualEdges = ansiblexVisualEdges,
+                visibleRouteLegs = visibleRouteLegs,
                 characterGroups = groups,
                 viewport = viewport,
                 diagnostic = when {

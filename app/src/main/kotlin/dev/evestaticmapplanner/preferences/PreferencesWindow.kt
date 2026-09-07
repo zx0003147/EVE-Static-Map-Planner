@@ -803,7 +803,7 @@ internal fun MiniMapPreferencesContent(
         }
     }
     Text(
-        "${preferences.stargateHops} Stargate ${if (preferences.stargateHops == 1) "hop" else "hops"}",
+        "${preferences.stargateHops} ${if (preferences.stargateHops == 1) "hop" else "hops"}",
         color = EveColors.SecondaryText,
         style = MaterialTheme.typography.bodySmall,
     )
@@ -812,7 +812,7 @@ internal fun MiniMapPreferencesContent(
         onChange(preferences.copy(includeAnsiblexEdges = it))
     }
     Text(
-        "Visual only. Ansiblex connections do not expand the Stargate-hop neighborhood.",
+        "Shown on the Mini-map and counted as one hop in its visible range.",
         color = EveColors.SecondaryText,
         style = MaterialTheme.typography.bodySmall,
     )

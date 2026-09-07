@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
@@ -55,8 +56,14 @@ import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
+import dev.evestaticmapplanner.core.map.ProjectedRouteLeg
+import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
+import dev.evestaticmapplanner.map.QuadraticMapConnectionGeometry
+import dev.evestaticmapplanner.map.StraightMapConnectionGeometry
+import dev.evestaticmapplanner.map.activeRouteConnectionGeometry
+import dev.evestaticmapplanner.map.routeLegRenderStyle
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
@@ -511,7 +518,7 @@ private fun MiniMapDiagnostics(
                 )
             }
             Text(
-                "${state.preferences.stargateHops} Stargate hops · Ansiblex ${if (state.preferences.includeAnsiblexEdges) "visible" else "hidden"} (visual-only)",
+                "${state.preferences.stargateHops} hops · Ansiblex ${if (state.preferences.includeAnsiblexEdges) "included" else "excluded"}",
                 style = MaterialTheme.typography.labelSmall,
                 color = EveColors.SecondaryText,
             )
@@ -570,6 +577,16 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
         val viewport = state.viewport ?: return@Canvas
         if (state.canvasSize.isEmpty) return@Canvas
         val transform = MapTransform(viewport, state.canvasSize)
+        slice.edges.filter { it.type == RouteEdgeType.STARGATE }.forEach { edge ->
+            val first = transform.worldToScreen(edge.first)
+            val second = transform.worldToScreen(edge.second)
+            drawLine(
+                color = EveColors.Border,
+                start = Offset(first.x.toFloat(), first.y.toFloat()),
+                end = Offset(second.x.toFloat(), second.y.toFloat()),
+                strokeWidth = 1.2f,
+            )
+        }
         state.ansiblexVisualEdges.forEach { edge ->
             val first = transform.worldToScreen(edge.first)
             val second = transform.worldToScreen(edge.second)
@@ -580,16 +597,7 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
                 strokeWidth = 1.6f,
             )
         }
-        slice.edges.forEach { edge ->
-            val first = transform.worldToScreen(edge.first)
-            val second = transform.worldToScreen(edge.second)
-            drawLine(
-                color = EveColors.Border,
-                start = Offset(first.x.toFloat(), first.y.toFloat()),
-                end = Offset(second.x.toFloat(), second.y.toFloat()),
-                strokeWidth = 1.2f,
-            )
-        }
+        drawMiniMapRoute(state.visibleRouteLegs, transform)
         slice.nodes.forEach { node ->
             val point = transform.worldToScreen(node.position)
             val center = Offset(point.x.toFloat(), point.y.toFloat())
@@ -635,6 +643,54 @@ private fun MiniMapCanvas(state: MiniMapUiState, viewModel: MiniMapViewModel) {
         }
     }
 }
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMiniMapRoute(
+    legs: List<ProjectedRouteLeg>,
+    transform: MapTransform,
+) {
+    val curvedPath = Path()
+    legs.forEach { leg ->
+        val style = routeLegRenderStyle(leg.edge.type)
+        val geometry = activeRouteConnectionGeometry(
+            firstSystemId = leg.edge.fromSystemId,
+            secondSystemId = leg.edge.toSystemId,
+            edgeType = leg.edge.type,
+            start = transform.worldToScreen(leg.from),
+            end = transform.worldToScreen(leg.to),
+        )
+        val width = style.strokeWidth * MINI_MAP_ROUTE_WIDTH_SCALE
+        when (geometry) {
+            is StraightMapConnectionGeometry -> drawLine(
+                color = style.color,
+                start = Offset(geometry.start.x.toFloat(), geometry.start.y.toFloat()),
+                end = Offset(geometry.end.x.toFloat(), geometry.end.y.toFloat()),
+                strokeWidth = width,
+            )
+            is QuadraticMapConnectionGeometry -> {
+                curvedPath.reset()
+                curvedPath.moveTo(geometry.start.x.toFloat(), geometry.start.y.toFloat())
+                curvedPath.quadraticTo(
+                    geometry.control.x.toFloat(),
+                    geometry.control.y.toFloat(),
+                    geometry.end.x.toFloat(),
+                    geometry.end.y.toFloat(),
+                )
+                drawPath(
+                    curvedPath,
+                    color = style.color,
+                    style = Stroke(
+                        width = width,
+                        pathEffect = style.dashPattern?.let { pattern ->
+                            PathEffect.dashPathEffect(pattern.map { it * MINI_MAP_ROUTE_WIDTH_SCALE }.toFloatArray())
+                        },
+                    ),
+                )
+            }
+        }
+    }
+}
+
+private const val MINI_MAP_ROUTE_WIDTH_SCALE = 0.8f
 
 private fun securityColor(security: Double): Color = when {
     security >= 0.5 -> Color(0xFF66B77A)

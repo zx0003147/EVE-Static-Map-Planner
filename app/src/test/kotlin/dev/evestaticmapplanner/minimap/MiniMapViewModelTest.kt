@@ -15,6 +15,11 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StargateConnection
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
+import dev.evestaticmapplanner.core.route.RouteConnectionId
+import dev.evestaticmapplanner.core.route.RouteEdge
+import dev.evestaticmapplanner.core.route.RouteEdgeId
+import dev.evestaticmapplanner.core.route.RouteEdgeType
+import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.feature.api.TrackedCharacterAuthorizationState
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.feature.api.TrackedCharacterOnlineState
@@ -28,6 +33,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class MiniMapViewModelTest {
@@ -103,7 +109,7 @@ class MiniMapViewModelTest {
     }
 
     @Test
-    fun `Ansiblex is opt-in visual-only and never expands the Stargate neighborhood`() {
+    fun `Ansiblex toggle updates traversal and presentation immediately`() {
         val viewModel = MiniMapViewModel()
         viewModel.updateScene(scene())
         viewModel.updateCanvasSize(MapSize(400.0, 300.0))
@@ -118,10 +124,63 @@ class MiniMapViewModelTest {
 
         assertEquals(setOf(1, 2), viewModel.state.value.slice?.includedSystemIds)
         assertTrue(viewModel.state.value.ansiblexVisualEdges.isEmpty())
+        val stargateOnlyViewport = viewModel.state.value.viewport
 
         viewModel.updatePreferences(viewModel.state.value.preferences.copy(includeAnsiblexEdges = true))
+        assertEquals(setOf(1, 2, 7), viewModel.state.value.slice?.includedSystemIds)
+        assertNotEquals(stargateOnlyViewport, viewModel.state.value.viewport)
+        assertEquals(
+            listOf("ansiblex:inside", "ansiblex:outside"),
+            viewModel.state.value.ansiblexVisualEdges.map { it.connectionId.value },
+        )
+        assertEquals(1, viewModel.state.value.slice?.distanceBySystem?.get(7))
+
+        viewModel.updatePreferences(viewModel.state.value.preferences.copy(includeAnsiblexEdges = false))
         assertEquals(setOf(1, 2), viewModel.state.value.slice?.includedSystemIds)
-        assertEquals(listOf("ansiblex:inside"), viewModel.state.value.ansiblexVisualEdges.map { it.connectionId.value })
+        assertTrue(viewModel.state.value.ansiblexVisualEdges.isEmpty())
+
+        viewModel.updatePreferences(viewModel.state.value.preferences.copy(includeAnsiblexEdges = true))
+        assertEquals(setOf(1, 2, 7), viewModel.state.value.slice?.includedSystemIds)
+        assertTrue(viewModel.state.value.ansiblexVisualEdges.none { it.connectionId.value == "ansiblex:disabled" })
+    }
+
+    @Test
+    fun `active route is shared updated cleared and clipped without expanding range`() {
+        val viewModel = MiniMapViewModel()
+        viewModel.updateScene(scene())
+        viewModel.updateCanvasSize(MapSize(400.0, 300.0))
+        viewModel.updateCharacters(listOf(character(1, "Alpha", 1, TrackedCharacterLocationStatus.CURRENT)))
+        viewModel.setPinnedCharacter(1)
+        viewModel.setRange(2)
+
+        assertNull(viewModel.state.value.activeRoute)
+        assertTrue(viewModel.state.value.visibleRouteLegs.isEmpty())
+
+        val mixedRoute = route(
+            systems = listOf(1, 2, 3, 4),
+            types = listOf(RouteEdgeType.STARGATE, RouteEdgeType.ANSIBLEX, RouteEdgeType.STARGATE),
+        )
+        viewModel.updateActiveRoute(mixedRoute)
+
+        assertSame(mixedRoute, viewModel.state.value.activeRoute)
+        assertEquals(
+            listOf(RouteEdgeType.STARGATE, RouteEdgeType.ANSIBLEX),
+            viewModel.state.value.visibleRouteLegs.map { it.edge.type },
+        )
+        assertEquals(setOf(1, 2, 3), viewModel.state.value.slice?.includedSystemIds)
+
+        val updatedRoute = route(
+            systems = listOf(2, 3),
+            types = listOf(RouteEdgeType.STARGATE),
+        )
+        viewModel.updateActiveRoute(updatedRoute)
+        assertSame(updatedRoute, viewModel.state.value.activeRoute)
+        assertEquals(listOf("route:0:2:3"), viewModel.state.value.visibleRouteLegs.map { it.edge.id.value })
+
+        viewModel.updateActiveRoute(null)
+        assertNull(viewModel.state.value.activeRoute)
+        assertTrue(viewModel.state.value.visibleRouteLegs.isEmpty())
+        assertEquals(setOf(1, 2, 3), viewModel.state.value.slice?.includedSystemIds)
     }
 
     @Test
@@ -238,4 +297,19 @@ class MiniMapViewModelTest {
         Instant.EPOCH,
         Instant.EPOCH,
     )
+
+    private fun route(systems: List<Int>, types: List<RouteEdgeType>): RouteResult {
+        val edges = types.mapIndexed { index, type ->
+            val from = systems[index]
+            val to = systems[index + 1]
+            RouteEdge(
+                RouteEdgeId("route:$index:$from:$to"),
+                RouteConnectionId("route:$index"),
+                from,
+                to,
+                type,
+            )
+        }
+        return RouteResult(systems.first(), systems.last(), systems, edges)
+    }
 }

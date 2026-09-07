@@ -61,4 +61,44 @@ class HopNeighborhoodExtractorTest {
         assertTrue(7 in included.includedSystemIds)
         assertTrue(included.edges.any { it.type == RouteEdgeType.ANSIBLEX })
     }
+
+    @Test
+    fun `Stargate and Ansiblex mixed traversal counts every edge as one hop`() {
+        val ansiblex = routeEdge("mixed", 2, 7, RouteEdgeType.ANSIBLEX)
+
+        val slice = HopNeighborhoodExtractor.extract(
+            scene = scene,
+            centerSystemId = 1,
+            maxHops = 2,
+            allowedEdgeTypes = setOf(RouteEdgeType.STARGATE, RouteEdgeType.ANSIBLEX),
+            additionalEdges = listOf(ansiblex),
+        )
+
+        assertEquals(1, slice.distanceBySystem.getValue(2))
+        assertEquals(2, slice.distanceBySystem.getValue(7))
+    }
+
+    @Test
+    fun `mixed graph uses the shortest hop distance`() {
+        val ansiblex = routeEdge("shortcut", 1, 5, RouteEdgeType.ANSIBLEX)
+
+        val slice = HopNeighborhoodExtractor.extract(
+            scene = scene,
+            centerSystemId = 1,
+            maxHops = 4,
+            allowedEdgeTypes = setOf(RouteEdgeType.STARGATE, RouteEdgeType.ANSIBLEX),
+            additionalEdges = listOf(ansiblex),
+        )
+
+        assertEquals(1, slice.distanceBySystem.getValue(5))
+        assertEquals(2, slice.distanceBySystem.getValue(6))
+    }
+
+    private fun routeEdge(id: String, from: Int, to: Int, type: RouteEdgeType) = RouteEdge(
+        RouteEdgeId("$id:$from:$to"),
+        RouteConnectionId(id),
+        from,
+        to,
+        type,
+    )
 }

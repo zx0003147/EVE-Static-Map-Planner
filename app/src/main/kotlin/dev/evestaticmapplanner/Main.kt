@@ -560,6 +560,9 @@ private fun FrameWindowScope.ReadyApplication(
     LaunchedEffect(routeState.ansiblexConnections, miniMapViewModel) {
         miniMapViewModel.updateAnsiblexConnections(routeState.ansiblexConnections)
     }
+    LaunchedEffect(routeState.activeRoute, miniMapViewModel) {
+        miniMapViewModel.updateActiveRoute(routeState.activeRoute)
+    }
     val wormholeState by wormholeViewModel.state.collectAsState()
     val jumpState by jumpViewModel.state.collectAsState()
     val capitalState by capitalViewModel.state.collectAsState()

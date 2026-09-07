@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class MiniMapPreferencesContentTest {
     @Test
-    fun `Mini-map preferences expose one through five Stargate hops and visual-only Ansiblex`() = runComposeUiTest {
+    fun `Mini-map preferences expose one through five hops and Ansiblex traversal`() = runComposeUiTest {
         val changes = mutableListOf<MiniMapPreferences>()
         val initial = MiniMapPreferences.Defaults
         setContent {
@@ -32,7 +32,7 @@ class MiniMapPreferencesContentTest {
         onNodeWithText("Mini-map Settings").assertIsDisplayed()
         onNodeWithText("Visible range").assertIsDisplayed()
         (1..5).forEach { onNodeWithText(it.toString()).assertIsDisplayed() }
-        onNodeWithText("Visual only.", substring = true).assertIsDisplayed()
+        onNodeWithText("counted as one hop", substring = true).assertIsDisplayed()
         onNodeWithText("Window style").assertIsDisplayed()
         onNodeWithText("Standard").assertIsDisplayed()
         onNodeWithText("HUD").assertIsDisplayed()

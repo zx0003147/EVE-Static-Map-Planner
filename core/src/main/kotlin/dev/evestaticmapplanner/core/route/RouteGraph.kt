@@ -82,31 +82,18 @@ object RouteGraphBuilder {
                 "Stargate connection references an unknown solar system"
             }
             val connectionId = RouteConnectionId("stargate:${it.firstSystemId}:${it.secondSystemId}")
-            edges += edge(connectionId, it.firstSystemId, it.secondSystemId, RouteEdgeType.STARGATE)
-            edges += edge(connectionId, it.secondSystemId, it.firstSystemId, RouteEdgeType.STARGATE)
+            edges += routeEdge(connectionId, it.firstSystemId, it.secondSystemId, RouteEdgeType.STARGATE)
+            edges += routeEdge(connectionId, it.secondSystemId, it.firstSystemId, RouteEdgeType.STARGATE)
         }
 
         ansiblexConnections.asSequence()
             .filter(AnsiblexConnection::enabled)
-            .sortedWith(compareBy({ it.firstSystemId }, { it.secondSystemId }, { it.id }))
             .forEach { connection ->
                 require(connection.firstSystemId in systemIds && connection.secondSystemId in systemIds) {
                     "Ansiblex connection ${connection.id} references an unknown solar system"
                 }
-                val connectionId = RouteConnectionId("ansiblex:${connection.id}")
-                when (connection.direction) {
-                    AnsiblexDirection.BIDIRECTIONAL -> {
-                        edges += edge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.ANSIBLEX)
-                        edges += edge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.ANSIBLEX)
-                    }
-                    AnsiblexDirection.FIRST_TO_SECOND -> {
-                        edges += edge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.ANSIBLEX)
-                    }
-                    AnsiblexDirection.SECOND_TO_FIRST -> {
-                        edges += edge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.ANSIBLEX)
-                    }
-                }
             }
+        edges += AnsiblexRouteEdgeBuilder.build(ansiblexConnections)
 
         wormholeConnections.asSequence()
             .sortedWith(compareBy({ it.firstSystemId }, { it.secondSystemId }, { it.id }))
@@ -115,8 +102,8 @@ object RouteGraphBuilder {
                     "Wormhole connection ${connection.id} references an unknown solar system"
                 }
                 val connectionId = RouteConnectionId(connection.id)
-                edges += edge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.WORMHOLE)
-                edges += edge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.WORMHOLE)
+                edges += routeEdge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.WORMHOLE)
+                edges += routeEdge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.WORMHOLE)
             }
 
         return RouteGraph(
@@ -124,17 +111,41 @@ object RouteGraphBuilder {
             adjacency = edges.distinctBy(RouteEdge::id).groupBy(RouteEdge::fromSystemId),
         )
     }
-
-    private fun edge(
-        connectionId: RouteConnectionId,
-        fromSystemId: Int,
-        toSystemId: Int,
-        type: RouteEdgeType,
-    ) = RouteEdge(
-        id = RouteEdgeId("${connectionId.value}:$fromSystemId:$toSystemId"),
-        connectionId = connectionId,
-        fromSystemId = fromSystemId,
-        toSystemId = toSystemId,
-        type = type,
-    )
 }
+
+/** Converts enabled Ansiblex connections to the same directed edges used by route planning. */
+object AnsiblexRouteEdgeBuilder {
+    fun build(connections: List<AnsiblexConnection>): List<RouteEdge> = buildList {
+        connections.asSequence()
+            .filter(AnsiblexConnection::enabled)
+            .sortedWith(compareBy({ it.firstSystemId }, { it.secondSystemId }, { it.id }))
+            .forEach { connection ->
+                val connectionId = RouteConnectionId("ansiblex:${connection.id}")
+                when (connection.direction) {
+                    AnsiblexDirection.BIDIRECTIONAL -> {
+                        add(routeEdge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.ANSIBLEX))
+                        add(routeEdge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.ANSIBLEX))
+                    }
+                    AnsiblexDirection.FIRST_TO_SECOND -> {
+                        add(routeEdge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.ANSIBLEX))
+                    }
+                    AnsiblexDirection.SECOND_TO_FIRST -> {
+                        add(routeEdge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.ANSIBLEX))
+                    }
+                }
+            }
+    }
+}
+
+private fun routeEdge(
+    connectionId: RouteConnectionId,
+    fromSystemId: Int,
+    toSystemId: Int,
+    type: RouteEdgeType,
+) = RouteEdge(
+    id = RouteEdgeId("${connectionId.value}:$fromSystemId:$toSystemId"),
+    connectionId = connectionId,
+    fromSystemId = fromSystemId,
+    toSystemId = toSystemId,
+    type = type,
+)
