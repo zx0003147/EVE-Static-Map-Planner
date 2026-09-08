@@ -16,13 +16,15 @@ class SecretRedactionTest {
         val inviteText = "esm_inv_RAW_SECRET_TEST_MARKER"
         val tokenText = "esm_dev_RAW_SECRET_TEST_MARKER"
         SecretValue.from(inviteText).use { invite ->
-            val text = ExchangeInviteRequestDto(invite, "Laptop").toString()
+            assertEqualsRedacted(invite.toString())
+            val text = ExchangeInviteRequestDto(inviteText, "Laptop").toString()
             assertTrue(text.contains(SecretValue.REDACTED))
             assertFalse(text.contains(inviteText))
         }
         SecretValue.from(tokenText).use { token ->
+            assertEqualsRedacted(token.toString())
             val text = ExchangeInviteResponseDto(
-                token,
+                tokenText,
                 "01991d6a-74ce-7ef5-8735-4e15444fc980",
                 "2026-12-01T00:00:00Z",
                 UserDto("01991d61-745e-7b08-a716-93c039cde2e2", "Pilot"),
@@ -37,6 +39,10 @@ class SecretRedactionTest {
             assertTrue(text.contains(SecretValue.REDACTED))
             assertFalse(text.contains(tokenText))
         }
+    }
+
+    private fun assertEqualsRedacted(value: String) {
+        assertTrue(value == SecretValue.REDACTED)
     }
 
     @Test

@@ -26,6 +26,7 @@ class WebMapView(
 ) {
     private val context = canvas.getContext("2d") as CanvasRenderingContext2D
     private var state = WebPlannerState()
+    private var sharedMarkerState = WebSharedMarkerState()
     private var canvasSize = MapSize(1.0, 1.0)
     private var viewport = MapViewport.fit(scene.defaultFitBounds, canvasSize)
     private var fitZoom = viewport.zoom
@@ -45,8 +46,9 @@ class WebMapView(
         }
     }
 
-    fun update(newState: WebPlannerState) {
+    fun update(newState: WebPlannerState, newSharedMarkerState: WebSharedMarkerState) {
         state = newState
+        sharedMarkerState = newSharedMarkerState
         render()
     }
 
@@ -173,6 +175,7 @@ class WebMapView(
         drawNormalRoute(transform)
         drawCapitalRoute(transform)
         drawNodes(transform, visibleBounds)
+        drawSharedMarkers(transform, visibleBounds)
         drawLabels(transform, visibleBounds)
     }
 
@@ -298,6 +301,30 @@ class WebMapView(
         }
     }
 
+    private fun drawSharedMarkers(transform: MapTransform, bounds: MapBounds) {
+        val visibleIds = scene.spatialIndex.query(bounds).toSet()
+        sharedMarkerState.markers.values.asSequence()
+            .filter { it.systemId in visibleIds }
+            .forEach { marker ->
+                val point = scene.nodesById[marker.systemId]?.position?.let(transform::worldToScreen) ?: return@forEach
+                val selected = marker.markerId == sharedMarkerState.selectedMarkerId
+                context.beginPath()
+                context.arc(point.x, point.y, if (selected) 13.5 else 10.5, 0.0, PI2)
+                context.strokeStyle = sharedMarkerColor(marker.color)
+                context.lineWidth = if (selected) 3.0 else 1.8
+                context.setLineDash(if (sharedMarkerState.status == WebSharedMarkerStatus.RECONNECTING) arrayOf(3.0, 3.0) else emptyArray())
+                context.stroke()
+                context.setLineDash(emptyArray())
+                context.beginPath()
+                context.arc(point.x + 7.0, point.y + 7.0, if (selected) 4.5 else 3.5, 0.0, PI2)
+                context.fillStyle = sharedMarkerColor(marker.color)
+                context.fill()
+                context.strokeStyle = "#07101a"
+                context.lineWidth = 1.0
+                context.stroke()
+            }
+    }
+
     private fun drawLabels(transform: MapTransform, bounds: MapBounds) {
         val zoomRatio = viewport.zoom / fitZoom
         val budget = when {
@@ -306,7 +333,8 @@ class WebMapView(
             zoomRatio < 8.0 -> 420
             else -> 1_200
         }
-        val priority = state.routeSystemIds + state.normalWaypointSystemIds + listOfNotNull(state.selectedSystemId, state.hoveredSystemId)
+        val priority = state.routeSystemIds + state.normalWaypointSystemIds + sharedMarkerState.markersBySystemId.keys +
+            listOfNotNull(state.selectedSystemId, state.hoveredSystemId)
         val nodes = scene.spatialIndex.query(bounds).map(scene.nodesById::getValue).sortedWith(
             compareBy<ProjectedSystemNode>({ it.system.id !in priority }, { it.system.name.lowercase() }),
         )
@@ -325,6 +353,16 @@ class WebMapView(
             drawn++
         }
     }
+}
+
+private fun sharedMarkerColor(color: String): String = when (color) {
+    "RED" -> "#ff5d73"
+    "ORANGE" -> "#ff9f43"
+    "YELLOW" -> "#ffd166"
+    "GREEN" -> "#57e389"
+    "PURPLE" -> "#a98bff"
+    "WHITE" -> "#f1f5f8"
+    else -> "#42bff5"
 }
 
 private const val PICK_RADIUS_PX = 12.0

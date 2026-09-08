@@ -37,9 +37,13 @@ kotlin {
         }
         jsMain.dependencies {
             implementation(project(":core"))
+            implementation(project(":shared-client"))
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.serialization.json)
         }
         jsTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

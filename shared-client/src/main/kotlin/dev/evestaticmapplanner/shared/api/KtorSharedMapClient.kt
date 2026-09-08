@@ -27,6 +27,7 @@ import dev.evestaticmapplanner.shared.protocol.SharedMarkerDto
 import dev.evestaticmapplanner.shared.protocol.UpdateMemberRequestDto
 import dev.evestaticmapplanner.shared.protocol.UpdateSharedMarkerRequestDto
 import dev.evestaticmapplanner.shared.protocol.WorkspacesResponseDto
+import dev.evestaticmapplanner.shared.protocol.SHARED_MAP_PROTOCOL_JSON
 import dev.evestaticmapplanner.shared.protocol.toDomain
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -71,10 +72,11 @@ class KtorSharedMapClient(
         invite: SecretValue,
         deviceName: String,
     ): ExchangedCredential = request {
+        val rawInvite = invite.useString { it }
         client.post(server.endpoint("/api/v1/auth/exchange-invite")) {
             commonHeaders()
             contentType(ContentType.Application.Json)
-            setBody(ExchangeInviteRequestDto(invite, deviceName))
+            setBody(ExchangeInviteRequestDto(rawInvite, deviceName))
         }
     }.decode<ExchangeInviteResponseDto>().toDomain()
 
@@ -353,11 +355,7 @@ class KtorSharedMapClient(
     }
 
     companion object {
-        val PROTOCOL_JSON = Json {
-            ignoreUnknownKeys = true
-            explicitNulls = true
-            encodeDefaults = true
-        }
+        val PROTOCOL_JSON: Json = SHARED_MAP_PROTOCOL_JSON
 
         fun defaultHttpClient(
             connectTimeoutMillis: Long = 5_000,

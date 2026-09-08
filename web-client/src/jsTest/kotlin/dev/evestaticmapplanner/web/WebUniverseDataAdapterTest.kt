@@ -190,6 +190,15 @@ class WebUniverseDataAdapterTest {
         assertEquals(alphaPoint.y, roundTrip.y, 1e-9)
         assertNull(scene.spatialIndex.nearest(MapPoint(99_999.0, 99_999.0), 0.01))
     }
+
+    @Test
+    fun `shared marker location distinguishes positioned unpositioned and unknown systems`() {
+        val universe = WebUniverseDataAdapter.adapt(fixtureDocument())
+
+        assertEquals(SharedMarkerLocationAvailability.POSITIONED, universe.sharedMarkerLocationAvailability(ALPHA))
+        assertEquals(SharedMarkerLocationAvailability.UNPOSITIONED, universe.sharedMarkerLocationAvailability(HIDDEN))
+        assertEquals(SharedMarkerLocationAvailability.UNKNOWN_SYSTEM, universe.sharedMarkerLocationAvailability(99_999_999))
+    }
 }
 
 internal fun fixtureDocument(): WebPackDocumentDto {

@@ -46,6 +46,18 @@ data class WebUniverse(
     }
 }
 
+internal enum class SharedMarkerLocationAvailability {
+    POSITIONED,
+    UNPOSITIONED,
+    UNKNOWN_SYSTEM,
+}
+
+internal fun WebUniverse.sharedMarkerLocationAvailability(systemId: Int): SharedMarkerLocationAvailability = when {
+    systemId !in systemsById -> SharedMarkerLocationAvailability.UNKNOWN_SYSTEM
+    systemId !in scene.nodesById -> SharedMarkerLocationAvailability.UNPOSITIONED
+    else -> SharedMarkerLocationAvailability.POSITIONED
+}
+
 data class WebPackMetadata(val packVersion: String, val desktopAppVersion: String, val sdeBuild: Long)
 
 class WebStaticMapRepository(private val data: StaticMapData) : StaticMapRepository {

@@ -88,6 +88,22 @@
           <div id="coverage-summary" class="summary-line">Coverage: none</div>
           <div id="overlay-list" class="item-list empty"></div>
         </details>
+
+        <details open>
+          <summary>Shared Markers</summary>
+          <div id="shared-status" class="shared-status disconnected">Disconnected</div>
+          <label for="shared-server-url">Server URL</label>
+          <input id="shared-server-url" type="url" autocomplete="url" placeholder="https://marker.example.com" />
+          <label for="shared-invite-code">Invite Code</label>
+          <input id="shared-invite-code" type="password" autocomplete="off" placeholder="One-time invite" />
+          <label for="shared-device-name">Device name</label>
+          <input id="shared-device-name" autocomplete="off" maxlength="80" value="EVE Static Map Planner Web" />
+          <div class="button-row"><button id="shared-connect">Connect</button><button id="shared-disconnect" class="secondary">Disconnect</button></div>
+          <p class="credential-note">The Invite Code is exchanged once. The Device Token stays only in this tab and is cleared on reload.</p>
+          <p id="shared-error" class="inline-error hidden"></p>
+          <div class="button-row"><button id="shared-create-selected">Create at Selected</button></div>
+          <div id="shared-marker-list" class="item-list empty">Connect to load markers</div>
+        </details>
       </aside>
 
       <main class="map-panel">
@@ -99,6 +115,7 @@
           <span><i class="legend-line capital"></i>Capital jump</span>
           <span><i class="legend-dot selected"></i>Selected</span>
           <span><i class="legend-dot coverage"></i>Coverage</span>
+          <span><i class="legend-ring shared"></i>Shared Marker</span>
         </div>
         <div id="user-message" class="user-message hidden" role="status" aria-live="polite"></div>
       </main>
@@ -114,6 +131,29 @@
           <p>Search and route logic retain systems without Official 2D coordinates; those systems are not placed at a fake map position.</p>
         </section>
       </aside>
+    </div>
+
+    <div id="shared-marker-editor" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="shared-editor-title">
+      <div class="modal-card">
+        <h2 id="shared-editor-title">Shared Marker</h2>
+        <p id="shared-editor-system" class="summary-line"></p>
+        <label for="shared-marker-name">Name</label>
+        <input id="shared-marker-name" maxlength="80" autocomplete="off" />
+        <label for="shared-marker-color">Color</label>
+        <select id="shared-marker-color">
+          <option>RED</option><option>ORANGE</option><option>YELLOW</option><option>GREEN</option>
+          <option selected>BLUE</option><option>PURPLE</option><option>WHITE</option>
+        </select>
+        <label for="shared-marker-tags">Tags (comma-separated lowercase)</label>
+        <input id="shared-marker-tags" autocomplete="off" placeholder="staging, ops" />
+        <label for="shared-marker-notes">Notes</label>
+        <textarea id="shared-marker-notes" maxlength="2000" rows="5"></textarea>
+        <div class="button-row modal-actions">
+          <button id="shared-editor-save">Save</button>
+          <button id="shared-editor-delete" class="danger">Delete</button>
+          <button id="shared-editor-cancel" class="secondary">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <script src="web-client.js"></script>

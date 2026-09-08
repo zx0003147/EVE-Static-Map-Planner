@@ -2,6 +2,10 @@ package dev.evestaticmapplanner.web
 
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import dev.evestaticmapplanner.shared.protocol.SharedMarkerDto
 import org.w3c.dom.HTMLCanvasElement
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
@@ -13,8 +17,14 @@ fun main() {
             val documentDto = parseWebPackDocument(rawDocument)
             val universe = WebUniverseDataAdapter.adapt(documentDto)
             lateinit var app: WebApplication
-            val planner = WebPlannerController(universe) { state -> app.render(state) }
-            app = WebApplication(planner)
+            val scope = MainScope()
+            val planner = WebPlannerController(universe) { state -> app.renderPlanner(state) }
+            val sharedMarkers = WebSharedMarkerController(
+                client = BrowserSharedMarkerTransport(),
+                scope = scope,
+                onStateChanged = { state -> app.renderSharedMarkers(state) },
+            )
+            app = WebApplication(planner, sharedMarkers, scope)
             app.start()
             setBootStatus("Ready", null)
             document.documentElement?.classList?.add("app-ready")
@@ -32,17 +42,25 @@ private fun setBootStatus(status: String, error: String?) {
     }
 }
 
-private class WebApplication(private val planner: WebPlannerController) {
+private class WebApplication(
+    private val planner: WebPlannerController,
+    private val sharedMarkers: WebSharedMarkerController,
+    private val scope: CoroutineScope,
+) {
     private val universe = planner.universe
     private val banner = element<HTMLDivElement>("user-message")
     private val mapView = WebMapView(
         canvas = element<HTMLCanvasElement>("map-canvas"),
         scene = universe.scene,
-        onSelect = planner::selectSystem,
+        onSelect = { systemId ->
+            planner.selectSystem(systemId)
+            sharedMarkers.selectMarkerAtSystem(systemId)
+        },
         onHover = planner::hoverSystem,
     )
     private val search = SystemPicker("global-search", "global-results", planner::search) { system ->
         planner.selectSystem(system.id)
+        sharedMarkers.selectMarkerAtSystem(system.id)
         if (!mapView.centerOn(system.id)) showTransientError("${system.name} has no Official 2D position.")
     }
     private val routeFrom = SystemPicker("route-from", "route-from-results", planner::search) { planner.setNormalStart(it.id) }
@@ -53,6 +71,8 @@ private class WebApplication(private val planner: WebPlannerController) {
     private val capitalFrom = SystemPicker("capital-from", "capital-from-results", planner::search) { planner.setCapitalStart(it.id) }
     private val capitalTo = SystemPicker("capital-to", "capital-to-results", planner::search) { planner.setCapitalDestination(it.id) }
     private val jumpSource = SystemPicker("jump-source", "jump-source-results", planner::search) { _ -> }
+    private var editingMarkerId: String? = null
+    private var editingSystemId: Int? = null
 
     fun start() {
         element<HTMLElement>("pack-meta").textContent =
@@ -61,12 +81,14 @@ private class WebApplication(private val planner: WebPlannerController) {
             "${universe.staticData.systems.size} systems · ${universe.staticData.connections.size} Stargates · " +
                 "${universe.ansiblex.size} Ansiblex · ${universe.scene.omittedSystemIds.size} unpositioned"
         bindControls()
-        render(planner.state)
+        restoreSharedServerUrl()
+        renderPlanner(planner.state)
+        renderSharedMarkers(sharedMarkers.state)
         mapView.fit()
     }
 
-    fun render(state: WebPlannerState) {
-        mapView.update(state)
+    fun renderPlanner(state: WebPlannerState) {
+        mapView.update(state, sharedMarkers.state)
         renderBanner(state)
         renderWaypoints(state)
         renderRouteSummary(state)
@@ -74,6 +96,12 @@ private class WebApplication(private val planner: WebPlannerController) {
         renderOverlays(state)
         renderSystemInfo(state)
         element<HTMLInputElementCompat>("use-ansiblex").checked = state.useAnsiblex
+    }
+
+    fun renderSharedMarkers(state: WebSharedMarkerState) {
+        mapView.update(planner.state, state)
+        renderSharedMarkerPanel(state)
+        renderSystemInfo(planner.state)
     }
 
     private fun bindControls() {
@@ -97,6 +125,30 @@ private class WebApplication(private val planner: WebPlannerController) {
         click("jump-source-selected") { planner.state.selectedSystemId?.let(jumpSource::selectId) }
         click("add-jump-range") { syncRange(); planner.addJumpRange(jumpSource.selectedSystemId) }
         click("clear-jump-ranges") { planner.clearJumpRanges() }
+        click("shared-connect") {
+            val serverUrl = element<HTMLInputElementCompat>("shared-server-url").value
+            val invite = element<HTMLInputElementCompat>("shared-invite-code").value
+            val deviceName = element<HTMLInputElementCompat>("shared-device-name").value
+            element<HTMLInputElementCompat>("shared-invite-code").value = ""
+            scope.launch {
+                sharedMarkers.connect(serverUrl, invite, deviceName)
+                sharedMarkers.state.serverOrigin?.takeIf { sharedMarkers.state.status == WebSharedMarkerStatus.CONNECTED }
+                    ?.let(::saveSharedServerUrl)
+            }
+        }
+        click("shared-disconnect") { sharedMarkers.disconnect() }
+        click("shared-create-selected") {
+            val systemId = planner.state.selectedSystemId
+            if (systemId == null) showTransientError("Select a system before creating a Shared Marker.")
+            else openMarkerEditor(systemId, null)
+        }
+        click("shared-editor-cancel") { closeMarkerEditor() }
+        click("shared-editor-save") { saveMarkerEditor() }
+        click("shared-editor-delete") { deleteMarkerEditor() }
+        document.addEventListener("visibilitychange", {
+            if (document.asDynamic().visibilityState == "visible") sharedMarkers.onPageVisible()
+        })
+        window.addEventListener("pagehide", { sharedMarkers.close() })
     }
 
     private fun syncRange() {
@@ -212,12 +264,161 @@ private class WebApplication(private val planner: WebPlannerController) {
         target.appendInfo("Universe XYZ", "${scientific(system.position.x)}, ${scientific(system.position.y)}, ${scientific(system.position.z)}")
         val official = universe.scene.nodesById[system.id]?.position
         target.appendInfo("Official 2D", official?.let { "${formatDouble(it.x, 2)}, ${formatDouble(it.y, 2)}" } ?: "Unavailable")
+        sharedMarkers.state.markersBySystemId[system.id]?.let { marker ->
+            val heading = document.createElement("h3")
+            heading.textContent = "Shared Marker"
+            target.appendChild(heading)
+            target.appendInfo("Marker", marker.name)
+            target.appendInfo("Color", marker.color.lowercase().replaceFirstChar(Char::uppercase))
+            target.appendInfo("Tags", marker.tags.joinToString().ifEmpty { "None" })
+            target.appendInfo("Notes", marker.notes ?: "None")
+            target.appendInfo("Updated by", marker.updatedBy.displayName)
+            target.appendInfo("Version", marker.version.toString())
+        }
         if (official == null) {
             val warning = document.createElement("p")
             warning.className = "inline-warning"
             warning.textContent = "This system remains available to Search and route logic but has no Official 2D map position."
             target.appendChild(warning)
         }
+    }
+
+    private fun renderSharedMarkerPanel(state: WebSharedMarkerState) {
+        element<HTMLElement>("shared-status").apply {
+            textContent = when (state.status) {
+                WebSharedMarkerStatus.DISCONNECTED -> "Disconnected"
+                WebSharedMarkerStatus.CONNECTING -> "Connecting"
+                WebSharedMarkerStatus.CONNECTED -> "Connected · ${state.workspace?.name ?: "Workspace"} · ${state.workspace?.role}"
+                WebSharedMarkerStatus.RECONNECTING -> "Reconnecting · attempt ${state.reconnectAttempt}"
+                WebSharedMarkerStatus.AUTH_FAILED -> "Auth failed"
+                WebSharedMarkerStatus.FORBIDDEN -> "Access removed"
+                WebSharedMarkerStatus.FAILED -> "Connection failed"
+            }
+            className = "shared-status ${state.status.name.lowercase()}"
+        }
+        element<HTMLElement>("shared-error").apply {
+            val detail = state.requestId?.let { " · Request $it" }.orEmpty()
+            textContent = state.error?.plus(detail).orEmpty()
+            className = if (state.error == null) "inline-error hidden" else "inline-error"
+        }
+        element<HTMLElement>("shared-connect").asDynamic().disabled =
+            state.status == WebSharedMarkerStatus.CONNECTING || state.busy
+        element<HTMLElement>("shared-disconnect").asDynamic().disabled =
+            state.status == WebSharedMarkerStatus.DISCONNECTED
+        element<HTMLElement>("shared-create-selected").asDynamic().disabled =
+            !state.canWrite || planner.state.selectedSystemId == null
+        element<HTMLElement>("shared-editor-save").asDynamic().disabled = state.busy
+        element<HTMLElement>("shared-editor-delete").asDynamic().disabled = state.busy
+
+        val container = element<HTMLDivElement>("shared-marker-list")
+        container.clearChildren()
+        val rows = state.markers.values.sortedWith(
+            compareBy<SharedMarkerDto>({ planner.systemName(it.systemId).lowercase() }, SharedMarkerDto::markerId),
+        )
+        if (rows.isEmpty()) {
+            container.appendText(if (state.status == WebSharedMarkerStatus.CONNECTED) "No Shared Markers" else "Connect to load markers")
+            container.className = "item-list empty"
+            return
+        }
+        container.className = "item-list"
+        rows.forEach { marker ->
+            val row = document.createElement("div") as HTMLDivElement
+            row.className = "list-row shared-marker-row" + if (marker.markerId == state.selectedMarkerId) " selected" else ""
+            val swatch = document.createElement("i") as HTMLElement
+            swatch.className = "marker-swatch marker-${marker.color.lowercase()}"
+            row.appendChild(swatch)
+            val label = document.createElement("button") as HTMLElement
+            label.className = "list-link"
+            val knownSystem = universe.systemsById[marker.systemId]
+            label.textContent = "${marker.name} · ${knownSystem?.name ?: "Unknown System (${marker.systemId})"}"
+            label.addEventListener("click", { locateMarker(marker) })
+            row.appendChild(label)
+            row.appendChild(actionButton("Edit", state.canWrite) { openMarkerEditor(marker.systemId, marker) })
+            container.appendChild(row)
+        }
+    }
+
+    private fun locateMarker(marker: SharedMarkerDto) {
+        sharedMarkers.selectMarker(marker.markerId)
+        when (universe.sharedMarkerLocationAvailability(marker.systemId)) {
+            SharedMarkerLocationAvailability.UNKNOWN_SYSTEM -> {
+                showTransientError("${marker.name} references a system not present in this Web Pack.")
+                return
+            }
+            SharedMarkerLocationAvailability.UNPOSITIONED -> {
+                planner.selectSystem(marker.systemId)
+                showTransientError("${planner.systemName(marker.systemId)} has no Official 2D position; the marker remains in the list.")
+                return
+            }
+            SharedMarkerLocationAvailability.POSITIONED -> Unit
+        }
+        planner.selectSystem(marker.systemId)
+        check(mapView.centerOn(marker.systemId)) { "Positioned system ${marker.systemId} is missing from the scene" }
+    }
+
+    private fun openMarkerEditor(systemId: Int, marker: SharedMarkerDto?) {
+        editingMarkerId = marker?.markerId
+        editingSystemId = systemId
+        element<HTMLElement>("shared-editor-title").textContent =
+            if (marker == null) "Create Shared Marker" else "Edit Shared Marker"
+        element<HTMLElement>("shared-editor-system").textContent =
+            universe.systemsById[systemId]?.let { "${it.name} · $systemId" } ?: "Unknown System · $systemId"
+        element<HTMLInputElementCompat>("shared-marker-name").value = marker?.name.orEmpty()
+        element<org.w3c.dom.HTMLSelectElement>("shared-marker-color").value = marker?.color ?: "BLUE"
+        element<HTMLInputElementCompat>("shared-marker-tags").value = marker?.tags?.joinToString(", ").orEmpty()
+        element<org.w3c.dom.HTMLTextAreaElement>("shared-marker-notes").value = marker?.notes.orEmpty()
+        element<HTMLElement>("shared-editor-delete").classList.toggle("hidden", marker == null)
+        element<HTMLElement>("shared-marker-editor").classList.remove("hidden")
+    }
+
+    private fun saveMarkerEditor() {
+        val systemId = editingSystemId ?: return
+        val markerId = editingMarkerId
+        val draft = WebSharedMarkerDraft(
+            name = element<HTMLInputElementCompat>("shared-marker-name").value,
+            color = element<org.w3c.dom.HTMLSelectElement>("shared-marker-color").value,
+            tags = element<HTMLInputElementCompat>("shared-marker-tags").value.split(',').map(String::trim).filter(String::isNotEmpty),
+            notes = element<org.w3c.dom.HTMLTextAreaElement>("shared-marker-notes").value,
+        )
+        scope.launch {
+            if (markerId == null) {
+                sharedMarkers.createMarker(systemId, draft)
+            } else {
+                val current = sharedMarkers.state.markers[markerId]
+                if (current == null) {
+                    showTransientError("This Shared Marker was removed by another client.")
+                    closeMarkerEditor()
+                    return@launch
+                }
+                sharedMarkers.updateMarker(markerId, current.version, draft)
+            }
+            if (sharedMarkers.state.error == null) closeMarkerEditor()
+        }
+    }
+
+    private fun deleteMarkerEditor() {
+        val markerId = editingMarkerId ?: return
+        val marker = sharedMarkers.state.markers[markerId] ?: return
+        if (!window.confirm("Delete Shared Marker '${marker.name}'? This affects every connected client.")) return
+        scope.launch {
+            sharedMarkers.deleteMarker(marker.markerId, marker.version)
+            if (sharedMarkers.state.error == null) closeMarkerEditor()
+        }
+    }
+
+    private fun closeMarkerEditor() {
+        editingMarkerId = null
+        editingSystemId = null
+        element<HTMLElement>("shared-marker-editor").classList.add("hidden")
+    }
+
+    private fun restoreSharedServerUrl() {
+        val saved = runCatching { window.localStorage.getItem(SHARED_SERVER_STORAGE_KEY) }.getOrNull()
+        if (!saved.isNullOrBlank()) element<HTMLInputElementCompat>("shared-server-url").value = saved
+    }
+
+    private fun saveSharedServerUrl(origin: String) {
+        runCatching { window.localStorage.setItem(SHARED_SERVER_STORAGE_KEY, origin) }
     }
 
     private fun summarizeSystems(ids: List<Int>): String {
@@ -238,6 +439,8 @@ private class WebApplication(private val planner: WebPlannerController) {
         return button
     }
 }
+
+private const val SHARED_SERVER_STORAGE_KEY = "eve-static-map-planner.shared-marker.server-origin"
 
 private class SystemPicker(
     inputId: String,

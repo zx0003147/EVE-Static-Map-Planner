@@ -33,12 +33,27 @@ const ready = await evaluate(`({
   fatal: document.querySelector('#fatal-error')?.textContent,
   stats: document.querySelector('#map-stats')?.textContent,
   canvasWidth: document.querySelector('#map-canvas')?.width,
-  canvasHeight: document.querySelector('#map-canvas')?.height
+  canvasHeight: document.querySelector('#map-canvas')?.height,
+  sharedStatus: document.querySelector('#shared-status')?.textContent,
+  sharedInviteType: document.querySelector('#shared-invite-code')?.type,
+  sharedList: document.querySelector('#shared-marker-list')?.textContent
 })`);
 assert.equal(ready.status, "Ready");
 assert.equal(ready.fatal, "");
 assert.match(ready.stats, /8490 systems/);
 assert.ok(ready.canvasWidth > 0 && ready.canvasHeight > 0);
+assert.equal(ready.sharedStatus, "Disconnected");
+assert.equal(ready.sharedInviteType, "password");
+assert.match(ready.sharedList, /Connect to load markers/);
+
+await evaluate(`(() => {
+  document.querySelector('#shared-server-url').value = 'https://marker.example.com/has-a-path';
+  document.querySelector('#shared-invite-code').value = 'not-a-real-invite';
+  document.querySelector('#shared-connect').click();
+})()`);
+await waitFor("document.querySelector('#shared-error')?.textContent.includes('origin')", 5_000);
+assert.equal(await evaluate("document.querySelector('#shared-invite-code').value"), "");
+await evaluate("document.querySelector('#shared-disconnect').click()");
 
 await evaluate(`(() => {
   const input = document.querySelector('#global-search');
@@ -82,6 +97,7 @@ await evaluate(`(() => {
 console.log(JSON.stringify({
   status: ready.status,
   stats: ready.stats,
+  sharedStatus: ready.sharedStatus,
   readyElapsedMs,
   normalElapsedMs,
   routeSummary,

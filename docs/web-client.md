@@ -1,8 +1,8 @@
-# Web Client Phase 2
+# Web Client Phase 3
 
 ## Scope
 
-Phase 2 adds a browser client for the existing static map, Normal Route, Ansiblex route, Waypoint, Capital Route, Jump Range, and Capital Coverage capabilities. Desktop remains the data-management application. The Web client has no SDE management, Ansiblex editing/import, Shared Marker, AI, MCP, local control, credential management, or PWA code.
+Phase 3 keeps the Phase 2 static map and planning features and makes the browser a client of the existing Shared Map Server. It uses the same Server URL, single-use Invite Code, Protocol v1, Workspace roles, marker identity, fields, optimistic versions, and server authority as Desktop. It does not add an account system or a second backend. Desktop remains the SDE, Ansiblex, and Web Pack data-management application; the Web client still has no AI, MCP, local control, PWA, or offline marker editing.
 
 The supported publication contract remains Web Pack `schemaVersion = 1`.
 
@@ -33,9 +33,19 @@ shared :core
              |
              v
 WebPlannerController -> WebMapView -> Canvas and DOM UI
+
+shared-client commonMain Protocol v1 DTOs / JSON vocabulary
+             |
+             +-- Desktop Ktor CIO transport (JVM)
+             `-- Browser Fetch transport (JS)
+                         |
+                         v
+WebSharedMarkerController -> dynamic marker overlay and DOM panel
 ```
 
-`:core` is a focused Kotlin Multiplatform module with JVM and JS targets. JVM-only records with `java.time` management metadata, Desktop synchronized caches, and Desktop repository interfaces remain in `jvmMain`. The map geometry, Official 2D projection, spatial index, route graph and planners, Capital route, jump eligibility/distance, and coverage operations are in `commonMain`. Desktop call sites convert their full Ansiblex/Wormhole records through `buildDesktopRouteGraph`; Web Pack Ansiblex records convert to the same platform-neutral `RouteLink` contract. There is one route implementation and one Capital implementation.
+`:core` is a focused Kotlin Multiplatform module with JVM and JS targets. `:shared-client` now also has JVM and JS targets: frozen wire DTOs and JSON configuration live in `commonMain`, while Desktop keeps its Ktor CIO transport, `java.time`/UUID domain mapping, DPAPI-backed credentials, and session code in `jvmMain`. Browser Fetch and browser state are implemented in `:web-client`. The Web client does not copy or redefine Protocol v1.
+
+JVM-only records with `java.time` management metadata, Desktop synchronized caches, and Desktop repository interfaces remain in `jvmMain`. Map geometry, Official 2D projection, spatial index, route graph and planners, Capital route, jump eligibility/distance, and coverage operations are in `:core` `commonMain`. Desktop call sites convert their full Ansiblex/Wormhole records through `buildDesktopRouteGraph`; Web Pack Ansiblex records convert to the same platform-neutral `RouteLink` contract. There is one route implementation and one Capital implementation.
 
 Kotlin/JS is configured to use the system Node installation and npm, so it does not add Node/Yarn download repositories to the dependency-resolution policy.
 
@@ -98,12 +108,40 @@ The result includes jump count, total LY, route systems, and a distinct dashed C
 
 Capital Coverage follows the current Desktop meaning: the per-system count of enabled Jump Range overlays. A count greater than one is overlapping coverage. `JumpCoverageCalculator` is shared by JVM and JS, and the Canvas uses a stronger ring for overlap. Phase 2 does not introduce a different fleet or server-side meaning.
 
+## Shared Marker connection and permissions
+
+Open **Shared Markers**, enter the Shared Map Server origin (for example `https://marker.example.com`), paste an existing single-use Invite Code, choose a device name, and select **Connect / Join**. The browser calls the existing invite-exchange endpoint, validates Protocol v1 and the Shared Markers feature, loads `/me`, the assigned Workspace, and its authoritative marker snapshot. The Invite Code field is cleared after the attempt. **Disconnect** stops polling and removes the in-memory Shared Marker token and snapshot without changing routes, Waypoints, coverage, local data, or the server.
+
+The browser stores only the last successfully connected Server URL in `localStorage`. The Invite Code and the issued 90-day Device Access Token are never put in Web Pack, URLs, console output, or persistent browser storage; the token is memory-only and is lost on reload or page close. A reload therefore requires a new Server-issued invite. This intentionally trades persistent login convenience for a smaller Phase 3 browser credential surface. Desktop continues to protect its token with Windows DPAPI and is unchanged.
+
+`VIEWER` can load and locate markers. `EDITOR` and `ADMIN` can create a marker for the selected system and edit or delete existing markers. The UI reflects the resolved server role, but every request is still authorized by the server. Create/edit supports only the existing fields: name, one of the frozen colors, tags, and notes. Delete requires confirmation and affects only the selected Shared Marker.
+
+Shared Markers are online dynamic state and remain completely outside Web Pack. Snapshot updates replace only the marker map; they do not rebuild the universe, projected static scene, route graph, or Web Pack data. Markers render as colored outer rings with a small badge, remain distinct from node selection, Waypoints, Normal/Ansiblex/Capital routes, Jump Range, and coverage, and receive a stronger selected treatment. A marker whose system has no Official 2D point remains in the list with an explicit location message and is never placed at `(0, 0)`. An unknown future system ID is also retained in the list as an incompatible Web Pack reference.
+
+## Refresh, reconnect, and page lifecycle
+
+The server exposes polling rather than WebSocket or SSE, so Web deliberately follows Desktop's 30-second full-snapshot polling contract. Successful Web mutations reconcile immediately from the server response; another client's changes appear after the next poll (normally within 30 seconds). Optimistic update/delete sends the current marker version. A `409` conflict adopts the server's current marker when supplied and reports the conflict instead of overwriting it.
+
+Network loss leaves the last in-memory snapshot visible and marks the connection **Reconnecting**. Retries use 5, 10, 20, then 30-second delays and stay capped at 30 seconds. Restoring a hidden tab triggers an immediate refresh; browser timer throttling may lengthen background-tab intervals. A `401` clears the memory token and changes to **Auth failed**, requiring a new invite. A `403` changes to **Forbidden** and clears inaccessible marker state. Page close cancels polling and clears process memory; there is no background sync or offline mutation queue.
+
+## Browser origin, CORS, and HTTPS
+
+The Shared Map Server must configure the exact Web application origin in `SHARED_MAP_ALLOWED_ORIGINS`, for example:
+
+```text
+SHARED_MAP_ALLOWED_ORIGINS=https://map.example.com
+```
+
+Multiple origins are comma-separated. The server does not accept `*`; credentials/cookies are disabled; only the existing REST methods and required headers (`Authorization`, `Content-Type`, `X-Request-Id`, and `Idempotency-Key`) are allowed. `OPTIONS` preflight is handled by the server. Requests without an `Origin` header continue to work for Desktop. Local development may use `http://localhost:<port>` or `http://127.0.0.1:<port>`; non-loopback origins must be HTTPS.
+
+Production must serve both Web and Shared Map Server over HTTPS, normally with the existing Caddy TLS reverse proxy in front of Ktor. An HTTPS page cannot connect to a plain-HTTP remote server because browsers block mixed content, and the Web client does not offer an unsafe bypass. Protocol v1 currently has no WebSocket/SSE transport, so no `wss://` endpoint is required in Phase 3.
+
 ## Build, test, and run
 
-Run Web unit/consistency tests:
+Run protocol and Web unit/consistency tests:
 
 ```powershell
-.\gradlew.bat :web-client:jsNodeTest webLoaderTest
+.\gradlew.bat :shared-client:jvmTest :shared-client:jsNodeTest :web-client:jsNodeTest webLoaderTest
 ```
 
 Export a Web Pack directly from existing Desktop databases (the Preferences export remains available):
@@ -144,23 +182,35 @@ For an auto-reloading development server, stage data with the same property and 
   "-PwebPackDir=C:\path\to\EVE-Web-Pack"
 ```
 
-Modern Chromium, Google Chrome, and Microsoft Edge are the Phase 2 browser baseline. The loader requires Fetch, Web Crypto, and `DecompressionStream("gzip")`; use HTTPS or localhost.
+Modern Chromium, Google Chrome, and Microsoft Edge are the browser baseline. The loader requires Fetch, Web Crypto, and `DecompressionStream("gzip")`; use HTTPS or localhost.
+
+For local Shared Marker development, start the existing development PostgreSQL/server per the server README, serve the Web production/dev output from an origin in `SHARED_MAP_ALLOWED_ORIGINS`, create an invite through the existing Admin/Desktop flow, and enter it in the browser. Do not put the invite in a Gradle property, command line, URL, or checked-in fixture.
 
 ## Tests and consistency
 
-The JS test suite covers DTO-to-domain mapping, Region/Constellation relationships, Stargates, nullable Official positions, directional Ansiblex, search, Ansiblex off/on, reverse direction, unreachable segments, ordered Waypoints, Capital distance/routing, within/outside range, Jump Range, multi-source coverage/intersection, projection, fit, culling, and indexed picking. Deterministic route and Capital results are compared between direct shared-Core calls and the Web-Pack-backed universe.
+The common/JVM/JS suites cover Protocol v1 DTO round trips and frozen vocabulary, redaction, exact REST paths/headers/bodies, invite exchange, marker CRUD, optimistic conflict reconciliation, permissions, malformed responses, disconnected/connecting/connected/reconnecting/auth-failed states, capped retry timing, and positioned/unpositioned/unknown marker systems. Existing mapping, route, Capital, Jump Range, coverage, projection, culling, and picking tests remain in place. Deterministic route and Capital results are compared between direct shared-Core calls and the Web-Pack-backed universe.
 
-`qa/web-client-browser-smoke.mjs` is a dependency-free Chrome DevTools Protocol smoke client for a local headless Chromium browser. It verifies real Pack readiness, Canvas creation, Jita search/System Info, Jita-to-Perimeter Normal Route, 1DQ1-A-to-T5ZI-S Capital Route, Jump Range, Fit, and wheel zoom. It also reports observed ready and route timings without presenting them as a formal benchmark.
+`qa/web-client-browser-smoke.mjs` is a dependency-free Chrome DevTools Protocol smoke client for a local headless Chromium browser. It verifies real Pack readiness, Canvas creation, Shared Marker disconnected controls, Jita search/System Info, Jita-to-Perimeter Normal Route, 1DQ1-A-to-T5ZI-S Capital Route, Jump Range, Fit, and wheel zoom. It also reports observed ready and route timings without presenting them as a formal benchmark. A real Desktop/Web interoperability acceptance still requires one running PostgreSQL-backed Shared Map Server and fresh role-appropriate single-use invites; record all six create/edit/delete directions rather than substituting mock clients.
+
+For a manual local browser smoke, serve the production directory with `node qa/static-web-server.mjs`, start Chrome
+or Edge headless with a local remote-debugging port, and run:
+
+```powershell
+node qa/web-client-browser-smoke.mjs <port> http://127.0.0.1:8765/
+```
+
+The helper serves only local static artifacts and is not a production server.
 
 ## Known limitations and phase boundaries
 
-- Official 2D is the only Web projection in Phase 2; Desktop Real 3D remains Desktop-only.
+- Official 2D is the only Web projection; Desktop Real 3D remains Desktop-only.
 - 3,005 systems in the current tested SDE Pack have no Official 2D coordinates. They remain searchable/routable and are reported as unpositioned.
-- Phase 2 provides single-pointer touch pan/tap, not pinch zoom or final tablet-responsive polish.
+- Web provides single-pointer touch pan/tap, not pinch zoom or final tablet-responsive polish.
 - Capital route uses the current effective manual LY profile; no unverified ship/rule presets were added.
 - The renderer is event-driven and indexed/culling-aware, but this phase does not claim GPU/WebGL rendering or formal frame-time benchmarks.
-- No Web Pack persistence/offline app shell, service worker, install manifest, or PWA behavior exists.
-
-Phase 3 may connect Web to the existing Shared Marker protocol, but no Shared Marker client/server/auth/protocol code is changed here. That work must separately address Server URL and Invite Code UX, reuse of protocol/client models in a browser-compatible module, CORS, HTTPS mixed-content rules, WebSocket/SSE support as applicable, reconnect behavior, and browser-safe credential storage.
+- No Web Pack persistence/offline app shell, service worker, install manifest, PWA behavior, offline Shared Marker editing, or mutation queue exists.
+- Browser Device Access Tokens are memory-only. Reloading needs a fresh single-use invite; persistent browser login is not implemented.
+- Shared Marker live updates use the server's existing 30-second snapshot polling, not push delivery. Background tab throttling can increase observed latency.
+- Phase 3 does not expose Shared Marker member, invite, role, or device administration in Web. Those existing administrative workflows remain Desktop/server responsibilities.
 
 Phase 4 remains responsible for PWA work, offline persistence design, pinch zoom, and final tablet layout/gesture refinement.

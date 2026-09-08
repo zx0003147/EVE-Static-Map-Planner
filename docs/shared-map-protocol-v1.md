@@ -716,7 +716,9 @@ Limits are enforced server-side even if the UI also enforces them.
   operator metadata, or database topology.
 - Shared Marker data and backups are sensitive alliance data. TLS protects transit; V1 does not provide end-to-end
   encryption from one Map client to another, so the server operator and database administrator can read marker data.
-- CORS is disabled by default; the desktop client is not a browser. CSRF cookies are not used.
+- CORS is disabled by default. Operators may enable the Phase 3 browser client only with an explicit exact-origin
+  allowlist; wildcard origins and credentialed CORS are not supported. Desktop requests omit `Origin` and are
+  unaffected. CSRF cookies are not used.
 
 ## 18. NOT IN V1
 

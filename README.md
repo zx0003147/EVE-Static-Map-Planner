@@ -119,6 +119,12 @@ Connected clients poll every 30 seconds and atomically replace the selected Work
 the last in-memory snapshot remains visible as stale in degraded mode; it is never persisted as a shared snapshot
 disk cache. Disconnecting clears Shared Marker state without affecting local markers or AI Missions.
 
+The Web client is also a Protocol v1 Shared Marker client. It preserves the Server URL + single-use Invite Code
+workflow and supports role-aware list, map display, locate, create, edit, delete, polling, and reconnect. Web keeps
+the issued Device Access Token in memory only and saves only the last successful Server URL; reload requires a fresh
+invite. Cross-origin deployment requires the server's exact `SHARED_MAP_ALLOWED_ORIGINS` allowlist, and production
+Web/server origins must both use HTTPS. See [`docs/web-client.md`](docs/web-client.md).
+
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
 visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.4.0.
 

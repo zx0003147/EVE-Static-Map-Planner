@@ -1,7 +1,6 @@
 package dev.evestaticmapplanner.shared.protocol
 
 import dev.evestaticmapplanner.shared.auth.SecretValue
-import dev.evestaticmapplanner.shared.auth.SecretValueSerializer
 import dev.evestaticmapplanner.shared.model.SharedDevice
 import dev.evestaticmapplanner.shared.model.SharedIdentity
 import dev.evestaticmapplanner.shared.model.SharedInvite
@@ -13,160 +12,8 @@ import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedUser
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 import java.util.UUID
-
-@Serializable
-data class MetaResponseDto(
-    val serverVersion: String,
-    val protocolVersion: Int,
-    val minimumClientProtocolVersion: Int,
-    val maximumClientProtocolVersion: Int,
-    val features: List<String>,
-    val universeBuild: String,
-)
-
-@Serializable
-class ExchangeInviteRequestDto(
-    @Serializable(with = SecretValueSerializer::class)
-    val inviteToken: SecretValue,
-    val deviceName: String,
-) {
-    override fun toString(): String = "ExchangeInviteRequestDto(inviteToken=${SecretValue.REDACTED}, deviceName=$deviceName)"
-}
-
-@Serializable
-class ExchangeInviteResponseDto(
-    @Serializable(with = SecretValueSerializer::class)
-    val accessToken: SecretValue,
-    val tokenId: String,
-    val expiresAt: String,
-    val user: UserDto,
-    val workspace: WorkspaceDto,
-) {
-    override fun toString(): String =
-        "ExchangeInviteResponseDto(accessToken=${SecretValue.REDACTED}, tokenId=$tokenId, workspace=${workspace.workspaceId})"
-}
-
-@Serializable
-data class UserDto(val userId: String, val displayName: String)
-
-@Serializable
-data class WorkspaceDto(
-    val workspaceId: String,
-    val name: String,
-    val role: String,
-    val revision: Long,
-    val memberId: String,
-)
-
-@Serializable
-data class DeviceDto(
-    val tokenId: String,
-    val deviceName: String,
-    val createdAt: String,
-    val lastUsedAt: String?,
-    val expiresAt: String,
-)
-
-@Serializable
-data class MeResponseDto(val user: UserDto, val workspace: WorkspaceDto, val device: DeviceDto)
-
-@Serializable
-data class WorkspacesResponseDto(val workspaces: List<WorkspaceDto>)
-
-@Serializable
-data class SharedMarkerDto(
-    val markerId: String,
-    val workspaceId: String,
-    val systemId: Int,
-    val name: String,
-    val color: String,
-    val tags: List<String>,
-    val notes: String?,
-    val createdBy: UserDto,
-    val updatedBy: UserDto,
-    val createdAt: String,
-    val updatedAt: String,
-    val version: Long,
-)
-
-@Serializable
-data class SharedMarkerSnapshotResponseDto(
-    val workspaceId: String,
-    val revision: Long,
-    val generatedAt: String,
-    val markers: List<SharedMarkerDto>,
-)
-
-@Serializable
-data class CreateSharedMarkerRequestDto(
-    val systemId: Int,
-    val name: String,
-    val color: String,
-    val tags: List<String>,
-    val notes: String?,
-)
-
-@Serializable
-data class UpdateSharedMarkerRequestDto(
-    val expectedVersion: Long,
-    val name: String,
-    val color: String,
-    val tags: List<String>,
-    val notes: String?,
-)
-
-@Serializable
-data class MemberDto(
-    val memberId: String,
-    val userId: String,
-    val displayName: String,
-    val role: String,
-    val version: Long,
-    val createdAt: String,
-    val updatedAt: String,
-    val revokedAt: String?,
-)
-
-@Serializable
-data class MembersResponseDto(val members: List<MemberDto>)
-
-@Serializable
-data class CreateMemberRequestDto(val displayName: String, val role: String)
-
-@Serializable
-data class UpdateMemberRequestDto(
-    val expectedVersion: Long,
-    val displayName: String? = null,
-    val role: String? = null,
-)
-
-@Serializable
-data class CreateInviteRequestDto(val expiresInHours: Long = 72)
-
-@Serializable
-class InviteCreatedResponseDto(
-    val inviteId: String,
-    @Serializable(with = SecretValueSerializer::class)
-    val inviteToken: SecretValue,
-    val memberId: String,
-    val expiresAt: String,
-    val createdAt: String,
-) {
-    override fun toString(): String =
-        "InviteCreatedResponseDto(inviteId=$inviteId, inviteToken=${SecretValue.REDACTED}, memberId=$memberId)"
-}
-
-@Serializable
-data class ApiErrorDto(
-    val code: String,
-    val message: String,
-    val requestId: String,
-    val details: JsonObject? = null,
-)
 
 data class ExchangedCredential(
     val accessToken: SecretValue,
@@ -186,7 +33,7 @@ fun MetaResponseDto.toDomain(): SharedServerMeta = SharedServerMeta(
 )
 
 fun ExchangeInviteResponseDto.toDomain(): ExchangedCredential = ExchangedCredential(
-    accessToken = accessToken,
+    accessToken = SecretValue.from(accessToken),
     tokenId = canonicalUuid(tokenId, "tokenId"),
     expiresAt = instant(expiresAt, "expiresAt"),
     user = user.toDomain(),
@@ -255,7 +102,7 @@ fun InviteCreatedResponseDto.toDomain(): Pair<SharedInvite, SecretValue> = Share
     memberId = canonicalUuid(memberId, "memberId"),
     expiresAt = instant(expiresAt, "expiresAt"),
     createdAt = instant(createdAt, "createdAt"),
-) to inviteToken
+) to SecretValue.from(inviteToken)
 
 private fun UserDto.toDomain(): SharedUser = SharedUser(
     userId = canonicalUuid(userId, "userId"),
