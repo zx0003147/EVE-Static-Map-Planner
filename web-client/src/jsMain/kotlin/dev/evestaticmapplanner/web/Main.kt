@@ -91,6 +91,7 @@ private class WebApplication(
 ) {
     private val universe = planner.universe
     private val banner = element<HTMLDivElement>("user-message")
+    private val notifications = WebTransientNotificationController(scope, ::renderBanner)
     private val mapView = WebMapView(
         canvas = element<HTMLCanvasElement>("map-canvas"),
         scene = universe.scene,
@@ -153,7 +154,7 @@ private class WebApplication(
 
     fun renderPlanner(state: WebPlannerState) {
         mapView.update(state, sharedMarkers.state)
-        renderBanner(state)
+        notifications.accept(state)
         renderWaypoints(state)
         renderRouteSummary(state)
         renderCapitalSummary(state)
@@ -270,7 +271,10 @@ private class WebApplication(
         element<HTMLElement>("shared-marker-editor").addEventListener("click", { raw ->
             if (raw.target == element<HTMLElement>("shared-marker-editor")) closeMarkerEditor()
         })
-        window.addEventListener("pagehide", { sharedMarkers.close() })
+        window.addEventListener("pagehide", {
+            notifications.close()
+            sharedMarkers.close()
+        })
     }
 
     private fun bindResponsiveUi() {
@@ -380,19 +384,23 @@ private class WebApplication(
         if (value == null) showTransientError("Coverage range must be a number.") else planner.setCoverageRange(value)
     }
 
-    private fun renderBanner(state: WebPlannerState) {
-        val text = state.error ?: state.message
-        banner.textContent = text.orEmpty()
-        banner.className = when {
-            state.error != null -> "user-message error"
-            state.message != null -> "user-message success"
-            else -> "user-message hidden"
+    private fun renderBanner(view: WebTransientNotificationView) {
+        banner.textContent = view.text.orEmpty()
+        banner.className = when (view.phase) {
+            WebTransientNotificationPhase.HIDDEN -> "user-message hidden"
+            WebTransientNotificationPhase.VISIBLE -> when (view.kind) {
+                WebTransientNotificationKind.ERROR -> "user-message error"
+                WebTransientNotificationKind.INFORMATION -> "user-message success"
+            }
+            WebTransientNotificationPhase.FADING -> when (view.kind) {
+                WebTransientNotificationKind.ERROR -> "user-message error fading"
+                WebTransientNotificationKind.INFORMATION -> "user-message success fading"
+            }
         }
     }
 
     private fun showTransientError(message: String) {
-        banner.textContent = message
-        banner.className = "user-message error"
+        notifications.showError(message)
     }
 
     private fun renderWaypoints(state: WebPlannerState) {

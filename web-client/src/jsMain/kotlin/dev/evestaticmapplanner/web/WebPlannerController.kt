@@ -43,6 +43,7 @@ data class WebPlannerState(
     val keepstarSystemIds: Set<Int> = emptySet(),
     val message: String? = null,
     val error: String? = null,
+    val notificationRevision: Long = 0,
 ) {
     val coverageCounts: Map<Int, Int> get() = JumpCoverageCalculator.coverageCounts(jumpOverlays)
     val routeSystemIds: Set<Int> get() = buildSet {
@@ -74,7 +75,7 @@ class WebPlannerController(
     fun search(query: String, limit: Int = 12): List<SolarSystem> =
         universe.searchRepository.searchSystems(query, limit)
 
-    fun selectSystem(systemId: Int?) = update {
+    fun selectSystem(systemId: Int?) = notify {
         val error = systemId?.takeIf { it !in universe.systemsById }?.let { "Unknown system $it" }
         it.copy(selectedSystemId = if (error == null) systemId else it.selectedSystemId, error = error, message = null)
     }
@@ -91,7 +92,7 @@ class WebPlannerController(
         it.copy(normalDestinationSystemId = known(systemId), normalRoute = null, message = null, error = null)
     }
 
-    fun addNormalWaypoint(systemId: Int) = update { current ->
+    fun addNormalWaypoint(systemId: Int) = notify { current ->
         if (systemId !in universe.systemsById) current.copy(error = "Unknown waypoint system $systemId")
         else current.copy(
             normalWaypointSystemIds = current.normalWaypointSystemIds + systemId,
@@ -127,7 +128,7 @@ class WebPlannerController(
         val start = state.normalStartSystemId
         val destination = state.normalDestinationSystemId
         if (start == null || destination == null) {
-            update { it.copy(error = "Choose both route origin and destination.", message = null) }
+            notify { it.copy(error = "Choose both route origin and destination.", message = null) }
             return
         }
         val intent = NavigationIntent(start, state.normalWaypointSystemIds, destination)
@@ -136,7 +137,7 @@ class WebPlannerController(
             intent,
             RouteOptions(useAnsiblex = state.useAnsiblex),
         )) {
-            is NormalNavigationOutcome.Found -> update {
+            is NormalNavigationOutcome.Found -> notify {
                 it.copy(
                     normalRoute = outcome.route,
                     error = null,
@@ -144,10 +145,10 @@ class WebPlannerController(
                         if (outcome.route.ansiblexJumps > 0) " · ${outcome.route.ansiblexJumps} Ansiblex" else "",
                 )
             }
-            is NormalNavigationOutcome.InvalidIntent -> update {
+            is NormalNavigationOutcome.InvalidIntent -> notify {
                 it.copy(error = navigationValidationMessage(outcome.validation), message = null)
             }
-            is NormalNavigationOutcome.SegmentFailed -> update {
+            is NormalNavigationOutcome.SegmentFailed -> notify {
                 val from = systemName(outcome.segment.fromSystemId)
                 val to = systemName(outcome.segment.toSystemId)
                 it.copy(error = "No route for waypoint segment ${outcome.segment.index + 1}: $from → $to.", message = null)
@@ -155,7 +156,7 @@ class WebPlannerController(
         }
     }
 
-    fun clearNormalRoute() = update {
+    fun clearNormalRoute() = notify {
         it.copy(normalRoute = null, message = "Normal route cleared.", error = null)
     }
 
@@ -167,7 +168,7 @@ class WebPlannerController(
         it.copy(capitalDestinationSystemId = known(systemId), capitalRoute = null, message = null, error = null)
     }
 
-    fun addCapitalWaypoint(systemId: Int) = update { current ->
+    fun addCapitalWaypoint(systemId: Int) = notify { current ->
         if (systemId !in universe.systemsById) current.copy(error = "Unknown Capital waypoint system $systemId")
         else current.copy(
             capitalWaypointSystemIds = current.capitalWaypointSystemIds + systemId,
@@ -195,7 +196,7 @@ class WebPlannerController(
         }.let { current.copy(capitalWaypointSystemIds = it, capitalRoute = null, message = null) }
     }
 
-    fun setCapitalRange(rangeLy: Double) = update { current ->
+    fun setCapitalRange(rangeLy: Double) = notify { current ->
         if (!rangeLy.isFinite() || rangeLy <= 0.0 || rangeLy > MAX_WEB_JUMP_RANGE_LY) {
             current.copy(error = "Jump range must be between 0 and 50 LY.")
         }
@@ -206,13 +207,13 @@ class WebPlannerController(
         val start = state.capitalStartSystemId
         val destination = state.capitalDestinationSystemId
         if (start == null || destination == null) {
-            update { it.copy(error = "Choose both Capital origin and destination.", message = null) }
+            notify { it.copy(error = "Choose both Capital origin and destination.", message = null) }
             return
         }
         val profile = profileOrReport() ?: return
         val intent = NavigationIntent(start, state.capitalWaypointSystemIds, destination)
         when (val outcome = CapitalNavigationPlanner(universe.capitalEngine).calculate(intent, profile)) {
-            is CapitalNavigationOutcome.Found -> update {
+            is CapitalNavigationOutcome.Found -> notify {
                 it.copy(
                     capitalRoute = outcome.route,
                     error = null,
@@ -220,10 +221,10 @@ class WebPlannerController(
                         "${formatDouble(outcome.route.totalDistanceLy, 2)} LY",
                 )
             }
-            is CapitalNavigationOutcome.InvalidIntent -> update {
+            is CapitalNavigationOutcome.InvalidIntent -> notify {
                 it.copy(error = navigationValidationMessage(outcome.validation), message = null)
             }
-            is CapitalNavigationOutcome.SegmentFailed -> update {
+            is CapitalNavigationOutcome.SegmentFailed -> notify {
                 val from = systemName(outcome.segment.fromSystemId)
                 val to = systemName(outcome.segment.toSystemId)
                 val detail = when (val cause = outcome.cause) {
@@ -238,11 +239,11 @@ class WebPlannerController(
         }
     }
 
-    fun clearCapitalRoute() = update {
+    fun clearCapitalRoute() = notify {
         it.copy(capitalRoute = null, message = "Capital route cleared.", error = null)
     }
 
-    fun setCoverageRange(rangeLy: Double) = update { current ->
+    fun setCoverageRange(rangeLy: Double) = notify { current ->
         if (!rangeLy.isFinite() || rangeLy <= 0.0 || rangeLy > MAX_WEB_JUMP_RANGE_LY) {
             current.copy(error = "Coverage range must be between 0 and 50 LY.")
         }
@@ -251,13 +252,13 @@ class WebPlannerController(
 
     fun addJumpRange(originSystemId: Int?) {
         if (originSystemId == null) {
-            update { it.copy(error = "Choose a Jump Range source system.", message = null) }
+            notify { it.copy(error = "Choose a Jump Range source system.", message = null) }
             return
         }
         val profile = coverageProfileOrReport() ?: return
         val result = universe.jumpCandidates.reachableFrom(originSystemId, profile)
         if (result.originVerdict !is EligibilityVerdict.Eligible) {
-            update { it.copy(error = "Jump Range source is not eligible: ${verdictReason(result.originVerdict)}", message = null) }
+            notify { it.copy(error = "Jump Range source is not eligible: ${verdictReason(result.originVerdict)}", message = null) }
             return
         }
         val id = "coverage-${nextOverlayId++}"
@@ -268,7 +269,7 @@ class WebPlannerController(
             reachableSystemIds = result.reachableSystemIds,
             label = "${systemName(originSystemId)} · ${formatDouble(profile.maxRangeLy, 2)} LY",
         )
-        update {
+        notify {
             it.copy(
                 jumpOverlays = it.jumpOverlays + overlay,
                 error = null,
@@ -277,11 +278,11 @@ class WebPlannerController(
         }
     }
 
-    fun removeJumpRange(id: String) = update {
+    fun removeJumpRange(id: String) = notify {
         it.copy(jumpOverlays = it.jumpOverlays.filterNot { overlay -> overlay.id == id }, message = "Coverage source removed.", error = null)
     }
 
-    fun clearJumpRanges() = update {
+    fun clearJumpRanges() = notify {
         it.copy(jumpOverlays = emptyList(), message = "Jump Range and Capital Coverage cleared.", error = null)
     }
 
@@ -312,7 +313,7 @@ class WebPlannerController(
                         handoff.resolvedSystemIds,
                         edges,
                     )
-                    update {
+                    notify {
                         it.copy(
                             normalStartSystemId = handoff.originSystemId,
                             normalDestinationSystemId = handoff.destinationSystemId,
@@ -341,7 +342,7 @@ class WebPlannerController(
                         handoff.resolvedSystemIds,
                         legs,
                     )
-                    update {
+                    notify {
                         it.copy(
                             capitalStartSystemId = handoff.originSystemId,
                             capitalDestinationSystemId = handoff.destinationSystemId,
@@ -353,26 +354,26 @@ class WebPlannerController(
                         )
                     }
                 }
-                else -> update { it.copy(error = "Unsupported Desktop Route Handoff type '$routeType'.", message = null) }
+                else -> notify { it.copy(error = "Unsupported Desktop Route Handoff type '$routeType'.", message = null) }
             }
         } catch (_: Throwable) {
-            update { it.copy(error = "Desktop Route Handoff snapshot is invalid.", message = null) }
+            notify { it.copy(error = "Desktop Route Handoff snapshot is invalid.", message = null) }
         }
     }
 
     fun setMapThresholds(constellation: Double, system: Double) {
         if (!WebMapPreferences.isValid(constellation, system)) {
-            update { it.copy(error = "Constellation threshold must be positive and lower than System (maximum 250).") }
+            notify { it.copy(error = "Constellation threshold must be positive and lower than System (maximum 250).") }
             return
         }
         val preferences = WebMapPreferences(constellation, system)
         mapPreferencesStore.save(preferences)
-        update { it.copy(mapPreferences = preferences, error = null, message = "Map LOD preferences saved.") }
+        notify { it.copy(mapPreferences = preferences, error = null, message = "Map LOD preferences saved.") }
     }
 
     fun resetMapThresholds() {
         val defaults = mapPreferencesStore.reset()
-        update { it.copy(mapPreferences = defaults, error = null, message = "Map LOD preferences reset to Desktop defaults.") }
+        notify { it.copy(mapPreferences = defaults, error = null, message = "Map LOD preferences reset to Desktop defaults.") }
     }
 
     fun previewPersonalAnsiblex(fileName: String, content: String) {
@@ -383,7 +384,7 @@ class WebPlannerController(
             universe.packAnsiblexLinks,
             state.personalAnsiblex,
         )
-        update {
+        notify {
             it.copy(
                 personalAnsiblexPreview = preview,
                 error = preview.errors.firstOrNull()?.let { issue -> "Row ${issue.row}: ${issue.message}" },
@@ -394,14 +395,14 @@ class WebPlannerController(
         }
     }
 
-    fun cancelPersonalAnsiblexPreview() = update {
+    fun cancelPersonalAnsiblexPreview() = notify {
         it.copy(personalAnsiblexPreview = null, error = null, message = "Personal Ansiblex import cancelled.")
     }
 
     fun applyPersonalAnsiblexPreview() {
         val preview = state.personalAnsiblexPreview ?: return
         if (!preview.canApply) {
-            update { it.copy(error = "Fix import errors before applying Personal Ansiblex.", message = null) }
+            notify { it.copy(error = "Fix import errors before applying Personal Ansiblex.", message = null) }
             return
         }
         val additions = preview.valid.map { draft ->
@@ -436,7 +437,7 @@ class WebPlannerController(
     fun clearPersonalAnsiblex() {
         personalAnsiblexStore.clear()
         routeGraph = universe.routeGraph
-        update {
+        notify {
             it.copy(
                 personalAnsiblex = emptyList(),
                 personalAnsiblexPreview = null,
@@ -455,7 +456,7 @@ class WebPlannerController(
             state.keepstarSystemIds + systemId
         }
         keepstarStore.save(next)
-        update {
+        notify {
             it.copy(
                 keepstarSystemIds = next,
                 error = null,
@@ -473,21 +474,21 @@ class WebPlannerController(
     private fun profileOrReport(): JumpProfile? = runCatching {
         JumpProfile.manual(state.capitalRangeLy, "web-capital")
     }.getOrElse { failure ->
-        update { it.copy(error = failure.message ?: "Invalid jump profile.", message = null) }
+        notify { it.copy(error = failure.message ?: "Invalid jump profile.", message = null) }
         null
     }
 
     private fun coverageProfileOrReport(): JumpProfile? = runCatching {
         JumpProfile.manual(state.coverageRangeLy, "web-coverage")
     }.getOrElse { failure ->
-        update { it.copy(error = failure.message ?: "Invalid Coverage profile.", message = null) }
+        notify { it.copy(error = failure.message ?: "Invalid Coverage profile.", message = null) }
         null
     }
 
     private fun replacePersonalAnsiblex(next: List<PersonalAnsiblexConnection>, message: String) {
         personalAnsiblexStore.save(next)
         routeGraph = universe.routeGraphWith(next)
-        update {
+        notify {
             it.copy(
                 personalAnsiblex = next,
                 personalAnsiblexPreview = null,
@@ -502,6 +503,17 @@ class WebPlannerController(
 
     private fun update(transform: (WebPlannerState) -> WebPlannerState) {
         state = transform(state)
+        onStateChanged(state)
+    }
+
+    private fun notify(transform: (WebPlannerState) -> WebPlannerState) {
+        val previous = state
+        val next = transform(previous)
+        state = if (next.error != null || next.message != null) {
+            next.copy(notificationRevision = previous.notificationRevision + 1)
+        } else {
+            next
+        }
         onStateChanged(state)
     }
 

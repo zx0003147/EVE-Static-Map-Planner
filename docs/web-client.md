@@ -92,6 +92,8 @@ Major tablet controls use at least 44 px targets. Icon-only controls have access
 
 The Canvas backing store is resized from its CSS bounds and current `devicePixelRatio`, capped at 3. A `ResizeObserver`, window resize, orientation change, and visual-viewport change all converge on the same resize path. Map state is preserved across ordinary resizes; Fit remains explicit.
 
+Operation feedback uses the existing top banner as a transient notification. Informational and success messages remain visible for 3 seconds, errors for 6 seconds, and both finish with a 200 ms fade-out. A newer message replaces the current one and receives a fresh full lifetime; cancelled older timers cannot hide it. Persistent conditions such as Shared Marker connection state remain in their dedicated panel/status UI rather than occupying the banner.
+
 ## PWA, caching, and offline boundary
 
 `manifest.webmanifest` provides standalone launch metadata and generated 192/512 px icons derived from the existing Desktop application icon. `service-worker.js` pre-caches a revisioned, internally consistent app shell and serves controlled navigation and only the enumerated shell assets cache-first; unrelated same-origin requests, including Shared Marker API traffic, pass through untouched. The worker's update check is what discovers the next shell revision, preventing a new `index.html` from being combined with stale JavaScript modules. The stable `/data/manifest.json` remains network-first, while immutable versioned Web Packs are cached by URL. After a successful integrity-checked load, the page asks the active service worker to warm the exact verified Pack and matching manifest for a later offline launch.
