@@ -19,7 +19,28 @@ Do not use `*`. Both origins must use HTTPS; an HTTPS Web client cannot connect 
 
 ## Build and published files
 
-Build and stage a Desktop-exported Web Pack:
+For a self-hosted release, build the versioned ZIP from a Desktop-exported Web Pack:
+
+```powershell
+.\gradlew.bat assembleSelfHostedWeb `
+  "-PwebPackDir=C:\path\to\EVE-Web-Pack"
+```
+
+The stable release output is written under `build/distributions/`:
+
+```text
+eve-map-web-<version>.zip
+eve-map-web-<version>.zip.sha256
+eve-map-web-<version>.metadata.json
+```
+
+The task refuses a missing, incomplete, path-unsafe, size-mismatched, checksum-mismatched, or unsupported-schema Web
+Pack. The ZIP contains the static site at its root plus `self-hosted-web.json`; the checksum and external metadata
+remain beside the artifact for release automation and installer verification. The Shared Map Server host downloads
+this artifact and never compiles Kotlin/JS.
+
+For direct/manual static hosting, build and stage the same Desktop-exported Web Pack without creating the release
+ZIP:
 
 ```powershell
 .\gradlew.bat :web-client:webProduction `
