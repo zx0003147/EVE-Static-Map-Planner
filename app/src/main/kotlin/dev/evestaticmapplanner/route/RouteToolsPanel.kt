@@ -56,6 +56,10 @@ import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EvePanel
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
+import dev.evestaticmapplanner.shared.RouteHandoffPublishUiState
+import dev.evestaticmapplanner.shared.model.SharedConnectionState
+import dev.evestaticmapplanner.shared.model.SharedMapState
+import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import kotlin.math.abs
 
 internal enum class ToolSidebarSection {
@@ -99,6 +103,10 @@ internal fun RouteToolsPanel(
     onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
     onFocusSystem: (Int) -> Unit,
+    sharedMapState: SharedMapState,
+    routeHandoffPublishState: RouteHandoffPublishUiState,
+    onPublishNormalRoute: () -> Unit,
+    onPublishCapitalRoute: () -> Unit,
 ) {
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
     EvePanel(
@@ -153,6 +161,9 @@ internal fun RouteToolsPanel(
                             onInvokeNavigationAction,
                             onOpenAnsiblexManager,
                             onOpenWormholeManager,
+                            sharedMapState,
+                            routeHandoffPublishState,
+                            onPublishNormalRoute,
                         )
                     }
                     ToolSidebarSection.CAPITAL_ROUTE -> CollapsibleToolSection(
@@ -169,6 +180,9 @@ internal fun RouteToolsPanel(
                             selectedRouteActionTargets,
                             onSelectRouteActionTarget,
                             onInvokeRouteAction,
+                            sharedMapState,
+                            routeHandoffPublishState,
+                            onPublishCapitalRoute,
                         )
                     }
                 }
@@ -283,6 +297,9 @@ private fun NormalRouteSectionContent(
     onInvokeNavigationAction: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
+    sharedMapState: SharedMapState,
+    routeHandoffPublishState: RouteHandoffPublishUiState,
+    onPublishRoute: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
         SystemSearchField(
@@ -329,6 +346,13 @@ private fun NormalRouteSectionContent(
             Text(it, color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         RouteSummary(state)
+        RouteHandoffPublishControl(
+            hasRoute = state.activeRoute != null,
+            sharedMapState = sharedMapState,
+            publishState = routeHandoffPublishState,
+            label = "Publish Normal Route to Web",
+            onPublish = onPublishRoute,
+        )
         if (
             state.activeRoute?.wormholeJumps?.let { it > 0 } == true &&
             routeActions.any { !it.supportsNavigationIntent }
@@ -418,6 +442,9 @@ private fun CapitalRouteSectionContent(
     selectedRouteActionTargets: Map<String, String>,
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
+    sharedMapState: SharedMapState,
+    routeHandoffPublishState: RouteHandoffPublishUiState,
+    onPublishRoute: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
         SystemSearchField(
@@ -462,6 +489,13 @@ private fun CapitalRouteSectionContent(
             Text(it, color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         CapitalRouteSummary(state)
+        RouteHandoffPublishControl(
+            hasRoute = state.activeRoute != null,
+            sharedMapState = sharedMapState,
+            publishState = routeHandoffPublishState,
+            label = "Publish Capital Route to Web",
+            onPublish = onPublishRoute,
+        )
         RouteActionButtons(
             routeActions,
             routeSnapshot,
@@ -600,6 +634,29 @@ internal fun WaypointList(
             }
         }
     }
+}
+
+@Composable
+private fun RouteHandoffPublishControl(
+    hasRoute: Boolean,
+    sharedMapState: SharedMapState,
+    publishState: RouteHandoffPublishUiState,
+    label: String,
+    onPublish: () -> Unit,
+) {
+    val role = sharedMapState.identity?.workspace?.role
+    val reason = when {
+        !hasRoute -> "Calculate a route before publishing."
+        sharedMapState.connectionState != SharedConnectionState.ONLINE -> "Connect to Shared Map before publishing."
+        sharedMapState.meta?.supportsRouteHandoffs != true -> "This Shared Map server does not support Route Handoffs."
+        role == SharedWorkspaceRole.VIEWER -> "EDITOR or ADMIN permission is required to publish."
+        publishState.busy -> "Publishing route…"
+        else -> null
+    }
+    Button(onClick = onPublish, enabled = reason == null) { Text(label) }
+    reason?.let { Text(it, color = EveColors.SecondaryText, style = MaterialTheme.typography.labelSmall) }
+    publishState.message?.let { Text(it, color = EveColors.Success, style = MaterialTheme.typography.bodySmall) }
+    publishState.error?.let { Text(it.message, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
 }
 
 internal val WAYPOINT_ROW_HEIGHT = 32.dp

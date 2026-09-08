@@ -125,8 +125,15 @@ the issued Device Access Token in memory only and saves only the last successful
 invite. Cross-origin deployment requires the server's exact `SHARED_MAP_ALLOWED_ORIGINS` allowlist, and production
 Web/server origins must both use HTTPS. See [`docs/web-client.md`](docs/web-client.md).
 
+When the Server advertises the optional Protocol v1 `route-handoffs` feature, Desktop can publish the current Normal
+or Capital route from its corresponding panel. Web members of the same Workspace see recent Desktop routes and may
+explicitly load one; intent and the exact resolved snapshot travel together, and a Web Pack/SDE mismatch is shown
+instead of silently recalculating a different route. Viewer can read; Editor/Admin can publish.
+
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
 visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.4.0.
+The stable Local Saved Marker child type `keepstar` replaces the ordinary system node on Desktop and Web; unrelated
+marker names, tags, and Shared Marker text do not trigger the replacement.
 
 ## Windows x64 distribution
 
@@ -214,6 +221,11 @@ The database stores one normalized **logical route connection** per unordered sy
 Import always follows Parse → Validate → Preview → user confirmation → transactional Apply. `REPLACE` replaces only `source=IMPORT`; it never deletes or overwrites `source=MANUAL`.
 
 Files under `qa/` are explicitly synthetic acceptance fixtures and are not a real alliance Jump Bridge network.
+
+The Web Ansiblex tab accepts the same CSV columns and Desktop `format_version: 1` JSON semantics for browser-local
+Personal Ansiblex. These records are Previewed before Apply, persisted in that browser, available offline, and merged
+with—but never written into or substituted for—the default enabled Ansiblex exported in Web Pack. Pack links win on
+duplicate endpoint pairs.
 
 ## Import an extracted official JSONL SDE
 

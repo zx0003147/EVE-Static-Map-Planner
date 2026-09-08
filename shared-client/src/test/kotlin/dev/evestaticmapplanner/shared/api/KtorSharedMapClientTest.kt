@@ -12,6 +12,10 @@ import dev.evestaticmapplanner.shared.protocol.WORKSPACE_JSON
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffEdge
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffMapMetadata
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffType
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -252,6 +256,45 @@ class KtorSharedMapClientTest {
         }
     }
 
+    @Test
+    fun `Route Handoff reads and publish preserve snapshot with bearer and idempotency`() = runTest {
+        val key = UUID.fromString("a3c1be66-724c-46f0-bb8a-678817343a58")
+        var call = 0
+        val engine = MockEngine { request ->
+            call++
+            assertEquals("Bearer esm_dev_test", request.headers[HttpHeaders.Authorization])
+            assertEquals("/api/v1/workspaces/$WORKSPACE_ID/route-handoffs", request.url.encodedPath)
+            if (call == 1) {
+                assertEquals("GET", request.method.value)
+                respond("{\"generatedAt\":\"2026-09-08T01:00:00Z\",\"routeHandoffs\":[$ROUTE_HANDOFF_JSON]}", headers = JSON_HEADERS)
+            } else {
+                assertEquals("POST", request.method.value)
+                assertEquals(key.toString(), request.headers["Idempotency-Key"])
+                val body = (request.body as TextContent).text
+                assertTrue(body.contains("\"resolvedSystemIds\":[30000001,30000002]"))
+                respond(ROUTE_HANDOFF_JSON, HttpStatusCode.Created, JSON_HEADERS)
+            }
+        }
+        val draft = SharedRouteHandoffDraft(
+            SharedRouteHandoffType.NORMAL,
+            30_000_001,
+            emptyList(),
+            30_000_002,
+            false,
+            null,
+            null,
+            listOf(30_000_001, 30_000_002),
+            listOf(SharedRouteHandoffEdge(30_000_001, 30_000_002, "STARGATE", null)),
+            SharedRouteHandoffMapMetadata("sde-1", "1.8.0", null),
+        )
+        KtorSharedMapClient(testClient(engine)).use { client ->
+            SecretValue.from("esm_dev_test").use { token ->
+                assertEquals(ROUTE_HANDOFF_ID, client.getRouteHandoffs(server, token, WORKSPACE_ID).single().routeHandoffId)
+                assertEquals(ROUTE_HANDOFF_ID, client.publishRouteHandoff(server, token, WORKSPACE_ID, draft, key).routeHandoffId)
+            }
+        }
+    }
+
     private fun testClient(engine: MockEngine, requestTimeoutMillis: Long = 1_000): HttpClient = HttpClient(engine) {
         expectSuccess = false
         install(ContentNegotiation) { json(KtorSharedMapClient.PROTOCOL_JSON) }
@@ -267,5 +310,8 @@ class KtorSharedMapClientTest {
             "{\"markerId\":\"$MARKER_ID\",\"workspaceId\":\"$WORKSPACE_ID\",\"systemId\":30004759,\"name\":\"Staging\",\"color\":\"BLUE\",\"tags\":[\"ops\"],\"notes\":\"private note\",\"createdBy\":{\"userId\":\"$USER_ID\",\"displayName\":\"Pilot\"},\"updatedBy\":{\"userId\":\"$USER_ID\",\"displayName\":\"Pilot\"},\"createdAt\":\"2026-09-01T00:00:00Z\",\"updatedAt\":\"2026-09-01T00:00:00Z\",\"version\":1}"
         private val MEMBER_JSON =
             "{\"memberId\":\"01991d62-1fcb-70d0-858b-1d65f6ce3cf7\",\"userId\":\"$USER_ID\",\"displayName\":\"Scout\",\"role\":\"VIEWER\",\"version\":1,\"createdAt\":\"2026-09-01T00:00:00Z\",\"updatedAt\":\"2026-09-01T00:00:00Z\",\"revokedAt\":null}"
+        private const val ROUTE_HANDOFF_ID = "01991d67-5672-7514-9369-482ed563c647"
+        private val ROUTE_HANDOFF_JSON =
+            "{\"routeHandoffId\":\"$ROUTE_HANDOFF_ID\",\"workspaceId\":\"$WORKSPACE_ID\",\"publisher\":{\"memberId\":\"01991d62-1fcb-70d0-858b-1d65f6ce3cf6\",\"userId\":\"$USER_ID\",\"displayName\":\"Pilot\",\"deviceTokenId\":\"$TOKEN_ID\",\"deviceName\":\"Desktop\"},\"createdAt\":\"2026-09-08T01:00:00Z\",\"expiresAt\":\"2026-09-15T01:00:00Z\",\"type\":\"NORMAL\",\"originSystemId\":30000001,\"waypointSystemIds\":[],\"destinationSystemId\":30000002,\"useAnsiblex\":false,\"resolvedSystemIds\":[30000001,30000002],\"resolvedEdges\":[{\"fromSystemId\":30000001,\"toSystemId\":30000002,\"type\":\"STARGATE\"}],\"mapMetadata\":{\"universeBuild\":\"sde-1\",\"plannerVersion\":\"1.8.0\"}}"
     }
 }

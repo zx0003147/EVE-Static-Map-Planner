@@ -558,6 +558,7 @@ private fun FrameWindowScope.ReadyApplication(
     val sharedMapOperationError by sharedMapViewModel.operationError.collectAsState()
     val sharedMarkerMutation by sharedMapViewModel.markerMutation.collectAsState()
     val sharedAdminState by sharedMapViewModel.admin.collectAsState()
+    val routeHandoffPublishState by sharedMapViewModel.routeHandoffPublish.collectAsState()
     var sharedMapRestored by remember(configuration) { mutableStateOf(false) }
     LaunchedEffect(mapState.isLoading, sharedMapRestored, sharedMapViewModel) {
         if (!mapState.isLoading && !sharedMapRestored) {
@@ -712,6 +713,8 @@ private fun FrameWindowScope.ReadyApplication(
             sharedMapState = sharedMapState,
             sharedMarkerState = sharedMarkerPresentation,
             sharedMarkerMutation = sharedMarkerMutation,
+            routeHandoffPublishState = routeHandoffPublishState,
+            universeBuild = currentBuild.toString(),
             missionState = missionState,
             featureOverlayState = visibleFeatureOverlayState,
             systemInfoState = systemInfoState,

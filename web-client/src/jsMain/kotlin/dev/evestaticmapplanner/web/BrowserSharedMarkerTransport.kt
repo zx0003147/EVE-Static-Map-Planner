@@ -11,6 +11,9 @@ import dev.evestaticmapplanner.shared.protocol.SharedMarkerDto
 import dev.evestaticmapplanner.shared.protocol.SharedMarkerSnapshotResponseDto
 import dev.evestaticmapplanner.shared.protocol.UpdateSharedMarkerRequestDto
 import dev.evestaticmapplanner.shared.protocol.WorkspacesResponseDto
+import dev.evestaticmapplanner.shared.protocol.PublishRouteHandoffRequestDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffListResponseDto
 import kotlinx.browser.window
 import kotlinx.coroutines.await
 import kotlinx.serialization.SerializationException
@@ -95,6 +98,18 @@ interface SharedMarkerClient {
         expectedVersion: Long,
         idempotencyKey: String = browserUuid(),
     )
+    suspend fun getRouteHandoffs(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+    ): RouteHandoffListResponseDto = throw UnsupportedOperationException("Route Handoffs are not implemented")
+    suspend fun publishRouteHandoff(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+        request: PublishRouteHandoffRequestDto,
+        idempotencyKey: String = browserUuid(),
+    ): RouteHandoffDto = throw UnsupportedOperationException("Route Handoffs are not implemented")
 }
 
 enum class SharedMarkerTransportErrorKind {
@@ -170,6 +185,30 @@ class BrowserSharedMarkerTransport(
     ): SharedMarkerDto = jsonRequest(
         "POST",
         endpoint(serverOrigin, "/api/v1/workspaces/${canonicalUuid(workspaceId)}/markers"),
+        accessToken = accessToken,
+        idempotencyKey = canonicalUuid(idempotencyKey),
+        body = SHARED_MAP_PROTOCOL_JSON.encodeToString(request),
+    )
+
+    override suspend fun getRouteHandoffs(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+    ): RouteHandoffListResponseDto = jsonRequest(
+        "GET",
+        endpoint(serverOrigin, "/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs"),
+        accessToken = accessToken,
+    )
+
+    override suspend fun publishRouteHandoff(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+        request: PublishRouteHandoffRequestDto,
+        idempotencyKey: String,
+    ): RouteHandoffDto = jsonRequest(
+        "POST",
+        endpoint(serverOrigin, "/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs"),
         accessToken = accessToken,
         idempotencyKey = canonicalUuid(idempotencyKey),
         body = SHARED_MAP_PROTOCOL_JSON.encodeToString(request),

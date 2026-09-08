@@ -21,6 +21,8 @@ import dev.evestaticmapplanner.shared.model.SharedMember
 import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoff
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -270,6 +272,36 @@ class SharedMapSession(
                 }
             }
         }
+
+    suspend fun getRouteHandoffs(): List<SharedRouteHandoff> = lifecycleMutex.withLock {
+        requireRouteHandoffFeature()
+        val context = activeContext(SharedWorkspaceRole.VIEWER)
+        try {
+            client.getRouteHandoffs(context.server, context.token, context.workspaceId)
+        } catch (error: Exception) {
+            handleOperationFailure(error)
+            throw error
+        }
+    }
+
+    suspend fun publishRouteHandoff(draft: SharedRouteHandoffDraft): SharedRouteHandoff = lifecycleMutex.withLock {
+        mutationMutex.withLock {
+            requireRouteHandoffFeature()
+            val context = activeContext(SharedWorkspaceRole.EDITOR)
+            try {
+                client.publishRouteHandoff(
+                    context.server,
+                    context.token,
+                    context.workspaceId,
+                    draft,
+                    idempotencyKeyFactory(),
+                )
+            } catch (error: Exception) {
+                handleOperationFailure(error)
+                throw error
+            }
+        }
+    }
 
     suspend fun updateSharedMarker(
         markerId: String,
@@ -534,6 +566,14 @@ class SharedMapSession(
             workspaceId = current.selectedWorkspaceId
                 ?: throw SharedMapException(SharedMapError.InvalidConfiguration("No Shared Map Workspace is selected.")),
         )
+    }
+
+    private fun requireRouteHandoffFeature() {
+        if (_state.value.meta?.supportsRouteHandoffs != true) {
+            throw SharedMapException(
+                SharedMapError.Protocol("This Shared Map server does not support Route Handoffs."),
+            )
+        }
     }
 
     private fun reconcileMarker(marker: SharedMarker) {

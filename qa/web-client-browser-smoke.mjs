@@ -115,13 +115,56 @@ const capitalSummary = await evaluate("document.querySelector('#capital-summary'
 assert.match(capitalSummary, /1DQ1-A → T5ZI-S/);
 
 await chooseSystem("jump-source", "jump-source-results", "Jita");
-await evaluate("document.querySelector('#add-jump-range').click()");
+await evaluate(`(() => {
+  const input = document.querySelector('#coverage-range');
+  input.value = '4';
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#add-jump-range').click();
+})()`);
 await waitFor("!document.querySelector('#overlay-list').classList.contains('empty')", 5_000);
 await chooseSystem("jump-source", "jump-source-results", "Perimeter");
-await evaluate("document.querySelector('#add-jump-range').click()");
+await evaluate(`(() => {
+  const input = document.querySelector('#coverage-range');
+  input.value = '6';
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#add-jump-range').click();
+})()`);
 await waitFor("document.querySelectorAll('#overlay-list .overlay-row').length === 2", 5_000);
+const overlaySummary = await evaluate("document.querySelector('#overlay-list').textContent");
+assert.match(overlaySummary, /Jita.*4\.00 LY/);
+assert.match(overlaySummary, /Perimeter.*6\.00 LY/);
+await evaluate(`(() => {
+  const input = document.querySelector('#coverage-range');
+  input.value = '10';
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+})()`);
+assert.match(await evaluate("document.querySelector('#overlay-list').textContent"), /Jita.*4\.00 LY/);
 const coverageSummary = await evaluate("document.querySelector('#coverage-summary').textContent");
 assert.match(coverageSummary, /overlapping/);
+
+await evaluate(`(() => {
+  document.querySelector('#constellation-threshold').value = '3.5';
+  document.querySelector('#system-threshold').value = '8';
+  document.querySelector('#save-map-lod').click();
+})()`);
+assert.equal(await evaluate("localStorage.getItem('eve-static-map-planner.web-map-preferences.v1')"), "3.5|8");
+await evaluate("document.querySelector('#reset-map-lod').click()");
+assert.equal(await evaluate("localStorage.getItem('eve-static-map-planner.web-map-preferences.v1')"), null);
+
+await evaluate(`(() => {
+  const transfer = new DataTransfer();
+  transfer.items.add(new File([
+    'from,to,direction,enabled\\nJita,Perimeter,FORWARD,true'
+  ], 'personal.csv', { type: 'text/csv' }));
+  const input = document.querySelector('#personal-ansiblex-file');
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+})()`);
+await waitFor("document.querySelector('#personal-ansiblex-preview')?.textContent.includes('1 valid')", 5_000);
+await evaluate("document.querySelector('#apply-personal-ansiblex').click()");
+await waitFor("document.querySelector('#personal-ansiblex-list')?.textContent.includes('Jita')", 5_000);
+const personalAnsiblexSummary = await evaluate("document.querySelector('#personal-ansiblex-list').textContent");
+assert.match(personalAnsiblexSummary, /Jita.*Perimeter/);
 
 await evaluate(`(() => {
   document.querySelector('#fit-map').click();
@@ -146,7 +189,9 @@ console.log(JSON.stringify({
   ansiblexSummary,
   capitalElapsedMs,
   capitalSummary,
+  overlaySummary,
   coverageSummary,
+  personalAnsiblexSummary,
   loadTimings,
   mapDiagnostics
 }));

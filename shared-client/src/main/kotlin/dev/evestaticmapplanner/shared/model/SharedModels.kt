@@ -4,6 +4,7 @@ import java.time.Instant
 
 const val SHARED_MAP_PROTOCOL_VERSION = 1
 const val SHARED_MARKERS_FEATURE = "shared-markers"
+const val ROUTE_HANDOFFS_FEATURE = "route-handoffs"
 const val DEFAULT_SHARED_MAP_DEVICE_NAME = "EVE Static Map Planner"
 
 data class SharedMapConfiguration(
@@ -23,6 +24,7 @@ data class SharedServerMeta(
     val supportsClient: Boolean
         get() = SHARED_MAP_PROTOCOL_VERSION in minimumClientProtocolVersion..maximumClientProtocolVersion
     val supportsSharedMarkers: Boolean get() = SHARED_MARKERS_FEATURE in features
+    val supportsRouteHandoffs: Boolean get() = ROUTE_HANDOFFS_FEATURE in features
 }
 
 enum class SharedWorkspaceRole { VIEWER, EDITOR, ADMIN }
@@ -100,6 +102,51 @@ data class SharedMarkerSnapshot(
     val revision: Long,
     val generatedAt: Instant,
     val markers: Map<String, SharedMarker>,
+)
+
+enum class SharedRouteHandoffType { NORMAL, CAPITAL }
+
+data class SharedRouteHandoffMapMetadata(
+    val universeBuild: String,
+    val plannerVersion: String,
+    val webPackVersion: String?,
+)
+
+data class SharedRouteHandoffEdge(
+    val fromSystemId: Int,
+    val toSystemId: Int,
+    val type: String,
+    val distanceLy: Double?,
+)
+
+data class SharedRouteHandoffDraft(
+    val type: SharedRouteHandoffType,
+    val originSystemId: Int,
+    val waypointSystemIds: List<Int>,
+    val destinationSystemId: Int,
+    val useAnsiblex: Boolean?,
+    val capitalRangeLy: Double?,
+    val jumpProfileId: String?,
+    val resolvedSystemIds: List<Int>,
+    val resolvedEdges: List<SharedRouteHandoffEdge>,
+    val mapMetadata: SharedRouteHandoffMapMetadata,
+)
+
+data class SharedRouteHandoffPublisher(
+    val memberId: String,
+    val userId: String,
+    val displayName: String,
+    val deviceTokenId: String,
+    val deviceName: String,
+)
+
+data class SharedRouteHandoff(
+    val routeHandoffId: String,
+    val workspaceId: String,
+    val publisher: SharedRouteHandoffPublisher,
+    val createdAt: Instant,
+    val expiresAt: Instant,
+    val route: SharedRouteHandoffDraft,
 )
 
 enum class SharedConnectionState {

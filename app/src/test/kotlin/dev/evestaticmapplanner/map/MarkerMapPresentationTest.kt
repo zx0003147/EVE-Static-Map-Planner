@@ -185,7 +185,7 @@ class MarkerMapPresentationTest {
     }
 
     @Test
-    fun `expanded saved marker preserves repository child order in deterministic clockwise radial layout`() {
+    fun `Keepstar child becomes the primary node while remaining children preserve radial order`() {
         val marker = Marker.saved(1, MarkerDraft.create(), Instant.EPOCH, Instant.EPOCH)
         val children = listOf(
             SavedMarkerChild.create("later", 1, SavedMarkerChildType.of("danger"), 8),
@@ -202,10 +202,32 @@ class MarkerMapPresentationTest {
             childOrbitRadiusPx = 40.0,
         ).single()
 
-        assertEquals(children, presented.children.map { it.child })
+        assertEquals(MarkerVisualStyle.KEEPSTAR_PRIMARY, presented.visualStyle)
+        assertEquals(children.dropLast(1), presented.children.map { it.child })
         assertEquals(center.x, presented.children.first().screenCenter.x, absoluteTolerance = 0.0001)
         assertEquals(center.y - 40.0, presented.children.first().screenCenter.y, absoluteTolerance = 0.0001)
-        assertEquals("Keepstar", presented.children.last().visual.label)
+    }
+
+    @Test
+    fun `Keepstar replacement is stable type based and removal restores the ordinary saved node`() {
+        val namedKeepstar = Marker.saved(
+            1,
+            MarkerDraft.create(name = "Keepstar", color = MarkerColor.BLUE),
+            Instant.EPOCH,
+            Instant.EPOCH,
+        )
+        val unrelated = SavedMarkerChild.create("ordinary", 1, SavedMarkerChildType.of("staging"), 0)
+        val keepstar = SavedMarkerChild.create("stable", 1, SavedMarkerChildType.KEEPSTAR, 1)
+
+        fun presented(children: List<SavedMarkerChild>) = MarkerMapPresentationBuilder.build(
+            scene, transform, listOf(1), mapOf(1 to namedKeepstar), MarkerPreferences.Defaults,
+            SemanticLabelMode.SYSTEM, 10.0, childrenByParentSystemId = mapOf(1 to children),
+        ).single()
+
+        assertEquals(MarkerVisualStyle.OUTER_RING, presented(emptyList()).visualStyle)
+        assertEquals(MarkerVisualStyle.OUTER_RING, presented(listOf(unrelated)).visualStyle)
+        assertEquals(MarkerVisualStyle.KEEPSTAR_PRIMARY, presented(listOf(unrelated, keepstar)).visualStyle)
+        assertEquals(MarkerVisualStyle.OUTER_RING, presented(listOf(unrelated)).visualStyle)
     }
 
     @Test

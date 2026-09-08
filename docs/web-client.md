@@ -1,8 +1,8 @@
-# Web Client Phase 4
+# Web Client
 
 ## Scope
 
-Phase 4 keeps the Phase 2 planning features and Phase 3 Shared Marker client, then makes that browser client suitable for daily tablet use and production deployment. It adds responsive tablet panels, unified Pointer Events, pinch/long-press gestures, high-DPI Canvas sizing, startup/render diagnostics, an installable PWA shell, and bounded offline static planning. It does not add an account system, second backend, AI, MCP, local control, SDE/Ansiblex management, a new Shared Marker protocol, or offline marker editing.
+The browser client provides tablet-friendly static planning, a Shared Marker client, browser-local Personal Ansiblex, configurable semantic label thresholds, and explicit Desktop Route Handoff loading. It does not add an account system, second backend, AI, MCP, localhost control, SDE management, server-side Personal Ansiblex, or offline Shared Marker editing.
 
 The supported publication contract remains Web Pack `schemaVersion = 1`.
 
@@ -34,13 +34,16 @@ shared :core
              v
 WebPlannerController -> WebMapView -> Canvas and DOM UI
 
+browser localStorage
+  Map label preferences + Personal Ansiblex + Keepstar Saved Marker state
+
 shared-client commonMain Protocol v1 DTOs / JSON vocabulary
              |
              +-- Desktop Ktor CIO transport (JVM)
              `-- Browser Fetch transport (JS)
                          |
                          v
-WebSharedMarkerController -> dynamic marker overlay and DOM panel
+WebSharedMarkerController -> dynamic marker/Route Handoff state and DOM panels
 ```
 
 `:core` is a focused Kotlin Multiplatform module with JVM and JS targets. `:shared-client` now also has JVM and JS targets: frozen wire DTOs and JSON configuration live in `commonMain`, while Desktop keeps its Ktor CIO transport, `java.time`/UUID domain mapping, DPAPI-backed credentials, and session code in `jvmMain`. Browser Fetch and browser state are implemented in `:web-client`. The Web client does not copy or redefine Protocol v1.
@@ -63,7 +66,9 @@ The UI never reads raw dynamic JSON. `parseWebPackDocument` creates typed Web DT
 
 ## Renderer and input
 
-`WebMapView` renders the Official 2D scene with browser Canvas. It draws culled Stargate edges, Jump Range/coverage halos, Normal route legs, Ansiblex route legs, Capital jump legs, nodes, selected/hovered states, Waypoints, and LOD-controlled labels. Visual styles intentionally distinguish Stargate, Ansiblex, Capital, selected, route, Waypoint, and coverage states.
+`WebMapView` renders the Official 2D scene with browser Canvas. It draws culled Stargate edges, every enabled Pack and Personal Ansiblex, Jump Range/coverage halos, Normal route legs, Capital jump legs, nodes, selected/hovered states, Waypoints, and LOD-controlled labels. Shared presentation constants align the map semantics with Desktop: muted solid Stargates, amber curved/dashed base Ansiblex, cyan solid Normal Stargate legs, orange curved/dashed Normal Ansiblex legs, teal Wormhole legs, and purple solid Capital legs. Directional route arrows use the same spacing, count, minimum-length, size, and dark halo semantics. Route endpoints, Normal versus Capital Waypoints, selection, hover, coverage, and overlap remain visually distinct.
+
+The drawing order is topology, coverage, routes, primary nodes, Shared Marker overlays, hierarchy labels, interaction highlights, then Waypoint badges. Route/Waypoint/selection therefore remain legible over coverage. A Keepstar Saved Marker changes the system's primary node shape instead of adding a second ordinary marker ring; selection, hover, route and Waypoint treatments remain above it.
 
 The shared `MapTransform` supplies fit, pan, world/screen conversion, cursor-centered zoom, and visible bounds. The shared `SystemSpatialIndex` supplies viewport node queries and hit testing, avoiding a full-system scan for every pointer move. Edge rendering uses scene-bound intersection culling. Label density increases with zoom; selected, hovered, route, and Waypoint systems have priority.
 
@@ -81,7 +86,7 @@ The map alone uses `touch-action: none`, preventing browser-page zoom/scroll con
 
 ## Tablet layout and virtual keyboard
 
-Desktop retains the three-column Tools / Map / System Info layout. At tablet width or with a coarse primary pointer, the map takes the full content area and Tools and System Info become mutually exclusive overlay drawers. Tools expose Search, Route, Capital, Coverage, and Shared tabs so inactive forms do not permanently consume map width. In portrait, either drawer becomes a scrollable bottom sheet. The scrim, top-bar toggles, close buttons, and Escape key all dismiss panels.
+Desktop retains the three-column Tools / Map / System Info layout. At tablet width or with a coarse primary pointer, the map takes the full content area and Tools and System Info become mutually exclusive overlay drawers. Tools expose Search, Route, Capital, Coverage, Ansiblex, and Shared tabs so inactive forms do not permanently consume map width. In portrait, either drawer becomes a scrollable bottom sheet. The scrim, top-bar toggles, close buttons, and Escape key all dismiss panels.
 
 Major tablet controls use at least 44 px targets. Icon-only controls have accessible names, keyboard focus remains visible, destructive marker deletion keeps explicit confirmation, and route/marker state is not expressed only by color. Shared Marker forms remain scrollable inside the current visual viewport. `visualViewport` resize/scroll updates a CSS viewport-height variable, and focused inputs are scrolled into view after the virtual keyboard changes the viewport.
 
@@ -93,7 +98,7 @@ The Canvas backing store is resized from its CSS bounds and current `devicePixel
 
 The stable manifest is never treated as immutable. On every online page load it is revalidated; if Desktop publishes a new versioned Pack first and the new manifest last, the next load discovers the new filename without a Web-side Update action. App-shell updates use a new shell cache revision, install a waiting service worker, and show **A new version is available — Reload**. Reload occurs only after the user chooses it, so marker-editor input is not discarded unexpectedly. Any future shell release must change `APP_CACHE` in `service-worker.js`; shell files are fetched with `cache: reload` during installation.
 
-After one successful cached load, offline reopen supports the static map, Search, Normal/Ansiblex routes, Waypoints, Capital Route, Jump Range, and Coverage. Shared Marker stays an online-only feature: the UI says Offline, write actions are disabled, and no mutation queue or conflict-sync layer exists. A first-ever offline launch with no usable cache shows a recoverable error and Retry action.
+After one successful cached load, offline reopen supports the static map, Search, Normal/Ansiblex routes, Waypoints, Capital Route, Jump Range, Coverage, persisted label preferences, Keepstar Saved Markers, and persisted Personal Ansiblex. Shared Marker and discovery of new Route Handoffs stay online-only: the UI says Offline, write actions are disabled, and no mutation queue exists. A route already loaded into planner state remains usable. A first-ever offline launch with no usable cache shows a recoverable error and Retry action.
 
 ## Search and System Info
 
@@ -103,7 +108,7 @@ System Info displays name, ID, Region, Constellation, security, effective wormho
 
 ## Normal Route, Ansiblex, and Waypoints
 
-The Web client builds one Core `RouteGraph` from Pack Stargates and active Pack Ansiblex. `NormalNavigationPlanner` calculates ordered segments over `NormalRouteEngine`:
+The Web client builds one Core `RouteGraph` from Pack Stargates, enabled Pack Ansiblex, and enabled browser-local Personal Ansiblex. `NormalNavigationPlanner` calculates ordered segments over `NormalRouteEngine`:
 
 - Ansiblex defaults off and is controlled by **Use active Ansiblex**.
 - Directionality is enforced in the shared `RouteLinkEdgeBuilder`.
@@ -112,19 +117,27 @@ The Web client builds one Core `RouteGraph` from Pack Stargates and active Pack 
 - An unreachable segment names its one-based segment and endpoint systems.
 - Route summary and Canvas overlay distinguish Stargate and Ansiblex jumps.
 
-The Web client deliberately has no Ansiblex add/delete/enable/import UI.
+Enabled Pack Ansiblex are the deployment owner's default network and are always visible as the base connection layer. The Ansiblex tab imports Desktop-compatible CSV or `format_version: 1` JSON through Select → Preview → Apply. It reports valid, invalid, and duplicate rows, then supports enable/disable, delete, and Clear Personal. Personal records are capped at 500 small records and stored atomically in `localStorage`, which is sufficient for the bounded dataset and keeps them usable after reload, PWA reopen, and offline reopen. They are never uploaded to the Server or written into Web Pack. One normalized unordered endpoint pair is allowed; Pack data wins deterministically over a Personal duplicate. The route graph is rebuilt only when Personal Ansiblex changes, not every frame.
 
 ## Capital Route
 
 The effective jump range is entered in LY, matching the current Desktop manual-range workflow. `UniformGridSystemPositionIndex`, `CapitalJumpCandidateProvider`, and `CapitalRouteEngine` are shared with Desktop. The calculation therefore preserves the existing EVE LY constant, three-dimensional XYZ distance, high-security destination rule, New Eden/wormhole/Pochven/Jove/Abyssal classification, endpoint eligibility, and deterministic breadth-first result.
 
-The result includes jump count, total LY, route systems, and a distinct dashed Capital overlay. Ship-specific presets are not invented because the current Core/Desktop profile exposed here is the user-effective manual range.
+The result includes jump count, total LY, route systems, ordered Capital Waypoints, and a purple solid Capital overlay matching Desktop. Ship-specific presets are not invented because the current Core/Desktop profile exposed here is the user-effective manual range.
 
 ## Jump Range and Capital Coverage
 
-**Add Range** calculates direct candidates from one chosen source with the current effective range and shared eligibility rules. Each action creates an independent overlay. Multiple sources can coexist and can be removed individually or cleared together.
+**Add Range** calculates direct candidates from one chosen source with Coverage's own **Range (LY)** input and shared eligibility rules. Capital Route and Coverage keep separate UI values while sharing domain validation. Each action snapshots source system, effective range and overlay identity, so changing the input later never mutates an existing overlay. Multiple sources and mixed 4/5/6/10 LY ranges can coexist and can be removed individually or cleared together.
 
-Capital Coverage follows the current Desktop meaning: the per-system count of enabled Jump Range overlays. A count greater than one is overlapping coverage. `JumpCoverageCalculator` is shared by JVM and JS, and the Canvas uses a stronger ring for overlap. Phase 2 does not introduce a different fleet or server-side meaning.
+Capital Coverage follows the current Desktop meaning: the per-system count of enabled Jump Range overlays. A count greater than one is overlapping coverage. `JumpCoverageCalculator` is shared by JVM and JS, and the Canvas uses a stronger ring for overlap. The browser does not introduce a separate fleet or server-side meaning.
+
+## Region, Constellation, and System labels
+
+Semantic labels follow Desktop's absolute zoom direction and defaults. Region is the primary zoomed-out layer; Constellation begins at `2.0`; System begins at `6.0`. The **Map Display / Labels** settings accept custom positive finite thresholds only when Constellation is lower than System and System is at most 250. A return ratio of `0.83` adds hysteresis around threshold crossings. Save persists the pair to browser `localStorage`; **Reset to Defaults** removes the override. Focused fields are not overwritten by redraws while the user types.
+
+## Keepstar Saved Markers
+
+The stable Saved Marker child type is `keepstar`; marker names and Shared Marker text/tags are not used for classification. A Keepstar replaces the ordinary system node on both Desktop and Web. Search, identity, hit testing, routing, Capital, coverage, selected/hovered state, and Waypoints continue to target the underlying Solar System. Removing the Saved Marker restores the normal node immediately.
 
 ## Shared Marker connection and permissions
 
@@ -136,9 +149,15 @@ The browser stores only the last successfully connected Server URL in `localStor
 
 Shared Markers are online dynamic state and remain completely outside Web Pack. Snapshot updates replace only the marker map; they do not rebuild the universe, projected static scene, route graph, or Web Pack data. Markers render as colored outer rings with a small badge, remain distinct from node selection, Waypoints, Normal/Ansiblex/Capital routes, Jump Range, and coverage, and receive a stronger selected treatment. A marker whose system has no Official 2D point remains in the list with an explicit location message and is never placed at `(0, 0)`. An unknown future system ID is also retained in the list as an incompatible Web Pack reference.
 
+## Desktop Route Handoff
+
+Route Handoff is the optional Protocol v1 feature `route-handoffs`; it is separate from Shared Markers and Web Pack. Desktop publishes either the current Normal route or current Capital route through the already-connected Workspace. Each record contains editable intent plus the exact resolved snapshot and map metadata. `VIEWER` may read; `EDITOR` and `ADMIN` may publish. An older Server without the feature remains compatible and produces an explicit unsupported state instead of a failing request.
+
+Web checks recent handoffs on the existing refresh/poll lifecycle and displays publisher, type, endpoints, Waypoint count, and timestamp. It never automatically overwrites current work. **Load** restores the matching controls and renders the published snapshot. Matching SDE metadata is acknowledged; a mismatch keeps and displays the snapshot with `This route was published from a different map data version.` rather than silently recomputing a different route. New handoffs cannot arrive offline, and there is no offline publish queue.
+
 ## Refresh, reconnect, and page lifecycle
 
-The server exposes polling rather than WebSocket or SSE, so Web deliberately follows Desktop's 30-second full-snapshot polling contract. Successful Web mutations reconcile immediately from the server response; another client's changes appear after the next poll (normally within 30 seconds). Optimistic update/delete sends the current marker version. A `409` conflict adopts the server's current marker when supplied and reports the conflict instead of overwriting it.
+The server exposes polling rather than WebSocket or SSE, so Web deliberately follows Desktop's 30-second refresh contract. The same authenticated refresh loads the complete marker snapshot and, only when advertised, the recent bounded Route Handoff list. Successful Web marker mutations reconcile immediately from the server response; another client's changes appear after the next poll (normally within 30 seconds). Optimistic update/delete sends the current marker version. A `409` conflict adopts the server's current marker when supplied and reports the conflict instead of overwriting it.
 
 Network loss leaves the last in-memory snapshot visible and marks the connection **Reconnecting**. Retries use 5, 10, 20, then 30-second delays and stay capped at 30 seconds. Restoring a hidden tab triggers an immediate refresh; browser timer throttling may lengthen background-tab intervals. A `401` clears the memory token and changes to **Auth failed**, requiring a new invite. A `403` changes to **Forbidden** and clears inaccessible marker state. Page close cancels polling and clears process memory; there is no background sync or offline mutation queue.
 
@@ -212,7 +231,7 @@ For local Shared Marker development, start the existing development PostgreSQL/s
 
 ## Tests and consistency
 
-The common/JVM/JS suites cover Protocol v1 DTO round trips and frozen vocabulary, redaction, exact REST paths/headers/bodies, invite exchange, marker CRUD, optimistic conflict reconciliation, permissions, malformed responses, disconnected/connecting/connected/reconnecting/auth-failed states, capped retry timing, and positioned/unpositioned/unknown marker systems. Existing mapping, route, Capital, Jump Range, coverage, projection, culling, and picking tests remain in place. Loader tests cover integrity and stage timing; PWA lifecycle tests cover explicit user-applied service-worker updates and verified-Pack cache warming.
+The common/JVM/JS suites cover Protocol v1 DTO round trips, Route Handoff transport and feature gating, exact REST paths/headers/bodies, marker behavior, permissions, malformed responses, Personal Ansiblex import/persistence/routing, Coverage range independence, LOD threshold persistence, shared visual semantics, Keepstar replacement, route snapshot loading, map-version mismatch handling, projection, culling, and picking. An opt-in integration test uses the real Desktop Ktor client, a real containerized Server/PostgreSQL, and the exact common DTO consumed by Web. Loader tests cover integrity and stage timing; PWA lifecycle tests cover explicit user-applied service-worker updates and verified-Pack cache warming.
 
 `qa/web-client-browser-smoke.mjs` is a dependency-free Chrome DevTools Protocol smoke client for a local headless Chromium browser. With the real Pack it verifies readiness, Canvas creation, Shared Marker disconnected controls, Search/System Info, a simple route, a long route, Waypoint composition, an Ansiblex route, Capital Route, multiple Jump Range/Coverage overlays, Fit, and wheel zoom. It reports loader, domain/scene, UI, route, and render observations without presenting the CDP harness wall clock as a formal benchmark.
 
@@ -268,9 +287,9 @@ Automated Chromium mobile/touch emulation is required before this checklist, but
 - 3,005 systems in the current tested SDE Pack have no Official 2D coordinates. They remain searchable/routable and are reported as unpositioned.
 - Capital route uses the current effective manual LY profile; no unverified ship/rule presets were added.
 - The renderer remains Canvas 2D with indexed culling and event-coalesced redraws; it does not claim WebGL or a formal cross-device benchmark.
-- Offline support is intentionally limited to the cached app shell and current published Web Pack. Shared Marker is unavailable offline and has no mutation queue.
+- Offline support is intentionally limited to the cached app shell, current published Web Pack, and bounded browser-local preferences/Personal Ansiblex/Keepstar state. Shared Marker and new Route Handoffs are unavailable offline and have no mutation queue.
 - Browser Device Access Tokens are memory-only. Reloading needs a fresh single-use invite; persistent browser login is not implemented.
-- Shared Marker live updates use the server's existing 30-second snapshot polling, not push delivery. Background tab throttling can increase observed latency.
+- Shared Marker and Route Handoff discovery use the server's existing 30-second polling, not push delivery. Background tab throttling can increase observed latency.
 - Phase 3 does not expose Shared Marker member, invite, role, or device administration in Web. Those existing administrative workflows remain Desktop/server responsibilities.
 - Phone layout is best-effort; the product target remains tablet landscape, Desktop browser, then tablet portrait.
 - Samsung device acceptance still requires a physical device; CDP touch/mobile emulation is not a substitute for that final manual check.

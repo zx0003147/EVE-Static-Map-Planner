@@ -11,6 +11,8 @@ import dev.evestaticmapplanner.shared.protocol.SharedMarkerDto
 import dev.evestaticmapplanner.shared.protocol.SharedMarkerSnapshotResponseDto
 import dev.evestaticmapplanner.shared.protocol.UpdateSharedMarkerRequestDto
 import dev.evestaticmapplanner.shared.protocol.WorkspaceDto
+import dev.evestaticmapplanner.shared.protocol.ROUTE_HANDOFFS_FEATURE
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffDto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -33,6 +35,7 @@ data class WebSharedMarkerState(
     val status: WebSharedMarkerStatus = WebSharedMarkerStatus.DISCONNECTED,
     val serverOrigin: String? = null,
     val workspace: WorkspaceDto? = null,
+    val meta: MetaResponseDto? = null,
     val markers: Map<String, SharedMarkerDto> = emptyMap(),
     val revision: Long? = null,
     val generatedAt: String? = null,
@@ -42,11 +45,13 @@ data class WebSharedMarkerState(
     val error: String? = null,
     val requestId: String? = null,
     val reconnectAttempt: Int = 0,
+    val routeHandoffs: List<RouteHandoffDto> = emptyList(),
 ) {
     val canWrite: Boolean
         get() = status == WebSharedMarkerStatus.CONNECTED && workspace?.role in setOf("EDITOR", "ADMIN")
     val selectedMarker: SharedMarkerDto? get() = selectedMarkerId?.let(markers::get)
     val markersBySystemId: Map<Int, SharedMarkerDto> get() = markers.values.associateBy(SharedMarkerDto::systemId)
+    val supportsRouteHandoffs: Boolean get() = meta?.features?.contains(ROUTE_HANDOFFS_FEATURE) == true
 }
 
 data class WebSharedMarkerDraft(
@@ -124,6 +129,7 @@ class WebSharedMarkerController(
             publish(
                 state.copy(
                     workspace = exchangedWorkspace,
+                    meta = meta,
                     message = "Invite accepted; loading Shared Markers…",
                     error = null,
                 ),
@@ -249,7 +255,7 @@ class WebSharedMarkerController(
         val origin = checkNotNull(state.serverOrigin)
         val token = checkNotNull(accessToken)
         val expectedWorkspace = checkNotNull(state.workspace).workspaceId
-        (knownMeta ?: client.getMeta(origin)).validated()
+        val meta = (knownMeta ?: client.getMeta(origin)).validated()
         val me = client.getMe(origin, token).validated()
         val workspaces = client.getWorkspaces(origin, token).workspaces.map(WorkspaceDto::validated)
         val selected = workspaces.singleOrNull { it.workspaceId == expectedWorkspace }
@@ -261,6 +267,15 @@ class WebSharedMarkerController(
             )
         require(me.workspace.workspaceId == selected.workspaceId) { "Authenticated workspace does not match." }
         val snapshot = client.getMarkerSnapshot(origin, token, selected.workspaceId).validated(selected.workspaceId)
+        val routeHandoffs = if (ROUTE_HANDOFFS_FEATURE in meta.features) {
+            client.getRouteHandoffs(origin, token, selected.workspaceId).routeHandoffs
+                .map { it.validated(selected.workspaceId) }
+                .also { routes ->
+                    require(routes.map(RouteHandoffDto::routeHandoffId).toSet().size == routes.size) {
+                        "Desktop Route response contains duplicate IDs."
+                    }
+                }
+        } else emptyList()
         publish(
             state.copy(
                 status = WebSharedMarkerStatus.CONNECTED,
@@ -274,6 +289,8 @@ class WebSharedMarkerController(
                 error = null,
                 requestId = null,
                 reconnectAttempt = 0,
+                meta = meta,
+                routeHandoffs = routeHandoffs,
             ),
         )
     }
@@ -372,6 +389,7 @@ class WebSharedMarkerController(
                     state.copy(
                         status = WebSharedMarkerStatus.FORBIDDEN,
                         markers = emptyMap(),
+                        routeHandoffs = emptyList(),
                         selectedMarkerId = null,
                         busy = false,
                         message = null,
@@ -483,6 +501,69 @@ private fun SharedMarkerDto.validated(expectedWorkspaceId: String?): SharedMarke
     createdBy.validated()
     updatedBy.validated()
     return this
+}
+
+private fun RouteHandoffDto.validated(expectedWorkspaceId: String): RouteHandoffDto {
+    canonicalUuid(routeHandoffId)
+    canonicalUuid(workspaceId)
+    require(workspaceId == expectedWorkspaceId) { "Desktop Route workspace is invalid." }
+    require(type in setOf("NORMAL", "CAPITAL")) { "Desktop Route type is invalid." }
+    require(originSystemId > 0 && destinationSystemId > 0 && waypointSystemIds.all { it > 0 }) {
+        "Desktop Route intent is invalid."
+    }
+    require(waypointSystemIds.size <= 50 && resolvedSystemIds.size in 1..500) { "Desktop Route is too large." }
+    require(resolvedSystemIds.first() == originSystemId && resolvedSystemIds.last() == destinationSystemId) {
+        "Desktop Route endpoints do not match its snapshot."
+    }
+    require(resolvedEdges.size == resolvedSystemIds.size - 1) { "Desktop Route edges do not match its snapshot." }
+    resolvedEdges.forEachIndexed { index, edge ->
+        require(edge.fromSystemId == resolvedSystemIds[index] && edge.toSystemId == resolvedSystemIds[index + 1]) {
+            "Desktop Route edge order is invalid."
+        }
+        require(edge.type in setOf("STARGATE", "ANSIBLEX", "WORMHOLE", "CAPITAL")) {
+            "Desktop Route edge type is invalid."
+        }
+    }
+    var waypointSearchFrom = 0
+    waypointSystemIds.forEach { waypoint ->
+        val found = resolvedSystemIds.indexOfFirstFrom(waypointSearchFrom) { it == waypoint }
+        require(found >= 0) { "Desktop Route waypoint order is invalid." }
+        waypointSearchFrom = found + 1
+    }
+    when (type) {
+        "NORMAL" -> require(
+            useAnsiblex != null && capitalRangeLy == null && jumpProfileId == null &&
+                resolvedEdges.all { it.type in setOf("STARGATE", "ANSIBLEX", "WORMHOLE") && it.distanceLy == null },
+        ) {
+            "Normal Desktop Route fields are invalid."
+        }
+        "CAPITAL" -> {
+            val range = capitalRangeLy
+            require(
+                useAnsiblex == null && !jumpProfileId.isNullOrBlank() &&
+                    range?.let { it.isFinite() && it > 0.0 && it <= 50.0 } == true &&
+                    resolvedEdges.all {
+                        it.type == "CAPITAL" && it.distanceLy?.let { distance ->
+                            distance.isFinite() && distance >= 0.0 && distance <= range + 1e-9
+                        } == true
+                    },
+            ) { "Capital Desktop Route fields are invalid." }
+        }
+    }
+    canonicalUuid(publisher.memberId)
+    canonicalUuid(publisher.userId)
+    canonicalUuid(publisher.deviceTokenId)
+    require(publisher.displayName.isNotBlank() && publisher.deviceName.isNotBlank()) { "Desktop Route publisher is invalid." }
+    require(createdAt.isNotBlank() && expiresAt.isNotBlank()) { "Desktop Route timestamps are invalid." }
+    require(mapMetadata.universeBuild.isNotBlank() && mapMetadata.plannerVersion.isNotBlank()) {
+        "Desktop Route map metadata is invalid."
+    }
+    return this
+}
+
+private fun <T> List<T>.indexOfFirstFrom(fromIndex: Int, predicate: (T) -> Boolean): Int {
+    for (index in fromIndex until size) if (predicate(this[index])) return index
+    return -1
 }
 
 private fun dev.evestaticmapplanner.shared.protocol.UserDto.validated() {

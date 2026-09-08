@@ -68,6 +68,8 @@ import dev.evestaticmapplanner.shared.SharedMarkerEditorDialog
 import dev.evestaticmapplanner.shared.SharedMarkerEditorMode
 import dev.evestaticmapplanner.shared.SharedMarkerEditorRequest
 import dev.evestaticmapplanner.shared.SharedMarkerMutationUiState
+import dev.evestaticmapplanner.shared.RouteHandoffPublishUiState
+import dev.evestaticmapplanner.shared.RouteHandoffAdapters
 import dev.evestaticmapplanner.shared.canWriteSharedMarkers
 import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.control.MissionMapUiState
@@ -110,6 +112,8 @@ internal fun StaticMapScreen(
     sharedMapState: SharedMapState,
     sharedMarkerState: SharedMarkerPresentationState,
     sharedMarkerMutation: SharedMarkerMutationUiState,
+    routeHandoffPublishState: RouteHandoffPublishUiState,
+    universeBuild: String,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
     systemInfoState: SystemInfoState,
@@ -184,6 +188,14 @@ internal fun StaticMapScreen(
             onOpenAnsiblexManager = { showAnsiblexManager = true },
             onOpenWormholeManager = { showWormholeManager = true },
             onFocusSystem = viewModel::selectAndFocusSystem,
+            sharedMapState = sharedMapState,
+            routeHandoffPublishState = routeHandoffPublishState,
+            onPublishNormalRoute = {
+                RouteHandoffAdapters.normal(routeState, universeBuild)?.let(sharedMapViewModel::publishRouteHandoff)
+            },
+            onPublishCapitalRoute = {
+                RouteHandoffAdapters.capital(capitalState, universeBuild)?.let(sharedMapViewModel::publishRouteHandoff)
+            },
         )
         Column(Modifier.weight(1f).fillMaxHeight()) {
             MapToolbar(

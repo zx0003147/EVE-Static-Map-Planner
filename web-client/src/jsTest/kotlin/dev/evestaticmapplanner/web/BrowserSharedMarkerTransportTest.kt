@@ -2,6 +2,9 @@ package dev.evestaticmapplanner.web
 
 import dev.evestaticmapplanner.shared.protocol.CreateSharedMarkerRequestDto
 import dev.evestaticmapplanner.shared.protocol.UpdateSharedMarkerRequestDto
+import dev.evestaticmapplanner.shared.protocol.PublishRouteHandoffRequestDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffMapMetadataDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffResolvedEdgeDto
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -107,6 +110,32 @@ class BrowserSharedMarkerTransportTest {
         ).forEach { value -> assertFailsWith<IllegalArgumentException>(value) { normalizeSharedServerOrigin(value) } }
     }
 
+    @Test
+    fun `Route Handoff transport uses workspace REST path bearer and idempotency`() = runTest {
+        val requests = mutableListOf<BrowserHttpRequest>()
+        val engine = BrowserHttpEngine { request ->
+            requests += request
+            if (request.method == "GET") response("{\"generatedAt\":\"2026-09-08T01:00:00Z\",\"routeHandoffs\":[$ROUTE_HANDOFF_JSON]}")
+            else response(ROUTE_HANDOFF_JSON, 201)
+        }
+        val transport = BrowserSharedMarkerTransport(engine) { REQUEST_ID }
+        val request = PublishRouteHandoffRequestDto(
+            type = "NORMAL",
+            originSystemId = 30_000_001,
+            destinationSystemId = 30_000_002,
+            useAnsiblex = false,
+            resolvedSystemIds = listOf(30_000_001, 30_000_002),
+            resolvedEdges = listOf(RouteHandoffResolvedEdgeDto(30_000_001, 30_000_002, "STARGATE")),
+            mapMetadata = RouteHandoffMapMetadataDto("sde-1", "1.8.0"),
+        )
+
+        assertEquals(ROUTE_HANDOFF_ID, transport.getRouteHandoffs("https://marker.example.com", "secret", WORKSPACE_ID).routeHandoffs.single().routeHandoffId)
+        assertEquals(ROUTE_HANDOFF_ID, transport.publishRouteHandoff("https://marker.example.com", "secret", WORKSPACE_ID, request, IDEMPOTENCY_ID).routeHandoffId)
+        assertTrue(requests.all { it.url.endsWith("/api/v1/workspaces/$WORKSPACE_ID/route-handoffs") })
+        assertTrue(requests.all { it.headers["Authorization"] == "Bearer secret" })
+        assertEquals(IDEMPOTENCY_ID, requests.single { it.method == "POST" }.headers["Idempotency-Key"])
+    }
+
     private fun response(body: String, status: Int = 200) = BrowserHttpResponse(
         status,
         mapOf("X-Request-Id" to REQUEST_ID),
@@ -133,3 +162,6 @@ internal const val MARKER_JSON =
     "{\"markerId\":\"$MARKER_ID\",\"workspaceId\":\"$WORKSPACE_ID\",\"systemId\":30004759,\"name\":\"Staging\",\"color\":\"BLUE\",\"tags\":[\"ops\"],\"notes\":\"private\",\"createdBy\":{\"userId\":\"$USER_ID\",\"displayName\":\"Pilot\"},\"updatedBy\":{\"userId\":\"$USER_ID\",\"displayName\":\"Pilot\"},\"createdAt\":\"2026-09-01T00:00:00Z\",\"updatedAt\":\"2026-09-01T00:00:00Z\",\"version\":1}"
 internal const val SNAPSHOT_JSON =
     "{\"workspaceId\":\"$WORKSPACE_ID\",\"revision\":7,\"generatedAt\":\"2026-09-01T00:00:00Z\",\"markers\":[$MARKER_JSON]}"
+internal const val ROUTE_HANDOFF_ID = "01991d67-5672-7514-9369-482ed563c647"
+internal const val ROUTE_HANDOFF_JSON =
+    "{\"routeHandoffId\":\"$ROUTE_HANDOFF_ID\",\"workspaceId\":\"$WORKSPACE_ID\",\"publisher\":{\"memberId\":\"$MEMBER_ID\",\"userId\":\"$USER_ID\",\"displayName\":\"Pilot\",\"deviceTokenId\":\"$TOKEN_ID\",\"deviceName\":\"Desktop\"},\"createdAt\":\"2026-09-08T01:00:00Z\",\"expiresAt\":\"2026-09-15T01:00:00Z\",\"type\":\"NORMAL\",\"originSystemId\":30000001,\"waypointSystemIds\":[],\"destinationSystemId\":30000002,\"useAnsiblex\":false,\"resolvedSystemIds\":[30000001,30000002],\"resolvedEdges\":[{\"fromSystemId\":30000001,\"toSystemId\":30000002,\"type\":\"STARGATE\"}],\"mapMetadata\":{\"universeBuild\":\"sde-1\",\"plannerVersion\":\"1.8.0\"}}"

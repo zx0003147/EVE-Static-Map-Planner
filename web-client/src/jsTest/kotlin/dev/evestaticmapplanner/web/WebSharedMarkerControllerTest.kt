@@ -5,6 +5,12 @@ import dev.evestaticmapplanner.shared.protocol.DeviceDto
 import dev.evestaticmapplanner.shared.protocol.ExchangeInviteResponseDto
 import dev.evestaticmapplanner.shared.protocol.MeResponseDto
 import dev.evestaticmapplanner.shared.protocol.MetaResponseDto
+import dev.evestaticmapplanner.shared.protocol.ROUTE_HANDOFFS_FEATURE
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffListResponseDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffMapMetadataDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffPublisherDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffResolvedEdgeDto
 import dev.evestaticmapplanner.shared.protocol.SharedMarkerDto
 import dev.evestaticmapplanner.shared.protocol.SharedMarkerSnapshotResponseDto
 import dev.evestaticmapplanner.shared.protocol.UpdateSharedMarkerRequestDto
@@ -61,6 +67,23 @@ class WebSharedMarkerControllerTest {
         controller.createMarker(30_000_002, WebSharedMarkerDraft("Denied", "RED", emptyList(), null))
         assertTrue(controller.state.error.orEmpty().contains("read-only"))
         assertEquals(0, client.createCalls)
+    }
+
+    @Test
+    fun `Viewer reads Desktop routes when feature is advertised and old server remains compatible`() = runTest {
+        val featured = FakeSharedMarkerClient(role = "VIEWER", routeFeature = true)
+        val featuredController = controller(featured)
+        featuredController.connect("https://marker.example.com", "esm_inv_once")
+        assertTrue(featuredController.state.supportsRouteHandoffs)
+        assertEquals(SHARED_ROUTE_HANDOFF_ID, featuredController.state.routeHandoffs.single().routeHandoffId)
+        assertEquals(1, featured.routeReadCalls)
+
+        val legacy = FakeSharedMarkerClient(role = "VIEWER", routeFeature = false)
+        val legacyController = controller(legacy)
+        legacyController.connect("https://marker.example.com", "esm_inv_once")
+        assertFalse(legacyController.state.supportsRouteHandoffs)
+        assertTrue(legacyController.state.routeHandoffs.isEmpty())
+        assertEquals(0, legacy.routeReadCalls)
     }
 
     @Test
@@ -139,7 +162,10 @@ class WebSharedMarkerControllerTest {
     )
 }
 
-private class FakeSharedMarkerClient(role: String = "EDITOR") : SharedMarkerClient {
+private class FakeSharedMarkerClient(
+    role: String = "EDITOR",
+    private val routeFeature: Boolean = false,
+) : SharedMarkerClient {
     private val user = UserDto(USER_ID, "Pilot")
     private val workspace = WorkspaceDto(WORKSPACE_ID, "Ops", role, 7, MEMBER_ID)
     private var nextVersion = 1L
@@ -147,10 +173,12 @@ private class FakeSharedMarkerClient(role: String = "EDITOR") : SharedMarkerClie
     var failure: SharedMarkerTransportException? = null
     var exchangeCalls = 0
     var createCalls = 0
+    var routeReadCalls = 0
 
     override suspend fun getMeta(serverOrigin: String): MetaResponseDto {
         failure?.let { throw it }
-        return MetaResponseDto("0.1.0", 1, 1, 1, listOf("shared-markers"), "sde-1")
+        val features = listOf("shared-markers") + if (routeFeature) listOf(ROUTE_HANDOFFS_FEATURE) else emptyList()
+        return MetaResponseDto("0.1.0", 1, 1, 1, features, "sde-1")
     }
 
     override suspend fun exchangeInvite(
@@ -224,6 +252,15 @@ private class FakeSharedMarkerClient(role: String = "EDITOR") : SharedMarkerClie
         values.remove(markerId)
     }
 
+    override suspend fun getRouteHandoffs(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+    ): RouteHandoffListResponseDto {
+        routeReadCalls++
+        return RouteHandoffListResponseDto("2026-09-08T01:00:00Z", listOf(routeHandoff()))
+    }
+
     companion object {
         private const val CREATED_MARKER_ID = "01991d67-5672-7514-9369-482ed563c640"
         internal fun marker(
@@ -251,6 +288,22 @@ private class FakeSharedMarkerClient(role: String = "EDITOR") : SharedMarkerClie
     }
 }
 
+private fun routeHandoff() = RouteHandoffDto(
+    routeHandoffId = SHARED_ROUTE_HANDOFF_ID,
+    workspaceId = WORKSPACE_ID,
+    publisher = RouteHandoffPublisherDto(MEMBER_ID, USER_ID, "Pilot", TOKEN_ID, "Desktop"),
+    createdAt = "2026-09-08T01:00:00Z",
+    expiresAt = "2026-09-15T01:00:00Z",
+    type = "NORMAL",
+    originSystemId = 30_000_001,
+    waypointSystemIds = emptyList(),
+    destinationSystemId = 30_000_002,
+    useAnsiblex = false,
+    resolvedSystemIds = listOf(30_000_001, 30_000_002),
+    resolvedEdges = listOf(RouteHandoffResolvedEdgeDto(30_000_001, 30_000_002, "STARGATE")),
+    mapMetadata = RouteHandoffMapMetadataDto("sde-1", "1.8.0"),
+)
+
 private fun marker(markerId: String, systemId: Int, name: String, version: Long): SharedMarkerDto = SharedMarkerDto(
     markerId,
     WORKSPACE_ID,
@@ -268,3 +321,5 @@ private fun marker(markerId: String, systemId: Int, name: String, version: Long)
 
 private fun failure(kind: SharedMarkerTransportErrorKind, message: String) =
     SharedMarkerTransportException(SharedMarkerTransportError(kind, message))
+
+private const val SHARED_ROUTE_HANDOFF_ID = "01991d67-5672-7514-9369-482ed563c647"

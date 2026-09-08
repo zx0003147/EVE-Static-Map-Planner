@@ -47,6 +47,7 @@
           <button data-tool-tab="route" class="secondary" aria-pressed="false">Route</button>
           <button data-tool-tab="capital" class="secondary" aria-pressed="false">Capital</button>
           <button data-tool-tab="coverage" class="secondary" aria-pressed="false">Coverage</button>
+          <button data-tool-tab="ansiblex" class="secondary" aria-pressed="false">Ansiblex</button>
           <button data-tool-tab="shared" class="secondary" aria-pressed="false">Shared</button>
         </nav>
         <section data-tool-panel="search" class="tool-section-active">
@@ -55,6 +56,14 @@
             <input id="global-search" type="search" autocomplete="off" placeholder="System name or ID" aria-label="Search solar systems" />
             <div id="global-results" class="search-results hidden"></div>
           </div>
+          <details open>
+            <summary>Map LOD</summary>
+            <label for="constellation-threshold">Constellation zoom threshold</label>
+            <input id="constellation-threshold" type="number" min="0.1" max="249.9" step="0.1" value="2" />
+            <label for="system-threshold">System zoom threshold</label>
+            <input id="system-threshold" type="number" min="0.2" max="250" step="0.1" value="6" />
+            <div class="button-row"><button id="save-map-lod">Save</button><button id="reset-map-lod" class="secondary">Reset Defaults</button></div>
+          </details>
         </section>
 
         <details data-tool-panel="route" open>
@@ -92,6 +101,12 @@
             <div class="picker grow"><input id="capital-to" autocomplete="off" placeholder="Capital destination" /><div id="capital-to-results" class="search-results hidden"></div></div>
             <button id="capital-to-selected" class="compact" title="Use selected system" aria-label="Use selected system as capital destination">◎</button>
           </div>
+          <label>Waypoint</label>
+          <div class="picker-row">
+            <div class="picker grow"><input id="capital-waypoint" autocomplete="off" placeholder="Search, then click result" /><div id="capital-waypoint-results" class="search-results hidden"></div></div>
+            <button id="capital-waypoint-selected" class="compact" title="Add selected system" aria-label="Add selected system as capital waypoint">＋</button>
+          </div>
+          <div id="capital-waypoint-list" class="item-list empty"></div>
           <label for="capital-range">Effective jump range (LY)</label>
           <input id="capital-range" type="number" min="0.1" max="50" step="0.1" value="5" />
           <div class="button-row"><button id="calculate-capital">Calculate</button><button id="clear-capital" class="secondary">Clear</button></div>
@@ -105,9 +120,22 @@
             <div class="picker grow"><input id="jump-source" autocomplete="off" placeholder="Coverage source" /><div id="jump-source-results" class="search-results hidden"></div></div>
             <button id="jump-source-selected" class="compact" title="Use selected system" aria-label="Use selected system as jump range source">◎</button>
           </div>
+          <label for="coverage-range">Coverage range (LY)</label>
+          <input id="coverage-range" type="number" min="0.1" max="50" step="0.1" value="5" />
           <div class="button-row"><button id="add-jump-range">Add Range</button><button id="clear-jump-ranges" class="secondary">Clear All</button></div>
           <div id="coverage-summary" class="summary-line">Coverage: none</div>
           <div id="overlay-list" class="item-list empty"></div>
+        </details>
+
+        <details data-tool-panel="ansiblex" open>
+          <summary>Personal Ansiblex</summary>
+          <p class="credential-note">CSV/JSON connections remain only in this browser. They work offline and are merged with, but never written into, the Web Pack.</p>
+          <label for="personal-ansiblex-file">Import CSV or JSON</label>
+          <input id="personal-ansiblex-file" type="file" accept=".csv,.json,text/csv,application/json" />
+          <pre id="personal-ansiblex-preview" class="summary hidden"></pre>
+          <div class="button-row"><button id="apply-personal-ansiblex" disabled>Apply</button><button id="cancel-personal-ansiblex" class="secondary" disabled>Cancel</button></div>
+          <div id="personal-ansiblex-list" class="item-list empty">No Personal Ansiblex</div>
+          <button id="clear-personal-ansiblex" class="danger" disabled>Clear Personal Ansiblex</button>
         </details>
 
         <details data-tool-panel="shared" open>
@@ -124,6 +152,10 @@
           <p id="shared-error" class="inline-error hidden"></p>
           <div class="button-row"><button id="shared-create-selected">Create at Selected</button></div>
           <div id="shared-marker-list" class="item-list empty">Connect to load markers</div>
+          <hr />
+          <div class="section-title-row"><strong>Desktop Routes</strong><button id="shared-refresh-routes" class="secondary compact">Refresh</button></div>
+          <p id="desktop-route-status" class="credential-note">Connect to check for Desktop routes.</p>
+          <div id="desktop-route-list" class="item-list empty">No Desktop routes loaded</div>
         </details>
       </aside>
 
@@ -132,7 +164,7 @@
         <div id="map-stats" class="map-stats"></div>
         <div class="legend" aria-label="Map legend">
           <span><i class="legend-line stargate"></i>Stargate</span>
-          <span><i class="legend-line ansiblex"></i>Ansiblex route</span>
+          <span><i class="legend-line ansiblex"></i>Ansiblex network / route</span>
           <span><i class="legend-line capital"></i>Capital jump</span>
           <span><i class="legend-dot selected"></i>Selected</span>
           <span><i class="legend-dot coverage"></i>Coverage</span>
@@ -168,6 +200,7 @@
       <button id="action-route-to" role="menuitem">Set route destination</button>
       <button id="action-waypoint" role="menuitem">Add waypoint</button>
       <button id="action-jump-range" role="menuitem">Add jump range</button>
+      <button id="action-keepstar-marker" role="menuitem">Add Keepstar Saved Marker</button>
       <button id="action-shared-marker" role="menuitem">Create Shared Marker</button>
     </div>
 

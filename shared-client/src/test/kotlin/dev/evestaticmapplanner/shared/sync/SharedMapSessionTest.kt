@@ -19,6 +19,13 @@ import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedUser
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.shared.model.ROUTE_HANDOFFS_FEATURE
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoff
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffEdge
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffMapMetadata
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffPublisher
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffType
 import dev.evestaticmapplanner.shared.protocol.ExchangedCredential
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -427,6 +434,46 @@ class SharedMapSessionTest {
         session.close()
     }
 
+    @Test
+    fun `Route Handoff feature gates old servers and Viewer can read but cannot publish`() = runTest {
+        val legacyClient = FakeClient()
+        val store = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val legacySession = session(legacyClient, store) {}
+        legacySession.restore(CONFIG_A)
+        val legacyError = assertFailsWith<SharedMapException> { legacySession.getRouteHandoffs() }
+        assertTrue(legacyError.error is SharedMapError.Protocol)
+        assertEquals(0, legacyClient.routeReadCalls)
+        legacySession.close()
+
+        val viewerClient = FakeClient().apply {
+            meta = compatibleMeta.copy(features = compatibleMeta.features + ROUTE_HANDOFFS_FEATURE)
+            workspace = workspace(WORKSPACE_A).copy(role = SharedWorkspaceRole.VIEWER)
+        }
+        val viewerStore = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val viewerSession = session(viewerClient, viewerStore) {}
+        viewerSession.restore(CONFIG_A)
+        assertEquals(ROUTE_HANDOFF_ID, viewerSession.getRouteHandoffs().single().routeHandoffId)
+        val denied = assertFailsWith<SharedMapException> { viewerSession.publishRouteHandoff(routeDraft()) }
+        assertTrue(denied.error is SharedMapError.Forbidden)
+        assertEquals(0, viewerClient.routePublishCalls)
+        viewerSession.close()
+    }
+
+    @Test
+    fun `Editor publishes Route Handoff with one stable idempotency key`() = runTest {
+        val client = FakeClient().apply {
+            meta = compatibleMeta.copy(features = compatibleMeta.features + ROUTE_HANDOFFS_FEATURE)
+        }
+        val store = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val session = session(client, store) {}
+        session.restore(CONFIG_A)
+
+        assertEquals(ROUTE_HANDOFF_ID, session.publishRouteHandoff(routeDraft()).routeHandoffId)
+        assertEquals(1, client.routePublishCalls)
+        assertEquals(1, client.idempotencyKeys.size)
+        session.close()
+    }
+
     private fun TestScope.session(
         client: FakeClient,
         store: MemoryCredentialStore,
@@ -453,6 +500,8 @@ private class FakeClient(private val events: MutableList<String> = mutableListOf
     var mutationMarker: SharedMarker = marker(MARKER_D)
     val idempotencyKeys = mutableListOf<UUID>()
     var markerCreateCalls = 0
+    var routeReadCalls = 0
+    var routePublishCalls = 0
     var calls = 0
     var metaCalls = 0
     var meCalls = 0
@@ -551,6 +600,28 @@ private class FakeClient(private val events: MutableList<String> = mutableListOf
         mutationFailure?.let { throw SharedMapException(it) }
     }
 
+    override suspend fun getRouteHandoffs(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+    ): List<SharedRouteHandoff> {
+        routeReadCalls++
+        return listOf(routeHandoff())
+    }
+
+    override suspend fun publishRouteHandoff(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+        draft: SharedRouteHandoffDraft,
+        idempotencyKey: UUID,
+    ): SharedRouteHandoff {
+        routePublishCalls++
+        idempotencyKeys += idempotencyKey
+        mutationFailure?.let { throw SharedMapException(it) }
+        return routeHandoff().copy(route = draft)
+    }
+
     override fun close() {
         closed = true
     }
@@ -598,6 +669,7 @@ private const val MARKER_A = "01991d67-5672-7514-9369-482ed563c63d"
 private const val MARKER_B = "01991d67-5672-7514-9369-482ed563c640"
 private const val MARKER_C = "01991d67-5672-7514-9369-482ed563c63e"
 private const val MARKER_D = "01991d67-5672-7514-9369-482ed563c63f"
+private const val ROUTE_HANDOFF_ID = "01991d67-5672-7514-9369-482ed563c647"
 private val KEY_A = SharedCredentialKey(SERVER, WORKSPACE_A)
 private val KEY_B = SharedCredentialKey(SERVER, WORKSPACE_B)
 private val CONFIG_A = SharedMapConfiguration(SERVER, WORKSPACE_A, "Laptop")
@@ -660,4 +732,26 @@ private fun marker(
     createdAt = Instant.parse("2026-09-01T00:00:00Z"),
     updatedAt = Instant.parse("2026-09-01T00:00:00Z"),
     version = version,
+)
+
+private fun routeDraft() = SharedRouteHandoffDraft(
+    SharedRouteHandoffType.NORMAL,
+    30_000_001,
+    emptyList(),
+    30_000_002,
+    false,
+    null,
+    null,
+    listOf(30_000_001, 30_000_002),
+    listOf(SharedRouteHandoffEdge(30_000_001, 30_000_002, "STARGATE", null)),
+    SharedRouteHandoffMapMetadata("sde-1", "1.8.0", null),
+)
+
+private fun routeHandoff() = SharedRouteHandoff(
+    ROUTE_HANDOFF_ID,
+    WORKSPACE_A,
+    SharedRouteHandoffPublisher(MEMBER_ID, USER_ID, "Pilot", TOKEN_ID, "Desktop"),
+    Instant.parse("2026-09-08T01:00:00Z"),
+    Instant.parse("2026-09-15T01:00:00Z"),
+    routeDraft(),
 )

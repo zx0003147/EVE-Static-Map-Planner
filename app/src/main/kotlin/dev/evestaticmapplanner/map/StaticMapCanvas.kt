@@ -445,6 +445,11 @@ fun StaticMapCanvas(
             localSavedRingRadiusPx = localSavedRingRadiusPx,
         )
     }
+    val keepstarPrimarySystemIds = remember(presentedMarkers) {
+        presentedMarkers.asSequence()
+            .filter { it.visualStyle == MarkerVisualStyle.KEEPSTAR_PRIMARY }
+            .mapTo(linkedSetOf()) { it.marker.systemId }
+    }
     val localSavedVisualRadiusPx = with(density) {
         savedMarkerRingRenderState(savedMarkerAppearance).visualRadiusDp().dp.toPx().toDouble()
     }
@@ -632,6 +637,7 @@ fun StaticMapCanvas(
                     featureEmblems = presentedFeatureEmblems,
                     systemNameVisualObstaclesBySystemId = systemNameVisualObstaclesBySystemId,
                     systemNameSafetyGapPx = systemNameSafetyGapPx,
+                    replacementSystemIds = keepstarPrimarySystemIds,
                 )
             }
         }
@@ -718,6 +724,7 @@ fun StaticMapCanvas(
                         preferences = mapDisplayPreferences,
                         systemNameVisualObstaclesBySystemId = systemNameVisualObstaclesBySystemId,
                         systemNameSafetyGapPx = systemNameSafetyGapPx,
+                        replacementSystemIds = keepstarPrimarySystemIds,
                     )
                 }
             }

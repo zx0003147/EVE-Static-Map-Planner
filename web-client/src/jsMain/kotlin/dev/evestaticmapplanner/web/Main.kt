@@ -5,33 +5,45 @@ import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.await
 import dev.evestaticmapplanner.shared.protocol.SharedMarkerDto
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffDto
 import org.w3c.dom.HTMLCanvasElement
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
+import kotlin.js.Promise
 
 fun main() {
     window.asDynamic().startEveWebClient = { rawDocument: dynamic, loaderTimings: dynamic ->
+        var startupStage = "initialization"
         try {
             setBootStatus("Building map", null)
             val kotlinStartedAt = window.performance.now()
             var stageStartedAt = kotlinStartedAt
+            startupStage = "Web Pack DTO parsing"
             val documentDto = parseWebPackDocument(rawDocument)
             val dtoParseMillis = elapsedSince(stageStartedAt)
             stageStartedAt = window.performance.now()
+            startupStage = "Web Pack domain conversion"
             val domain = WebUniverseDataAdapter.convert(documentDto)
             val domainConversionMillis = elapsedSince(stageStartedAt)
             stageStartedAt = window.performance.now()
+            startupStage = "map scene and index construction"
             val universe = WebUniverseDataAdapter.build(domain)
             val sceneAndIndexesMillis = elapsedSince(stageStartedAt)
             lateinit var app: WebApplication
             val scope = MainScope()
-            val planner = WebPlannerController(universe) { state -> app.renderPlanner(state) }
+            startupStage = "browser planner state restoration"
+            val planner = WebPlannerController(
+                universe = universe,
+                onStateChanged = { state -> app.renderPlanner(state) },
+            )
             val sharedMarkers = WebSharedMarkerController(
                 client = BrowserSharedMarkerTransport(),
                 scope = scope,
                 onStateChanged = { state -> app.renderSharedMarkers(state) },
             )
+            startupStage = "Web UI construction"
             app = WebApplication(
                 planner = planner,
                 sharedMarkers = sharedMarkers,
@@ -39,6 +51,7 @@ fun main() {
                 loadedFromOfflineCache = loaderTimings?.offlineFallback as? Boolean ?: false,
             )
             stageStartedAt = window.performance.now()
+            startupStage = "Web UI binding and first render"
             app.start()
             val uiInitializationMillis = elapsedSince(stageStartedAt)
             val diagnostics = loaderTimings ?: js("({})")
@@ -53,7 +66,7 @@ fun main() {
             setBootStatus("Ready", null)
             document.documentElement?.classList?.add("app-ready")
         } catch (failure: Throwable) {
-            setBootStatus("Web client failed", failure.message ?: failure.toString())
+            setBootStatus("Web client failed", "$startupStage: ${failure.message ?: failure.toString()}")
         }
     }
 }
@@ -87,6 +100,7 @@ private class WebApplication(
         },
         onHover = planner::hoverSystem,
         onContextAction = ::openSystemActions,
+        ansiblexLinks = planner::enabledAnsiblexLinks,
     )
     private val search = SystemPicker("global-search", "global-results", planner::search) { system ->
         planner.selectSystem(system.id)
@@ -100,6 +114,9 @@ private class WebApplication(
     }
     private val capitalFrom = SystemPicker("capital-from", "capital-from-results", planner::search) { planner.setCapitalStart(it.id) }
     private val capitalTo = SystemPicker("capital-to", "capital-to-results", planner::search) { planner.setCapitalDestination(it.id) }
+    private val capitalWaypoint = SystemPicker("capital-waypoint", "capital-waypoint-results", planner::search) { system ->
+        planner.addCapitalWaypoint(system.id)
+    }
     private val jumpSource = SystemPicker("jump-source", "jump-source-results", planner::search) { _ -> }
     private var editingMarkerId: String? = null
     private var editingSystemId: Int? = null
@@ -140,14 +157,19 @@ private class WebApplication(
         renderWaypoints(state)
         renderRouteSummary(state)
         renderCapitalSummary(state)
+        renderCapitalWaypoints(state)
         renderOverlays(state)
+        renderMapPreferences(state)
+        renderPersonalAnsiblex(state)
         renderSystemInfo(state)
+        syncPlannerFields(state)
         element<HTMLInputElementCompat>("use-ansiblex").checked = state.useAnsiblex
     }
 
     fun renderSharedMarkers(state: WebSharedMarkerState) {
         mapView.update(planner.state, state)
         renderSharedMarkerPanel(state)
+        renderRouteHandoffs(state)
         renderSystemInfo(planner.state)
     }
 
@@ -163,6 +185,7 @@ private class WebApplication(
         click("clear-route") { planner.clearNormalRoute() }
         click("capital-from-selected") { planner.state.selectedSystemId?.let(capitalFrom::selectId) }
         click("capital-to-selected") { planner.state.selectedSystemId?.let(capitalTo::selectId) }
+        click("capital-waypoint-selected") { planner.state.selectedSystemId?.let(planner::addCapitalWaypoint) }
         element<HTMLInputElementCompat>("capital-range").addEventListener("change", {
             val value = element<HTMLInputElementCompat>("capital-range").value.toDoubleOrNull()
             if (value != null) planner.setCapitalRange(value) else showTransientError("Jump range must be a number.")
@@ -170,8 +193,38 @@ private class WebApplication(
         click("calculate-capital") { syncRange(); planner.calculateCapitalRoute() }
         click("clear-capital") { planner.clearCapitalRoute() }
         click("jump-source-selected") { planner.state.selectedSystemId?.let(jumpSource::selectId) }
-        click("add-jump-range") { syncRange(); planner.addJumpRange(jumpSource.selectedSystemId) }
+        element<HTMLInputElementCompat>("coverage-range").addEventListener("change", {
+            syncCoverageRange()
+        })
+        click("add-jump-range") { syncCoverageRange(); planner.addJumpRange(jumpSource.selectedSystemId) }
         click("clear-jump-ranges") { planner.clearJumpRanges() }
+        click("save-map-lod") {
+            val constellation = element<HTMLInputElementCompat>("constellation-threshold").value.toDoubleOrNull()
+            val system = element<HTMLInputElementCompat>("system-threshold").value.toDoubleOrNull()
+            if (constellation == null || system == null) showTransientError("LOD thresholds must be numbers.")
+            else planner.setMapThresholds(constellation, system)
+        }
+        click("reset-map-lod") { planner.resetMapThresholds() }
+        element<HTMLInputElementCompat>("personal-ansiblex-file").addEventListener("change", {
+            val input = element<HTMLInputElementCompat>("personal-ansiblex-file")
+            val file = input.files?.item(0) ?: return@addEventListener
+            scope.launch {
+                val content = try {
+                    (file.asDynamic().text() as Promise<String>).await()
+                } catch (_: Throwable) {
+                    showTransientError("Unable to read Personal Ansiblex file.")
+                    return@launch
+                }
+                planner.previewPersonalAnsiblex(file.name, content)
+            }
+        })
+        click("apply-personal-ansiblex") { planner.applyPersonalAnsiblexPreview() }
+        click("cancel-personal-ansiblex") { planner.cancelPersonalAnsiblexPreview() }
+        click("clear-personal-ansiblex") {
+            if (window.confirm("Clear all browser-local Personal Ansiblex? Web Pack links are preserved.")) {
+                planner.clearPersonalAnsiblex()
+            }
+        }
         click("shared-connect") {
             val serverUrl = element<HTMLInputElementCompat>("shared-server-url").value
             val invite = element<HTMLInputElementCompat>("shared-invite-code").value
@@ -184,6 +237,7 @@ private class WebApplication(
             }
         }
         click("shared-disconnect") { sharedMarkers.disconnect() }
+        click("shared-refresh-routes") { scope.launch { sharedMarkers.refreshNow() } }
         click("shared-create-selected") {
             val systemId = planner.state.selectedSystemId
             if (systemId == null) showTransientError("Select a system before creating a Shared Marker.")
@@ -198,10 +252,11 @@ private class WebApplication(
         click("action-waypoint") { useContextSystem("route", planner::addNormalWaypoint) }
         click("action-jump-range") { useContextSystem("coverage") { systemId ->
             jumpSource.selectId(systemId)
-            syncRange()
+            syncCoverageRange()
             planner.addJumpRange(systemId)
         } }
         click("action-shared-marker") { useContextSystem("shared") { systemId -> openMarkerEditor(systemId, null) } }
+        click("action-keepstar-marker") { useContextSystem("search", planner::toggleKeepstarSavedMarker) }
         document.addEventListener("visibilitychange", {
             if (document.asDynamic().visibilityState == "visible") sharedMarkers.onPageVisible()
         })
@@ -313,10 +368,16 @@ private class WebApplication(
             className = "network-status ${if (online) "online" else "offline"}"
         }
         renderSharedMarkerPanel(sharedMarkers.state)
+        renderRouteHandoffs(sharedMarkers.state)
     }
 
     private fun syncRange() {
         element<HTMLInputElementCompat>("capital-range").value.toDoubleOrNull()?.let(planner::setCapitalRange)
+    }
+
+    private fun syncCoverageRange() {
+        val value = element<HTMLInputElementCompat>("coverage-range").value.toDoubleOrNull()
+        if (value == null) showTransientError("Coverage range must be a number.") else planner.setCoverageRange(value)
     }
 
     private fun renderBanner(state: WebPlannerState) {
@@ -375,6 +436,28 @@ private class WebApplication(
         }
     }
 
+    private fun renderCapitalWaypoints(state: WebPlannerState) {
+        val container = element<HTMLDivElement>("capital-waypoint-list")
+        container.clearChildren()
+        if (state.capitalWaypointSystemIds.isEmpty()) {
+            container.appendText("No Capital waypoints")
+            container.className = "item-list empty"
+            return
+        }
+        container.className = "item-list"
+        state.capitalWaypointSystemIds.forEachIndexed { index, systemId ->
+            val row = document.createElement("div") as HTMLDivElement
+            row.className = "list-row"
+            val label = document.createElement("span")
+            label.textContent = "${index + 1}. ${planner.systemName(systemId)}"
+            row.appendChild(label)
+            row.appendChild(actionButton("↑", index > 0, "Move Capital waypoint up") { planner.moveCapitalWaypoint(index, -1) })
+            row.appendChild(actionButton("↓", index < state.capitalWaypointSystemIds.lastIndex, "Move Capital waypoint down") { planner.moveCapitalWaypoint(index, 1) })
+            row.appendChild(actionButton("×", true, "Remove Capital waypoint") { planner.removeCapitalWaypoint(index) })
+            container.appendChild(row)
+        }
+    }
+
     private fun renderOverlays(state: WebPlannerState) {
         val container = element<HTMLDivElement>("overlay-list")
         container.clearChildren()
@@ -399,6 +482,72 @@ private class WebApplication(
             "Coverage: ${state.coverageCounts.size} systems · $overlap overlapping"
     }
 
+    private fun renderMapPreferences(state: WebPlannerState) {
+        syncInputUnlessEditing("constellation-threshold", state.mapPreferences.constellationZoomThreshold.toString())
+        syncInputUnlessEditing("system-threshold", state.mapPreferences.systemZoomThreshold.toString())
+    }
+
+    private fun syncPlannerFields(state: WebPlannerState) {
+        routeFrom.displayId(state.normalStartSystemId)
+        routeTo.displayId(state.normalDestinationSystemId)
+        capitalFrom.displayId(state.capitalStartSystemId)
+        capitalTo.displayId(state.capitalDestinationSystemId)
+        syncInputUnlessEditing("capital-range", state.capitalRangeLy.toString())
+        syncInputUnlessEditing("coverage-range", state.coverageRangeLy.toString())
+    }
+
+    private fun syncInputUnlessEditing(inputId: String, value: String) {
+        val input = element<HTMLInputElementCompat>(inputId)
+        if (document.activeElement != input && input.value != value) input.value = value
+    }
+
+    private fun renderPersonalAnsiblex(state: WebPlannerState) {
+        val preview = state.personalAnsiblexPreview
+        element<HTMLElement>("personal-ansiblex-preview").apply {
+            textContent = preview?.let {
+                "Preview · ${it.valid.size} valid · ${it.duplicateRows.size} duplicate · ${it.errors.size} invalid" +
+                    it.errors.take(5).joinToString(separator = "", prefix = "\n") { error -> "Row ${error.row}: ${error.message}" }
+            }.orEmpty()
+            className = if (preview == null) "summary hidden" else "summary"
+        }
+        element<HTMLElement>("apply-personal-ansiblex").asDynamic().disabled = preview?.canApply != true
+        element<HTMLElement>("cancel-personal-ansiblex").asDynamic().disabled = preview == null
+        element<HTMLElement>("clear-personal-ansiblex").asDynamic().disabled = state.personalAnsiblex.isEmpty()
+        val container = element<HTMLDivElement>("personal-ansiblex-list")
+        container.clearChildren()
+        if (state.personalAnsiblex.isEmpty()) {
+            container.appendText("No Personal Ansiblex")
+            container.className = "item-list empty"
+        } else {
+            container.className = "item-list"
+            state.personalAnsiblex.forEach { connection ->
+                val row = document.createElement("div") as HTMLDivElement
+                row.className = "list-row"
+                val logicalFrom = if (connection.direction == WebAnsiblexDirection.SECOND_TO_FIRST) {
+                    connection.secondSystemId
+                } else connection.firstSystemId
+                val logicalTo = if (connection.direction == WebAnsiblexDirection.SECOND_TO_FIRST) {
+                    connection.firstSystemId
+                } else connection.secondSystemId
+                val label = document.createElement("span") as HTMLElement
+                val arrow = if (connection.direction == WebAnsiblexDirection.BIDIRECTIONAL) "↔" else "→"
+                label.textContent = "${planner.systemName(logicalFrom)} $arrow ${planner.systemName(logicalTo)}"
+                row.appendChild(label)
+                row.appendChild(actionButton(if (connection.enabled) "On" else "Off", true) {
+                    planner.setPersonalAnsiblexEnabled(connection.id, !connection.enabled)
+                })
+                row.appendChild(actionButton("×", true, "Remove Personal Ansiblex") {
+                    planner.removePersonalAnsiblex(connection.id)
+                })
+                container.appendChild(row)
+            }
+        }
+        element<HTMLElement>("map-stats").textContent =
+            "${universe.staticData.systems.size} systems · ${universe.staticData.connections.size} Stargates · " +
+                "${universe.ansiblex.count { it.enabled }} Pack Ansiblex · " +
+                "${state.personalAnsiblex.count { it.enabled }} Personal Ansiblex · ${universe.scene.omittedSystemIds.size} unpositioned"
+    }
+
     private fun renderSystemInfo(state: WebPlannerState) {
         val target = element<HTMLDivElement>("system-info")
         target.clearChildren()
@@ -412,7 +561,9 @@ private class WebApplication(
         target.className = "system-info"
         val region = universe.regionsById[system.regionId]
         val constellation = universe.constellationsById[system.constellationId]
-        val ansiblexCount = universe.ansiblex.count { it.firstSystemId == system.id || it.secondSystemId == system.id }
+        val ansiblexCount = planner.enabledAnsiblexLinks().count {
+            it.firstSystemId == system.id || it.secondSystemId == system.id
+        }
         val coverage = state.coverageCounts[system.id] ?: 0
         val title = document.createElement("h2")
         title.textContent = system.name
@@ -425,6 +576,7 @@ private class WebApplication(
         target.appendInfo("Stargates", (universe.stargateCountBySystemId[system.id] ?: 0).toString())
         target.appendInfo("Ansiblex", ansiblexCount.toString())
         target.appendInfo("Jump coverage", coverage.toString())
+        target.appendInfo("Saved Marker type", if (system.id in state.keepstarSystemIds) "keepstar" else "None")
         target.appendInfo("Universe XYZ", "${scientific(system.position.x)}, ${scientific(system.position.y)}, ${scientific(system.position.z)}")
         val official = universe.scene.nodesById[system.id]?.position
         target.appendInfo("Official 2D", official?.let { "${formatDouble(it.x, 2)}, ${formatDouble(it.y, 2)}" } ?: "Unavailable")
@@ -474,6 +626,8 @@ private class WebApplication(
         element<HTMLElement>("shared-editor-save").asDynamic().disabled = !online || state.busy
         element<HTMLElement>("shared-editor-delete").asDynamic().disabled = !online || state.busy
         element<HTMLElement>("action-shared-marker").asDynamic().disabled = !online || !state.canWrite
+        element<HTMLElement>("shared-refresh-routes").asDynamic().disabled =
+            !online || state.status != WebSharedMarkerStatus.CONNECTED || state.busy
 
         val container = element<HTMLDivElement>("shared-marker-list")
         container.clearChildren()
@@ -503,6 +657,54 @@ private class WebApplication(
         }
     }
 
+    private fun renderRouteHandoffs(state: WebSharedMarkerState) {
+        val status = element<HTMLElement>("desktop-route-status")
+        val container = element<HTMLDivElement>("desktop-route-list")
+        container.clearChildren()
+        when {
+            state.status != WebSharedMarkerStatus.CONNECTED -> {
+                status.textContent = "Connect to check for Desktop routes."
+                container.appendText("No Desktop routes loaded")
+                container.className = "item-list empty"
+                return
+            }
+            !state.supportsRouteHandoffs -> {
+                status.textContent = "This server does not support Desktop Route Handoff."
+                container.appendText("Upgrade the Shared Map Server to load Desktop routes.")
+                container.className = "item-list empty"
+                return
+            }
+            state.routeHandoffs.isEmpty() -> {
+                status.textContent = "No Desktop Route Available. Publish one from the Desktop planner."
+                container.appendText("No recent Desktop routes")
+                container.className = "item-list empty"
+                return
+            }
+            else -> status.textContent = "Desktop Route Available · choose Load to replace the matching Web route."
+        }
+        container.className = "item-list"
+        state.routeHandoffs.forEach { handoff ->
+            val row = document.createElement("div") as HTMLDivElement
+            row.className = "list-row route-handoff-row"
+            val label = document.createElement("span") as HTMLElement
+            label.textContent = routeHandoffSummary(handoff)
+            row.appendChild(label)
+            row.appendChild(actionButton("Load", true, "Load Desktop ${handoff.type.lowercase()} route") {
+                planner.loadRouteHandoff(handoff)
+                selectTool(if (handoff.type == "CAPITAL") "capital" else "route")
+            })
+            container.appendChild(row)
+        }
+    }
+
+    private fun routeHandoffSummary(handoff: RouteHandoffDto): String {
+        val type = handoff.type.lowercase().replaceFirstChar(Char::uppercase)
+        val from = planner.systemName(handoff.originSystemId)
+        val to = planner.systemName(handoff.destinationSystemId)
+        val waypointText = if (handoff.waypointSystemIds.isEmpty()) "direct intent" else "${handoff.waypointSystemIds.size} waypoint(s)"
+        return "$type · $from → $to · $waypointText\n${handoff.publisher.displayName} · ${handoff.createdAt}"
+    }
+
     private fun locateMarker(marker: SharedMarkerDto) {
         sharedMarkers.selectMarker(marker.markerId)
         when (universe.sharedMarkerLocationAvailability(marker.systemId)) {
@@ -526,6 +728,8 @@ private class WebApplication(
         planner.selectSystem(systemId)
         sharedMarkers.selectMarkerAtSystem(systemId)
         element<HTMLElement>("system-actions-name").textContent = planner.systemName(systemId)
+        element<HTMLElement>("action-keepstar-marker").textContent =
+            if (systemId in planner.state.keepstarSystemIds) "Remove Keepstar Saved Marker" else "Add Keepstar Saved Marker"
         element<HTMLElement>("action-shared-marker").asDynamic().disabled = !online || !sharedMarkers.state.canWrite
         val canvasBounds = element<HTMLCanvasElement>("map-canvas").getBoundingClientRect()
         val viewportX = canvasBounds.left + point.x
@@ -677,6 +881,19 @@ private class SystemPicker(
 
     fun selectId(systemId: Int) {
         search(systemId.toString(), 1).singleOrNull()?.let(::select)
+    }
+
+    fun displayId(systemId: Int?) {
+        if (systemId == selectedSystemId) return
+        if (systemId == null) {
+            clear()
+            return
+        }
+        val system = search(systemId.toString(), 1).singleOrNull() ?: return
+        selectedSystemId = system.id
+        input.value = system.name
+        results.clearChildren()
+        results.classList.add("hidden")
     }
 
     fun clear() {

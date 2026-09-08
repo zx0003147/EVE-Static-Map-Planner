@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import dev.evestaticmapplanner.core.map.MapPoint
+import dev.evestaticmapplanner.core.map.MapVisualSemantics
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
@@ -33,6 +34,7 @@ import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
 import dev.evestaticmapplanner.marker.markerColor
 import dev.evestaticmapplanner.marker.drawSavedMarkerChildIcon
+import dev.evestaticmapplanner.marker.SavedMarkerChildVisuals
 import dev.evestaticmapplanner.control.mission.MissionMarker
 
 enum class MapDetailLevel {
@@ -98,6 +100,7 @@ object MapRenderer {
         featureEmblems: List<PresentedFeatureEmblem> = emptyList(),
         systemNameVisualObstaclesBySystemId: Map<Int, SystemNameVisualObstacles> = emptyMap(),
         systemNameSafetyGapPx: Double = 0.0,
+        replacementSystemIds: Set<Int> = emptySet(),
     ) {
         drawRect(MAP_BACKGROUND)
 
@@ -137,6 +140,7 @@ object MapRenderer {
         val level = detailLevel(transform.viewport.zoom)
         val radius = systemNodeRadius(level)
         presentation.visibleSystemIds.forEach { systemId ->
+            if (systemId in replacementSystemIds) return@forEach
             val node = scene.nodesById.getValue(systemId)
             val screen = transform.worldToScreen(node.position).toOffset()
             drawCircle(
@@ -264,11 +268,13 @@ object MapRenderer {
         preferences: MapDisplayPreferences,
         systemNameVisualObstaclesBySystemId: Map<Int, SystemNameVisualObstacles> = emptyMap(),
         systemNameSafetyGapPx: Double = 0.0,
+        replacementSystemIds: Set<Int> = emptySet(),
     ) {
         if (!emphasis.isActive) return
         val visibleBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
         val radius = systemNodeRadius(detailLevel(transform.viewport.zoom)) + EMPHASIZED_NODE_RADIUS_INCREASE_PX
         emphasis.focusedSystemIds.forEach { systemId ->
+            if (systemId in replacementSystemIds) return@forEach
             val node = scene.nodesById[systemId]?.takeIf { visibleBounds.contains(it.position) } ?: return@forEach
             drawCircle(
                 color = if (node.isStargateConnected) CONNECTED_NODE_COLOR else UNCONNECTED_NODE_COLOR,
@@ -786,7 +792,14 @@ object MapRenderer {
         markers.forEach { presented ->
             val center = presented.screenCenter.toOffset()
             val color = markerColor(presented.marker.color)
-            if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
+            if (presented.visualStyle == MarkerVisualStyle.KEEPSTAR_PRIMARY) {
+                drawSavedMarkerChildIcon(
+                    visual = SavedMarkerChildVisuals.resolve(dev.evestaticmapplanner.core.marker.SavedMarkerChildType.KEEPSTAR),
+                    center = center,
+                    size = 14.dp.toPx(),
+                    tint = color,
+                )
+            } else if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
                 val ringRadius = savedMarkerRing.radiusDp.dp.toPx()
                 savedMarkerRing.glowLayers.forEach { layer ->
                     drawCircle(color.copy(alpha = layer.alpha), ringRadius + layer.expansionDp.dp.toPx(), center)
@@ -817,10 +830,10 @@ object MapRenderer {
             }
             presented.visibleName?.let { name ->
                 val label = cache.label(name, MapLabelType.SYSTEM, preferences, textMeasurer)
-                val markerRadiusPx = if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
-                    savedMarkerRing.radiusDp.dp.toPx().toDouble()
-                } else {
-                    halfSize.toDouble()
+                val markerRadiusPx = when (presented.visualStyle) {
+                    MarkerVisualStyle.OUTER_RING -> savedMarkerRing.radiusDp.dp.toPx().toDouble()
+                    MarkerVisualStyle.KEEPSTAR_PRIMARY -> 7.dp.toPx().toDouble()
+                    MarkerVisualStyle.OUTLINE_DIAMOND -> halfSize.toDouble()
                 }
                 val systemLabelSize = presented.systemName
                     .takeIf { presented.systemNameVisible }
@@ -975,7 +988,7 @@ private fun MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())
 
 private val MAP_BACKGROUND = Color(0xFF09121D)
 private val TERRITORY_BOUNDARY_COLOR = Color(0xFF6F8496)
-private val EDGE_COLOR = Color(0x553F6685)
+private val EDGE_COLOR = Color(MapVisualSemantics.stargateNetwork.argb)
 private val CONNECTED_NODE_COLOR = Color(0xFF75B9E7)
 private val UNCONNECTED_NODE_COLOR = Color(0xFF596673)
 private val LABEL_COLOR = Color(0xFFD7E6F2)
@@ -984,18 +997,19 @@ private val REGION_BACKGROUND_LABEL_BASE_COLOR = Color(0xFFD7E6F2)
 private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 private val HOVER_COLOR = Color(0xFFF3D36A)
 private val SELECTED_COLOR = Color(0xFF76E6A5)
-internal val ANSIBLEX_NETWORK_COLOR = Color(0x997C5CE0)
-internal val ANSIBLEX_NETWORK_DASH_PATTERN = floatArrayOf(6f, 5f)
+internal val ANSIBLEX_NETWORK_COLOR = Color(MapVisualSemantics.ansiblexNetwork.argb)
+internal val ANSIBLEX_NETWORK_DASH_PATTERN = MapVisualSemantics.ansiblexNetwork.dashPatternPx.map { it.toFloat() }.toFloatArray()
 private val ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(ANSIBLEX_NETWORK_DASH_PATTERN)
-internal val ROUTE_STARGATE_COLOR = Color(0xFF42D6F5)
-internal val ROUTE_ANSIBLEX_COLOR = Color(0xFFFF9F43)
-internal val WORMHOLE_PEACOCK_TEAL = Color(0xFF32D6C5)
+internal val ROUTE_STARGATE_COLOR = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.STARGATE).argb)
+internal val ROUTE_ANSIBLEX_COLOR = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.ANSIBLEX).argb)
+internal val WORMHOLE_PEACOCK_TEAL = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.WORMHOLE).argb)
 internal val ROUTE_WORMHOLE_COLOR = WORMHOLE_PEACOCK_TEAL
-internal val ROUTE_ANSIBLEX_DASH_PATTERN = listOf(12f, 7f)
+internal val ROUTE_ANSIBLEX_DASH_PATTERN =
+    MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.ANSIBLEX).dashPatternPx.map { it.toFloat() }
 private val ROUTE_ANSIBLEX_DASH_EFFECT = PathEffect.dashPathEffect(ROUTE_ANSIBLEX_DASH_PATTERN.toFloatArray())
 internal val ROUTE_START_COLOR = Color(0xFF57E389)
 internal val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
-internal val CAPITAL_ROUTE_COLOR = Color(0xFFB388FF)
+internal val CAPITAL_ROUTE_COLOR = Color(MapVisualSemantics.capitalRoute.argb)
 internal val CAPITAL_START_COLOR = Color(0xFFA98BFF)
 internal val CAPITAL_DESTINATION_COLOR = Color(0xFFFF7EB6)
 private val INTERSECTION_COLOR = Color(0xFFFFD166)
@@ -1022,9 +1036,21 @@ internal data class RouteLegRenderStyle(
 )
 
 internal fun routeLegRenderStyle(type: RouteEdgeType): RouteLegRenderStyle = when (type) {
-    RouteEdgeType.STARGATE -> RouteLegRenderStyle(ROUTE_STARGATE_COLOR, 3f, null)
-    RouteEdgeType.ANSIBLEX -> RouteLegRenderStyle(ROUTE_ANSIBLEX_COLOR, 4f, ROUTE_ANSIBLEX_DASH_PATTERN)
-    RouteEdgeType.WORMHOLE -> RouteLegRenderStyle(ROUTE_WORMHOLE_COLOR, 4f, null)
+    RouteEdgeType.STARGATE -> RouteLegRenderStyle(
+        ROUTE_STARGATE_COLOR,
+        MapVisualSemantics.normalRouteByEdgeType.getValue(type).widthPx.toFloat(),
+        null,
+    )
+    RouteEdgeType.ANSIBLEX -> RouteLegRenderStyle(
+        ROUTE_ANSIBLEX_COLOR,
+        MapVisualSemantics.normalRouteByEdgeType.getValue(type).widthPx.toFloat(),
+        ROUTE_ANSIBLEX_DASH_PATTERN,
+    )
+    RouteEdgeType.WORMHOLE -> RouteLegRenderStyle(
+        ROUTE_WORMHOLE_COLOR,
+        MapVisualSemantics.normalRouteByEdgeType.getValue(type).widthPx.toFloat(),
+        null,
+    )
 }
 internal val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {

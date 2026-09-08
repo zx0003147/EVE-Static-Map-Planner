@@ -12,6 +12,12 @@ import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedUser
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoff
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffEdge
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffMapMetadata
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffPublisher
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffType
 import java.time.Instant
 import java.util.UUID
 
@@ -103,6 +109,57 @@ fun InviteCreatedResponseDto.toDomain(): Pair<SharedInvite, SecretValue> = Share
     expiresAt = instant(expiresAt, "expiresAt"),
     createdAt = instant(createdAt, "createdAt"),
 ) to SecretValue.from(inviteToken)
+
+fun RouteHandoffDto.toDomain(): SharedRouteHandoff = SharedRouteHandoff(
+    routeHandoffId = canonicalUuid(routeHandoffId, "routeHandoffId"),
+    workspaceId = canonicalUuid(workspaceId, "workspaceId"),
+    publisher = SharedRouteHandoffPublisher(
+        canonicalUuid(publisher.memberId, "publisher.memberId"),
+        canonicalUuid(publisher.userId, "publisher.userId"),
+        publisher.displayName,
+        canonicalUuid(publisher.deviceTokenId, "publisher.deviceTokenId"),
+        publisher.deviceName,
+    ),
+    createdAt = instant(createdAt, "createdAt"),
+    expiresAt = instant(expiresAt, "expiresAt"),
+    route = SharedRouteHandoffDraft(
+        type = enumValue<SharedRouteHandoffType>(type, "type"),
+        originSystemId = originSystemId,
+        waypointSystemIds = waypointSystemIds,
+        destinationSystemId = destinationSystemId,
+        useAnsiblex = useAnsiblex,
+        capitalRangeLy = capitalRangeLy,
+        jumpProfileId = jumpProfileId,
+        resolvedSystemIds = resolvedSystemIds,
+        resolvedEdges = resolvedEdges.map {
+            SharedRouteHandoffEdge(it.fromSystemId, it.toSystemId, it.type, it.distanceLy)
+        },
+        mapMetadata = SharedRouteHandoffMapMetadata(
+            mapMetadata.universeBuild,
+            mapMetadata.plannerVersion,
+            mapMetadata.webPackVersion,
+        ),
+    ),
+)
+
+fun SharedRouteHandoffDraft.toRequestDto(): PublishRouteHandoffRequestDto = PublishRouteHandoffRequestDto(
+    type = type.name,
+    originSystemId = originSystemId,
+    waypointSystemIds = waypointSystemIds,
+    destinationSystemId = destinationSystemId,
+    useAnsiblex = useAnsiblex,
+    capitalRangeLy = capitalRangeLy,
+    jumpProfileId = jumpProfileId,
+    resolvedSystemIds = resolvedSystemIds,
+    resolvedEdges = resolvedEdges.map {
+        RouteHandoffResolvedEdgeDto(it.fromSystemId, it.toSystemId, it.type, it.distanceLy)
+    },
+    mapMetadata = RouteHandoffMapMetadataDto(
+        mapMetadata.universeBuild,
+        mapMetadata.plannerVersion,
+        mapMetadata.webPackVersion,
+    ),
+)
 
 private fun UserDto.toDomain(): SharedUser = SharedUser(
     userId = canonicalUuid(userId, "userId"),

@@ -9,6 +9,8 @@ import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedMarkerSnapshot
 import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoff
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
 import dev.evestaticmapplanner.shared.protocol.ExchangedCredential
 import java.util.UUID
 
@@ -26,6 +28,18 @@ interface SharedMapClient : AutoCloseable {
         token: SecretValue,
         workspaceId: String,
     ): SharedMarkerSnapshot
+    suspend fun getRouteHandoffs(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+    ): List<SharedRouteHandoff> = unsupported()
+    suspend fun publishRouteHandoff(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+        draft: SharedRouteHandoffDraft,
+        idempotencyKey: UUID,
+    ): SharedRouteHandoff = unsupported()
     suspend fun createSharedMarker(
         server: SharedServerUrl,
         token: SecretValue,

@@ -23,9 +23,12 @@ architecture and repository decisions that support this protocol are in `shared-
   bound to one membership, so a Workspace Admin can revoke it without affecting another Workspace.
 - **Snapshot**: the complete authoritative marker set for one Workspace at one Workspace revision.
 - **Actor**: the user identity associated with a create or update operation.
+- **Route Handoff**: an optional, bounded Workspace resource carrying Desktop route intent and its resolved snapshot
+  for explicit loading by Web. It is not a synchronized route editor.
 
-V1 shares only strategic markers. It does not synchronize any local marker, route, wormhole, Planning View, mission,
-objective, or AI state.
+The V1 base capability shares strategic markers. A Server may additionally advertise the compatible
+`route-handoffs` feature described below. It still does not synchronize local marker databases, Personal Ansiblex,
+wormholes, Planning Views, missions, objectives, or AI state.
 
 ## 2. Ownership invariants
 
@@ -39,6 +42,8 @@ objective, or AI state.
    encode a trusted role.
 7. A Device Access Token is bound to one active membership. A user who joins another Workspace exchanges that
    Workspace's invite and receives a separate credential.
+8. Route Handoffs belong to exactly one Workspace and are stored independently from Shared Markers and Workspace
+   marker revision.
 
 ## 3. Transport and common HTTP rules
 
@@ -72,7 +77,7 @@ No authentication is required.
   "protocolVersion": 1,
   "minimumClientProtocolVersion": 1,
   "maximumClientProtocolVersion": 1,
-  "features": ["shared-markers", "members", "invites", "device-revocation"],
+  "features": ["shared-markers", "members", "invites", "device-revocation", "route-handoffs"],
   "universeBuild": "sde-2026-08-25"
 }
 ```
@@ -97,8 +102,8 @@ Roles are exactly:
 
 | Role | Allowed operations |
 | --- | --- |
-| `VIEWER` | Authenticate; read self, Workspace, and Shared Markers |
-| `EDITOR` | Viewer operations plus create, update, and delete Shared Markers |
+| `VIEWER` | Authenticate; read self, Workspace, Shared Markers, and advertised Route Handoffs |
+| `EDITOR` | Viewer operations plus create, update, and delete Shared Markers and publish Route Handoffs |
 | `ADMIN` | Editor operations plus member, invite, role, and membership-scoped device management |
 
 An Admin cannot downgrade or remove the final active Admin. The server returns `LAST_ADMIN_REQUIRED`.
@@ -200,6 +205,25 @@ system unknown to an older Map, the Map:
 4. disables map-focus for that row; and
 5. never writes it to `user.db`.
 
+### 7.3 Optional Route Handoff feature
+
+A Server advertising `route-handoffs` accepts `NORMAL` and `CAPITAL` handoffs. Each response contains a
+server-generated `routeHandoffId`, `workspaceId`, publisher member/user/device metadata, `createdAt`, `expiresAt`,
+and these client-supplied fields:
+
+- intent: `type`, `originSystemId`, ordered `waypointSystemIds`, `destinationSystemId`, plus `useAnsiblex` for Normal
+  or `capitalRangeLy` and `jumpProfileId` for Capital;
+- resolved snapshot: ordered `resolvedSystemIds` and ordered `resolvedEdges` (`fromSystemId`, `toSystemId`, `type`,
+  nullable `distanceLy`);
+- compatibility metadata: `mapMetadata.universeBuild`, `plannerVersion`, and nullable `webPackVersion`.
+
+The server validates every system against its packaged allowlist, endpoints and edge order against the resolved
+path, Waypoint occurrence/order, at most 50 Waypoints, 1–500 resolved systems, Normal edge vocabulary
+(`STARGATE`, `ANSIBLEX`, `WORMHOLE`), and Capital edge distances against the declared range. Request fields use a
+strict JSON schema and no token, settings, database, or unrelated Desktop state is accepted. Records expire after
+seven days and each Workspace retains at most the newest 20. Expired rows are excluded from reads and cleaned on
+publish. Audit metadata records only safe route summary fields.
+
 ## 8. Exact REST endpoint catalog
 
 All endpoints under `/api/v1` return the unified error body in section 10.
@@ -218,6 +242,8 @@ All endpoints under `/api/v1` return the unified error body in section 10.
 | `POST /api/v1/workspaces/{workspaceId}/markers` | Bearer | Editor | Create Shared Marker |
 | `PATCH /api/v1/workspaces/{workspaceId}/markers/{markerId}` | Bearer | Editor | Update Shared Marker |
 | `DELETE /api/v1/workspaces/{workspaceId}/markers/{markerId}?expectedVersion={version}` | Bearer | Editor | Delete Shared Marker |
+| `GET /api/v1/workspaces/{workspaceId}/route-handoffs` | Bearer | Viewer | Newest non-expired Route Handoffs, bounded to 20 |
+| `POST /api/v1/workspaces/{workspaceId}/route-handoffs` | Bearer | Editor | Publish one validated Route Handoff |
 | `GET /api/v1/workspaces/{workspaceId}/members` | Bearer | Admin | List active and revoked members |
 | `POST /api/v1/workspaces/{workspaceId}/members` | Bearer | Admin | Create a user identity and membership |
 | `PATCH /api/v1/workspaces/{workspaceId}/members/{memberId}` | Bearer | Admin | Change display name and/or role |
@@ -600,7 +626,7 @@ users' private data.
 
 ## 12. Idempotency
 
-Create, update, delete, member, role, invite, and device mutations require a client-generated UUID in
+Create, update, delete, Route Handoff publish, member, role, invite, and device mutations require a client-generated UUID in
 `Idempotency-Key`. Invite exchange is excluded because replaying a server-generated plaintext credential would
 require persisting recoverable token plaintext.
 
@@ -696,6 +722,7 @@ Additional limits:
 
 - 32 KiB general request body; 4 KiB invite exchange;
 - 500 Shared Markers per Workspace;
+- 20 recent Route Handoffs per Workspace, seven-day TTL, at most 50 Waypoints and 500 resolved systems each;
 - 80 code points for marker name, Workspace name, user display name, and device name;
 - 2,000 code points for notes;
 - nine tags per marker;
@@ -726,7 +753,7 @@ Not in V1:
 
 - RC2;
 - Shared Wormholes;
-- Shared Routes;
+- synchronized/editable Shared Routes (the optional bounded Route Handoff snapshot feature is supported);
 - Shared Planning Views;
 - Shared Objectives;
 - WebSocket, SSE, or delta streams;

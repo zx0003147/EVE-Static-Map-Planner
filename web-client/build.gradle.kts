@@ -4,6 +4,7 @@ import javax.imageio.ImageIO
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val generatedLoaderResources = layout.buildDirectory.dir("generated/phase1-loader")

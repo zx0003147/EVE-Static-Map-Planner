@@ -82,6 +82,9 @@ details > summary { margin: -12px -12px 8px; padding: 11px 12px; color: #e7f4fa;
 .shared-status.offline { color: #ffd1a6; border-color: #9a683c; }
 .shared-status.auth_failed, .shared-status.forbidden, .shared-status.failed { color: #ffb5b5; border-color: #914450; }
 .credential-note { margin: 8px 0; color: var(--muted); font-size: 11px; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.route-handoff-row { align-items: flex-start; }
+.route-handoff-row span { white-space: normal; line-height: 1.35; }
 .inline-error { margin: 8px 0; padding: 7px; color: #ffd0d0; background: #3b1820; border-radius: 5px; font-size: 11px; overflow-wrap: anywhere; }
 
 .map-panel { grid-area: map; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #08111b; }

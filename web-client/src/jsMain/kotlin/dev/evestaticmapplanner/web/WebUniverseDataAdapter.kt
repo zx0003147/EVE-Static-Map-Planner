@@ -44,6 +44,32 @@ data class WebUniverse(
             put(link.secondSystemId, (get(link.secondSystemId) ?: 0) + 1)
         }
     }
+
+    val packAnsiblexLinks: List<WebAnsiblexLink> = ansiblex.map { link ->
+        WebAnsiblexLink(
+            id = link.id,
+            firstSystemId = link.firstSystemId,
+            secondSystemId = link.secondSystemId,
+            direction = when (link.direction) {
+                WebPackAnsiblexDirectionDto.BIDIRECTIONAL -> WebAnsiblexDirection.BIDIRECTIONAL
+                WebPackAnsiblexDirectionDto.FIRST_TO_SECOND -> WebAnsiblexDirection.FIRST_TO_SECOND
+                WebPackAnsiblexDirectionDto.SECOND_TO_FIRST -> WebAnsiblexDirection.SECOND_TO_FIRST
+            },
+            enabled = link.enabled,
+            personal = false,
+        )
+    }
+
+    fun routeGraphWith(personal: Collection<PersonalAnsiblexConnection>): RouteGraph = RouteGraphBuilder.build(
+        staticData,
+        packRouteLinks(ansiblex) + effectivePersonalAnsiblex(personal).map(PersonalAnsiblexConnection::toRouteLink),
+    )
+
+    fun effectivePersonalAnsiblex(personal: Collection<PersonalAnsiblexConnection>): List<PersonalAnsiblexConnection> {
+        val packPairs = packAnsiblexLinks.mapTo(mutableSetOf()) { ansiblexPairKey(it.firstSystemId, it.secondSystemId) }
+        return personal.filter { ansiblexPairKey(it.firstSystemId, it.secondSystemId) !in packPairs }
+            .distinctBy { ansiblexPairKey(it.firstSystemId, it.secondSystemId) }
+    }
 }
 
 internal enum class SharedMarkerLocationAvailability {
@@ -142,20 +168,7 @@ object WebUniverseDataAdapter {
     }
 
     fun build(domain: WebUniverseDomain): WebUniverse {
-        val routeLinks = domain.ansiblex.map { link ->
-            RouteLink(
-                connectionId = RouteConnectionId("ansiblex:${link.id}"),
-                firstSystemId = link.firstSystemId,
-                secondSystemId = link.secondSystemId,
-                direction = when (link.direction) {
-                    WebPackAnsiblexDirectionDto.BIDIRECTIONAL -> RouteLinkDirection.BIDIRECTIONAL
-                    WebPackAnsiblexDirectionDto.FIRST_TO_SECOND -> RouteLinkDirection.FIRST_TO_SECOND
-                    WebPackAnsiblexDirectionDto.SECOND_TO_FIRST -> RouteLinkDirection.SECOND_TO_FIRST
-                },
-                type = RouteEdgeType.ANSIBLEX,
-                enabled = link.enabled,
-            )
-        }
+        val routeLinks = packRouteLinks(domain.ansiblex)
         val staticData = domain.staticData
         val repository = WebStaticMapRepository(staticData)
         val search = WebSystemSearchRepository(staticData.systems)
@@ -182,4 +195,19 @@ object WebUniverseDataAdapter {
             systems.sumOf { it.position.z } / systems.size,
         )
     }
+}
+
+private fun packRouteLinks(links: Collection<WebPackAnsiblexDto>): List<RouteLink> = links.map { link ->
+    RouteLink(
+        connectionId = RouteConnectionId("ansiblex:${link.id}"),
+        firstSystemId = link.firstSystemId,
+        secondSystemId = link.secondSystemId,
+        direction = when (link.direction) {
+            WebPackAnsiblexDirectionDto.BIDIRECTIONAL -> RouteLinkDirection.BIDIRECTIONAL
+            WebPackAnsiblexDirectionDto.FIRST_TO_SECOND -> RouteLinkDirection.FIRST_TO_SECOND
+            WebPackAnsiblexDirectionDto.SECOND_TO_FIRST -> RouteLinkDirection.SECOND_TO_FIRST
+        },
+        type = RouteEdgeType.ANSIBLEX,
+        enabled = link.enabled,
+    )
 }

@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 
 const val SHARED_MAP_PROTOCOL_VERSION = 1
 const val SHARED_MARKERS_FEATURE = "shared-markers"
+const val ROUTE_HANDOFFS_FEATURE = "route-handoffs"
 val SHARED_WORKSPACE_ROLES = setOf("VIEWER", "EDITOR", "ADMIN")
 val SHARED_MARKER_COLORS = setOf("RED", "ORANGE", "YELLOW", "GREEN", "BLUE", "PURPLE", "WHITE")
 
@@ -94,6 +95,69 @@ data class SharedMarkerSnapshotResponseDto(
     val revision: Long,
     val generatedAt: String,
     val markers: List<SharedMarkerDto>,
+)
+
+@Serializable
+data class RouteHandoffMapMetadataDto(
+    val universeBuild: String,
+    val plannerVersion: String,
+    val webPackVersion: String? = null,
+)
+
+@Serializable
+data class RouteHandoffResolvedEdgeDto(
+    val fromSystemId: Int,
+    val toSystemId: Int,
+    val type: String,
+    val distanceLy: Double? = null,
+)
+
+@Serializable
+data class PublishRouteHandoffRequestDto(
+    val type: String,
+    val originSystemId: Int,
+    val waypointSystemIds: List<Int> = emptyList(),
+    val destinationSystemId: Int,
+    val useAnsiblex: Boolean? = null,
+    val capitalRangeLy: Double? = null,
+    val jumpProfileId: String? = null,
+    val resolvedSystemIds: List<Int>,
+    val resolvedEdges: List<RouteHandoffResolvedEdgeDto>,
+    val mapMetadata: RouteHandoffMapMetadataDto,
+)
+
+@Serializable
+data class RouteHandoffPublisherDto(
+    val memberId: String,
+    val userId: String,
+    val displayName: String,
+    val deviceTokenId: String,
+    val deviceName: String,
+)
+
+@Serializable
+data class RouteHandoffDto(
+    val routeHandoffId: String,
+    val workspaceId: String,
+    val publisher: RouteHandoffPublisherDto,
+    val createdAt: String,
+    val expiresAt: String,
+    val type: String,
+    val originSystemId: Int,
+    val waypointSystemIds: List<Int>,
+    val destinationSystemId: Int,
+    val useAnsiblex: Boolean? = null,
+    val capitalRangeLy: Double? = null,
+    val jumpProfileId: String? = null,
+    val resolvedSystemIds: List<Int>,
+    val resolvedEdges: List<RouteHandoffResolvedEdgeDto>,
+    val mapMetadata: RouteHandoffMapMetadataDto,
+)
+
+@Serializable
+data class RouteHandoffListResponseDto(
+    val generatedAt: String,
+    val routeHandoffs: List<RouteHandoffDto>,
 )
 
 @Serializable

@@ -9,6 +9,7 @@ import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedMarkerValidationException
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
 import dev.evestaticmapplanner.shared.sync.SharedMapSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,9 @@ internal class SharedMapViewModel(
 
     private val _admin = MutableStateFlow(SharedAdminUiState())
     val admin: StateFlow<SharedAdminUiState> = _admin.asStateFlow()
+
+    private val _routeHandoffPublish = MutableStateFlow(RouteHandoffPublishUiState())
+    val routeHandoffPublish: StateFlow<RouteHandoffPublishUiState> = _routeHandoffPublish.asStateFlow()
 
     private var operationSequence = 0L
     private var observedWorkspaceId: String? = null
@@ -71,6 +75,29 @@ internal class SharedMapViewModel(
 
     fun disconnect() {
         launchOperation { session.disconnect() }
+    }
+
+    fun publishRouteHandoff(draft: SharedRouteHandoffDraft): Boolean {
+        if (_routeHandoffPublish.value.busy) return false
+        _routeHandoffPublish.value = RouteHandoffPublishUiState(busy = true)
+        scope.launch {
+            try {
+                val published = session.publishRouteHandoff(draft)
+                _routeHandoffPublish.value = RouteHandoffPublishUiState(
+                    lastPublished = published,
+                    message = "Route published to Web.",
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _routeHandoffPublish.value = RouteHandoffPublishUiState(error = error.toSharedMapError())
+            }
+        }
+        return true
+    }
+
+    fun clearRouteHandoffFeedback() {
+        if (!_routeHandoffPublish.value.busy) _routeHandoffPublish.value = RouteHandoffPublishUiState()
     }
 
     fun createSharedMarker(systemId: Int, draft: SharedMarkerDraft): Long? = launchMarkerMutation(

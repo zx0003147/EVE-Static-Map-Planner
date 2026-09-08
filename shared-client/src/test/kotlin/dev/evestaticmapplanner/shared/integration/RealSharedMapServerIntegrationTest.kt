@@ -10,7 +10,13 @@ import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMapConfiguration
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffEdge
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffMapMetadata
+import dev.evestaticmapplanner.shared.model.SharedRouteHandoffType
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.shared.protocol.RouteHandoffListResponseDto
+import dev.evestaticmapplanner.shared.protocol.SHARED_MAP_PROTOCOL_JSON
 import dev.evestaticmapplanner.shared.sync.SharedMapConfigurationSink
 import dev.evestaticmapplanner.shared.sync.SharedMapSession
 import kotlinx.coroutines.CoroutineScope
@@ -57,6 +63,36 @@ class RealSharedMapServerIntegrationTest {
                 val adminKey = SharedCredentialKey(serverUrl, workspaceId)
                 val adminToken = assertNotNull(adminStore.load(adminKey))
                 adminToken.use { token ->
+                    val desktopPublishedRoute = adminSession.publishRouteHandoff(
+                        SharedRouteHandoffDraft(
+                            type = SharedRouteHandoffType.NORMAL,
+                            originSystemId = 30_004_759,
+                            waypointSystemIds = emptyList(),
+                            destinationSystemId = 30_004_712,
+                            useAnsiblex = true,
+                            capitalRangeLy = null,
+                            jumpProfileId = null,
+                            resolvedSystemIds = listOf(30_004_759, 30_004_712),
+                            resolvedEdges = listOf(
+                                SharedRouteHandoffEdge(30_004_759, 30_004_712, "ANSIBLEX", null),
+                            ),
+                            mapMetadata = SharedRouteHandoffMapMetadata("sde-3466501", "1.8.0", "integration-pack"),
+                        ),
+                    )
+                    assertEquals(desktopPublishedRoute.routeHandoffId, adminSession.getRouteHandoffs().first().routeHandoffId)
+
+                    // This is the exact common wire DTO consumed by BrowserSharedMarkerTransport/WebPlannerController.
+                    // It makes the optional real-environment test cover Desktop Ktor publish -> real Server -> Web wire read.
+                    val webResponse = SHARED_MAP_PROTOCOL_JSON.decodeFromString<RouteHandoffListResponseDto>(
+                        raw.request(
+                            "GET",
+                            "/api/v1/workspaces/$workspaceId/route-handoffs",
+                            token,
+                        ).requireStatus(200).body(),
+                    )
+                    assertEquals(desktopPublishedRoute.routeHandoffId, webResponse.routeHandoffs.first().routeHandoffId)
+                    assertEquals("ANSIBLEX", webResponse.routeHandoffs.first().resolvedEdges.single().type)
+
                     val member = raw.request(
                         "POST",
                         "/api/v1/workspaces/$workspaceId/members",
@@ -261,6 +297,7 @@ private class RawResponse(private val response: HttpResponse<String>) {
     }
 
     fun json(): JsonObject = Json.parseToJsonElement(response.body()).jsonObject
+    fun body(): String = response.body()
 }
 
 private fun JsonObject.string(name: String): String = getValue(name).jsonPrimitive.content

@@ -5,6 +5,8 @@ import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
+import dev.evestaticmapplanner.core.map.MapVisualSemantics
+import dev.evestaticmapplanner.core.map.PrimarySystemNodeShape
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
@@ -14,6 +16,7 @@ import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 import org.w3c.dom.CanvasRenderingContext2D
 import org.w3c.dom.HTMLCanvasElement
 import org.w3c.dom.events.Event
@@ -25,6 +28,7 @@ class WebMapView(
     private val onSelect: (Int?) -> Unit,
     private val onHover: (Int?) -> Unit,
     private val onContextAction: (Int, MapPoint, String) -> Unit,
+    private val ansiblexLinks: () -> List<WebAnsiblexLink> = { emptyList() },
 ) {
     private val context = canvas.getContext("2d") as CanvasRenderingContext2D
     private var state = WebPlannerState()
@@ -42,6 +46,7 @@ class WebMapView(
     private var pinchDistance: Double? = null
     private var maxPinchFocalDriftPx = 0.0
     private var normalRouteOverlay: ProjectedRouteOverlay? = null
+    private var semanticMode = WebSemanticLabelMode.REGION
     private var renderPending = false
     private var renderCount = 0
     private var longRenderCount = 0
@@ -62,6 +67,9 @@ class WebMapView(
         if (state.normalRoute != newState.normalRoute) {
             normalRouteOverlay = newState.normalRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
         }
+        if (state.mapPreferences != newState.mapPreferences) {
+            semanticMode = WebSemanticZoomPolicy.initial(viewport.zoom, newState.mapPreferences)
+        }
         state = newState
         sharedMarkerState = newSharedMarkerState
         scheduleRender()
@@ -70,12 +78,14 @@ class WebMapView(
     fun fit() {
         viewport = MapViewport.fit(scene.defaultFitBounds, canvasSize)
         fitZoom = viewport.zoom
+        semanticMode = WebSemanticZoomPolicy.initial(viewport.zoom, state.mapPreferences)
         scheduleRender()
     }
 
     fun centerOn(systemId: Int): Boolean {
         val point = scene.nodesById[systemId]?.position ?: return false
         viewport = MapViewport(point, max(viewport.zoom, fitZoom * 5.0).coerceAtMost(fitZoom * MAX_ZOOM_FACTOR))
+        semanticMode = WebSemanticZoomPolicy.transition(semanticMode, viewport.zoom, state.mapPreferences)
         scheduleRender()
         return true
     }
@@ -98,6 +108,7 @@ class WebMapView(
         if (firstLayout) {
             viewport = MapViewport.fit(scene.defaultFitBounds, canvasSize)
             fitZoom = viewport.zoom
+            semanticMode = WebSemanticZoomPolicy.initial(viewport.zoom, state.mapPreferences)
         } else {
             fitZoom = MapViewport.fit(scene.defaultFitBounds, canvasSize).zoom
         }
@@ -135,6 +146,7 @@ class WebMapView(
                 fitZoom * MIN_ZOOM_FACTOR,
                 fitZoom * MAX_ZOOM_FACTOR,
             )
+            semanticMode = WebSemanticZoomPolicy.transition(semanticMode, viewport.zoom, state.mapPreferences)
             scheduleRender()
         }, js("({ passive: false })"))
 
@@ -273,6 +285,7 @@ class WebMapView(
             fitZoom * MIN_ZOOM_FACTOR,
             fitZoom * MAX_ZOOM_FACTOR,
         )
+        semanticMode = WebSemanticZoomPolicy.transition(semanticMode, viewport.zoom, state.mapPreferences)
         val focalWorldAfter = MapTransform(viewport, canvasSize).screenToWorld(center)
         maxPinchFocalDriftPx = max(maxPinchFocalDriftPx, distance(focalWorldBefore, focalWorldAfter) * viewport.zoom)
         pinchCenter = center
@@ -318,12 +331,15 @@ class WebMapView(
         val visibleSystemIds = visibleNodes.mapTo(mutableSetOf()) { it.system.id }
         drawGrid()
         drawStargates(transform, visibleBounds)
+        drawAnsiblexNetwork(transform, visibleBounds)
         drawJumpCoverage(transform, visibleSystemIds)
         drawNormalRoute(transform)
         drawCapitalRoute(transform)
         drawNodes(transform, visibleNodes)
         drawSharedMarkers(transform, visibleSystemIds)
         drawLabels(transform, visibleNodes)
+        drawInteraction(transform)
+        drawWaypoints(transform)
         val elapsed = window.performance.now() - startedAt
         renderCount++
         maxRenderMillis = max(maxRenderMillis, elapsed)
@@ -343,8 +359,8 @@ class WebMapView(
     }
 
     private fun drawStargates(transform: MapTransform, bounds: MapBounds) {
-        context.strokeStyle = "rgba(104, 135, 156, 0.22)"
-        context.lineWidth = 0.8
+        context.strokeStyle = cssArgb(MapVisualSemantics.stargateNetwork.argb)
+        context.lineWidth = MapVisualSemantics.stargateNetwork.widthPx
         context.setLineDash(emptyArray())
         context.beginPath()
         scene.edges.asSequence().filter { it.bounds.intersects(bounds) }.forEach { edge ->
@@ -356,22 +372,63 @@ class WebMapView(
         context.stroke()
     }
 
-    private fun drawJumpCoverage(transform: MapTransform, visibleIds: Set<Int>) {
-        state.coverageCounts.asSequence().filter { it.key in visibleIds }.forEach { (systemId, count) ->
-            val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return@forEach
-            val radius = 7.0 + min(count, 4) * 2.0
+    private fun drawAnsiblexNetwork(transform: MapTransform, bounds: MapBounds) {
+        ansiblexLinks().forEach { link ->
+            val firstWorld = scene.nodesById[link.firstSystemId]?.position ?: return@forEach
+            val secondWorld = scene.nodesById[link.secondSystemId]?.position ?: return@forEach
+            if (!MapBounds.between(firstWorld, secondWorld).intersects(bounds)) return@forEach
+            val geometry = ansiblexGeometry(
+                link.firstSystemId,
+                link.secondSystemId,
+                transform.worldToScreen(firstWorld),
+                transform.worldToScreen(secondWorld),
+            )
             context.beginPath()
-            context.arc(point.x, point.y, radius, 0.0, PI2)
-            context.fillStyle = if (count > 1) "rgba(245, 114, 82, 0.20)" else "rgba(177, 108, 255, 0.16)"
-            context.fill()
-            context.strokeStyle = if (count > 1) "rgba(255, 145, 92, 0.85)" else "rgba(188, 132, 255, 0.72)"
-            context.lineWidth = if (count > 1) 2.0 else 1.2
+            context.moveTo(geometry.start.x, geometry.start.y)
+            context.quadraticCurveTo(geometry.control.x, geometry.control.y, geometry.end.x, geometry.end.y)
+            context.strokeStyle = cssArgb(MapVisualSemantics.ansiblexNetwork.argb)
+            context.lineWidth = MapVisualSemantics.ansiblexNetwork.widthPx
+            context.setLineDash(MapVisualSemantics.ansiblexNetwork.dashPatternPx.toTypedArray())
             context.stroke()
         }
-        state.jumpOverlays.forEach { overlay ->
-            val point = scene.nodesById[overlay.originSystemId]?.position?.let(transform::worldToScreen) ?: return@forEach
-            context.fillStyle = "#d99aff"
-            context.fillRect(point.x - 4.5, point.y - 4.5, 9.0, 9.0)
+        context.setLineDash(emptyArray())
+    }
+
+    private fun drawJumpCoverage(transform: MapTransform, visibleIds: Set<Int>) {
+        state.jumpOverlays.filter { it.enabled }.forEachIndexed { index, overlay ->
+            val color = JUMP_OVERLAY_COLORS[index % JUMP_OVERLAY_COLORS.size]
+            val radius = 5.0 + (index % 4) * 2.2
+            overlay.reachableSystemIds.asSequence().filter { it in visibleIds }.forEach { systemId ->
+                val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return@forEach
+                context.beginPath()
+                context.arc(point.x, point.y, radius, 0.0, PI2)
+                context.strokeStyle = color
+                context.lineWidth = 1.5
+                context.stroke()
+            }
+            val point = scene.nodesById[overlay.originSystemId]?.position?.let(transform::worldToScreen)
+                ?: return@forEachIndexed
+            context.beginPath()
+            context.arc(point.x, point.y, 11.0, 0.0, PI2)
+            context.fillStyle = colorWithAlpha(color, 0.20)
+            context.fill()
+            context.beginPath()
+            context.arc(point.x, point.y, 7.0 + (index % 3), 0.0, PI2)
+            context.strokeStyle = color
+            context.lineWidth = 2.0
+            context.stroke()
+        }
+        state.coverageCounts.asSequence().filter { it.key in visibleIds && it.value > 1 }.forEach { (systemId, _) ->
+            val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return@forEach
+            context.beginPath()
+            context.arc(point.x, point.y, 13.0, 0.0, PI2)
+            context.fillStyle = "rgba(255, 209, 102, 0.24)"
+            context.fill()
+            context.beginPath()
+            context.arc(point.x, point.y, 10.0, 0.0, PI2)
+            context.strokeStyle = "#ffd166"
+            context.lineWidth = 2.5
+            context.stroke()
         }
     }
 
@@ -380,28 +437,42 @@ class WebMapView(
         overlay.legs.forEach { leg ->
             val first = transform.worldToScreen(leg.from)
             val second = transform.worldToScreen(leg.to)
+            val style = MapVisualSemantics.normalRouteByEdgeType.getValue(leg.edge.type)
+            val geometry = if (style.curved) {
+                ansiblexGeometry(leg.edge.fromSystemId, leg.edge.toSystemId, first, second)
+            } else null
             context.beginPath()
             context.moveTo(first.x, first.y)
-            context.lineTo(second.x, second.y)
-            if (leg.edge.type == RouteEdgeType.ANSIBLEX) {
-                context.strokeStyle = "#ffad52"
-                context.lineWidth = 3.2
-                context.setLineDash(arrayOf(8.0, 5.0))
+            if (style.curved) {
+                context.quadraticCurveTo(geometry!!.control.x, geometry.control.y, second.x, second.y)
             } else {
-                context.strokeStyle = "#4ed7ed"
-                context.lineWidth = 2.6
-                context.setLineDash(emptyArray())
+                context.lineTo(second.x, second.y)
             }
+            val routeColor = cssArgb(style.argb)
+            val routeWidth = style.widthPx
+            context.setLineDash(style.dashPatternPx.toTypedArray())
+            context.strokeStyle = routeColor
+            context.lineWidth = routeWidth
             context.stroke()
+            drawRouteArrows(
+                geometry ?: QuadraticGeometry(first, midpoint(first, second), second),
+                geometry != null,
+                routeColor,
+                routeWidth,
+            )
         }
         context.setLineDash(emptyArray())
+        drawEndpoint(transform, overlay.route.startSystemId, "#57e389", 12.0, 8.0)
+        drawEndpoint(transform, overlay.route.destinationSystemId, "#ff5d73", 12.0, 8.0)
     }
 
     private fun drawCapitalRoute(transform: MapTransform) {
         val route = state.capitalRoute ?: return
-        context.strokeStyle = "#ee6dff"
-        context.lineWidth = 3.0
-        context.setLineDash(arrayOf(4.0, 5.0))
+        val style = MapVisualSemantics.capitalRoute
+        val routeColor = cssArgb(style.argb)
+        context.strokeStyle = routeColor
+        context.lineWidth = style.widthPx
+        context.setLineDash(emptyArray())
         route.systems.zipWithNext().forEach { (fromId, toId) ->
             val from = scene.nodesById[fromId]?.position?.let(transform::worldToScreen) ?: return@forEach
             val to = scene.nodesById[toId]?.position?.let(transform::worldToScreen) ?: return@forEach
@@ -409,44 +480,37 @@ class WebMapView(
             context.moveTo(from.x, from.y)
             context.lineTo(to.x, to.y)
             context.stroke()
+            drawRouteArrows(QuadraticGeometry(from, midpoint(from, to), to), false, routeColor, style.widthPx)
         }
-        context.setLineDash(emptyArray())
+        drawEndpoint(transform, route.startSystemId, "#a98bff", 13.0, 9.0)
+        drawEndpoint(transform, route.destinationSystemId, "#ff7eb6", 13.0, 9.0)
     }
 
     private fun drawNodes(transform: MapTransform, nodes: List<ProjectedSystemNode>) {
         val routeIds = state.routeSystemIds
-        val waypointIds = state.normalWaypointSystemIds.toSet()
+        val waypointIds = (state.normalWaypointSystemIds + state.capitalWaypointSystemIds).toSet()
         nodes.forEach { node ->
             val systemId = node.system.id
             val point = transform.worldToScreen(node.position)
-            val selected = systemId == state.selectedSystemId
-            val hovered = systemId == state.hoveredSystemId
             val inRoute = systemId in routeIds
+            if (MapVisualSemantics.primaryNodeShape(systemId in state.keepstarSystemIds) == PrimarySystemNodeShape.KEEPSTAR) {
+                drawKeepstar(point, if (inRoute) "#eef7fc" else "#75b9e7")
+                return@forEach
+            }
             val radius = when {
-                selected -> 5.5
                 systemId in waypointIds -> 4.8
                 inRoute -> 4.0
-                hovered -> 3.6
-                else -> 1.8
+                else -> if (node.isStargateConnected) 2.2 else 1.8
             }
             context.beginPath()
             context.arc(point.x, point.y, radius, 0.0, PI2)
             context.fillStyle = when {
-                selected -> "#ffe182"
                 systemId in waypointIds -> "#ffca5d"
                 inRoute -> "#5fe5f6"
-                node.system.securityStatus >= 0.45 -> "#6fc98d"
-                node.system.securityStatus > 0.0 -> "#e7cb6b"
-                else -> "#d36d75"
+                node.isStargateConnected -> "#75b9e7"
+                else -> "#596673"
             }
             context.fill()
-            if (selected) {
-                context.beginPath()
-                context.arc(point.x, point.y, 9.0, 0.0, PI2)
-                context.strokeStyle = "rgba(255, 225, 130, 0.8)"
-                context.lineWidth = 1.5
-                context.stroke()
-            }
         }
     }
 
@@ -474,15 +538,39 @@ class WebMapView(
     }
 
     private fun drawLabels(transform: MapTransform, visibleNodes: List<ProjectedSystemNode>) {
-        val zoomRatio = viewport.zoom / fitZoom
-        val budget = when {
-            zoomRatio < 1.3 -> 70
-            zoomRatio < 3.0 -> 160
-            zoomRatio < 8.0 -> 420
-            else -> 1_200
-        }
         val priority = state.routeSystemIds + state.normalWaypointSystemIds + sharedMarkerState.markersBySystemId.keys +
-            listOfNotNull(state.selectedSystemId, state.hoveredSystemId)
+            state.keepstarSystemIds + listOfNotNull(state.selectedSystemId, state.hoveredSystemId)
+        if (semanticMode == WebSemanticLabelMode.REGION) {
+            context.font = "16px Inter, system-ui, sans-serif"
+            context.asDynamic().textAlign = "center"
+            context.asDynamic().textBaseline = "middle"
+            context.fillStyle = "rgba(232, 242, 250, 0.86)"
+            scene.regions.forEach { region ->
+                val point = transform.worldToScreen(region.canonicalAnchor)
+                if (point.x in -100.0..(canvasSize.width + 100.0) && point.y in -40.0..(canvasSize.height + 40.0)) {
+                    context.fillText(region.name, point.x, point.y)
+                }
+            }
+        } else {
+            context.font = "20px Inter, system-ui, sans-serif"
+            context.asDynamic().textAlign = "center"
+            context.fillStyle = "rgba(215, 230, 242, 0.07)"
+            scene.regions.forEach { region ->
+                val point = transform.worldToScreen(region.canonicalAnchor)
+                context.fillText(region.name, point.x, point.y)
+            }
+        }
+        if (semanticMode == WebSemanticLabelMode.CONSTELLATION) {
+            context.font = "13px Inter, system-ui, sans-serif"
+            context.fillStyle = "rgba(196, 217, 234, 0.80)"
+            scene.constellations.forEach { constellation ->
+                val point = transform.worldToScreen(constellation.canonicalAnchor)
+                if (point.x in -100.0..(canvasSize.width + 100.0) && point.y in -40.0..(canvasSize.height + 40.0)) {
+                    context.fillText(constellation.name, point.x, point.y)
+                }
+            }
+        }
+        context.asDynamic().textAlign = "start"
         val nodes = visibleNodes.sortedWith(
             compareBy<ProjectedSystemNode>({ it.system.id !in priority }, { it.system.name.lowercase() }),
         )
@@ -492,13 +580,119 @@ class WebMapView(
         var drawn = 0
         for (node in nodes) {
             val forced = node.system.id in priority
-            if (!forced && drawn >= budget) continue
+            if (!forced && (semanticMode != WebSemanticLabelMode.SYSTEM || visibleNodes.size > 700)) continue
             val point = transform.worldToScreen(node.position)
             val key = "${(point.x / LABEL_CELL_WIDTH).toInt()}:${(point.y / LABEL_CELL_HEIGHT).toInt()}"
             if (!forced && !occupied.add(key)) continue
             context.fillStyle = if (forced) "rgba(239, 247, 252, 0.98)" else "rgba(194, 211, 222, 0.72)"
             context.fillText(node.system.name, point.x + 6.0, point.y)
             drawn++
+        }
+    }
+
+    private fun drawInteraction(transform: MapTransform) {
+        state.selectedSystemId?.let { drawFocus(transform, it, "#76e6a5", 8.0) }
+        state.hoveredSystemId?.takeIf { it != state.selectedSystemId }?.let { drawFocus(transform, it, "#f3d36a", 6.0) }
+    }
+
+    private fun drawFocus(transform: MapTransform, systemId: Int, color: String, radius: Double) {
+        val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return
+        context.beginPath()
+        context.arc(point.x, point.y, radius + 4.0, 0.0, PI2)
+        context.fillStyle = if (color == "#76e6a5") "rgba(118, 230, 165, 0.20)" else "rgba(243, 211, 106, 0.20)"
+        context.fill()
+        context.beginPath()
+        context.arc(point.x, point.y, radius, 0.0, PI2)
+        context.strokeStyle = color
+        context.lineWidth = 2.0
+        context.stroke()
+    }
+
+    private fun drawWaypoints(transform: MapTransform) {
+        drawWaypointSet(transform, state.normalWaypointSystemIds, "rgba(66, 214, 245, 0.86)")
+        drawWaypointSet(transform, state.capitalWaypointSystemIds, "rgba(179, 136, 255, 0.86)")
+        context.asDynamic().textAlign = "start"
+    }
+
+    private fun drawWaypointSet(transform: MapTransform, systemIds: List<Int>, color: String) {
+        systemIds.forEachIndexed { index, systemId ->
+            val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return@forEachIndexed
+            val center = MapPoint(point.x + 11.0, point.y - 10.0)
+            context.beginPath()
+            context.arc(center.x, center.y, 7.0, 0.0, PI2)
+            context.fillStyle = "rgba(22, 36, 48, 0.90)"
+            context.fill()
+            context.strokeStyle = color
+            context.lineWidth = 1.25
+            context.stroke()
+            context.font = "8px Inter, system-ui, sans-serif"
+            context.asDynamic().textAlign = "center"
+            context.asDynamic().textBaseline = "middle"
+            context.fillStyle = "#f1f5f8"
+            context.fillText((index + 1).toString(), center.x, center.y)
+        }
+    }
+
+    private fun drawEndpoint(transform: MapTransform, systemId: Int, color: String, haloRadius: Double, radius: Double) {
+        val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return
+        context.beginPath()
+        context.arc(point.x, point.y, haloRadius, 0.0, PI2)
+        context.fillStyle = colorWithAlpha(color, 0.25)
+        context.fill()
+        context.beginPath()
+        context.arc(point.x, point.y, radius, 0.0, PI2)
+        context.strokeStyle = color
+        context.lineWidth = 3.0
+        context.stroke()
+    }
+
+    private fun drawKeepstar(point: MapPoint, color: String) {
+        val scale = 7.0
+        val points = listOf(
+            .40 to .13, .07 to .13, .07 to .87, .93 to .87,
+            .93 to .13, .60 to .13, .60 to .47, .40 to .47,
+        )
+        context.beginPath()
+        points.forEachIndexed { index, pair ->
+            val x = point.x + (pair.first - .5) * scale * 2.0
+            val y = point.y + (pair.second - .5) * scale * 2.0
+            if (index == 0) context.moveTo(x, y) else context.lineTo(x, y)
+        }
+        context.closePath()
+        context.strokeStyle = color
+        context.lineWidth = 1.8
+        context.stroke()
+    }
+
+    private fun drawRouteArrows(geometry: QuadraticGeometry, curved: Boolean, color: String, strokeWidth: Double) {
+        val length = if (curved) approximateLength(geometry) else distance(geometry.start, geometry.end)
+        if (length < 48.0) return
+        val count = min(3, max(1, (length / 90.0).toInt()))
+        repeat(count) { index ->
+            val t = (index + 1.0) / (count + 1.0)
+            val point = if (curved) quadraticPoint(geometry, t) else lerp(geometry.start, geometry.end, t)
+            val tangent = if (curved) quadraticTangent(geometry, t) else MapPoint(
+                geometry.end.x - geometry.start.x,
+                geometry.end.y - geometry.start.y,
+            )
+            val magnitude = hypot(tangent.x, tangent.y).coerceAtLeast(0.001)
+            val ux = tangent.x / magnitude
+            val uy = tangent.y / magnitude
+            val arrowLength = min(13.0, max(10.0, length / 12.0))
+            val half = arrowLength * .52
+            val tail = MapPoint(point.x - ux * arrowLength, point.y - uy * arrowLength)
+            val left = MapPoint(tail.x - uy * half, tail.y + ux * half)
+            val right = MapPoint(tail.x + uy * half, tail.y - ux * half)
+            listOf(1.8 to "rgba(9, 18, 29, 0.78)", 0.0 to color).forEach { (extra, arrowColor) ->
+                context.beginPath()
+                context.moveTo(left.x, left.y)
+                context.lineTo(point.x, point.y)
+                context.lineTo(right.x, right.y)
+                context.strokeStyle = arrowColor
+                context.lineWidth = strokeWidth + extra
+                context.setLineDash(emptyArray())
+                context.stroke()
+            }
         }
     }
 }
@@ -515,6 +709,69 @@ private fun midpoint(first: MapPoint, second: MapPoint): MapPoint =
     MapPoint((first.x + second.x) / 2.0, (first.y + second.y) / 2.0)
 
 private fun distance(first: MapPoint, second: MapPoint): Double = hypot(second.x - first.x, second.y - first.y)
+
+private data class QuadraticGeometry(val start: MapPoint, val control: MapPoint, val end: MapPoint)
+
+private fun ansiblexGeometry(firstId: Int, secondId: Int, start: MapPoint, end: MapPoint): QuadraticGeometry {
+    val canonicalStart = if (firstId <= secondId) start else end
+    val canonicalEnd = if (firstId <= secondId) end else start
+    val dx = canonicalEnd.x - canonicalStart.x
+    val dy = canonicalEnd.y - canonicalStart.y
+    val length = hypot(dx, dy).coerceAtLeast(0.001)
+    val offset = (length * 0.22).coerceIn(12.0, 64.0)
+    val sign = if (((min(firstId, secondId) * 31L + max(firstId, secondId)) and 1L) == 0L) 1.0 else -1.0
+    val control = MapPoint(
+        (canonicalStart.x + canonicalEnd.x) / 2.0 - dy / length * offset * sign,
+        (canonicalStart.y + canonicalEnd.y) / 2.0 + dx / length * offset * sign,
+    )
+    return QuadraticGeometry(start, control, end)
+}
+
+private fun quadraticPoint(geometry: QuadraticGeometry, t: Double): MapPoint {
+    val one = 1.0 - t
+    return MapPoint(
+        one * one * geometry.start.x + 2.0 * one * t * geometry.control.x + t * t * geometry.end.x,
+        one * one * geometry.start.y + 2.0 * one * t * geometry.control.y + t * t * geometry.end.y,
+    )
+}
+
+private fun quadraticTangent(geometry: QuadraticGeometry, t: Double): MapPoint = MapPoint(
+    2.0 * (1.0 - t) * (geometry.control.x - geometry.start.x) + 2.0 * t * (geometry.end.x - geometry.control.x),
+    2.0 * (1.0 - t) * (geometry.control.y - geometry.start.y) + 2.0 * t * (geometry.end.y - geometry.control.y),
+)
+
+private fun approximateLength(geometry: QuadraticGeometry): Double {
+    var total = 0.0
+    var previous = geometry.start
+    repeat(12) { index ->
+        val next = quadraticPoint(geometry, (index + 1) / 12.0)
+        total += distance(previous, next)
+        previous = next
+    }
+    return total
+}
+
+private fun lerp(first: MapPoint, second: MapPoint, t: Double) = MapPoint(
+    first.x + (second.x - first.x) * t,
+    first.y + (second.y - first.y) * t,
+)
+
+private fun colorWithAlpha(hex: String, alpha: Double): String {
+    val value = hex.removePrefix("#")
+    if (value.length != 6) return hex
+    val red = value.substring(0, 2).toInt(16)
+    val green = value.substring(2, 4).toInt(16)
+    val blue = value.substring(4, 6).toInt(16)
+    return "rgba($red, $green, $blue, $alpha)"
+}
+
+private fun cssArgb(argb: Long): String {
+    val alpha = ((argb shr 24) and 0xFFL).toDouble() / 255.0
+    val red = (argb shr 16) and 0xFFL
+    val green = (argb shr 8) and 0xFFL
+    val blue = argb and 0xFFL
+    return "rgba($red, $green, $blue, $alpha)"
+}
 
 private fun dragThreshold(pointerType: String): Double = if (pointerType == "mouse") MOUSE_DRAG_THRESHOLD_PX else TOUCH_DRAG_THRESHOLD_PX
 
@@ -542,3 +799,4 @@ private const val MAX_ZOOM_FACTOR = 90.0
 private const val LABEL_CELL_WIDTH = 78.0
 private const val LABEL_CELL_HEIGHT = 20.0
 private const val PI2 = 6.283185307179586
+private val JUMP_OVERLAY_COLORS = listOf("#57e389", "#42d6f5", "#ff9f43", "#b388ff", "#ff7eb6", "#9fe870")
