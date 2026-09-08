@@ -59,6 +59,17 @@ test("loads manifest and compressed pack without an Apply step", async () => {
   assert.equal(requests[1].options.cache, "force-cache");
 });
 
+test("reports manifest pack and validation loading phases", async () => {
+  const document = fixtureDocument();
+  const compressed = gzipSync(Buffer.from(JSON.stringify(document)));
+  const manifest = await fixtureManifest(document, compressed);
+  const phases = [];
+
+  await loadWebPack("/data", fixtureFetch(manifest, compressed), (phase) => phases.push(phase));
+
+  assert.deepEqual(phases, ["Loading manifest", "Loading Web Pack", "Validating"]);
+});
+
 test("rejects an unsupported manifest before requesting a pack", async () => {
   let requests = 0;
   const fetchImpl = async () => {
@@ -94,4 +105,41 @@ test("rejects a pack whose checksum differs from the manifest", async () => {
 async function digest(bytes) {
   const value = await webcrypto.subtle.digest("SHA-256", bytes);
   return Buffer.from(value).toString("hex");
+}
+
+function fixtureDocument() {
+  const counts = { systems: 2, stargateLinks: 1, regions: 1, constellations: 1, ansiblexLinks: 0 };
+  return {
+    schemaVersion: 1,
+    packVersion: "phase-fixture",
+    generatedAt: "2026-09-08T01:02:03Z",
+    desktopAppVersion: "1.7.0",
+    sdeBuild: 3466501,
+    counts,
+    payload: {
+      systems: [{ id: 1 }, { id: 2 }],
+      stargateLinks: [{ firstSystemId: 1, secondSystemId: 2 }],
+      regions: [{ id: 100 }],
+      constellations: [{ id: 10, regionId: 100 }],
+      ansiblexLinks: [],
+    },
+  };
+}
+
+async function fixtureManifest(document, compressed) {
+  return {
+    schemaVersion: 1,
+    packVersion: document.packVersion,
+    generatedAt: document.generatedAt,
+    desktopAppVersion: document.desktopAppVersion,
+    sdeBuild: document.sdeBuild,
+    fileName: `web-pack-${document.packVersion}.json.gz`,
+    sizeBytes: compressed.byteLength,
+    sha256: await digest(compressed),
+    counts: document.counts,
+  };
+}
+
+function fixtureFetch(manifest, compressed) {
+  return async (url) => url.endsWith("manifest.json") ? Response.json(manifest) : new Response(compressed);
 }

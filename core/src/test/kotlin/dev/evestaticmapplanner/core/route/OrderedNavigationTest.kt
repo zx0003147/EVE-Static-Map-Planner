@@ -168,7 +168,7 @@ private fun orderedGraph(
     gates: List<Pair<Int, Int>> = emptyList(),
     ansiblex: List<AnsiblexConnection> = emptyList(),
     wormholes: List<WormholeConnection> = emptyList(),
-) = RouteGraphBuilder.build(
+) = buildDesktopRouteGraph(
     StaticMapData(
         systems = systemIds.map(::orderedSystem),
         connections = gates.map { StargateConnection.between(it.first, it.second) }.distinct(),

@@ -17,7 +17,7 @@ import dev.evestaticmapplanner.core.route.NormalNavigationPlanner
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.RouteGraph
-import dev.evestaticmapplanner.core.route.RouteGraphBuilder
+import dev.evestaticmapplanner.core.route.buildDesktopRouteGraph
 import dev.evestaticmapplanner.core.route.RouteOptions
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.wormhole.WormholeConnection
@@ -625,7 +625,7 @@ class RoutePlannerViewModel(
     private fun rebuildGraph(): Result<RouteGraph> {
         val data = staticData ?: return Result.failure(IllegalStateException("Static map data is not loaded"))
         return runCatching {
-            RouteGraphBuilder.build(data, currentAnsiblexConnections, currentWormholeConnections)
+            buildDesktopRouteGraph(data, currentAnsiblexConnections, currentWormholeConnections)
         }.onSuccess { graph = it }
     }
 }

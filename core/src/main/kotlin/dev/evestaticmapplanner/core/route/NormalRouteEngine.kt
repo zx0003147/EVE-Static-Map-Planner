@@ -1,6 +1,6 @@
 package dev.evestaticmapplanner.core.route
 
-import java.util.ArrayDeque
+import kotlin.collections.ArrayDeque
 
 data class RouteOptions(
     val useAnsiblex: Boolean = false,

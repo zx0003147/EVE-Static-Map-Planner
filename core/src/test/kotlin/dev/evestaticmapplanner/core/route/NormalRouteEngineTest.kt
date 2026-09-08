@@ -236,7 +236,7 @@ private fun graph(
     gates: List<Pair<Int, Int>> = emptyList(),
     ansiblex: List<AnsiblexConnection> = emptyList(),
     wormholes: List<WormholeConnection> = emptyList(),
-) = RouteGraphBuilder.build(
+) = buildDesktopRouteGraph(
     StaticMapData(
         systems = systemIds.map(::system),
         connections = gates.map { StargateConnection.between(it.first, it.second) }.distinct(),

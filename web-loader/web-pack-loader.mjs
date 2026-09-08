@@ -1,8 +1,10 @@
 export const SUPPORTED_WEB_PACK_SCHEMA_VERSION = 1;
 
-export async function loadWebPack(dataBaseUrl = "./data", fetchImpl = globalThis.fetch) {
+export async function loadWebPack(dataBaseUrl = "./data", fetchImpl = globalThis.fetch, onStatus = () => {}) {
   if (typeof fetchImpl !== "function") throw new Error("Fetch API is unavailable");
+  if (typeof onStatus !== "function") throw new Error("Web Pack status listener must be a function");
 
+  onStatus("Loading manifest");
   const manifestUrl = joinUrl(dataBaseUrl, "manifest.json");
   const manifestResponse = await fetchImpl(manifestUrl, {
     cache: "no-cache",
@@ -12,6 +14,7 @@ export async function loadWebPack(dataBaseUrl = "./data", fetchImpl = globalThis
   const manifest = await manifestResponse.json();
   validateManifest(manifest);
 
+  onStatus("Loading Web Pack");
   const packUrl = joinUrl(dataBaseUrl, manifest.fileName);
   const packResponse = await fetchImpl(packUrl, {
     cache: "force-cache",
@@ -27,6 +30,7 @@ export async function loadWebPack(dataBaseUrl = "./data", fetchImpl = globalThis
     throw new Error(`Web Pack checksum mismatch: expected ${manifest.sha256}, received ${checksum}`);
   }
 
+  onStatus("Validating");
   const document = JSON.parse(await decompressGzip(compressed));
   validateDocument(document, manifest);
   return {

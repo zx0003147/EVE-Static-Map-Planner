@@ -21,6 +21,6 @@ data class JumpProfile(
         )
 
         private fun formatRange(value: Double): String =
-            value.toBigDecimal().stripTrailingZeros().toPlainString()
+            if (value % 1.0 == 0.0) value.toLong().toString() else value.toString()
     }
 }

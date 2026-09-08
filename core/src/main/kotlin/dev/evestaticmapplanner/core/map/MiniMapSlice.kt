@@ -4,7 +4,7 @@ import dev.evestaticmapplanner.core.route.RouteConnectionId
 import dev.evestaticmapplanner.core.route.RouteEdge
 import dev.evestaticmapplanner.core.route.RouteEdgeId
 import dev.evestaticmapplanner.core.route.RouteEdgeType
-import java.util.ArrayDeque
+import kotlin.collections.ArrayDeque
 
 data class MiniMapSliceEdge(
     val connectionId: RouteConnectionId,

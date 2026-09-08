@@ -168,6 +168,20 @@ tasks.test {
     }
 }
 
+tasks.register<JavaExec>("exportWebPackCli") {
+    group = "application"
+    description = "Exports Web Pack data from Desktop databases for Web client development or deployment."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.evestaticmapplanner.webpack.WebPackExportCliKt")
+    workingDir = rootProject.projectDir
+    val staticDatabase = providers.gradleProperty("webStaticDb")
+    val userDatabase = providers.gradleProperty("webUserDb")
+    val outputDirectory = providers.gradleProperty("webPackOutput")
+    doFirst {
+        args(staticDatabase.get(), userDatabase.get(), outputDirectory.get(), appVersion)
+    }
+}
+
 tasks.register<JavaExec>("runWindowIdentitySpike") {
     group = "verification"
     description = "Runs the removable Windows foreground EVE client identity diagnostic."

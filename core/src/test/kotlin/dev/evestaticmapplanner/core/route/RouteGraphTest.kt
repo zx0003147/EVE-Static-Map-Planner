@@ -72,7 +72,7 @@ class RouteGraphTest {
         )
 
         repeat(20) {
-            assertEquals(expected, RouteGraphBuilder.build(data, ansiblex, wormholes.reversed()).neighbors(1).map(::summary))
+            assertEquals(expected, buildDesktopRouteGraph(data, ansiblex, wormholes.reversed()).neighbors(1).map(::summary))
         }
     }
 
@@ -81,8 +81,8 @@ class RouteGraphTest {
         val data = staticData(1, 2, 3, gates = listOf(1 to 2, 2 to 3))
         val ansiblex = listOf(ansiblex("shortcut", 1, 3))
 
-        val existingCall = RouteGraphBuilder.build(data, ansiblex)
-        val explicitEmptyWormholes = RouteGraphBuilder.build(data, ansiblex, emptyList())
+        val existingCall = buildDesktopRouteGraph(data, ansiblex)
+        val explicitEmptyWormholes = buildDesktopRouteGraph(data, ansiblex, emptyList())
 
         data.systems.forEach { system ->
             assertEquals(existingCall.neighbors(system.id), explicitEmptyWormholes.neighbors(system.id))
@@ -94,7 +94,7 @@ class RouteGraphTest {
         gates: List<Pair<Int, Int>> = emptyList(),
         ansiblex: List<AnsiblexConnection> = emptyList(),
         wormholes: List<WormholeConnection> = emptyList(),
-    ) = RouteGraphBuilder.build(staticData(*systemIds, gates = gates), ansiblex, wormholes)
+    ) = buildDesktopRouteGraph(staticData(*systemIds, gates = gates), ansiblex, wormholes)
 
     private fun staticData(
         vararg systemIds: Int,

@@ -181,6 +181,8 @@ If the data directory is on a different origin, configure CORS for the Web appli
 6. verify manifest/pack version, SDE build, and counts;
 7. display systems, Stargates, Ansiblex, SDE build, and pack version.
 
+The loader also accepts an optional third `onStatus` callback. Phase 2 uses it to expose the `Loading manifest`, `Loading Web Pack`, and `Validating` startup stages before the Kotlin/JS client reports `Building map` and `Ready`. Existing two-argument callers remain compatible.
+
 Run its dependency-free contract tests with:
 
 ```powershell
@@ -205,4 +207,6 @@ Shared Marker remains an online dynamic concern for Phase 3 and is not part of t
 
 ## Phase 2 consumption boundary
 
-Phase 2 can depend on the JavaScript loader's returned `document.payload` and reconstruct Web-side indexes, graph edges, projection scenes, and jump candidates from the explicit DTOs above. It should continue to discover data exclusively through `manifest.json`; it should not add SDE or Ansiblex management, an Apply button, or a backend database. Phase 1 stops at the verified data-publication chain.
+The Phase 2 Kotlin/JS client depends on the JavaScript loader's returned `document.payload` and reconstructs Web-side indexes, graph edges, projection scenes, and jump candidates from the explicit DTOs above. It continues to discover data exclusively through `manifest.json`; it does not add SDE or Ansiblex management, an Apply button, or a backend database.
+
+See [`docs/web-client.md`](web-client.md) for the browser architecture, shared-Core boundary, run commands, interaction model, validation coverage, and deferred Phase 3/4 work.

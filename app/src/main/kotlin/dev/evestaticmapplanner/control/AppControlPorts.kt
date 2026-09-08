@@ -15,7 +15,7 @@ import dev.evestaticmapplanner.core.route.CapitalNavigationPlanner
 import dev.evestaticmapplanner.core.route.NavigationIntent
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
-import dev.evestaticmapplanner.core.route.RouteGraphBuilder
+import dev.evestaticmapplanner.core.route.buildDesktopRouteGraph
 import dev.evestaticmapplanner.core.route.RouteOptions
 import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
 import dev.evestaticmapplanner.core.route.NormalNavigationPlanner
@@ -89,7 +89,7 @@ class ExistingPlanningPorts(
         val wormholeSnapshot = if (useWormholes) wormholeSessionStore.connections.value else emptyList()
         return withContext(calculationDispatcher) {
             NormalRouteEngine().calculate(
-                RouteGraphBuilder.build(data, enabledSnapshot, wormholeSnapshot),
+                buildDesktopRouteGraph(data, enabledSnapshot, wormholeSnapshot),
                 startSystemId,
                 destinationSystemId,
                 RouteOptions(useAnsiblex = useAnsiblex, useWormholes = useWormholes),
@@ -124,7 +124,7 @@ class ExistingPlanningPorts(
         val wormholeSnapshot = if (useWormholes) wormholeSessionStore.connections.value else emptyList()
         return withContext(calculationDispatcher) {
             NormalNavigationPlanner().calculate(
-                RouteGraphBuilder.build(data, enabledSnapshot, wormholeSnapshot),
+                buildDesktopRouteGraph(data, enabledSnapshot, wormholeSnapshot),
                 intent,
                 RouteOptions(useAnsiblex = useAnsiblex, useWormholes = useWormholes),
             )

@@ -1,9 +1,6 @@
 package dev.evestaticmapplanner.core.route
 
-import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
-import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.model.StaticMapData
-import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 
 enum class RouteEdgeType {
     STARGATE,
@@ -11,15 +8,36 @@ enum class RouteEdgeType {
     WORMHOLE,
 }
 
-@JvmInline
-value class RouteEdgeId(val value: String) {
+enum class RouteLinkDirection {
+    BIDIRECTIONAL,
+    FIRST_TO_SECOND,
+    SECOND_TO_FIRST,
+}
+
+/** Platform-neutral input for non-SDE route links such as Ansiblex and temporary Wormholes. */
+data class RouteLink(
+    val connectionId: RouteConnectionId,
+    val firstSystemId: Int,
+    val secondSystemId: Int,
+    val direction: RouteLinkDirection,
+    val type: RouteEdgeType,
+    val enabled: Boolean = true,
+) {
+    init {
+        require(firstSystemId > 0 && secondSystemId > 0 && firstSystemId < secondSystemId) {
+            "Route link endpoints must be canonical, distinct, and positive"
+        }
+        require(type != RouteEdgeType.STARGATE) { "SDE Stargates must come from StaticMapData" }
+    }
+}
+
+data class RouteEdgeId(val value: String) {
     init {
         require(value.isNotBlank()) { "Route edge ID must not be blank" }
     }
 }
 
-@JvmInline
-value class RouteConnectionId(val value: String) {
+data class RouteConnectionId(val value: String) {
     init {
         require(value.isNotBlank()) { "Route connection ID must not be blank" }
     }
@@ -71,8 +89,7 @@ class RouteGraph(
 object RouteGraphBuilder {
     fun build(
         staticMapData: StaticMapData,
-        ansiblexConnections: List<AnsiblexConnection> = emptyList(),
-        wormholeConnections: List<WormholeConnection> = emptyList(),
+        routeLinks: List<RouteLink> = emptyList(),
     ): RouteGraph {
         val systemIds = staticMapData.systems.mapTo(linkedSetOf()) { it.id }
         val edges = mutableListOf<RouteEdge>()
@@ -86,25 +103,14 @@ object RouteGraphBuilder {
             edges += routeEdge(connectionId, it.secondSystemId, it.firstSystemId, RouteEdgeType.STARGATE)
         }
 
-        ansiblexConnections.asSequence()
-            .filter(AnsiblexConnection::enabled)
-            .forEach { connection ->
-                require(connection.firstSystemId in systemIds && connection.secondSystemId in systemIds) {
-                    "Ansiblex connection ${connection.id} references an unknown solar system"
+        routeLinks.asSequence()
+            .filter(RouteLink::enabled)
+            .forEach { link ->
+                require(link.firstSystemId in systemIds && link.secondSystemId in systemIds) {
+                    "Route link ${link.connectionId.value} references an unknown solar system"
                 }
             }
-        edges += AnsiblexRouteEdgeBuilder.build(ansiblexConnections)
-
-        wormholeConnections.asSequence()
-            .sortedWith(compareBy({ it.firstSystemId }, { it.secondSystemId }, { it.id }))
-            .forEach { connection ->
-                require(connection.firstSystemId in systemIds && connection.secondSystemId in systemIds) {
-                    "Wormhole connection ${connection.id} references an unknown solar system"
-                }
-                val connectionId = RouteConnectionId(connection.id)
-                edges += routeEdge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.WORMHOLE)
-                edges += routeEdge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.WORMHOLE)
-            }
+        edges += RouteLinkEdgeBuilder.build(routeLinks)
 
         return RouteGraph(
             systemIds = systemIds,
@@ -113,24 +119,23 @@ object RouteGraphBuilder {
     }
 }
 
-/** Converts enabled Ansiblex connections to the same directed edges used by route planning. */
-object AnsiblexRouteEdgeBuilder {
-    fun build(connections: List<AnsiblexConnection>): List<RouteEdge> = buildList {
-        connections.asSequence()
-            .filter(AnsiblexConnection::enabled)
-            .sortedWith(compareBy({ it.firstSystemId }, { it.secondSystemId }, { it.id }))
-            .forEach { connection ->
-                val connectionId = RouteConnectionId("ansiblex:${connection.id}")
-                when (connection.direction) {
-                    AnsiblexDirection.BIDIRECTIONAL -> {
-                        add(routeEdge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.ANSIBLEX))
-                        add(routeEdge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.ANSIBLEX))
+/** Converts enabled, directional platform-neutral links to route-engine edges. */
+object RouteLinkEdgeBuilder {
+    fun build(links: List<RouteLink>): List<RouteEdge> = buildList {
+        links.asSequence()
+            .filter(RouteLink::enabled)
+            .sortedWith(compareBy({ it.type.ordinal }, { it.firstSystemId }, { it.secondSystemId }, { it.connectionId.value }))
+            .forEach { link ->
+                when (link.direction) {
+                    RouteLinkDirection.BIDIRECTIONAL -> {
+                        add(routeEdge(link.connectionId, link.firstSystemId, link.secondSystemId, link.type))
+                        add(routeEdge(link.connectionId, link.secondSystemId, link.firstSystemId, link.type))
                     }
-                    AnsiblexDirection.FIRST_TO_SECOND -> {
-                        add(routeEdge(connectionId, connection.firstSystemId, connection.secondSystemId, RouteEdgeType.ANSIBLEX))
+                    RouteLinkDirection.FIRST_TO_SECOND -> {
+                        add(routeEdge(link.connectionId, link.firstSystemId, link.secondSystemId, link.type))
                     }
-                    AnsiblexDirection.SECOND_TO_FIRST -> {
-                        add(routeEdge(connectionId, connection.secondSystemId, connection.firstSystemId, RouteEdgeType.ANSIBLEX))
+                    RouteLinkDirection.SECOND_TO_FIRST -> {
+                        add(routeEdge(link.connectionId, link.secondSystemId, link.firstSystemId, link.type))
                     }
                 }
             }

@@ -10,7 +10,7 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
-import dev.evestaticmapplanner.core.route.RouteGraphBuilder
+import dev.evestaticmapplanner.core.route.buildDesktopRouteGraph
 import dev.evestaticmapplanner.core.route.RouteOptions
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
@@ -53,7 +53,7 @@ fun main(arguments: Array<String>) {
         useAnsiblex: Boolean,
         data: StaticMapData = map,
     ): RouteResult {
-        val graph = RouteGraphBuilder.build(data, ansiblex.getAll())
+        val graph = buildDesktopRouteGraph(data, ansiblex.getAll())
         val outcome = engine.calculate(graph, system(from).id, system(to).id, RouteOptions(useAnsiblex))
         return when (outcome) {
             is RouteCalculationOutcome.Found -> outcome.route

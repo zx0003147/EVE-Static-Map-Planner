@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="color-scheme" content="dark" />
+    <title>EVE Static Map Planner · Web</title>
+    <link rel="stylesheet" href="web-client.css" />
+  </head>
+  <body>
+    <div id="boot" role="status" aria-live="polite">
+      <div class="boot-card">
+        <span class="boot-mark">ESM</span>
+        <h1>EVE Static Map Planner</h1>
+        <p id="boot-status">Loading manifest</p>
+        <p id="fatal-error" class="fatal-error hidden"></p>
+      </div>
+    </div>
+
+    <div id="app-shell">
+      <header class="topbar">
+        <div>
+          <strong>EVE Static Map Planner</strong>
+          <span class="web-badge">WEB</span>
+        </div>
+        <div id="pack-meta" class="pack-meta"></div>
+        <button id="fit-map" class="secondary">Fit Map</button>
+      </header>
+
+      <aside class="tools-panel scroll-panel">
+        <section>
+          <h2>Search</h2>
+          <div class="picker">
+            <input id="global-search" type="search" autocomplete="off" placeholder="System name or ID" aria-label="Search solar systems" />
+            <div id="global-results" class="search-results hidden"></div>
+          </div>
+        </section>
+
+        <details open>
+          <summary>Normal Route</summary>
+          <label>Origin</label>
+          <div class="picker-row">
+            <div class="picker grow"><input id="route-from" autocomplete="off" placeholder="From" /><div id="route-from-results" class="search-results hidden"></div></div>
+            <button id="route-from-selected" class="compact" title="Use selected system">◎</button>
+          </div>
+          <label>Destination</label>
+          <div class="picker-row">
+            <div class="picker grow"><input id="route-to" autocomplete="off" placeholder="To" /><div id="route-to-results" class="search-results hidden"></div></div>
+            <button id="route-to-selected" class="compact" title="Use selected system">◎</button>
+          </div>
+          <label>Waypoint</label>
+          <div class="picker-row">
+            <div class="picker grow"><input id="route-waypoint" autocomplete="off" placeholder="Search, then click result" /><div id="route-waypoint-results" class="search-results hidden"></div></div>
+            <button id="waypoint-selected" class="compact" title="Add selected system">＋</button>
+          </div>
+          <div id="waypoint-list" class="item-list empty"></div>
+          <label class="toggle"><input id="use-ansiblex" type="checkbox" /> Use active Ansiblex</label>
+          <div class="button-row"><button id="calculate-route">Calculate</button><button id="clear-route" class="secondary">Clear</button></div>
+          <pre id="route-summary" class="summary"></pre>
+        </details>
+
+        <details open>
+          <summary>Capital Route</summary>
+          <label>Origin</label>
+          <div class="picker-row">
+            <div class="picker grow"><input id="capital-from" autocomplete="off" placeholder="Capital origin" /><div id="capital-from-results" class="search-results hidden"></div></div>
+            <button id="capital-from-selected" class="compact" title="Use selected system">◎</button>
+          </div>
+          <label>Destination</label>
+          <div class="picker-row">
+            <div class="picker grow"><input id="capital-to" autocomplete="off" placeholder="Capital destination" /><div id="capital-to-results" class="search-results hidden"></div></div>
+            <button id="capital-to-selected" class="compact" title="Use selected system">◎</button>
+          </div>
+          <label for="capital-range">Effective jump range (LY)</label>
+          <input id="capital-range" type="number" min="0.1" max="50" step="0.1" value="5" />
+          <div class="button-row"><button id="calculate-capital">Calculate</button><button id="clear-capital" class="secondary">Clear</button></div>
+          <pre id="capital-summary" class="summary"></pre>
+        </details>
+
+        <details open>
+          <summary>Jump Range &amp; Coverage</summary>
+          <label>Source system</label>
+          <div class="picker-row">
+            <div class="picker grow"><input id="jump-source" autocomplete="off" placeholder="Coverage source" /><div id="jump-source-results" class="search-results hidden"></div></div>
+            <button id="jump-source-selected" class="compact" title="Use selected system">◎</button>
+          </div>
+          <div class="button-row"><button id="add-jump-range">Add Range</button><button id="clear-jump-ranges" class="secondary">Clear All</button></div>
+          <div id="coverage-summary" class="summary-line">Coverage: none</div>
+          <div id="overlay-list" class="item-list empty"></div>
+        </details>
+      </aside>
+
+      <main class="map-panel">
+        <canvas id="map-canvas" aria-label="Official 2D EVE universe map"></canvas>
+        <div id="map-stats" class="map-stats"></div>
+        <div class="legend" aria-label="Map legend">
+          <span><i class="legend-line stargate"></i>Stargate</span>
+          <span><i class="legend-line ansiblex"></i>Ansiblex route</span>
+          <span><i class="legend-line capital"></i>Capital jump</span>
+          <span><i class="legend-dot selected"></i>Selected</span>
+          <span><i class="legend-dot coverage"></i>Coverage</span>
+        </div>
+        <div id="user-message" class="user-message hidden" role="status" aria-live="polite"></div>
+      </main>
+
+      <aside class="info-panel scroll-panel">
+        <section>
+          <h2>System Info</h2>
+          <div id="system-info" class="system-info empty">Select a system on the map or from Search.</div>
+        </section>
+        <section class="help-card">
+          <h3>Map controls</h3>
+          <p>Wheel to zoom around the cursor. Drag to pan. Click or tap a system to select it.</p>
+          <p>Search and route logic retain systems without Official 2D coordinates; those systems are not placed at a fake map position.</p>
+        </section>
+      </aside>
+    </div>
+
+    <script src="web-client.js"></script>
+    <script type="module">
+      import { loadWebPack } from "./web-pack-loader.mjs";
+      const status = document.querySelector("#boot-status");
+      const fatal = document.querySelector("#fatal-error");
+      try {
+        const loaded = await loadWebPack("./data", globalThis.fetch, (phase) => { status.textContent = phase; });
+        status.textContent = "Building map";
+        if (typeof globalThis.startEveWebClient !== "function") throw new Error("Web client runtime did not initialize");
+        globalThis.startEveWebClient(loaded.document);
+      } catch (error) {
+        status.textContent = "Web client failed";
+        fatal.textContent = error instanceof Error ? error.message : String(error);
+        fatal.classList.remove("hidden");
+      }
+    </script>
+  </body>
+</html>

@@ -4,7 +4,7 @@ import dev.evestaticmapplanner.core.jump.CapitalJumpCandidateProvider
 import dev.evestaticmapplanner.core.jump.EligibilityVerdict
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.UniverseDistanceCalculator
-import java.util.ArrayDeque
+import kotlin.collections.ArrayDeque
 
 data class CapitalRouteLeg(
     val fromSystemId: Int,
