@@ -13,6 +13,8 @@ const contentTypes = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
   [".mjs", "text/javascript; charset=utf-8"],
+  [".png", "image/png"],
+  [".webmanifest", "application/manifest+json; charset=utf-8"],
 ]);
 
 createServer(async (request, response) => {
@@ -27,7 +29,7 @@ createServer(async (request, response) => {
     const info = await stat(target);
     if (!info.isFile()) throw new Error("Not a file");
     response.writeHead(200, {
-      "Cache-Control": "no-store",
+      "Cache-Control": cacheControl(pathname),
       "Content-Length": info.size,
       "Content-Type": contentTypes.get(extname(target)) ?? "application/octet-stream",
     });
@@ -38,3 +40,14 @@ createServer(async (request, response) => {
 }).listen(port, "127.0.0.1", () => {
   process.stdout.write(`Serving ${root} at http://127.0.0.1:${port}/\n`);
 });
+
+function cacheControl(pathname) {
+  if (pathname.endsWith("/data/manifest.json")) return "no-cache, must-revalidate";
+  if (/\/data\/web-pack-[A-Za-z0-9._-]+\.json\.gz$/.test(pathname)) {
+    return "public, max-age=31536000, immutable";
+  }
+  if (pathname.endsWith("/service-worker.js") || pathname === "/" || pathname.endsWith("/index.html")) {
+    return "no-cache, must-revalidate";
+  }
+  return "public, max-age=3600, must-revalidate";
+}

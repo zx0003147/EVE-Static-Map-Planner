@@ -59,15 +59,35 @@ test("loads manifest and compressed pack without an Apply step", async () => {
   assert.equal(requests[1].options.cache, "force-cache");
 });
 
-test("reports manifest pack and validation loading phases", async () => {
+test("reports detailed loading phases and timings", async () => {
   const document = fixtureDocument();
   const compressed = gzipSync(Buffer.from(JSON.stringify(document)));
   const manifest = await fixtureManifest(document, compressed);
   const phases = [];
 
-  await loadWebPack("/data", fixtureFetch(manifest, compressed), (phase) => phases.push(phase));
+  const result = await loadWebPack("/data", fixtureFetch(manifest, compressed), (phase) => phases.push(phase));
 
-  assert.deepEqual(phases, ["Loading manifest", "Loading Web Pack", "Validating"]);
+  assert.deepEqual(phases, [
+    "Loading manifest",
+    "Loading Web Pack",
+    "Checking integrity",
+    "Decompressing",
+    "Parsing data",
+    "Validating",
+  ]);
+  for (const name of [
+    "manifestFetchMs",
+    "manifestParseValidateMs",
+    "packFetchMs",
+    "checksumMs",
+    "gzipDecodeMs",
+    "jsonParseMs",
+    "validationMs",
+    "loaderTotalMs",
+  ]) {
+    assert.equal(typeof result.timings[name], "number", `${name} should be measured`);
+    assert.ok(result.timings[name] >= 0, `${name} should not be negative`);
+  }
 });
 
 test("rejects an unsupported manifest before requesting a pack", async () => {
@@ -100,6 +120,19 @@ test("rejects a pack whose checksum differs from the manifest", async () => {
     : new Response(compressed);
 
   await assert.rejects(loadWebPack("/data", fetchImpl), /checksum mismatch/);
+});
+
+test("reports when the service worker supplied an offline manifest fallback", async () => {
+  const document = fixtureDocument();
+  const compressed = gzipSync(Buffer.from(JSON.stringify(document)));
+  const manifest = await fixtureManifest(document, compressed);
+  const fetchImpl = async (url) => url.endsWith("manifest.json")
+    ? Response.json(manifest, { headers: { "X-EVE-Offline-Fallback": "true" } })
+    : new Response(compressed);
+
+  const result = await loadWebPack("/data", fetchImpl);
+
+  assert.equal(result.timings.offlineFallback, true);
 });
 
 async function digest(bytes) {

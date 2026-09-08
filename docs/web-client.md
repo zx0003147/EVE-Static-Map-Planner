@@ -1,8 +1,8 @@
-# Web Client Phase 3
+# Web Client Phase 4
 
 ## Scope
 
-Phase 3 keeps the Phase 2 static map and planning features and makes the browser a client of the existing Shared Map Server. It uses the same Server URL, single-use Invite Code, Protocol v1, Workspace roles, marker identity, fields, optimistic versions, and server authority as Desktop. It does not add an account system or a second backend. Desktop remains the SDE, Ansiblex, and Web Pack data-management application; the Web client still has no AI, MCP, local control, PWA, or offline marker editing.
+Phase 4 keeps the Phase 2 planning features and Phase 3 Shared Marker client, then makes that browser client suitable for daily tablet use and production deployment. It adds responsive tablet panels, unified Pointer Events, pinch/long-press gestures, high-DPI Canvas sizing, startup/render diagnostics, an installable PWA shell, and bounded offline static planning. It does not add an account system, second backend, AI, MCP, local control, SDE/Ansiblex management, a new Shared Marker protocol, or offline marker editing.
 
 The supported publication contract remains Web Pack `schemaVersion = 1`.
 
@@ -51,7 +51,7 @@ Kotlin/JS is configured to use the system Node installation and npm, so it does 
 
 ## Web Pack consumption
 
-The Phase 1 loader remains the integrity boundary. It automatically loads `/data/manifest.json`, checks schema and manifest fields, downloads the versioned gzip file, verifies compressed size and SHA-256 with Web Crypto, decompresses with `DecompressionStream("gzip")`, validates document/manifest agreement, and returns the decoded document. Its optional status callback reports `Loading manifest`, `Loading Web Pack`, and `Validating`; the Kotlin entrypoint reports `Building map` and `Ready`.
+The Phase 1 loader remains the integrity boundary. It automatically loads `/data/manifest.json`, checks schema and manifest fields, downloads the versioned gzip file, verifies compressed size and SHA-256 with Web Crypto, decompresses with `DecompressionStream("gzip")`, validates document/manifest agreement, and returns the decoded document. Its status callback now distinguishes manifest fetch/parse, Pack fetch, checksum, gzip decode, JSON parse, validation, typed DTO conversion, domain conversion, scene/index construction, UI initialization, and Ready timing. Integrity and referential validation remain mandatory.
 
 The UI never reads raw dynamic JSON. `parseWebPackDocument` creates typed Web DTOs and checks every consumed field. `WebUniverseDataAdapter` then builds Core domain values and browser in-memory repositories:
 
@@ -67,15 +67,33 @@ The UI never reads raw dynamic JSON. `parseWebPackDocument` creates typed Web DT
 
 The shared `MapTransform` supplies fit, pan, world/screen conversion, cursor-centered zoom, and visible bounds. The shared `SystemSpatialIndex` supplies viewport node queries and hit testing, avoiding a full-system scan for every pointer move. Edge rendering uses scene-bound intersection culling. Label density increases with zoom; selected, hovered, route, and Waypoint systems have priority.
 
-Supported Phase 2 input:
+Supported input:
 
 - mouse wheel: zoom around cursor;
-- mouse or single-finger drag: pan;
+- mouse, pen, or single-finger drag: pan after a movement threshold;
 - click or tap: select;
+- two-finger pinch: pan and zoom around the moving gesture center;
+- touch/pen long press or mouse right-click: open the existing system shortcut actions;
 - mouse hover: hover highlight;
 - **Fit Map**: restore Official 2D connected-map bounds.
 
-Pinch zoom and final tablet interaction polish are deferred to Phase 4.
+The map alone uses `touch-action: none`, preventing browser-page zoom/scroll conflicts without disabling normal scrolling in drawers and dialogs. A second pointer cancels tap and long-press state; crossing the drag threshold cancels selection; long press cancels when movement crosses the touch threshold. Pointer capture preserves gestures that leave the node hit area. Touch picking uses a larger radius than mouse picking.
+
+## Tablet layout and virtual keyboard
+
+Desktop retains the three-column Tools / Map / System Info layout. At tablet width or with a coarse primary pointer, the map takes the full content area and Tools and System Info become mutually exclusive overlay drawers. Tools expose Search, Route, Capital, Coverage, and Shared tabs so inactive forms do not permanently consume map width. In portrait, either drawer becomes a scrollable bottom sheet. The scrim, top-bar toggles, close buttons, and Escape key all dismiss panels.
+
+Major tablet controls use at least 44 px targets. Icon-only controls have accessible names, keyboard focus remains visible, destructive marker deletion keeps explicit confirmation, and route/marker state is not expressed only by color. Shared Marker forms remain scrollable inside the current visual viewport. `visualViewport` resize/scroll updates a CSS viewport-height variable, and focused inputs are scrolled into view after the virtual keyboard changes the viewport.
+
+The Canvas backing store is resized from its CSS bounds and current `devicePixelRatio`, capped at 3. A `ResizeObserver`, window resize, orientation change, and visual-viewport change all converge on the same resize path. Map state is preserved across ordinary resizes; Fit remains explicit.
+
+## PWA, caching, and offline boundary
+
+`manifest.webmanifest` provides standalone launch metadata and generated 192/512 px icons derived from the existing Desktop application icon. `service-worker.js` pre-caches a revisioned, internally consistent app shell and serves controlled navigation and only the enumerated shell assets cache-first; unrelated same-origin requests, including Shared Marker API traffic, pass through untouched. The worker's update check is what discovers the next shell revision, preventing a new `index.html` from being combined with stale JavaScript modules. The stable `/data/manifest.json` remains network-first, while immutable versioned Web Packs are cached by URL. After a successful integrity-checked load, the page asks the active service worker to warm the exact verified Pack and matching manifest for a later offline launch.
+
+The stable manifest is never treated as immutable. On every online page load it is revalidated; if Desktop publishes a new versioned Pack first and the new manifest last, the next load discovers the new filename without a Web-side Update action. App-shell updates use a new shell cache revision, install a waiting service worker, and show **A new version is available — Reload**. Reload occurs only after the user chooses it, so marker-editor input is not discarded unexpectedly. Any future shell release must change `APP_CACHE` in `service-worker.js`; shell files are fetched with `cache: reload` during installation.
+
+After one successful cached load, offline reopen supports the static map, Search, Normal/Ansiblex routes, Waypoints, Capital Route, Jump Range, and Coverage. Shared Marker stays an online-only feature: the UI says Offline, write actions are disabled, and no mutation queue or conflict-sync layer exists. A first-ever offline launch with no usable cache shows a recoverable error and Retry action.
 
 ## Search and System Info
 
@@ -134,7 +152,7 @@ SHARED_MAP_ALLOWED_ORIGINS=https://map.example.com
 
 Multiple origins are comma-separated. The server does not accept `*`; credentials/cookies are disabled; only the existing REST methods and required headers (`Authorization`, `Content-Type`, `X-Request-Id`, and `Idempotency-Key`) are allowed. `OPTIONS` preflight is handled by the server. Requests without an `Origin` header continue to work for Desktop. Local development may use `http://localhost:<port>` or `http://127.0.0.1:<port>`; non-loopback origins must be HTTPS.
 
-Production must serve both Web and Shared Map Server over HTTPS, normally with the existing Caddy TLS reverse proxy in front of Ktor. An HTTPS page cannot connect to a plain-HTTP remote server because browsers block mixed content, and the Web client does not offer an unsafe bypass. Protocol v1 currently has no WebSocket/SSE transport, so no `wss://` endpoint is required in Phase 3.
+Production must serve both Web and Shared Map Server over HTTPS. An HTTPS page cannot connect to a plain-HTTP remote server because browsers block mixed content, and the Web client does not offer an unsafe bypass. Protocol v1 currently has no WebSocket/SSE transport. See [web-deployment.md](web-deployment.md) for deployable files, required headers, Caddy/nginx examples, safe Pack rollout, PWA update behavior, and rollback.
 
 ## Build, test, and run
 
@@ -168,6 +186,12 @@ web-client/build/dist/js/productionExecutable/
 |-- web-client.css
 |-- web-client.js
 |-- web-pack-loader.mjs
+|-- manifest.webmanifest
+|-- pwa-runtime.mjs
+|-- service-worker.js
+|-- icons/
+|   |-- app-icon-192.png
+|   `-- app-icon-512.png
 `-- data/
     |-- manifest.json
     `-- web-pack-<version>.json.gz
@@ -188,29 +212,65 @@ For local Shared Marker development, start the existing development PostgreSQL/s
 
 ## Tests and consistency
 
-The common/JVM/JS suites cover Protocol v1 DTO round trips and frozen vocabulary, redaction, exact REST paths/headers/bodies, invite exchange, marker CRUD, optimistic conflict reconciliation, permissions, malformed responses, disconnected/connecting/connected/reconnecting/auth-failed states, capped retry timing, and positioned/unpositioned/unknown marker systems. Existing mapping, route, Capital, Jump Range, coverage, projection, culling, and picking tests remain in place. Deterministic route and Capital results are compared between direct shared-Core calls and the Web-Pack-backed universe.
+The common/JVM/JS suites cover Protocol v1 DTO round trips and frozen vocabulary, redaction, exact REST paths/headers/bodies, invite exchange, marker CRUD, optimistic conflict reconciliation, permissions, malformed responses, disconnected/connecting/connected/reconnecting/auth-failed states, capped retry timing, and positioned/unpositioned/unknown marker systems. Existing mapping, route, Capital, Jump Range, coverage, projection, culling, and picking tests remain in place. Loader tests cover integrity and stage timing; PWA lifecycle tests cover explicit user-applied service-worker updates and verified-Pack cache warming.
 
-`qa/web-client-browser-smoke.mjs` is a dependency-free Chrome DevTools Protocol smoke client for a local headless Chromium browser. It verifies real Pack readiness, Canvas creation, Shared Marker disconnected controls, Jita search/System Info, Jita-to-Perimeter Normal Route, 1DQ1-A-to-T5ZI-S Capital Route, Jump Range, Fit, and wheel zoom. It also reports observed ready and route timings without presenting them as a formal benchmark. A real Desktop/Web interoperability acceptance still requires one running PostgreSQL-backed Shared Map Server and fresh role-appropriate single-use invites; record all six create/edit/delete directions rather than substituting mock clients.
+`qa/web-client-browser-smoke.mjs` is a dependency-free Chrome DevTools Protocol smoke client for a local headless Chromium browser. With the real Pack it verifies readiness, Canvas creation, Shared Marker disconnected controls, Search/System Info, a simple route, a long route, Waypoint composition, an Ansiblex route, Capital Route, multiple Jump Range/Coverage overlays, Fit, and wheel zoom. It reports loader, domain/scene, UI, route, and render observations without presenting the CDP harness wall clock as a formal benchmark.
+
+`qa/web-client-tablet-smoke.mjs` applies 1280×800 landscape and 800×1280 portrait mobile metrics and checks drawers/tabs, touch targets, single-finger pan, tap suppression after drag, two-finger focal zoom, long press, context actions, DPR backing size, manifest/icons, production cache headers, offline static reopen, and the explicit offline Shared Marker state. CDP may keep `navigator.onLine` true while its network is disabled; the script therefore treats successful offline reload as the network assertion and separately dispatches the standard browser offline event for UI lifecycle coverage.
+
+`qa/web-pack-update-smoke.mjs` operates on a disposable copy of the real production directory. It derives a checksum-valid second version from Pack A, writes the versioned Pack B first and `manifest.json` last, reloads without any Web Update action, and asserts that a service-worker-controlled page reaches Ready with Pack B.
+
+`qa/web-app-update-smoke.mjs` operates on another disposable production copy. It installs the current shell, publishes a next worker/cache revision with a changed runtime, verifies that an ordinary reload remains on the complete old shell, then accepts the visible update and verifies that the new shell becomes active. This guards against mixing a new HTML entry point with stale modules.
 
 For a manual local browser smoke, serve the production directory with `node qa/static-web-server.mjs`, start Chrome
 or Edge headless with a local remote-debugging port, and run:
 
 ```powershell
 node qa/web-client-browser-smoke.mjs <port> http://127.0.0.1:8765/
+node qa/web-client-tablet-smoke.mjs <port> http://127.0.0.1:8765/
 ```
 
 The helper serves only local static artifacts and is not a production server.
+
+## Samsung tablet manual acceptance
+
+Automated Chromium mobile/touch emulation is required before this checklist, but it is not a physical Samsung result. On the intended Samsung model and current Android Chrome, record model, Android version, Chrome version, orientation, whether the browser or installed PWA was used, and the result of each item:
+
+1. Open the HTTPS site and install it with **Add to Home Screen / Install App**.
+2. Launch standalone and confirm the current Pack reaches Ready.
+3. Confirm the landscape map keeps the primary area and drawers overlay rather than shrink it.
+4. Rotate to portrait and confirm Tools/System Info become usable scrollable bottom sheets.
+5. Pan with one finger; releasing must not select a system.
+6. Tap a system; it must select once.
+7. Pinch in and out; the point between the fingers should stay visually stable.
+8. Move both fingers during pinch and confirm combined pan remains stable.
+9. Long press a system, open its action sheet, and dismiss it without a phantom tap.
+10. Use an S Pen for tap and drag; if available, also verify Bluetooth mouse hover, drag, right-click, and wheel.
+11. Open Search with the virtual keyboard, select a result, dismiss the keyboard, and confirm the map viewport recovers.
+12. Enter Normal Route endpoints and calculate a route.
+13. Toggle active Ansiblex and verify the route legend/summary distinguishes it.
+14. Add, reorder, and remove Waypoints using touch targets.
+15. Calculate a Capital Route and inspect its summary/overlay.
+16. Add one Jump Range and multiple Coverage origins, then remove one and Clear All.
+17. Open and close System Info while retaining map state.
+18. Connect Shared Marker; distinguish Connected, Reconnecting, Disconnected, and Auth failed states.
+19. Locate a marker from the list and tap its map overlay.
+20. Create and edit a marker with the keyboard open; confirm the form scrolls and Save/Cancel stay reachable.
+21. Delete a marker and verify the destructive confirmation is clear and difficult to hit accidentally.
+22. Disable networking and reopen the installed PWA; verify cached static planning and explicit Shared Marker Offline state.
+23. Restore networking and verify Shared Marker can reconnect; no offline mutation should appear.
+24. Publish a new versioned Pack and manifest, then reopen without a Web Update action and verify the new Pack version.
+25. Deploy a new app shell, verify the update notice, choose Reload when no form data is at risk, use Fit Map, and inspect high-DPI sharpness.
 
 ## Known limitations and phase boundaries
 
 - Official 2D is the only Web projection; Desktop Real 3D remains Desktop-only.
 - 3,005 systems in the current tested SDE Pack have no Official 2D coordinates. They remain searchable/routable and are reported as unpositioned.
-- Web provides single-pointer touch pan/tap, not pinch zoom or final tablet-responsive polish.
 - Capital route uses the current effective manual LY profile; no unverified ship/rule presets were added.
-- The renderer is event-driven and indexed/culling-aware, but this phase does not claim GPU/WebGL rendering or formal frame-time benchmarks.
-- No Web Pack persistence/offline app shell, service worker, install manifest, PWA behavior, offline Shared Marker editing, or mutation queue exists.
+- The renderer remains Canvas 2D with indexed culling and event-coalesced redraws; it does not claim WebGL or a formal cross-device benchmark.
+- Offline support is intentionally limited to the cached app shell and current published Web Pack. Shared Marker is unavailable offline and has no mutation queue.
 - Browser Device Access Tokens are memory-only. Reloading needs a fresh single-use invite; persistent browser login is not implemented.
 - Shared Marker live updates use the server's existing 30-second snapshot polling, not push delivery. Background tab throttling can increase observed latency.
 - Phase 3 does not expose Shared Marker member, invite, role, or device administration in Web. Those existing administrative workflows remain Desktop/server responsibilities.
-
-Phase 4 remains responsible for PWA work, offline persistence design, pinch zoom, and final tablet layout/gesture refinement.
+- Phone layout is best-effort; the product target remains tablet landscape, Desktop browser, then tablet portrait.
+- Samsung device acceptance still requires a physical device; CDP touch/mobile emulation is not a substitute for that final manual check.

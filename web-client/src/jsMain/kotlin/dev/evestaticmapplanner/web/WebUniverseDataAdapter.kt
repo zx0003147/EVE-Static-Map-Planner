@@ -60,6 +60,12 @@ internal fun WebUniverse.sharedMarkerLocationAvailability(systemId: Int): Shared
 
 data class WebPackMetadata(val packVersion: String, val desktopAppVersion: String, val sdeBuild: Long)
 
+data class WebUniverseDomain(
+    val metadata: WebPackMetadata,
+    val staticData: StaticMapData,
+    val ansiblex: List<WebPackAnsiblexDto>,
+)
+
 class WebStaticMapRepository(private val data: StaticMapData) : StaticMapRepository {
     override fun load(): StaticMapData = data
 }
@@ -89,7 +95,9 @@ class WebSystemSearchRepository(systems: Collection<SolarSystem>) : SystemSearch
 }
 
 object WebUniverseDataAdapter {
-    fun adapt(document: WebPackDocumentDto): WebUniverse {
+    fun adapt(document: WebPackDocumentDto): WebUniverse = build(convert(document))
+
+    fun convert(document: WebPackDocumentDto): WebUniverseDomain {
         require(document.schemaVersion == 1) { "Unsupported Web Pack schema ${document.schemaVersion}; expected 1" }
         val systems = document.systems.map { dto ->
             SolarSystem(
@@ -126,7 +134,15 @@ object WebUniverseDataAdapter {
             regions = regions,
             constellations = constellations,
         )
-        val routeLinks = document.ansiblex.map { link ->
+        return WebUniverseDomain(
+            metadata = WebPackMetadata(document.packVersion, document.desktopAppVersion, document.sdeBuild),
+            staticData = staticData,
+            ansiblex = document.ansiblex,
+        )
+    }
+
+    fun build(domain: WebUniverseDomain): WebUniverse {
+        val routeLinks = domain.ansiblex.map { link ->
             RouteLink(
                 connectionId = RouteConnectionId("ansiblex:${link.id}"),
                 firstSystemId = link.firstSystemId,
@@ -140,13 +156,14 @@ object WebUniverseDataAdapter {
                 enabled = link.enabled,
             )
         }
+        val staticData = domain.staticData
         val repository = WebStaticMapRepository(staticData)
-        val search = WebSystemSearchRepository(systems)
-        val candidates = CapitalJumpCandidateProvider(UniformGridSystemPositionIndex(systems))
+        val search = WebSystemSearchRepository(staticData.systems)
+        val candidates = CapitalJumpCandidateProvider(UniformGridSystemPositionIndex(staticData.systems))
         return WebUniverse(
-            metadata = WebPackMetadata(document.packVersion, document.desktopAppVersion, document.sdeBuild),
+            metadata = domain.metadata,
             staticData = staticData,
-            ansiblex = document.ansiblex,
+            ansiblex = domain.ansiblex,
             staticRepository = repository,
             searchRepository = search,
             routeGraph = RouteGraphBuilder.build(staticData, routeLinks),

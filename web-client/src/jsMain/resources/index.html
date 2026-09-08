@@ -2,9 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#07101a" />
     <title>EVE Static Map Planner · Web</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/app-icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/app-icon-192.png" />
     <link rel="stylesheet" href="web-client.css" />
   </head>
   <body>
@@ -14,21 +18,38 @@
         <h1>EVE Static Map Planner</h1>
         <p id="boot-status">Loading manifest</p>
         <p id="fatal-error" class="fatal-error hidden"></p>
+        <button id="fatal-retry" class="secondary hidden">Retry</button>
       </div>
     </div>
 
     <div id="app-shell">
       <header class="topbar">
+        <button id="tools-toggle" class="secondary panel-toggle" aria-controls="tools-panel" aria-expanded="false">Tools</button>
         <div>
           <strong>EVE Static Map Planner</strong>
           <span class="web-badge">WEB</span>
         </div>
         <div id="pack-meta" class="pack-meta"></div>
-        <button id="fit-map" class="secondary">Fit Map</button>
+        <span id="network-status" class="network-status online" role="status">Online</span>
+        <div class="topbar-actions">
+          <button id="info-toggle" class="secondary panel-toggle" aria-controls="info-panel" aria-expanded="false">Info</button>
+          <button id="fit-map" class="secondary">Fit Map</button>
+        </div>
       </header>
 
-      <aside class="tools-panel scroll-panel">
-        <section>
+      <aside id="tools-panel" class="tools-panel scroll-panel" aria-label="Planner tools">
+        <div class="panel-heading">
+          <strong>Planner tools</strong>
+          <button id="tools-close" class="secondary compact" aria-label="Close planner tools">Close</button>
+        </div>
+        <nav class="tool-tabs" aria-label="Planner tool sections">
+          <button data-tool-tab="search" aria-pressed="true">Search</button>
+          <button data-tool-tab="route" class="secondary" aria-pressed="false">Route</button>
+          <button data-tool-tab="capital" class="secondary" aria-pressed="false">Capital</button>
+          <button data-tool-tab="coverage" class="secondary" aria-pressed="false">Coverage</button>
+          <button data-tool-tab="shared" class="secondary" aria-pressed="false">Shared</button>
+        </nav>
+        <section data-tool-panel="search" class="tool-section-active">
           <h2>Search</h2>
           <div class="picker">
             <input id="global-search" type="search" autocomplete="off" placeholder="System name or ID" aria-label="Search solar systems" />
@@ -36,22 +57,22 @@
           </div>
         </section>
 
-        <details open>
+        <details data-tool-panel="route" open>
           <summary>Normal Route</summary>
           <label>Origin</label>
           <div class="picker-row">
             <div class="picker grow"><input id="route-from" autocomplete="off" placeholder="From" /><div id="route-from-results" class="search-results hidden"></div></div>
-            <button id="route-from-selected" class="compact" title="Use selected system">◎</button>
+            <button id="route-from-selected" class="compact" title="Use selected system" aria-label="Use selected system as route origin">◎</button>
           </div>
           <label>Destination</label>
           <div class="picker-row">
             <div class="picker grow"><input id="route-to" autocomplete="off" placeholder="To" /><div id="route-to-results" class="search-results hidden"></div></div>
-            <button id="route-to-selected" class="compact" title="Use selected system">◎</button>
+            <button id="route-to-selected" class="compact" title="Use selected system" aria-label="Use selected system as route destination">◎</button>
           </div>
           <label>Waypoint</label>
           <div class="picker-row">
             <div class="picker grow"><input id="route-waypoint" autocomplete="off" placeholder="Search, then click result" /><div id="route-waypoint-results" class="search-results hidden"></div></div>
-            <button id="waypoint-selected" class="compact" title="Add selected system">＋</button>
+            <button id="waypoint-selected" class="compact" title="Add selected system" aria-label="Add selected system as waypoint">＋</button>
           </div>
           <div id="waypoint-list" class="item-list empty"></div>
           <label class="toggle"><input id="use-ansiblex" type="checkbox" /> Use active Ansiblex</label>
@@ -59,17 +80,17 @@
           <pre id="route-summary" class="summary"></pre>
         </details>
 
-        <details open>
+        <details data-tool-panel="capital" open>
           <summary>Capital Route</summary>
           <label>Origin</label>
           <div class="picker-row">
             <div class="picker grow"><input id="capital-from" autocomplete="off" placeholder="Capital origin" /><div id="capital-from-results" class="search-results hidden"></div></div>
-            <button id="capital-from-selected" class="compact" title="Use selected system">◎</button>
+            <button id="capital-from-selected" class="compact" title="Use selected system" aria-label="Use selected system as capital origin">◎</button>
           </div>
           <label>Destination</label>
           <div class="picker-row">
             <div class="picker grow"><input id="capital-to" autocomplete="off" placeholder="Capital destination" /><div id="capital-to-results" class="search-results hidden"></div></div>
-            <button id="capital-to-selected" class="compact" title="Use selected system">◎</button>
+            <button id="capital-to-selected" class="compact" title="Use selected system" aria-label="Use selected system as capital destination">◎</button>
           </div>
           <label for="capital-range">Effective jump range (LY)</label>
           <input id="capital-range" type="number" min="0.1" max="50" step="0.1" value="5" />
@@ -77,19 +98,19 @@
           <pre id="capital-summary" class="summary"></pre>
         </details>
 
-        <details open>
+        <details data-tool-panel="coverage" open>
           <summary>Jump Range &amp; Coverage</summary>
           <label>Source system</label>
           <div class="picker-row">
             <div class="picker grow"><input id="jump-source" autocomplete="off" placeholder="Coverage source" /><div id="jump-source-results" class="search-results hidden"></div></div>
-            <button id="jump-source-selected" class="compact" title="Use selected system">◎</button>
+            <button id="jump-source-selected" class="compact" title="Use selected system" aria-label="Use selected system as jump range source">◎</button>
           </div>
           <div class="button-row"><button id="add-jump-range">Add Range</button><button id="clear-jump-ranges" class="secondary">Clear All</button></div>
           <div id="coverage-summary" class="summary-line">Coverage: none</div>
           <div id="overlay-list" class="item-list empty"></div>
         </details>
 
-        <details open>
+        <details data-tool-panel="shared" open>
           <summary>Shared Markers</summary>
           <div id="shared-status" class="shared-status disconnected">Disconnected</div>
           <label for="shared-server-url">Server URL</label>
@@ -120,7 +141,11 @@
         <div id="user-message" class="user-message hidden" role="status" aria-live="polite"></div>
       </main>
 
-      <aside class="info-panel scroll-panel">
+      <aside id="info-panel" class="info-panel scroll-panel" aria-label="System information">
+        <div class="panel-heading">
+          <strong>System information</strong>
+          <button id="info-close" class="secondary compact" aria-label="Close system information">Close</button>
+        </div>
         <section>
           <h2>System Info</h2>
           <div id="system-info" class="system-info empty">Select a system on the map or from Search.</div>
@@ -131,6 +156,25 @@
           <p>Search and route logic retain systems without Official 2D coordinates; those systems are not placed at a fake map position.</p>
         </section>
       </aside>
+      <button id="panel-scrim" class="panel-scrim hidden" aria-label="Close open panel"></button>
+    </div>
+
+    <div id="system-actions" class="context-sheet hidden" role="menu" aria-label="System actions">
+      <div class="context-sheet-heading">
+        <strong id="system-actions-name">System actions</strong>
+        <button id="system-actions-close" class="secondary compact" aria-label="Close system actions">Close</button>
+      </div>
+      <button id="action-route-from" role="menuitem">Set route origin</button>
+      <button id="action-route-to" role="menuitem">Set route destination</button>
+      <button id="action-waypoint" role="menuitem">Add waypoint</button>
+      <button id="action-jump-range" role="menuitem">Add jump range</button>
+      <button id="action-shared-marker" role="menuitem">Create Shared Marker</button>
+    </div>
+
+    <div id="app-update" class="app-update hidden" role="status" aria-live="polite">
+      <span>A new version is available.</span>
+      <button id="app-update-reload">Reload</button>
+      <button id="app-update-dismiss" class="secondary">Later</button>
     </div>
 
     <div id="shared-marker-editor" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="shared-editor-title">
@@ -159,17 +203,30 @@
     <script src="web-client.js"></script>
     <script type="module">
       import { loadWebPack } from "./web-pack-loader.mjs";
+      import { cacheWebPackForOffline, registerPwa } from "./pwa-runtime.mjs";
       const status = document.querySelector("#boot-status");
       const fatal = document.querySelector("#fatal-error");
+      document.querySelector("#fatal-retry").addEventListener("click", () => location.reload());
+      registerPwa({
+        onUpdateReady(update) {
+          const notice = document.querySelector("#app-update");
+          notice.classList.remove("hidden");
+          document.querySelector("#app-update-reload").onclick = () => update.applyUpdate();
+          document.querySelector("#app-update-dismiss").onclick = () => notice.classList.add("hidden");
+        },
+      });
       try {
         const loaded = await loadWebPack("./data", globalThis.fetch, (phase) => { status.textContent = phase; });
         status.textContent = "Building map";
         if (typeof globalThis.startEveWebClient !== "function") throw new Error("Web client runtime did not initialize");
-        globalThis.startEveWebClient(loaded.document);
+        globalThis.startEveWebClient(loaded.document, loaded.timings);
+        void cacheWebPackForOffline(loaded.manifest);
       } catch (error) {
         status.textContent = "Web client failed";
-        fatal.textContent = error instanceof Error ? error.message : String(error);
+        const detail = error instanceof Error ? error.message : String(error);
+        fatal.textContent = navigator.onLine ? detail : `Offline and no usable cached Web Pack is available. Reconnect, then retry.\n${detail}`;
         fatal.classList.remove("hidden");
+        document.querySelector("#fatal-retry").classList.remove("hidden");
       }
     </script>
   </body>

@@ -6,11 +6,12 @@ import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.MapViewport
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
+import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.core.map.ProjectedSystemNode
 import dev.evestaticmapplanner.core.route.RouteEdgeType
-import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import org.w3c.dom.CanvasRenderingContext2D
@@ -23,6 +24,7 @@ class WebMapView(
     private val scene: ProjectedMapScene,
     private val onSelect: (Int?) -> Unit,
     private val onHover: (Int?) -> Unit,
+    private val onContextAction: (Int, MapPoint, String) -> Unit,
 ) {
     private val context = canvas.getContext("2d") as CanvasRenderingContext2D
     private var state = WebPlannerState()
@@ -30,10 +32,20 @@ class WebMapView(
     private var canvasSize = MapSize(1.0, 1.0)
     private var viewport = MapViewport.fit(scene.defaultFitBounds, canvasSize)
     private var fitZoom = viewport.zoom
-    private var pointerDown: MapPoint? = null
-    private var lastPointer: MapPoint? = null
-    private var pointerMoved = false
-    private var activePointerId: Int? = null
+    private val pointers = mutableMapOf<Int, PointerContact>()
+    private var primaryPointerId: Int? = null
+    private var gestureConsumed = false
+    private var dragging = false
+    private var longPressTriggered = false
+    private var longPressTimer: Int? = null
+    private var pinchCenter: MapPoint? = null
+    private var pinchDistance: Double? = null
+    private var maxPinchFocalDriftPx = 0.0
+    private var normalRouteOverlay: ProjectedRouteOverlay? = null
+    private var renderPending = false
+    private var renderCount = 0
+    private var longRenderCount = 0
+    private var maxRenderMillis = 0.0
 
     init {
         bindInput()
@@ -47,21 +59,24 @@ class WebMapView(
     }
 
     fun update(newState: WebPlannerState, newSharedMarkerState: WebSharedMarkerState) {
+        if (state.normalRoute != newState.normalRoute) {
+            normalRouteOverlay = newState.normalRoute?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
+        }
         state = newState
         sharedMarkerState = newSharedMarkerState
-        render()
+        scheduleRender()
     }
 
     fun fit() {
         viewport = MapViewport.fit(scene.defaultFitBounds, canvasSize)
         fitZoom = viewport.zoom
-        render()
+        scheduleRender()
     }
 
     fun centerOn(systemId: Int): Boolean {
         val point = scene.nodesById[systemId]?.position ?: return false
         viewport = MapViewport(point, max(viewport.zoom, fitZoom * 5.0).coerceAtMost(fitZoom * MAX_ZOOM_FACTOR))
-        render()
+        scheduleRender()
         return true
     }
 
@@ -86,7 +101,26 @@ class WebMapView(
         } else {
             fitZoom = MapViewport.fit(scene.defaultFitBounds, canvasSize).zoom
         }
-        render()
+        scheduleRender()
+    }
+
+    fun diagnostics(): dynamic {
+        val value = js("({})")
+        value.centerX = viewport.center.x
+        value.centerY = viewport.center.y
+        value.zoom = viewport.zoom
+        value.fitZoom = fitZoom
+        value.canvasCssWidth = canvasSize.width
+        value.canvasCssHeight = canvasSize.height
+        value.canvasPixelWidth = canvas.width
+        value.canvasPixelHeight = canvas.height
+        value.effectiveDpr = canvas.width.toDouble() / canvasSize.width
+        value.selectedSystemId = state.selectedSystemId
+        value.renderCount = renderCount
+        value.longRenderCount = longRenderCount
+        value.maxRenderMillis = maxRenderMillis
+        value.maxPinchFocalDriftPx = maxPinchFocalDriftPx
+        return value
     }
 
     private fun bindInput() {
@@ -101,49 +135,150 @@ class WebMapView(
                 fitZoom * MIN_ZOOM_FACTOR,
                 fitZoom * MAX_ZOOM_FACTOR,
             )
-            render()
+            scheduleRender()
         }, js("({ passive: false })"))
 
         canvas.addEventListener("pointerdown", { raw ->
             val event = raw.asDynamic()
-            if (activePointerId != null) return@addEventListener
-            activePointerId = (event.pointerId as Number).toInt()
+            if ((event.button as? Number)?.toInt()?.let { it != 0 } == true) return@addEventListener
+            event.preventDefault()
+            val pointerId = (event.pointerId as Number).toInt()
             val point = pointerPoint(event)
-            pointerDown = point
-            lastPointer = point
-            pointerMoved = false
+            pointers[pointerId] = PointerContact(point, point, pointerType(event))
             canvas.asDynamic().setPointerCapture(event.pointerId)
+            if (pointers.size == 1) {
+                primaryPointerId = pointerId
+                gestureConsumed = false
+                dragging = false
+                longPressTriggered = false
+                scheduleLongPress(pointerId)
+            } else {
+                cancelLongPress()
+                gestureConsumed = true
+                dragging = false
+                beginPinch()
+            }
         })
         canvas.addEventListener("pointermove", { raw ->
             val event = raw.asDynamic()
+            val pointerId = (event.pointerId as Number).toInt()
             val point = pointerPoint(event)
-            if (activePointerId == (event.pointerId as Number).toInt()) {
-                val previous = lastPointer ?: point
-                val start = pointerDown ?: point
-                if (abs(point.x - start.x) + abs(point.y - start.y) > DRAG_THRESHOLD_PX) pointerMoved = true
-                viewport = viewport.panBy(point - previous)
-                lastPointer = point
-                if (pointerMoved) render()
-            } else if (activePointerId == null) {
-                onHover(pick(point))
+            val contact = pointers[pointerId]
+            if (contact != null) {
+                event.preventDefault()
+                val previous = contact.current
+                contact.current = point
+                if (pointers.size >= 2) {
+                    updatePinch()
+                } else if (!gestureConsumed && pointerId == primaryPointerId) {
+                    val threshold = dragThreshold(contact.pointerType)
+                    if (!dragging && distance(point, contact.start) >= threshold) {
+                        dragging = true
+                        cancelLongPress()
+                        viewport = viewport.panBy(point - contact.start)
+                        scheduleRender()
+                    } else if (dragging) {
+                        viewport = viewport.panBy(point - previous)
+                        scheduleRender()
+                    }
+                }
+            } else if (pointers.isEmpty() && pointerType(event) != "touch") {
+                onHover(pick(point, PICK_RADIUS_PX))
             }
         })
         canvas.addEventListener("pointerup", { raw -> finishPointer(raw) })
         canvas.addEventListener("pointercancel", { raw -> finishPointer(raw, cancelled = true) })
-        canvas.addEventListener("pointerleave", { _ -> if (activePointerId == null) onHover(null) })
+        canvas.addEventListener("pointerleave", { _ -> if (pointers.isEmpty()) onHover(null) })
+        canvas.addEventListener("contextmenu", { raw ->
+            val event = raw.asDynamic()
+            event.preventDefault()
+            val point = pointerPoint(event)
+            pick(point, CONTEXT_PICK_RADIUS_PX)?.let { onContextAction(it, point, "mouse") }
+        })
     }
 
     private fun finishPointer(raw: Event, cancelled: Boolean = false) {
         val event = raw.asDynamic()
-        if (activePointerId != (event.pointerId as Number).toInt()) return
+        val pointerId = (event.pointerId as Number).toInt()
+        val contact = pointers[pointerId] ?: return
         val point = pointerPoint(event)
-        if (!cancelled && !pointerMoved) onSelect(pick(point))
-        activePointerId = null
-        pointerDown = null
-        lastPointer = null
-        pointerMoved = false
+        val wasOnlyPointer = pointers.size == 1
+        val shouldTap = !cancelled && wasOnlyPointer && pointerId == primaryPointerId && !gestureConsumed &&
+            !dragging && !longPressTriggered && distance(point, contact.start) < dragThreshold(contact.pointerType)
+        pointers.remove(pointerId)
         runCatching { canvas.asDynamic().releasePointerCapture(event.pointerId) }
-        onHover(if (cancelled) null else pick(point))
+        cancelLongPress()
+        if (shouldTap) onSelect(pick(point, pickRadius(contact.pointerType)))
+        if (pointers.isEmpty()) {
+            primaryPointerId = null
+            gestureConsumed = false
+            dragging = false
+            longPressTriggered = false
+            pinchCenter = null
+            pinchDistance = null
+        } else {
+            gestureConsumed = true
+            beginPinch()
+        }
+        if (contact.pointerType != "touch") onHover(if (cancelled) null else pick(point, PICK_RADIUS_PX))
+    }
+
+    private fun scheduleLongPress(pointerId: Int) {
+        cancelLongPress()
+        val contact = pointers[pointerId] ?: return
+        if (contact.pointerType == "mouse") return
+        longPressTimer = window.setTimeout({
+            val current = pointers[pointerId]
+            if (current != null && pointers.size == 1 && !dragging && !gestureConsumed &&
+                distance(current.start, current.current) < dragThreshold(current.pointerType)
+            ) {
+                pick(current.current, CONTEXT_PICK_RADIUS_PX)?.let { systemId ->
+                    longPressTriggered = true
+                    gestureConsumed = true
+                    onContextAction(systemId, current.current, current.pointerType)
+                }
+            }
+            longPressTimer = null
+        }, LONG_PRESS_MILLIS)
+    }
+
+    private fun cancelLongPress() {
+        longPressTimer?.let(window::clearTimeout)
+        longPressTimer = null
+    }
+
+    private fun beginPinch() {
+        val pair = pointers.values.take(2)
+        if (pair.size < 2) {
+            pinchCenter = null
+            pinchDistance = null
+            return
+        }
+        pinchCenter = midpoint(pair[0].current, pair[1].current)
+        pinchDistance = distance(pair[0].current, pair[1].current).coerceAtLeast(1.0)
+    }
+
+    private fun updatePinch() {
+        val pair = pointers.values.take(2)
+        if (pair.size < 2) return
+        val center = midpoint(pair[0].current, pair[1].current)
+        val currentDistance = distance(pair[0].current, pair[1].current).coerceAtLeast(1.0)
+        val previousCenter = pinchCenter ?: center
+        val previousDistance = pinchDistance ?: currentDistance
+        val focalWorldBefore = MapTransform(viewport, canvasSize).screenToWorld(previousCenter)
+        viewport = viewport.panBy(center - previousCenter)
+        viewport = MapTransform(viewport, canvasSize).zoomAt(
+            center,
+            currentDistance / previousDistance,
+            fitZoom * MIN_ZOOM_FACTOR,
+            fitZoom * MAX_ZOOM_FACTOR,
+        )
+        val focalWorldAfter = MapTransform(viewport, canvasSize).screenToWorld(center)
+        maxPinchFocalDriftPx = max(maxPinchFocalDriftPx, distance(focalWorldBefore, focalWorldAfter) * viewport.zoom)
+        pinchCenter = center
+        pinchDistance = currentDistance
+        gestureConsumed = true
+        scheduleRender()
     }
 
     private fun pointerPoint(event: dynamic): MapPoint {
@@ -154,13 +289,23 @@ class WebMapView(
         )
     }
 
-    private fun pick(screenPoint: MapPoint): Int? {
+    private fun pick(screenPoint: MapPoint, radiusPixels: Double): Int? {
         val transform = MapTransform(viewport, canvasSize)
         val world = transform.screenToWorld(screenPoint)
-        return scene.spatialIndex.nearest(world, PICK_RADIUS_PX / viewport.zoom)
+        return scene.spatialIndex.nearest(world, radiusPixels / viewport.zoom)
+    }
+
+    private fun scheduleRender() {
+        if (renderPending) return
+        renderPending = true
+        window.requestAnimationFrame {
+            renderPending = false
+            render()
+        }
     }
 
     private fun render() {
+        val startedAt = window.performance.now()
         val pixelRatio = (canvas.width.toDouble() / canvasSize.width).coerceAtLeast(1.0)
         context.setTransform(pixelRatio, 0.0, 0.0, pixelRatio, 0.0, 0.0)
         context.clearRect(0.0, 0.0, canvasSize.width, canvasSize.height)
@@ -169,14 +314,20 @@ class WebMapView(
 
         val transform = MapTransform(viewport, canvasSize)
         val visibleBounds = transform.visibleWorldBounds(32.0)
+        val visibleNodes = scene.spatialIndex.query(visibleBounds).map(scene.nodesById::getValue)
+        val visibleSystemIds = visibleNodes.mapTo(mutableSetOf()) { it.system.id }
         drawGrid()
         drawStargates(transform, visibleBounds)
-        drawJumpCoverage(transform, visibleBounds)
+        drawJumpCoverage(transform, visibleSystemIds)
         drawNormalRoute(transform)
         drawCapitalRoute(transform)
-        drawNodes(transform, visibleBounds)
-        drawSharedMarkers(transform, visibleBounds)
-        drawLabels(transform, visibleBounds)
+        drawNodes(transform, visibleNodes)
+        drawSharedMarkers(transform, visibleSystemIds)
+        drawLabels(transform, visibleNodes)
+        val elapsed = window.performance.now() - startedAt
+        renderCount++
+        maxRenderMillis = max(maxRenderMillis, elapsed)
+        if (elapsed > LONG_RENDER_MILLIS) longRenderCount++
     }
 
     private fun drawGrid() {
@@ -205,8 +356,7 @@ class WebMapView(
         context.stroke()
     }
 
-    private fun drawJumpCoverage(transform: MapTransform, bounds: MapBounds) {
-        val visibleIds = scene.spatialIndex.query(bounds).toSet()
+    private fun drawJumpCoverage(transform: MapTransform, visibleIds: Set<Int>) {
         state.coverageCounts.asSequence().filter { it.key in visibleIds }.forEach { (systemId, count) ->
             val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return@forEach
             val radius = 7.0 + min(count, 4) * 2.0
@@ -226,8 +376,7 @@ class WebMapView(
     }
 
     private fun drawNormalRoute(transform: MapTransform) {
-        val route = state.normalRoute ?: return
-        val overlay = ProjectedRouteOverlayBuilder.build(route, scene)
+        val overlay = normalRouteOverlay ?: return
         overlay.legs.forEach { leg ->
             val first = transform.worldToScreen(leg.from)
             val second = transform.worldToScreen(leg.to)
@@ -264,11 +413,11 @@ class WebMapView(
         context.setLineDash(emptyArray())
     }
 
-    private fun drawNodes(transform: MapTransform, bounds: MapBounds) {
+    private fun drawNodes(transform: MapTransform, nodes: List<ProjectedSystemNode>) {
         val routeIds = state.routeSystemIds
         val waypointIds = state.normalWaypointSystemIds.toSet()
-        scene.spatialIndex.query(bounds).forEach { systemId ->
-            val node = scene.nodesById.getValue(systemId)
+        nodes.forEach { node ->
+            val systemId = node.system.id
             val point = transform.worldToScreen(node.position)
             val selected = systemId == state.selectedSystemId
             val hovered = systemId == state.hoveredSystemId
@@ -301,8 +450,7 @@ class WebMapView(
         }
     }
 
-    private fun drawSharedMarkers(transform: MapTransform, bounds: MapBounds) {
-        val visibleIds = scene.spatialIndex.query(bounds).toSet()
+    private fun drawSharedMarkers(transform: MapTransform, visibleIds: Set<Int>) {
         sharedMarkerState.markers.values.asSequence()
             .filter { it.systemId in visibleIds }
             .forEach { marker ->
@@ -325,7 +473,7 @@ class WebMapView(
             }
     }
 
-    private fun drawLabels(transform: MapTransform, bounds: MapBounds) {
+    private fun drawLabels(transform: MapTransform, visibleNodes: List<ProjectedSystemNode>) {
         val zoomRatio = viewport.zoom / fitZoom
         val budget = when {
             zoomRatio < 1.3 -> 70
@@ -335,7 +483,7 @@ class WebMapView(
         }
         val priority = state.routeSystemIds + state.normalWaypointSystemIds + sharedMarkerState.markersBySystemId.keys +
             listOfNotNull(state.selectedSystemId, state.hoveredSystemId)
-        val nodes = scene.spatialIndex.query(bounds).map(scene.nodesById::getValue).sortedWith(
+        val nodes = visibleNodes.sortedWith(
             compareBy<ProjectedSystemNode>({ it.system.id !in priority }, { it.system.name.lowercase() }),
         )
         val occupied = mutableSetOf<String>()
@@ -355,6 +503,23 @@ class WebMapView(
     }
 }
 
+private data class PointerContact(
+    val start: MapPoint,
+    var current: MapPoint,
+    val pointerType: String,
+)
+
+private fun pointerType(event: dynamic): String = (event.pointerType as? String)?.ifBlank { "mouse" } ?: "mouse"
+
+private fun midpoint(first: MapPoint, second: MapPoint): MapPoint =
+    MapPoint((first.x + second.x) / 2.0, (first.y + second.y) / 2.0)
+
+private fun distance(first: MapPoint, second: MapPoint): Double = hypot(second.x - first.x, second.y - first.y)
+
+private fun dragThreshold(pointerType: String): Double = if (pointerType == "mouse") MOUSE_DRAG_THRESHOLD_PX else TOUCH_DRAG_THRESHOLD_PX
+
+private fun pickRadius(pointerType: String): Double = if (pointerType == "mouse") PICK_RADIUS_PX else TOUCH_PICK_RADIUS_PX
+
 private fun sharedMarkerColor(color: String): String = when (color) {
     "RED" -> "#ff5d73"
     "ORANGE" -> "#ff9f43"
@@ -366,7 +531,12 @@ private fun sharedMarkerColor(color: String): String = when (color) {
 }
 
 private const val PICK_RADIUS_PX = 12.0
-private const val DRAG_THRESHOLD_PX = 5.0
+private const val TOUCH_PICK_RADIUS_PX = 22.0
+private const val CONTEXT_PICK_RADIUS_PX = 24.0
+private const val MOUSE_DRAG_THRESHOLD_PX = 5.0
+private const val TOUCH_DRAG_THRESHOLD_PX = 10.0
+private const val LONG_PRESS_MILLIS = 550
+private const val LONG_RENDER_MILLIS = 100.0
 private const val MIN_ZOOM_FACTOR = 0.35
 private const val MAX_ZOOM_FACTOR = 90.0
 private const val LABEL_CELL_WIDTH = 78.0

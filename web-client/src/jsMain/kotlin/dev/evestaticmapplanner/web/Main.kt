@@ -11,11 +11,19 @@ import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
 
 fun main() {
-    window.asDynamic().startEveWebClient = { rawDocument: dynamic ->
+    window.asDynamic().startEveWebClient = { rawDocument: dynamic, loaderTimings: dynamic ->
         try {
             setBootStatus("Building map", null)
+            val kotlinStartedAt = window.performance.now()
+            var stageStartedAt = kotlinStartedAt
             val documentDto = parseWebPackDocument(rawDocument)
-            val universe = WebUniverseDataAdapter.adapt(documentDto)
+            val dtoParseMillis = elapsedSince(stageStartedAt)
+            stageStartedAt = window.performance.now()
+            val domain = WebUniverseDataAdapter.convert(documentDto)
+            val domainConversionMillis = elapsedSince(stageStartedAt)
+            stageStartedAt = window.performance.now()
+            val universe = WebUniverseDataAdapter.build(domain)
+            val sceneAndIndexesMillis = elapsedSince(stageStartedAt)
             lateinit var app: WebApplication
             val scope = MainScope()
             val planner = WebPlannerController(universe) { state -> app.renderPlanner(state) }
@@ -24,8 +32,24 @@ fun main() {
                 scope = scope,
                 onStateChanged = { state -> app.renderSharedMarkers(state) },
             )
-            app = WebApplication(planner, sharedMarkers, scope)
+            app = WebApplication(
+                planner = planner,
+                sharedMarkers = sharedMarkers,
+                scope = scope,
+                loadedFromOfflineCache = loaderTimings?.offlineFallback as? Boolean ?: false,
+            )
+            stageStartedAt = window.performance.now()
             app.start()
+            val uiInitializationMillis = elapsedSince(stageStartedAt)
+            val diagnostics = loaderTimings ?: js("({})")
+            diagnostics.dtoParseMs = dtoParseMillis
+            diagnostics.dtoToDomainMs = domainConversionMillis
+            diagnostics.sceneAndIndexesMs = sceneAndIndexesMillis
+            diagnostics.uiInitializationMs = uiInitializationMillis
+            diagnostics.kotlinTotalMs = elapsedSince(kotlinStartedAt)
+            diagnostics.readyMs = roundMillis(window.performance.now())
+            window.asDynamic().eveWebPerformance = diagnostics
+            window.asDynamic().eveWebClientDiagnostics = { app.diagnostics() }
             setBootStatus("Ready", null)
             document.documentElement?.classList?.add("app-ready")
         } catch (failure: Throwable) {
@@ -33,6 +57,10 @@ fun main() {
         }
     }
 }
+
+private fun elapsedSince(startedAt: Double): Double = roundMillis(window.performance.now() - startedAt)
+
+private fun roundMillis(value: Double): Double = kotlin.math.round(value * 100.0) / 100.0
 
 private fun setBootStatus(status: String, error: String?) {
     document.getElementById("boot-status")?.textContent = status
@@ -46,6 +74,7 @@ private class WebApplication(
     private val planner: WebPlannerController,
     private val sharedMarkers: WebSharedMarkerController,
     private val scope: CoroutineScope,
+    loadedFromOfflineCache: Boolean,
 ) {
     private val universe = planner.universe
     private val banner = element<HTMLDivElement>("user-message")
@@ -57,6 +86,7 @@ private class WebApplication(
             sharedMarkers.selectMarkerAtSystem(systemId)
         },
         onHover = planner::hoverSystem,
+        onContextAction = ::openSystemActions,
     )
     private val search = SystemPicker("global-search", "global-results", planner::search) { system ->
         planner.selectSystem(system.id)
@@ -73,6 +103,9 @@ private class WebApplication(
     private val jumpSource = SystemPicker("jump-source", "jump-source-results", planner::search) { _ -> }
     private var editingMarkerId: String? = null
     private var editingSystemId: Int? = null
+    private var contextSystemId: Int? = null
+    private var online = browserOnline() && !loadedFromOfflineCache
+    private var activeTool = "search"
 
     fun start() {
         element<HTMLElement>("pack-meta").textContent =
@@ -81,10 +114,24 @@ private class WebApplication(
             "${universe.staticData.systems.size} systems · ${universe.staticData.connections.size} Stargates · " +
                 "${universe.ansiblex.size} Ansiblex · ${universe.scene.omittedSystemIds.size} unpositioned"
         bindControls()
+        bindResponsiveUi()
+        updateVisualViewport()
+        renderConnectivity()
         restoreSharedServerUrl()
         renderPlanner(planner.state)
         renderSharedMarkers(sharedMarkers.state)
         mapView.fit()
+    }
+
+    fun diagnostics(): dynamic {
+        val value = mapView.diagnostics()
+        value.online = online
+        value.activeTool = activeTool
+        value.toolsOpen = document.documentElement?.classList?.contains("tools-open") == true
+        value.infoOpen = document.documentElement?.classList?.contains("info-open") == true
+        value.contextMenuOpen = !element<HTMLElement>("system-actions").classList.contains("hidden")
+        value.sharedMarkerEditorOpen = !element<HTMLElement>("shared-marker-editor").classList.contains("hidden")
+        return value
     }
 
     fun renderPlanner(state: WebPlannerState) {
@@ -145,10 +192,127 @@ private class WebApplication(
         click("shared-editor-cancel") { closeMarkerEditor() }
         click("shared-editor-save") { saveMarkerEditor() }
         click("shared-editor-delete") { deleteMarkerEditor() }
+        click("system-actions-close") { closeSystemActions() }
+        click("action-route-from") { useContextSystem("route") { routeFrom.selectId(it) } }
+        click("action-route-to") { useContextSystem("route") { routeTo.selectId(it) } }
+        click("action-waypoint") { useContextSystem("route", planner::addNormalWaypoint) }
+        click("action-jump-range") { useContextSystem("coverage") { systemId ->
+            jumpSource.selectId(systemId)
+            syncRange()
+            planner.addJumpRange(systemId)
+        } }
+        click("action-shared-marker") { useContextSystem("shared") { systemId -> openMarkerEditor(systemId, null) } }
         document.addEventListener("visibilitychange", {
             if (document.asDynamic().visibilityState == "visible") sharedMarkers.onPageVisible()
         })
+        document.addEventListener("keydown", { raw ->
+            if (raw.asDynamic().key == "Escape") {
+                closeSystemActions()
+                closePanels()
+                if (!element<HTMLElement>("shared-marker-editor").classList.contains("hidden")) closeMarkerEditor()
+            }
+        })
+        element<HTMLElement>("shared-marker-editor").addEventListener("click", { raw ->
+            if (raw.target == element<HTMLElement>("shared-marker-editor")) closeMarkerEditor()
+        })
         window.addEventListener("pagehide", { sharedMarkers.close() })
+    }
+
+    private fun bindResponsiveUi() {
+        click("tools-toggle") { togglePanel("tools") }
+        click("info-toggle") { togglePanel("info") }
+        click("tools-close") { closePanels() }
+        click("info-close") { closePanels() }
+        click("panel-scrim") { closePanels() }
+        val tabs = document.querySelectorAll("[data-tool-tab]")
+        for (index in 0 until tabs.length) {
+            val tab = tabs.item(index) as? HTMLElement ?: continue
+            tab.addEventListener("click", { selectTool(tab.getAttribute("data-tool-tab") ?: "search") })
+        }
+        selectTool(activeTool)
+
+        window.addEventListener("online", {
+            online = true
+            renderConnectivity()
+            sharedMarkers.onPageVisible()
+        })
+        window.addEventListener("offline", {
+            online = false
+            renderConnectivity()
+        })
+        window.addEventListener("orientationchange", {
+            updateVisualViewport()
+            window.setTimeout({ mapView.resize() }, PANEL_TRANSITION_MILLIS)
+        })
+        val visualViewport = window.asDynamic().visualViewport
+        if (visualViewport != null) {
+            val viewport = visualViewport
+            viewport.addEventListener("resize", { updateVisualViewport() })
+            viewport.addEventListener("scroll", { updateVisualViewport() })
+        }
+        document.addEventListener("focusin", { raw ->
+            val target = raw.target as? HTMLElement ?: return@addEventListener
+            if (target.asDynamic().matches("input, select, textarea") == true) {
+                window.setTimeout({
+                    target.asDynamic().scrollIntoView(js("({ block: 'center', inline: 'nearest', behavior: 'smooth' })"))
+                }, KEYBOARD_SCROLL_DELAY_MILLIS)
+            }
+        })
+    }
+
+    private fun togglePanel(panel: String) {
+        val root = document.documentElement ?: return
+        val className = "${panel}-open"
+        if (root.classList.contains(className)) closePanels() else {
+            root.classList.toggle("tools-open", panel == "tools")
+            root.classList.toggle("info-open", panel == "info")
+            element<HTMLElement>("panel-scrim").classList.remove("hidden")
+            updatePanelAria()
+        }
+        window.setTimeout({ mapView.resize() }, PANEL_TRANSITION_MILLIS)
+    }
+
+    private fun closePanels() {
+        document.documentElement?.classList?.remove("tools-open", "info-open")
+        element<HTMLElement>("panel-scrim").classList.add("hidden")
+        updatePanelAria()
+    }
+
+    private fun updatePanelAria() {
+        val root = document.documentElement
+        element<HTMLElement>("tools-toggle").setAttribute("aria-expanded", (root?.classList?.contains("tools-open") == true).toString())
+        element<HTMLElement>("info-toggle").setAttribute("aria-expanded", (root?.classList?.contains("info-open") == true).toString())
+    }
+
+    private fun selectTool(tool: String) {
+        activeTool = tool
+        val panels = document.querySelectorAll("[data-tool-panel]")
+        for (index in 0 until panels.length) {
+            val panel = panels.item(index) as? HTMLElement ?: continue
+            panel.classList.toggle("tool-section-active", panel.getAttribute("data-tool-panel") == tool)
+        }
+        val tabs = document.querySelectorAll("[data-tool-tab]")
+        for (index in 0 until tabs.length) {
+            val tab = tabs.item(index) as? HTMLElement ?: continue
+            val selected = tab.getAttribute("data-tool-tab") == tool
+            tab.setAttribute("aria-pressed", selected.toString())
+            tab.classList.toggle("secondary", !selected)
+        }
+    }
+
+    private fun updateVisualViewport() {
+        val visualViewport = window.asDynamic().visualViewport
+        val height = ((visualViewport?.height ?: window.innerHeight) as Number).toDouble().coerceAtLeast(1.0)
+        (document.documentElement as? HTMLElement)?.style?.setProperty("--visual-viewport-height", "${height}px")
+        mapView.resize()
+    }
+
+    private fun renderConnectivity() {
+        element<HTMLElement>("network-status").apply {
+            textContent = if (online) "Online" else "Offline"
+            className = "network-status ${if (online) "online" else "offline"}"
+        }
+        renderSharedMarkerPanel(sharedMarkers.state)
     }
 
     private fun syncRange() {
@@ -185,9 +349,9 @@ private class WebApplication(
             val label = document.createElement("span")
             label.textContent = "${index + 1}. ${planner.systemName(systemId)}"
             row.appendChild(label)
-            row.appendChild(actionButton("↑", index > 0) { planner.moveNormalWaypoint(index, -1) })
-            row.appendChild(actionButton("↓", index < state.normalWaypointSystemIds.lastIndex) { planner.moveNormalWaypoint(index, 1) })
-            row.appendChild(actionButton("×", true) { planner.removeNormalWaypoint(index) })
+            row.appendChild(actionButton("↑", index > 0, "Move waypoint up") { planner.moveNormalWaypoint(index, -1) })
+            row.appendChild(actionButton("↓", index < state.normalWaypointSystemIds.lastIndex, "Move waypoint down") { planner.moveNormalWaypoint(index, 1) })
+            row.appendChild(actionButton("×", true, "Remove waypoint") { planner.removeNormalWaypoint(index) })
             container.appendChild(row)
         }
     }
@@ -227,7 +391,7 @@ private class WebApplication(
             val label = document.createElement("span")
             label.textContent = "${overlay.label} · ${overlay.reachableSystemIds.size} systems"
             row.appendChild(label)
-            row.appendChild(actionButton("×", true) { planner.removeJumpRange(overlay.id) })
+            row.appendChild(actionButton("×", true, "Remove ${overlay.label}") { planner.removeJumpRange(overlay.id) })
             container.appendChild(row)
         }
         val overlap = state.coverageCounts.count { it.value > 1 }
@@ -285,7 +449,7 @@ private class WebApplication(
 
     private fun renderSharedMarkerPanel(state: WebSharedMarkerState) {
         element<HTMLElement>("shared-status").apply {
-            textContent = when (state.status) {
+            textContent = if (!online) "Offline · Shared Marker unavailable" else when (state.status) {
                 WebSharedMarkerStatus.DISCONNECTED -> "Disconnected"
                 WebSharedMarkerStatus.CONNECTING -> "Connecting"
                 WebSharedMarkerStatus.CONNECTED -> "Connected · ${state.workspace?.name ?: "Workspace"} · ${state.workspace?.role}"
@@ -294,7 +458,7 @@ private class WebApplication(
                 WebSharedMarkerStatus.FORBIDDEN -> "Access removed"
                 WebSharedMarkerStatus.FAILED -> "Connection failed"
             }
-            className = "shared-status ${state.status.name.lowercase()}"
+            className = "shared-status ${if (online) state.status.name.lowercase() else "offline"}"
         }
         element<HTMLElement>("shared-error").apply {
             val detail = state.requestId?.let { " · Request $it" }.orEmpty()
@@ -302,13 +466,14 @@ private class WebApplication(
             className = if (state.error == null) "inline-error hidden" else "inline-error"
         }
         element<HTMLElement>("shared-connect").asDynamic().disabled =
-            state.status == WebSharedMarkerStatus.CONNECTING || state.busy
+            !online || state.status == WebSharedMarkerStatus.CONNECTING || state.busy
         element<HTMLElement>("shared-disconnect").asDynamic().disabled =
             state.status == WebSharedMarkerStatus.DISCONNECTED
         element<HTMLElement>("shared-create-selected").asDynamic().disabled =
-            !state.canWrite || planner.state.selectedSystemId == null
-        element<HTMLElement>("shared-editor-save").asDynamic().disabled = state.busy
-        element<HTMLElement>("shared-editor-delete").asDynamic().disabled = state.busy
+            !online || !state.canWrite || planner.state.selectedSystemId == null
+        element<HTMLElement>("shared-editor-save").asDynamic().disabled = !online || state.busy
+        element<HTMLElement>("shared-editor-delete").asDynamic().disabled = !online || state.busy
+        element<HTMLElement>("action-shared-marker").asDynamic().disabled = !online || !state.canWrite
 
         val container = element<HTMLDivElement>("shared-marker-list")
         container.clearChildren()
@@ -356,7 +521,42 @@ private class WebApplication(
         check(mapView.centerOn(marker.systemId)) { "Positioned system ${marker.systemId} is missing from the scene" }
     }
 
+    private fun openSystemActions(systemId: Int, point: dev.evestaticmapplanner.core.map.MapPoint, pointerType: String) {
+        contextSystemId = systemId
+        planner.selectSystem(systemId)
+        sharedMarkers.selectMarkerAtSystem(systemId)
+        element<HTMLElement>("system-actions-name").textContent = planner.systemName(systemId)
+        element<HTMLElement>("action-shared-marker").asDynamic().disabled = !online || !sharedMarkers.state.canWrite
+        val canvasBounds = element<HTMLCanvasElement>("map-canvas").getBoundingClientRect()
+        val viewportX = canvasBounds.left + point.x
+        val viewportY = canvasBounds.top + point.y
+        element<HTMLElement>("system-actions").apply {
+            className = "context-sheet ${if (pointerType == "mouse") "mouse" else "touch"}"
+            style.left = "${viewportX.coerceIn(8.0, (window.innerWidth.toDouble() - CONTEXT_SHEET_WIDTH_PX).coerceAtLeast(8.0))}px"
+            style.top = "${viewportY.coerceIn(8.0, (window.innerHeight.toDouble() - CONTEXT_SHEET_HEIGHT_PX).coerceAtLeast(8.0))}px"
+        }
+    }
+
+    private fun closeSystemActions() {
+        contextSystemId = null
+        element<HTMLElement>("system-actions").classList.add("hidden")
+    }
+
+    private fun useContextSystem(tool: String, action: (Int) -> Unit) {
+        val systemId = contextSystemId ?: return
+        closeSystemActions()
+        selectTool(tool)
+        action(systemId)
+        if (tool != "shared" && usesOverlayPanels() && document.documentElement?.classList?.contains("tools-open") != true) {
+            togglePanel("tools")
+        }
+    }
+
     private fun openMarkerEditor(systemId: Int, marker: SharedMarkerDto?) {
+        if (!online || !sharedMarkers.state.canWrite) {
+            showTransientError("Shared Marker editing requires an online EDITOR or ADMIN connection.")
+            return
+        }
         editingMarkerId = marker?.markerId
         editingSystemId = systemId
         element<HTMLElement>("shared-editor-title").textContent =
@@ -369,6 +569,7 @@ private class WebApplication(
         element<org.w3c.dom.HTMLTextAreaElement>("shared-marker-notes").value = marker?.notes.orEmpty()
         element<HTMLElement>("shared-editor-delete").classList.toggle("hidden", marker == null)
         element<HTMLElement>("shared-marker-editor").classList.remove("hidden")
+        window.setTimeout({ element<HTMLInputElementCompat>("shared-marker-name").focus() }, EDITOR_FOCUS_DELAY_MILLIS)
     }
 
     private fun saveMarkerEditor() {
@@ -430,10 +631,11 @@ private class WebApplication(
         element<HTMLElement>(id).addEventListener("click", { action() })
     }
 
-    private fun actionButton(label: String, enabled: Boolean, action: () -> Unit): HTMLElement {
+    private fun actionButton(label: String, enabled: Boolean, ariaLabel: String = label, action: () -> Unit): HTMLElement {
         val button = document.createElement("button") as HTMLElement
         button.className = "icon-button"
         button.textContent = label
+        button.setAttribute("aria-label", ariaLabel)
         button.asDynamic().disabled = !enabled
         button.addEventListener("click", { action() })
         return button
@@ -441,6 +643,15 @@ private class WebApplication(
 }
 
 private const val SHARED_SERVER_STORAGE_KEY = "eve-static-map-planner.shared-marker.server-origin"
+private const val PANEL_TRANSITION_MILLIS = 220
+private const val KEYBOARD_SCROLL_DELAY_MILLIS = 180
+private const val EDITOR_FOCUS_DELAY_MILLIS = 80
+private const val CONTEXT_SHEET_WIDTH_PX = 270.0
+private const val CONTEXT_SHEET_HEIGHT_PX = 300.0
+
+private fun browserOnline(): Boolean = window.navigator.asDynamic().onLine as? Boolean ?: true
+
+private fun usesOverlayPanels(): Boolean = window.matchMedia("(max-width: 1280px), (pointer: coarse)").matches
 
 private class SystemPicker(
     inputId: String,

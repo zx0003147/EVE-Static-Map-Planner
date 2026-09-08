@@ -72,6 +72,39 @@ const normalElapsedMs = Date.now() - normalStartedAt;
 const routeSummary = await evaluate("document.querySelector('#route-summary').textContent");
 assert.match(routeSummary, /Jita → Perimeter/);
 
+await chooseSystem("route-from", "route-from-results", "Jita");
+await chooseSystem("route-to", "route-to-results", "Amarr");
+await chooseSystem("route-waypoint", "route-waypoint-results", "Perimeter");
+await evaluate("document.querySelector('#calculate-route').click()");
+await waitFor("document.querySelector('#waypoint-list')?.textContent.includes('Perimeter')", 5_000);
+await waitFor("document.querySelector('#route-summary')?.textContent.includes('Amarr')", 5_000);
+const waypointSummary = await evaluate("document.querySelector('#route-summary').textContent");
+await evaluate("document.querySelector('#waypoint-list .list-row .icon-button:last-child').click()");
+await waitFor("document.querySelector('#waypoint-list')?.textContent.includes('No waypoints')", 5_000);
+
+await chooseSystem("route-from", "route-from-results", "Jita");
+await chooseSystem("route-to", "route-to-results", "1DQ1-A");
+await evaluate("document.querySelector('#clear-route').click()");
+await chooseSystem("route-from", "route-from-results", "Jita");
+await chooseSystem("route-to", "route-to-results", "1DQ1-A");
+const longRouteStartedAt = Date.now();
+await evaluate("document.querySelector('#calculate-route').click()");
+await waitFor("/^\\d+ jumps/.test(document.querySelector('#route-summary')?.textContent ?? '')", 5_000);
+const longRouteElapsedMs = Date.now() - longRouteStartedAt;
+const longRouteSummary = await evaluate("document.querySelector('#route-summary').textContent");
+assert.match(longRouteSummary, /jumps/);
+
+await chooseSystem("route-from", "route-from-results", "1DQ1-A");
+await chooseSystem("route-to", "route-to-results", "NOL-M9");
+await evaluate(`(() => {
+  const toggle = document.querySelector('#use-ansiblex');
+  toggle.checked = true;
+  toggle.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#calculate-route').click();
+})()`);
+await waitFor("document.querySelector('#route-summary')?.textContent.includes('1 Ansiblex')", 5_000);
+const ansiblexSummary = await evaluate("document.querySelector('#route-summary').textContent");
+
 await chooseSystem("capital-from", "capital-from-results", "1DQ1-A");
 await chooseSystem("capital-to", "capital-to-results", "T5ZI-S");
 const capitalStartedAt = Date.now();
@@ -84,8 +117,11 @@ assert.match(capitalSummary, /1DQ1-A → T5ZI-S/);
 await chooseSystem("jump-source", "jump-source-results", "Jita");
 await evaluate("document.querySelector('#add-jump-range').click()");
 await waitFor("!document.querySelector('#overlay-list').classList.contains('empty')", 5_000);
+await chooseSystem("jump-source", "jump-source-results", "Perimeter");
+await evaluate("document.querySelector('#add-jump-range').click()");
+await waitFor("document.querySelectorAll('#overlay-list .overlay-row').length === 2", 5_000);
 const coverageSummary = await evaluate("document.querySelector('#coverage-summary').textContent");
-assert.match(coverageSummary, /Coverage:/);
+assert.match(coverageSummary, /overlapping/);
 
 await evaluate(`(() => {
   document.querySelector('#fit-map').click();
@@ -93,6 +129,9 @@ await evaluate(`(() => {
     deltaY: -120, clientX: 600, clientY: 400, bubbles: true, cancelable: true
   }));
 })()`);
+await new Promise((resolve) => setTimeout(resolve, 100));
+const loadTimings = await evaluate("globalThis.eveWebPerformance");
+const mapDiagnostics = await evaluate("globalThis.eveWebClientDiagnostics()");
 
 console.log(JSON.stringify({
   status: ready.status,
@@ -101,9 +140,15 @@ console.log(JSON.stringify({
   readyElapsedMs,
   normalElapsedMs,
   routeSummary,
+  waypointSummary,
+  longRouteElapsedMs,
+  longRouteSummary,
+  ansiblexSummary,
   capitalElapsedMs,
   capitalSummary,
-  coverageSummary
+  coverageSummary,
+  loadTimings,
+  mapDiagnostics
 }));
 await send("Browser.close");
 socket.close();
@@ -153,5 +198,10 @@ async function waitFor(expression, timeoutMs) {
     if (await evaluate(`Boolean(${expression})`)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`Timed out waiting for: ${expression}`);
+  const pageState = await evaluate(`({
+    bootStatus: document.querySelector('#boot-status')?.textContent,
+    fatalError: document.querySelector('#fatal-error')?.textContent,
+    readyState: document.readyState
+  })`);
+  throw new Error(`Timed out waiting for: ${expression}; page state: ${JSON.stringify(pageState)}`);
 }

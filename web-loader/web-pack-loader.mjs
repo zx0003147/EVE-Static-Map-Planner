@@ -4,38 +4,61 @@ export async function loadWebPack(dataBaseUrl = "./data", fetchImpl = globalThis
   if (typeof fetchImpl !== "function") throw new Error("Fetch API is unavailable");
   if (typeof onStatus !== "function") throw new Error("Web Pack status listener must be a function");
 
-  onStatus("Loading manifest");
+  const startedAt = now();
+  const timings = {};
+  onStatus("Loading manifest", timings);
   const manifestUrl = joinUrl(dataBaseUrl, "manifest.json");
+  let stageStartedAt = now();
   const manifestResponse = await fetchImpl(manifestUrl, {
     cache: "no-cache",
     headers: { Accept: "application/json" },
   });
+  timings.manifestFetchMs = elapsed(stageStartedAt);
   requireOk(manifestResponse, "manifest", manifestUrl);
+  timings.offlineFallback = manifestResponse.headers?.get?.("X-EVE-Offline-Fallback") === "true";
+  stageStartedAt = now();
   const manifest = await manifestResponse.json();
   validateManifest(manifest);
+  timings.manifestParseValidateMs = elapsed(stageStartedAt);
 
-  onStatus("Loading Web Pack");
+  onStatus("Loading Web Pack", timings);
   const packUrl = joinUrl(dataBaseUrl, manifest.fileName);
+  stageStartedAt = now();
   const packResponse = await fetchImpl(packUrl, {
     cache: "force-cache",
     headers: { Accept: "application/gzip, application/octet-stream" },
   });
   requireOk(packResponse, "Web Pack", packUrl);
   const compressed = new Uint8Array(await packResponse.arrayBuffer());
+  timings.packFetchMs = elapsed(stageStartedAt);
   if (compressed.byteLength !== manifest.sizeBytes) {
     throw new Error(`Web Pack size mismatch: expected ${manifest.sizeBytes}, received ${compressed.byteLength}`);
   }
+  onStatus("Checking integrity", timings);
+  stageStartedAt = now();
   const checksum = await sha256(compressed);
+  timings.checksumMs = elapsed(stageStartedAt);
   if (checksum !== manifest.sha256) {
     throw new Error(`Web Pack checksum mismatch: expected ${manifest.sha256}, received ${checksum}`);
   }
 
-  onStatus("Validating");
-  const document = JSON.parse(await decompressGzip(compressed));
+  onStatus("Decompressing", timings);
+  stageStartedAt = now();
+  const json = await decompressGzip(compressed);
+  timings.gzipDecodeMs = elapsed(stageStartedAt);
+  onStatus("Parsing data", timings);
+  stageStartedAt = now();
+  const document = JSON.parse(json);
+  timings.jsonParseMs = elapsed(stageStartedAt);
+  onStatus("Validating", timings);
+  stageStartedAt = now();
   validateDocument(document, manifest);
+  timings.validationMs = elapsed(stageStartedAt);
+  timings.loaderTotalMs = elapsed(startedAt);
   return {
     manifest,
     document,
+    timings,
     stats: {
       systems: document.counts.systems,
       stargateLinks: document.counts.stargateLinks,
@@ -44,6 +67,14 @@ export async function loadWebPack(dataBaseUrl = "./data", fetchImpl = globalThis
       packVersion: document.packVersion,
     },
   };
+}
+
+function now() {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function elapsed(startedAt) {
+  return Math.round((now() - startedAt) * 100) / 100;
 }
 
 export function validateManifest(manifest) {
