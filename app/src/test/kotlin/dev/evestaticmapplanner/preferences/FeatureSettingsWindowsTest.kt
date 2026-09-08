@@ -35,7 +35,7 @@ class FeatureSettingsWindowsTest {
     @Test
     fun `general Preferences contains only global categories`() {
         assertEquals(
-            listOf("Map Display", "AI Control", "Feature Packs", "Overlays", "Shared Map"),
+            listOf("Map Display", "AI Control", "Feature Packs", "Overlays", "Web Pack", "Shared Map"),
             PreferencesCategory.entries.map { it.label },
         )
     }

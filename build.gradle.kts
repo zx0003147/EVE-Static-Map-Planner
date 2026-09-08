@@ -24,5 +24,13 @@ tasks.named("build") {
         ":marker-application:build",
         ":mcp:build",
         ":sde:build",
+        ":web-pack:build",
     )
+}
+
+tasks.register<Exec>("webLoaderTest") {
+    group = "verification"
+    description = "Runs the dependency-free browser Web Pack loader contract tests with Node.js."
+    workingDir(layout.projectDirectory.dir("web-loader"))
+    commandLine("node", "--test", "web-pack-loader.test.mjs")
 }

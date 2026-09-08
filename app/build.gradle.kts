@@ -113,6 +113,7 @@ dependencies {
     implementation(project(":mcp"))
     implementation(project(":sde"))
     implementation(project(":shared-client"))
+    implementation(project(":web-pack"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
     implementation(libs.kotlinx.coroutines.core)

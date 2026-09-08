@@ -61,6 +61,7 @@ import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
 import dev.evestaticmapplanner.ui.EveWindowChrome
 import dev.evestaticmapplanner.ui.EveWindowSurface
+import dev.evestaticmapplanner.webpack.WebPackExportUiState
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -74,6 +75,7 @@ internal fun PreferencesWindow(
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
     overlayState: OverlayState,
+    webPackExportState: WebPackExportUiState,
     sharedMapState: SharedMapState,
     sharedMapOperationError: String?,
     sharedAdminState: SharedAdminUiState,
@@ -90,6 +92,7 @@ internal fun PreferencesWindow(
     onSharedMapClearAdminError: () -> Unit,
     onSharedMapClearInvite: () -> Unit,
     onOverlayVisibilityChange: (OverlayVisibilityPreferences) -> Unit,
+    onExportWebPack: () -> Unit,
     onAiControlChange: (Boolean) -> Unit,
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
     onResetMapDisplay: () -> Unit,
@@ -154,6 +157,10 @@ internal fun PreferencesWindow(
                                 onMapDisplayChange,
                                 onResetOverlayVisibility,
                             )
+                            PreferencesCategory.WEB_PACK -> WebPackPreferencesContent(
+                                webPackExportState,
+                                onExportWebPack,
+                            )
                             PreferencesCategory.SHARED_MAP -> SharedMapPreferencesContent(
                                 preferences.sharedMap,
                                 sharedMapState,
@@ -190,10 +197,58 @@ internal enum class PreferencesCategory(val label: String) {
     AI_CONTROL("AI Control"),
     FEATURE_PACKS("Feature Packs"),
     OVERLAYS("Overlays"),
+    WEB_PACK("Web Pack"),
     SHARED_MAP("Shared Map"),
 }
 
 internal val PREFERENCES_CONTENT_START_GUTTER = 24.dp
+
+@Composable
+internal fun WebPackPreferencesContent(
+    state: WebPackExportUiState,
+    onExport: () -> Unit,
+) {
+    Text("Web Pack", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Exports the validated static universe and currently enabled Ansiblex links for a Web client. " +
+            "Choose a parent directory; the app creates ${dev.evestaticmapplanner.webpack.WebPackSchema.EXPORT_DIRECTORY_NAME} inside it.",
+        color = EveColors.SecondaryText,
+    )
+    TextButton(
+        onClick = onExport,
+        enabled = state !is WebPackExportUiState.Exporting,
+    ) {
+        Text(if (state is WebPackExportUiState.Exporting) "Exporting…" else "Export Web Pack")
+    }
+    when (state) {
+        WebPackExportUiState.Idle -> Text(
+            "The export is read-only and does not modify static.db or user.db.",
+            color = EveColors.SecondaryText,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        WebPackExportUiState.Exporting -> Text(
+            "Validating and writing the Web Pack…",
+            color = EveColors.Important,
+        )
+        is WebPackExportUiState.Failure -> {
+            Text("Web Pack export failed", color = EveColors.Error)
+            Text(state.message, color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
+        }
+        is WebPackExportUiState.Success -> {
+            val report = state.report
+            Text("Web Pack exported successfully", color = EveColors.Important)
+            Text("SDE: ${report.sdeBuild}")
+            Text("Systems: ${report.counts.systems}")
+            Text("Stargate links: ${report.counts.stargateLinks}")
+            Text("Regions: ${report.counts.regions}")
+            Text("Constellations: ${report.counts.constellations}")
+            Text("Ansiblex links: ${report.counts.ansiblexLinks}")
+            Text("Pack schema: ${report.schemaVersion}")
+            Text("Pack version: ${report.packVersion}", style = MaterialTheme.typography.bodySmall)
+            Text("Output: ${report.outputDirectory}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
 
 @Composable
 private fun SharedMapPreferencesContent(

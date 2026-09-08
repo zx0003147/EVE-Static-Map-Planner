@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EVE Web Pack Loader</title>
+    <style>
+      body { color: #d8e1ea; background: #111820; font: 16px/1.5 system-ui, sans-serif; margin: 2rem; }
+      main { max-width: 48rem; margin: auto; }
+      dt { color: #8195a8; }
+      dd { margin: 0 0 .75rem; }
+      #error { color: #ff8d8d; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>EVE Web Pack Loader</h1>
+      <p id="status">Loading <code>/data/manifest.json</code>…</p>
+      <dl id="stats" hidden>
+        <dt>Systems</dt><dd id="systems"></dd>
+        <dt>Stargate links</dt><dd id="stargates"></dd>
+        <dt>Ansiblex links</dt><dd id="ansiblex"></dd>
+        <dt>SDE build</dt><dd id="sde"></dd>
+        <dt>Pack version</dt><dd id="version"></dd>
+      </dl>
+      <p id="error"></p>
+    </main>
+    <script type="module">
+      import { loadWebPack } from "./web-pack-loader.mjs";
+
+      try {
+        const { stats } = await loadWebPack("./data");
+        document.querySelector("#status").textContent = "Web Pack loaded successfully.";
+        document.querySelector("#systems").textContent = stats.systems;
+        document.querySelector("#stargates").textContent = stats.stargateLinks;
+        document.querySelector("#ansiblex").textContent = stats.ansiblexLinks;
+        document.querySelector("#sde").textContent = stats.sdeBuild;
+        document.querySelector("#version").textContent = stats.packVersion;
+        document.querySelector("#stats").hidden = false;
+      } catch (error) {
+        document.querySelector("#status").textContent = "Web Pack could not be loaded.";
+        document.querySelector("#error").textContent = error instanceof Error ? error.message : String(error);
+      }
+    </script>
+  </body>
+</html>

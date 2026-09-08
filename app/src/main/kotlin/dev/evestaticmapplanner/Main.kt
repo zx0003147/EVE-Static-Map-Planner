@@ -112,6 +112,11 @@ import dev.evestaticmapplanner.ui.EveWindowChrome
 import dev.evestaticmapplanner.view.PlanningViewCoordinator
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import dev.evestaticmapplanner.wormhole.WormholeViewModel
+import dev.evestaticmapplanner.webpack.WebPackExportRequest
+import dev.evestaticmapplanner.webpack.WebPackExporter
+import dev.evestaticmapplanner.webpack.WebPackExportUiState
+import dev.evestaticmapplanner.webpack.WebPackSchema
+import dev.evestaticmapplanner.webpack.chooseWebPackExportParentDirectory
 import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -120,6 +125,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 fun main(arguments: Array<String>) {
     AppDiagnostics.initialize()
@@ -444,6 +450,9 @@ private fun FrameWindowScope.ReadyApplication(
         configuration.managedPaths?.let { createUpdateService(it, updaterScope) }
     }
     val currentBuild = remember(configuration) { StaticDatabaseMetadataReader.read(configuration.database.path).sdeBuild }
+    val webPackExporter = remember(staticRepository, userComponents) {
+        userComponents.getOrNull()?.let { WebPackExporter(staticRepository, it.ansiblexRepository) }
+    }
     val staticDataViewModel = remember(configuration) {
         StaticDataManagerViewModel(
             configuration.database.mode,
@@ -636,6 +645,7 @@ private fun FrameWindowScope.ReadyApplication(
     var showSharedMarkerManager by remember { mutableStateOf(false) }
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
     var aiPreferenceError by remember { mutableStateOf<String?>(null) }
+    var webPackExportState by remember(configuration) { mutableStateOf<WebPackExportUiState>(WebPackExportUiState.Idle) }
     val aiControlReady = !mapState.isLoading && mapState.scene != null && !mapState.canvasSize.isEmpty
     LaunchedEffect(aiControlReady, mapState.appPreferences.aiControl.enabled, exitRequested, localhostMcpHost) {
         if (!exitRequested && aiControlReady) {
@@ -758,6 +768,7 @@ private fun FrameWindowScope.ReadyApplication(
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,
             overlayState = featureOverlayState,
+            webPackExportState = webPackExportState,
             sharedMapState = sharedMapState,
             sharedMapOperationError = sharedMapOperationError,
             sharedAdminState = sharedAdminState,
@@ -774,6 +785,44 @@ private fun FrameWindowScope.ReadyApplication(
             onSharedMapClearAdminError = sharedMapViewModel::clearAdminError,
             onSharedMapClearInvite = sharedMapViewModel::clearOneTimeInvite,
             onOverlayVisibilityChange = mapViewModel::updateOverlayVisibilityPreferences,
+            onExportWebPack = export@{
+                val exporter = webPackExporter
+                if (exporter == null) {
+                    webPackExportState = WebPackExportUiState.Failure(
+                        "Ansiblex data unavailable: " +
+                            (userComponents.exceptionOrNull()?.message ?: "user database is not initialized"),
+                    )
+                    return@export
+                }
+                val parentDirectory = chooseWebPackExportParentDirectory() ?: return@export
+                val outputDirectory = parentDirectory.resolve(WebPackSchema.EXPORT_DIRECTORY_NAME)
+                webPackExportState = WebPackExportUiState.Exporting
+                uiScope.launch {
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            exporter.export(
+                                WebPackExportRequest(
+                                    outputDirectory = outputDirectory,
+                                    desktopAppVersion = ApplicationBuildInfo.current.appVersion,
+                                    sdeBuild = currentBuild,
+                                ),
+                            )
+                        }
+                    }.fold(
+                        onSuccess = { report ->
+                            webPackExportState = WebPackExportUiState.Success(report)
+                            AppDiagnostics.info(
+                                "Web Pack exported: version=${report.packVersion}, output=${report.outputDirectory}",
+                            )
+                        },
+                        onFailure = { error ->
+                            val message = error.message ?: "${error::class.simpleName}: export could not be completed"
+                            webPackExportState = WebPackExportUiState.Failure(message)
+                            AppDiagnostics.warning("Web Pack export failed: $message", error)
+                        },
+                    )
+                }
+            },
             onAiControlChange = { enabled ->
                 uiScope.launch {
                     aiPreferenceError = null

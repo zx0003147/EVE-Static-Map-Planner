@@ -29,4 +29,5 @@ include(
     ":marker-application",
     ":sde",
     ":shared-client",
+    ":web-pack",
 )

@@ -20,3 +20,5 @@ replay_pid*
 .toolchains/
 *.zip
 *.msi
+web-loader/data/
+EVE-Web-Pack/
