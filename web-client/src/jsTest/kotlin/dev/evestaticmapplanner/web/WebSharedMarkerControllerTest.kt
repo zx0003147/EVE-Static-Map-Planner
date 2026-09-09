@@ -109,15 +109,98 @@ class WebSharedMarkerControllerTest {
     @Test
     fun `auth expiry clears the in-memory session and requires another invite`() = runTest {
         val client = FakeSharedMarkerClient()
-        val controller = controller(client)
+        val store = MemoryWebDeviceSessionStore()
+        val controller = controller(client, store)
         controller.connect("https://marker.example.com", "esm_inv_once")
+        assertTrue(store.value != null)
         client.failure = failure(SharedMarkerTransportErrorKind.AUTHENTICATION, "expired")
 
         controller.refreshNow()
         assertEquals(WebSharedMarkerStatus.AUTH_FAILED, controller.state.status)
         assertTrue(controller.state.error.orEmpty().contains("new Invite Code"))
+        assertNull(store.value)
         controller.refreshNow()
         assertEquals(1, client.exchangeCalls)
+    }
+
+    @Test
+    fun `remembered Device Token restores a validated session without another Invite`() = runTest {
+        val client = FakeSharedMarkerClient(routeFeature = true)
+        val store = MemoryWebDeviceSessionStore()
+        val first = controller(client, store)
+        first.connect("https://marker.example.com", "esm_inv_once", "Browser PWA", rememberDevice = true)
+
+        assertEquals("esm_dev_memory", store.value?.accessToken)
+        assertEquals(WORKSPACE_ID, store.value?.workspaceId)
+        assertFalse(store.value.toString().contains("esm_dev_memory"))
+        first.close()
+
+        val reopened = controller(client, store)
+        assertTrue(reopened.restoreRememberedDevice())
+        assertEquals(WebSharedMarkerStatus.CONNECTED, reopened.state.status)
+        assertEquals(WORKSPACE_ID, reopened.state.workspace?.workspaceId)
+        assertEquals("Browser PWA", reopened.state.deviceName)
+        assertEquals(1, client.exchangeCalls)
+
+        reopened.disconnect()
+        assertNull(store.value)
+        assertEquals(WebSharedMarkerStatus.DISCONNECTED, reopened.state.status)
+    }
+
+    @Test
+    fun `ephemeral connect is not restored and invalid remembered token is cleared`() = runTest {
+        val ephemeralStore = MemoryWebDeviceSessionStore()
+        val ephemeral = controller(FakeSharedMarkerClient(), ephemeralStore)
+        ephemeral.connect("https://marker.example.com", "esm_inv_once", rememberDevice = false)
+        assertNull(ephemeralStore.value)
+        assertFalse(controller(FakeSharedMarkerClient(), ephemeralStore).restoreRememberedDevice())
+
+        val rememberedStore = MemoryWebDeviceSessionStore(
+            RememberedWebDeviceSession("https://marker.example.com", "esm_dev_revoked", "Browser", WORKSPACE_ID),
+        )
+        val revokedClient = FakeSharedMarkerClient().apply {
+            failure = failure(SharedMarkerTransportErrorKind.AUTHENTICATION, "revoked")
+        }
+        val restored = controller(revokedClient, rememberedStore)
+        assertFalse(restored.restoreRememberedDevice())
+        assertNull(rememberedStore.value)
+        assertEquals(WebSharedMarkerStatus.AUTH_FAILED, restored.state.status)
+
+        val expiredStore = MemoryWebDeviceSessionStore(
+            RememberedWebDeviceSession("https://marker.example.com", "esm_dev_expired", "PWA", WORKSPACE_ID),
+        )
+        val expiredClient = FakeSharedMarkerClient().apply {
+            failure = failure(SharedMarkerTransportErrorKind.AUTHENTICATION, "expired")
+        }
+        val expired = controller(expiredClient, expiredStore)
+        assertFalse(expired.restoreRememberedDevice())
+        assertNull(expiredStore.value)
+        assertEquals(WebSharedMarkerStatus.AUTH_FAILED, expired.state.status)
+
+        val corruptStore = MemoryWebDeviceSessionStore(loadFailure = IllegalStateException("corrupt"))
+        val corrupt = controller(FakeSharedMarkerClient(), corruptStore)
+        assertFalse(corrupt.restoreRememberedDevice())
+        assertEquals(1, corruptStore.clearCalls)
+        assertEquals(WebSharedMarkerStatus.AUTH_FAILED, corrupt.state.status)
+    }
+
+    @Test
+    fun `publisher deletes Desktop Route immediately and refresh cannot revive it`() = runTest {
+        val client = FakeSharedMarkerClient(routeFeature = true)
+        val controller = controller(client)
+        controller.connect("https://marker.example.com", "esm_inv_once")
+
+        assertTrue(controller.deleteRouteHandoff(SHARED_ROUTE_HANDOFF_ID))
+        assertTrue(controller.state.routeHandoffs.isEmpty())
+        assertEquals(1, client.routeDeleteCalls)
+        controller.refreshNow()
+        assertTrue(controller.state.routeHandoffs.isEmpty())
+
+        client.routeHandoffs += routeHandoff()
+        controller.refreshNow()
+        client.routeDeleteFailure = failure(SharedMarkerTransportErrorKind.SERVER, "delete unavailable")
+        assertFalse(controller.deleteRouteHandoff(SHARED_ROUTE_HANDOFF_ID))
+        assertTrue(controller.state.error.orEmpty().contains("delete unavailable"))
     }
 
     @Test
@@ -153,12 +236,16 @@ class WebSharedMarkerControllerTest {
         assertTrue(controller.state.markers.isEmpty())
     }
 
-    private fun kotlinx.coroutines.test.TestScope.controller(client: FakeSharedMarkerClient) = WebSharedMarkerController(
+    private fun kotlinx.coroutines.test.TestScope.controller(
+        client: FakeSharedMarkerClient,
+        store: WebDeviceSessionStore = EphemeralWebDeviceSessionStore,
+    ) = WebSharedMarkerController(
         client,
         backgroundScope,
         onStateChanged = {},
         idempotencyKeyFactory = { IDEMPOTENCY_ID },
         pollingEnabled = false,
+        sessionStore = store,
     )
 }
 
@@ -174,6 +261,9 @@ private class FakeSharedMarkerClient(
     var exchangeCalls = 0
     var createCalls = 0
     var routeReadCalls = 0
+    var routeDeleteCalls = 0
+    var routeDeleteFailure: SharedMarkerTransportException? = null
+    val routeHandoffs = mutableListOf(routeHandoff())
 
     override suspend fun getMeta(serverOrigin: String): MetaResponseDto {
         failure?.let { throw it }
@@ -258,7 +348,19 @@ private class FakeSharedMarkerClient(
         workspaceId: String,
     ): RouteHandoffListResponseDto {
         routeReadCalls++
-        return RouteHandoffListResponseDto("2026-09-08T01:00:00Z", listOf(routeHandoff()))
+        return RouteHandoffListResponseDto("2026-09-08T01:00:00Z", routeHandoffs.toList())
+    }
+
+    override suspend fun deleteRouteHandoff(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+        handoffId: String,
+        idempotencyKey: String,
+    ) {
+        routeDeleteCalls++
+        routeDeleteFailure?.let { throw it }
+        routeHandoffs.removeAll { it.routeHandoffId == handoffId }
     }
 
     companion object {
@@ -285,6 +387,26 @@ private class FakeSharedMarkerClient(
             "2026-09-01T00:00:00Z",
             version,
         )
+    }
+}
+
+private class MemoryWebDeviceSessionStore(
+    var value: RememberedWebDeviceSession? = null,
+    private val loadFailure: Throwable? = null,
+) : WebDeviceSessionStore {
+    var clearCalls: Int = 0
+        private set
+
+    override suspend fun load(): RememberedWebDeviceSession? {
+        loadFailure?.let { throw it }
+        return value?.copy()
+    }
+    override suspend fun save(session: RememberedWebDeviceSession) {
+        value = session.copy()
+    }
+    override suspend fun clear() {
+        clearCalls++
+        value = null
     }
 }
 

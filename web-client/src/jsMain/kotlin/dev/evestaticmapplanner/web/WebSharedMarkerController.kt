@@ -46,6 +46,8 @@ data class WebSharedMarkerState(
     val requestId: String? = null,
     val reconnectAttempt: Int = 0,
     val routeHandoffs: List<RouteHandoffDto> = emptyList(),
+    val deviceName: String = DEFAULT_WEB_DEVICE_NAME,
+    val rememberDevice: Boolean = true,
 ) {
     val canWrite: Boolean
         get() = status == WebSharedMarkerStatus.CONNECTED && workspace?.role in setOf("EDITOR", "ADMIN")
@@ -79,18 +81,36 @@ class WebSharedMarkerController(
     private val delayFunction: suspend (Long) -> Unit = { delay(it) },
     private val idempotencyKeyFactory: () -> String = ::browserUuid,
     private val pollingEnabled: Boolean = true,
+    private val sessionStore: WebDeviceSessionStore = EphemeralWebDeviceSessionStore,
 ) : AutoCloseable {
     var state: WebSharedMarkerState = WebSharedMarkerState()
         private set
 
     private var accessToken: String? = null
+    private var expectedWorkspaceId: String? = null
     private var pollJob: Job? = null
     private var closed = false
 
-    suspend fun connect(rawServerUrl: String, inviteCode: String, deviceName: String = DEFAULT_WEB_DEVICE_NAME) {
+    suspend fun connect(
+        rawServerUrl: String,
+        inviteCode: String,
+        deviceName: String = DEFAULT_WEB_DEVICE_NAME,
+        rememberDevice: Boolean = true,
+    ) {
         ensureOpen()
         stopPolling()
         clearCredential()
+        val clearedPreviousSession = runCatching { sessionStore.clear() }.isSuccess
+        if (!rememberDevice && !clearedPreviousSession) {
+            publish(
+                WebSharedMarkerState(
+                    status = WebSharedMarkerStatus.FAILED,
+                    error = "This browser could not clear its remembered Device Token. Clear site data before using an ephemeral session.",
+                    rememberDevice = false,
+                ),
+            )
+            return
+        }
         val origin = try {
             normalizeSharedServerOrigin(rawServerUrl)
         } catch (error: IllegalArgumentException) {
@@ -117,6 +137,8 @@ class WebSharedMarkerController(
                 status = WebSharedMarkerStatus.CONNECTING,
                 serverOrigin = origin,
                 message = "Connecting to Shared Marker…",
+                deviceName = normalizedDevice,
+                rememberDevice = rememberDevice,
             ),
         )
         try {
@@ -126,6 +148,7 @@ class WebSharedMarkerController(
             canonicalUuid(exchanged.tokenId)
             require(exchanged.accessToken.isNotBlank()) { "Access token is invalid." }
             accessToken = exchanged.accessToken
+            expectedWorkspaceId = exchangedWorkspace.workspaceId
             publish(
                 state.copy(
                     workspace = exchangedWorkspace,
@@ -134,7 +157,15 @@ class WebSharedMarkerController(
                     error = null,
                 ),
             )
+            val persisted = !rememberDevice || persistCurrentSession()
             refreshAuthenticated(meta)
+            if (!persisted) {
+                publish(
+                    state.copy(
+                        error = "Shared Marker is connected, but this browser could not remember the Device Token.",
+                    ),
+                )
+            }
             startPolling()
         } catch (error: CancellationException) {
             throw error
@@ -144,9 +175,67 @@ class WebSharedMarkerController(
         }
     }
 
+    suspend fun restoreRememberedDevice(): Boolean {
+        ensureOpen()
+        val remembered = try {
+            sessionStore.load()
+        } catch (_: Throwable) {
+            runCatching { sessionStore.clear() }
+            publish(
+                WebSharedMarkerState(
+                    status = WebSharedMarkerStatus.AUTH_FAILED,
+                    error = "The remembered Shared Marker session could not be read. Use a new Invite Code to reconnect.",
+                ),
+            )
+            return false
+        } ?: return false
+        val origin: String
+        val workspaceId: String
+        val normalizedDevice = remembered.deviceName.trim()
+        try {
+            origin = normalizeSharedServerOrigin(remembered.serverOrigin)
+            workspaceId = canonicalUuid(remembered.workspaceId)
+            require(remembered.accessToken.isNotBlank()) { "Device Token is missing." }
+            require(normalizedDevice.isNotEmpty() && normalizedDevice.length <= 80) { "Device name is invalid." }
+        } catch (_: Throwable) {
+            runCatching { sessionStore.clear() }
+            publish(
+                WebSharedMarkerState(
+                    status = WebSharedMarkerStatus.AUTH_FAILED,
+                    error = "The remembered Shared Marker session is invalid. Use a new Invite Code to reconnect.",
+                ),
+            )
+            return false
+        }
+        stopPolling()
+        accessToken = remembered.accessToken
+        expectedWorkspaceId = workspaceId
+        publish(
+            WebSharedMarkerState(
+                status = WebSharedMarkerStatus.CONNECTING,
+                serverOrigin = origin,
+                message = "Restoring remembered Shared Marker session…",
+                deviceName = normalizedDevice,
+                rememberDevice = true,
+            ),
+        )
+        return try {
+            val meta = client.getMeta(origin).validated()
+            refreshAuthenticated(meta)
+            startPolling()
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            handleFailure(error, initial = false)
+            if (accessToken != null && state.status == WebSharedMarkerStatus.RECONNECTING) startPolling()
+            false
+        }
+    }
+
     suspend fun refreshNow() {
         ensureOpen()
-        if (accessToken == null || state.serverOrigin == null || state.workspace == null || state.busy) return
+        if (accessToken == null || state.serverOrigin == null || expectedWorkspaceId == null || state.busy) return
         try {
             refreshAuthenticated()
         } catch (error: CancellationException) {
@@ -215,6 +304,73 @@ class WebSharedMarkerController(
         )
     }
 
+    suspend fun deleteRouteHandoff(handoffId: String): Boolean {
+        ensureOpen()
+        if (state.busy) return false
+        val canonicalHandoffId = canonicalUuid(handoffId)
+        val handoff = state.routeHandoffs.singleOrNull { it.routeHandoffId == canonicalHandoffId } ?: return false
+        val workspace = state.workspace
+        val canDelete = state.canWrite &&
+            (workspace?.role == "ADMIN" || workspace?.memberId == handoff.publisher.memberId)
+        if (!canDelete) {
+            publish(state.copy(error = "Only the publisher or a Workspace ADMIN can delete this Desktop Route."))
+            return false
+        }
+        publish(state.copy(busy = true, error = null, message = null))
+        return try {
+            val context = writeContext()
+            client.deleteRouteHandoff(
+                context.origin,
+                context.token,
+                context.workspaceId,
+                canonicalHandoffId,
+                idempotencyKeyFactory(),
+            )
+            publish(
+                state.copy(
+                    busy = false,
+                    routeHandoffs = state.routeHandoffs.filterNot { it.routeHandoffId == canonicalHandoffId },
+                    message = "Desktop Route deleted.",
+                    error = null,
+                ),
+            )
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            val transport = (error as? SharedMarkerTransportException)?.error
+            if (transport?.kind == SharedMarkerTransportErrorKind.NOT_FOUND) {
+                publish(
+                    state.copy(
+                        busy = false,
+                        routeHandoffs = state.routeHandoffs.filterNot { it.routeHandoffId == canonicalHandoffId },
+                        error = "The Desktop Route was already deleted or is no longer available.",
+                        requestId = transport.requestId,
+                    ),
+                )
+            } else if (transport?.kind in setOf(
+                    SharedMarkerTransportErrorKind.NETWORK,
+                    SharedMarkerTransportErrorKind.SERVER,
+                    SharedMarkerTransportErrorKind.AUTHENTICATION,
+                    SharedMarkerTransportErrorKind.FORBIDDEN,
+                )
+            ) {
+                handleFailure(error, initial = false)
+            } else {
+                publish(
+                    state.copy(
+                        busy = false,
+                        error = transport?.message ?: error.message ?: "Desktop Route deletion failed.",
+                        requestId = transport?.requestId,
+                    ),
+                )
+            }
+            false
+        } finally {
+            if (state.busy) publish(state.copy(busy = false))
+        }
+    }
+
     fun selectMarker(markerId: String?) {
         val selected = markerId?.takeIf(state.markers::containsKey)
         if (selected != state.selectedMarkerId) publish(state.copy(selectedMarkerId = selected))
@@ -224,15 +380,21 @@ class WebSharedMarkerController(
         selectMarker(systemId?.let(state.markersBySystemId::get)?.markerId)
     }
 
-    fun disconnect() {
+    suspend fun disconnect() {
         if (closed) return
         stopPolling()
         clearCredential()
+        val storageError = runCatching { sessionStore.clear() }.exceptionOrNull()
         publish(
             WebSharedMarkerState(
                 status = WebSharedMarkerStatus.DISCONNECTED,
                 serverOrigin = state.serverOrigin,
                 message = "Disconnected from Shared Marker.",
+                error = storageError?.let {
+                    "The in-memory session was cleared, but browser storage could not be cleared. Clear this site's data before closing the browser."
+                },
+                deviceName = state.deviceName,
+                rememberDevice = state.rememberDevice,
             ),
         )
     }
@@ -254,7 +416,7 @@ class WebSharedMarkerController(
     private suspend fun refreshAuthenticated(knownMeta: MetaResponseDto? = null) {
         val origin = checkNotNull(state.serverOrigin)
         val token = checkNotNull(accessToken)
-        val expectedWorkspace = checkNotNull(state.workspace).workspaceId
+        val expectedWorkspace = checkNotNull(expectedWorkspaceId)
         val meta = (knownMeta ?: client.getMeta(origin)).validated()
         val me = client.getMe(origin, token).validated()
         val workspaces = client.getWorkspaces(origin, token).workspaces.map(WorkspaceDto::validated)
@@ -363,16 +525,21 @@ class WebSharedMarkerController(
         }
     }
 
-    private fun handleFailure(error: Throwable, initial: Boolean) {
+    private suspend fun handleFailure(error: Throwable, initial: Boolean) {
         val transport = (error as? SharedMarkerTransportException)?.error
         val kind = transport?.kind ?: SharedMarkerTransportErrorKind.INVALID_RESPONSE
         when (kind) {
             SharedMarkerTransportErrorKind.AUTHENTICATION -> {
                 stopPolling()
                 clearCredential()
+                runCatching { sessionStore.clear() }
                 publish(
                     state.copy(
                         status = WebSharedMarkerStatus.AUTH_FAILED,
+                        workspace = null,
+                        markers = emptyMap(),
+                        routeHandoffs = emptyList(),
+                        selectedMarkerId = null,
                         busy = false,
                         message = null,
                         error = "Authentication expired or was revoked. Enter a new Invite Code to reconnect.",
@@ -385,9 +552,11 @@ class WebSharedMarkerController(
             -> {
                 stopPolling()
                 clearCredential()
+                runCatching { sessionStore.clear() }
                 publish(
                     state.copy(
                         status = WebSharedMarkerStatus.FORBIDDEN,
+                        workspace = null,
                         markers = emptyMap(),
                         routeHandoffs = emptyList(),
                         selectedMarkerId = null,
@@ -414,15 +583,19 @@ class WebSharedMarkerController(
                     ),
                 )
             }
-            else -> publish(
-                state.copy(
-                    status = WebSharedMarkerStatus.FAILED,
-                    busy = false,
-                    message = null,
-                    error = transport?.message ?: error.message ?: "Shared Marker response is invalid.",
-                    requestId = transport?.requestId,
-                ),
-            )
+            else -> {
+                stopPolling()
+                clearCredential()
+                publish(
+                    state.copy(
+                        status = WebSharedMarkerStatus.FAILED,
+                        busy = false,
+                        message = null,
+                        error = transport?.message ?: error.message ?: "Shared Marker response is invalid.",
+                        requestId = transport?.requestId,
+                    ),
+                )
+            }
         }
     }
 
@@ -449,6 +622,25 @@ class WebSharedMarkerController(
 
     private fun clearCredential() {
         accessToken = null
+        expectedWorkspaceId = null
+    }
+
+    private suspend fun persistCurrentSession(): Boolean {
+        val token = checkNotNull(accessToken)
+        val workspaceId = checkNotNull(expectedWorkspaceId)
+        return try {
+            sessionStore.save(
+                RememberedWebDeviceSession(
+                    serverOrigin = checkNotNull(state.serverOrigin),
+                    accessToken = token,
+                    deviceName = state.deviceName,
+                    workspaceId = workspaceId,
+                ),
+            )
+            true
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun ensureOpen() = check(!closed) { "Shared Marker controller is closed." }

@@ -353,7 +353,7 @@ class SharedMapSession(
     suspend fun getMembers(): List<SharedMember> = lifecycleMutex.withLock {
         val context = activeContext(SharedWorkspaceRole.ADMIN)
         try {
-            client.getMembers(context.server, context.token, context.workspaceId)
+            client.getMembers(context.server, context.token, context.workspaceId).filter { it.isActive }
         } catch (error: Exception) {
             handleOperationFailure(error)
             throw error

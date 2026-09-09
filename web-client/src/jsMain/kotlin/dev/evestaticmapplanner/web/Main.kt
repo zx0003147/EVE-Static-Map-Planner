@@ -42,6 +42,7 @@ fun main() {
                 client = BrowserSharedMarkerTransport(),
                 scope = scope,
                 onStateChanged = { state -> app.renderSharedMarkers(state) },
+                sessionStore = IndexedDbWebDeviceSessionStore(),
             )
             startupStage = "Web UI construction"
             app = WebApplication(
@@ -139,6 +140,10 @@ private class WebApplication(
         renderPlanner(planner.state)
         renderSharedMarkers(sharedMarkers.state)
         mapView.fit()
+        scope.launch {
+            sharedMarkers.restoreRememberedDevice()
+            sharedMarkers.state.serverOrigin?.let(::saveSharedServerUrl)
+        }
     }
 
     fun diagnostics(): dynamic {
@@ -232,14 +237,15 @@ private class WebApplication(
             val serverUrl = element<HTMLInputElementCompat>("shared-server-url").value
             val invite = element<HTMLInputElementCompat>("shared-invite-code").value
             val deviceName = element<HTMLInputElementCompat>("shared-device-name").value
+            val rememberDevice = element<HTMLInputElementCompat>("shared-remember-device").checked
             element<HTMLInputElementCompat>("shared-invite-code").value = ""
             scope.launch {
-                sharedMarkers.connect(serverUrl, invite, deviceName)
+                sharedMarkers.connect(serverUrl, invite, deviceName, rememberDevice)
                 sharedMarkers.state.serverOrigin?.takeIf { sharedMarkers.state.status == WebSharedMarkerStatus.CONNECTED }
                     ?.let(::saveSharedServerUrl)
             }
         }
-        click("shared-disconnect") { sharedMarkers.disconnect() }
+        click("shared-disconnect") { scope.launch { sharedMarkers.disconnect() } }
         click("shared-refresh-routes") { scope.launch { sharedMarkers.refreshNow() } }
         click("shared-create-selected") {
             val systemId = planner.state.selectedSystemId
@@ -350,7 +356,11 @@ private class WebApplication(
         val panels = document.querySelectorAll("[data-tool-panel]")
         for (index in 0 until panels.length) {
             val panel = panels.item(index) as? HTMLElement ?: continue
-            panel.classList.toggle("tool-section-active", panel.getAttribute("data-tool-panel") == tool)
+            val selected = panel.getAttribute("data-tool-panel") == tool
+            panel.classList.toggle("tool-section-active", selected)
+            if (selected && window.matchMedia("(max-width: 1280px), (pointer: coarse)").matches) {
+                panel.asDynamic().open = true
+            }
         }
         val tabs = document.querySelectorAll("[data-tool-tab]")
         for (index in 0 until tabs.length) {
@@ -614,6 +624,14 @@ private class WebApplication(
     }
 
     private fun renderSharedMarkerPanel(state: WebSharedMarkerState) {
+        state.serverOrigin?.let { syncInputUnlessEditing("shared-server-url", it) }
+        syncInputUnlessEditing("shared-device-name", state.deviceName)
+        element<HTMLInputElementCompat>("shared-remember-device").checked = state.rememberDevice
+        element<HTMLElement>("shared-credential-note").textContent = if (state.rememberDevice) {
+            "When connected, the Device Token is remembered in this browser's IndexedDB. Disconnect clears it. Invite Codes are never saved."
+        } else {
+            "This is an ephemeral session. Reloading or closing the browser will require a new Invite Code."
+        }
         element<HTMLElement>("shared-status").apply {
             textContent = if (!online) "Offline · Shared Marker unavailable" else when (state.status) {
                 WebSharedMarkerStatus.DISCONNECTED -> "Disconnected"
@@ -707,6 +725,19 @@ private class WebApplication(
                 planner.loadRouteHandoff(handoff)
                 selectTool(if (handoff.type == "CAPITAL") "capital" else "route")
             })
+            val canDelete = state.canWrite &&
+                (state.workspace?.role == "ADMIN" || state.workspace?.memberId == handoff.publisher.memberId)
+            if (canDelete) {
+                row.appendChild(actionButton("×", true, "Delete published Desktop route") {
+                    if (window.confirm("Delete this published route?")) {
+                        scope.launch {
+                            if (!sharedMarkers.deleteRouteHandoff(handoff.routeHandoffId)) {
+                                showTransientError(sharedMarkers.state.error ?: "Desktop Route deletion failed.")
+                            }
+                        }
+                    }
+                })
+            }
             container.appendChild(row)
         }
     }

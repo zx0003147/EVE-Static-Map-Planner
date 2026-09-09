@@ -120,15 +120,19 @@ the last in-memory snapshot remains visible as stale in degraded mode; it is nev
 disk cache. Disconnecting clears Shared Marker state without affecting local markers or AI Missions.
 
 The Web client is also a Protocol v1 Shared Marker client. It preserves the Server URL + single-use Invite Code
-workflow and supports role-aware list, map display, locate, create, edit, delete, polling, and reconnect. Web keeps
-the issued Device Access Token in memory only and saves only the last successful Server URL; reload requires a fresh
-invite. Cross-origin deployment requires the server's exact `SHARED_MAP_ALLOWED_ORIGINS` allowlist, and production
-Web/server origins must both use HTTPS. See [`docs/web-client.md`](docs/web-client.md).
+workflow and supports role-aware list, map display, locate, create, edit, delete, polling, and reconnect. With
+**Remember this device** enabled (the default), Web stores only the Server origin, Device Access Token, device name,
+and Workspace ID in browser IndexedDB and validates the credential against `/me` and `/workspaces` on every restore.
+Invalid, expired, revoked, or mismatched credentials are deleted. Disconnect removes the browser credential without
+revoking the server device; disabling Remember keeps it session-only. Cross-origin deployment requires the server's
+exact `SHARED_MAP_ALLOWED_ORIGINS` allowlist, and production Web/server origins must both use HTTPS. See
+[`docs/web-client.md`](docs/web-client.md).
 
 When the Server advertises the optional Protocol v1 `route-handoffs` feature, Desktop can publish the current Normal
 or Capital route from its corresponding panel. Web members of the same Workspace see recent Desktop routes and may
 explicitly load one; intent and the exact resolved snapshot travel together, and a Web Pack/SDE mismatch is shown
-instead of silently recalculating a different route. Viewer can read; Editor/Admin can publish.
+instead of silently recalculating a different route. Viewer can read; Editor/Admin can publish. A publisher may
+delete their own handoff, and an Admin may delete any handoff in the Workspace.
 
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
 visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.4.0.

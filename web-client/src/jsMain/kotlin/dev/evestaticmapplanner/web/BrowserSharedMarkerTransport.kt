@@ -110,6 +110,13 @@ interface SharedMarkerClient {
         request: PublishRouteHandoffRequestDto,
         idempotencyKey: String = browserUuid(),
     ): RouteHandoffDto = throw UnsupportedOperationException("Route Handoffs are not implemented")
+    suspend fun deleteRouteHandoff(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+        handoffId: String,
+        idempotencyKey: String = browserUuid(),
+    ): Unit = throw UnsupportedOperationException("Route Handoff deletion is not implemented")
 }
 
 enum class SharedMarkerTransportErrorKind {
@@ -213,6 +220,24 @@ class BrowserSharedMarkerTransport(
         idempotencyKey = canonicalUuid(idempotencyKey),
         body = SHARED_MAP_PROTOCOL_JSON.encodeToString(request),
     )
+
+    override suspend fun deleteRouteHandoff(
+        serverOrigin: String,
+        accessToken: String,
+        workspaceId: String,
+        handoffId: String,
+        idempotencyKey: String,
+    ) {
+        unitRequest(
+            "DELETE",
+            endpoint(
+                serverOrigin,
+                "/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs/${canonicalUuid(handoffId)}",
+            ),
+            accessToken = accessToken,
+            idempotencyKey = canonicalUuid(idempotencyKey),
+        )
+    }
 
     override suspend fun updateMarker(
         serverOrigin: String,

@@ -50,24 +50,29 @@
           <button data-tool-tab="ansiblex" class="secondary" aria-pressed="false">Ansiblex</button>
           <button data-tool-tab="shared" class="secondary" aria-pressed="false">Shared</button>
         </nav>
-        <section data-tool-panel="search" class="tool-section-active">
-          <h2>Search</h2>
+        <details data-tool-panel="search" class="tool-section-active" open>
+          <summary>Search</summary>
+          <div class="accordion-content">
           <div class="picker">
             <input id="global-search" type="search" autocomplete="off" placeholder="System name or ID" aria-label="Search solar systems" />
             <div id="global-results" class="search-results hidden"></div>
           </div>
-          <details open>
+          <details class="nested-accordion">
             <summary>Map LOD</summary>
+            <div class="accordion-content">
             <label for="constellation-threshold">Constellation zoom threshold</label>
             <input id="constellation-threshold" type="number" min="0.1" max="249.9" step="0.1" value="2" />
             <label for="system-threshold">System zoom threshold</label>
             <input id="system-threshold" type="number" min="0.2" max="250" step="0.1" value="6" />
             <div class="button-row"><button id="save-map-lod">Save</button><button id="reset-map-lod" class="secondary">Reset Defaults</button></div>
+            </div>
           </details>
-        </section>
+          </div>
+        </details>
 
-        <details data-tool-panel="route" open>
+        <details data-tool-panel="route">
           <summary>Normal Route</summary>
+          <div class="accordion-content">
           <label>Origin</label>
           <div class="picker-row">
             <div class="picker grow"><input id="route-from" autocomplete="off" placeholder="From" /><div id="route-from-results" class="search-results hidden"></div></div>
@@ -87,10 +92,12 @@
           <label class="toggle"><input id="use-ansiblex" type="checkbox" /> Use active Ansiblex</label>
           <div class="button-row"><button id="calculate-route">Calculate</button><button id="clear-route" class="secondary">Clear</button></div>
           <pre id="route-summary" class="summary"></pre>
+          </div>
         </details>
 
-        <details data-tool-panel="capital" open>
+        <details data-tool-panel="capital">
           <summary>Capital Route</summary>
+          <div class="accordion-content">
           <label>Origin</label>
           <div class="picker-row">
             <div class="picker grow"><input id="capital-from" autocomplete="off" placeholder="Capital origin" /><div id="capital-from-results" class="search-results hidden"></div></div>
@@ -111,10 +118,12 @@
           <input id="capital-range" type="number" min="0.1" max="50" step="0.1" value="5" />
           <div class="button-row"><button id="calculate-capital">Calculate</button><button id="clear-capital" class="secondary">Clear</button></div>
           <pre id="capital-summary" class="summary"></pre>
+          </div>
         </details>
 
-        <details data-tool-panel="coverage" open>
+        <details data-tool-panel="coverage">
           <summary>Jump Range &amp; Coverage</summary>
+          <div class="accordion-content">
           <label>Source system</label>
           <div class="picker-row">
             <div class="picker grow"><input id="jump-source" autocomplete="off" placeholder="Coverage source" /><div id="jump-source-results" class="search-results hidden"></div></div>
@@ -125,10 +134,12 @@
           <div class="button-row"><button id="add-jump-range">Add Range</button><button id="clear-jump-ranges" class="secondary">Clear All</button></div>
           <div id="coverage-summary" class="summary-line">Coverage: none</div>
           <div id="overlay-list" class="item-list empty"></div>
+          </div>
         </details>
 
-        <details data-tool-panel="ansiblex" open>
+        <details data-tool-panel="ansiblex">
           <summary>Personal Ansiblex</summary>
+          <div class="accordion-content">
           <p class="credential-note">CSV/JSON connections remain only in this browser. They work offline and are merged with, but never written into, the Web Pack.</p>
           <label for="personal-ansiblex-file">Import CSV or JSON</label>
           <input id="personal-ansiblex-file" type="file" accept=".csv,.json,text/csv,application/json" />
@@ -136,10 +147,12 @@
           <div class="button-row"><button id="apply-personal-ansiblex" disabled>Apply</button><button id="cancel-personal-ansiblex" class="secondary" disabled>Cancel</button></div>
           <div id="personal-ansiblex-list" class="item-list empty">No Personal Ansiblex</div>
           <button id="clear-personal-ansiblex" class="danger" disabled>Clear Personal Ansiblex</button>
+          </div>
         </details>
 
-        <details data-tool-panel="shared" open>
+        <details data-tool-panel="shared">
           <summary>Shared Markers</summary>
+          <div class="accordion-content">
           <div id="shared-status" class="shared-status disconnected">Disconnected</div>
           <label for="shared-server-url">Server URL</label>
           <input id="shared-server-url" type="url" autocomplete="url" placeholder="https://marker.example.com" />
@@ -147,15 +160,21 @@
           <input id="shared-invite-code" type="password" autocomplete="off" placeholder="One-time invite" />
           <label for="shared-device-name">Device name</label>
           <input id="shared-device-name" autocomplete="off" maxlength="80" value="EVE Static Map Planner Web" />
+          <label class="toggle"><input id="shared-remember-device" type="checkbox" checked /> Remember this device</label>
           <div class="button-row"><button id="shared-connect">Connect</button><button id="shared-disconnect" class="secondary">Disconnect</button></div>
-          <p class="credential-note">The Invite Code is exchanged once. The Device Token stays only in this tab and is cleared on reload.</p>
+          <p id="shared-credential-note" class="credential-note">When connected, the Device Token is remembered in this browser's IndexedDB. Disconnect clears it. Invite Codes are never saved.</p>
           <p id="shared-error" class="inline-error hidden"></p>
           <div class="button-row"><button id="shared-create-selected">Create at Selected</button></div>
           <div id="shared-marker-list" class="item-list empty">Connect to load markers</div>
-          <hr />
-          <div class="section-title-row"><strong>Desktop Routes</strong><button id="shared-refresh-routes" class="secondary compact">Refresh</button></div>
-          <p id="desktop-route-status" class="credential-note">Connect to check for Desktop routes.</p>
-          <div id="desktop-route-list" class="item-list empty">No Desktop routes loaded</div>
+          <details id="desktop-routes-section" class="nested-accordion">
+            <summary>Desktop Routes</summary>
+            <div class="accordion-content">
+              <div class="section-title-row"><span></span><button id="shared-refresh-routes" class="secondary compact">Refresh</button></div>
+              <p id="desktop-route-status" class="credential-note">Connect to check for Desktop routes.</p>
+              <div id="desktop-route-list" class="item-list empty">No Desktop routes loaded</div>
+            </div>
+          </details>
+          </div>
         </details>
       </aside>
 

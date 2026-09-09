@@ -51,11 +51,17 @@ label { display: block; margin: 9px 0 4px; color: var(--muted); font-size: 12px;
 .tools-panel { grid-area: tools; border-right: 1px solid var(--border); }
 .info-panel { grid-area: info; border-left: 1px solid var(--border); }
 .scroll-panel { overflow-x: hidden; overflow-y: auto; padding: 12px; background: var(--panel); }
-section, details { margin: 0 0 12px; padding: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; }
+section, details { margin: 0 0 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; }
+section { padding: 10px; }
 section h2, section h3 { margin: 0 0 10px; }
 section h2 { font-size: 15px; }
 section h3 { font-size: 13px; }
-details > summary { margin: -12px -12px 8px; padding: 11px 12px; color: #e7f4fa; cursor: pointer; font-weight: 700; }
+details { padding: 0; }
+details > summary { min-height: 40px; padding: 9px 11px; color: #e7f4fa; cursor: pointer; font-weight: 700; }
+details[open] > summary { border-bottom: 1px solid #1d3342; }
+.accordion-content { padding: 9px 10px 10px; }
+.nested-accordion { margin: 10px 0 0; background: #0c1925; }
+.nested-accordion > summary { font-size: 12px; }
 .picker { position: relative; }
 .picker-row { display: flex; align-items: flex-start; gap: 6px; }
 .grow { flex: 1; min-width: 0; }
@@ -82,7 +88,7 @@ details > summary { margin: -12px -12px 8px; padding: 11px 12px; color: #e7f4fa;
 .shared-status.offline { color: #ffd1a6; border-color: #9a683c; }
 .shared-status.auth_failed, .shared-status.forbidden, .shared-status.failed { color: #ffb5b5; border-color: #914450; }
 .credential-note { margin: 8px 0; color: var(--muted); font-size: 11px; }
-.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .route-handoff-row { align-items: flex-start; }
 .route-handoff-row span { white-space: normal; line-height: 1.35; }
 .inline-error { margin: 8px 0; padding: 7px; color: #ffd0d0; background: #3b1820; border-radius: 5px; font-size: 11px; overflow-wrap: anywhere; }
@@ -144,6 +150,7 @@ details > summary { margin: -12px -12px 8px; padding: 11px 12px; color: #e7f4fa;
   .tools-panel [data-tool-panel].tool-section-active { display: block; }
   .scroll-panel { overscroll-behavior: contain; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
   button, input, select { min-height: 44px; }
+  details > summary { display: flex; align-items: center; min-height: 44px; }
   textarea { min-height: 96px; }
   button.compact, button.icon-button { min-width: 44px; min-height: 44px; padding: 7px; }
   .search-result, .list-link { min-height: 44px; }

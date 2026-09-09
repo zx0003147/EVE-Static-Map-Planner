@@ -115,8 +115,12 @@ class BrowserSharedMarkerTransportTest {
         val requests = mutableListOf<BrowserHttpRequest>()
         val engine = BrowserHttpEngine { request ->
             requests += request
-            if (request.method == "GET") response("{\"generatedAt\":\"2026-09-08T01:00:00Z\",\"routeHandoffs\":[$ROUTE_HANDOFF_JSON]}")
-            else response(ROUTE_HANDOFF_JSON, 201)
+            when (request.method) {
+                "GET" -> response("{\"generatedAt\":\"2026-09-08T01:00:00Z\",\"routeHandoffs\":[$ROUTE_HANDOFF_JSON]}")
+                "POST" -> response(ROUTE_HANDOFF_JSON, 201)
+                "DELETE" -> response("", 204)
+                else -> error("Unexpected method ${request.method}")
+            }
         }
         val transport = BrowserSharedMarkerTransport(engine) { REQUEST_ID }
         val request = PublishRouteHandoffRequestDto(
@@ -131,9 +135,14 @@ class BrowserSharedMarkerTransportTest {
 
         assertEquals(ROUTE_HANDOFF_ID, transport.getRouteHandoffs("https://marker.example.com", "secret", WORKSPACE_ID).routeHandoffs.single().routeHandoffId)
         assertEquals(ROUTE_HANDOFF_ID, transport.publishRouteHandoff("https://marker.example.com", "secret", WORKSPACE_ID, request, IDEMPOTENCY_ID).routeHandoffId)
-        assertTrue(requests.all { it.url.endsWith("/api/v1/workspaces/$WORKSPACE_ID/route-handoffs") })
+        transport.deleteRouteHandoff("https://marker.example.com", "secret", WORKSPACE_ID, ROUTE_HANDOFF_ID, IDEMPOTENCY_ID)
+        assertTrue(requests.filter { it.method != "DELETE" }
+            .all { it.url.endsWith("/api/v1/workspaces/$WORKSPACE_ID/route-handoffs") })
+        assertTrue(requests.single { it.method == "DELETE" }.url
+            .endsWith("/api/v1/workspaces/$WORKSPACE_ID/route-handoffs/$ROUTE_HANDOFF_ID"))
         assertTrue(requests.all { it.headers["Authorization"] == "Bearer secret" })
         assertEquals(IDEMPOTENCY_ID, requests.single { it.method == "POST" }.headers["Idempotency-Key"])
+        assertEquals(IDEMPOTENCY_ID, requests.single { it.method == "DELETE" }.headers["Idempotency-Key"])
     }
 
     private fun response(body: String, status: Int = 200) = BrowserHttpResponse(

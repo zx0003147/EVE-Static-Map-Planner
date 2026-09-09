@@ -38,6 +38,8 @@ await send("Network.enable");
 await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
 await setViewport(1280, 800, 2);
 await reloadAndReady();
+await evaluate("navigator.serviceWorker.ready.then(() => true)");
+if (!await evaluate("navigator.serviceWorker?.controller != null")) await reloadAndReady();
 await waitFor("navigator.serviceWorker?.controller != null", 15_000);
 await reloadAndReady();
 
@@ -76,8 +78,50 @@ await capture("tablet-landscape-map.png");
 await evaluate("document.querySelector('#tools-toggle').click()");
 await waitFor("document.documentElement.classList.contains('tools-open')", 2_000);
 await delay(250);
+const accordionGeometry = await evaluate(`(() => {
+  const search = document.querySelector('[data-tool-panel=search]');
+  const mapLod = search.querySelector('.nested-accordion');
+  const expandedSearch = search.getBoundingClientRect().height;
+  search.open = false;
+  const collapsedSearch = search.getBoundingClientRect().height;
+  search.open = true;
+  return {
+    expandedSearch,
+    collapsedSearch,
+    mapLodOpen: mapLod.open,
+    collapsedMapLod: mapLod.getBoundingClientRect().height,
+  };
+})()`);
+assert.ok(accordionGeometry.collapsedSearch <= 50, `collapsed Search height ${accordionGeometry.collapsedSearch}`);
+assert.ok(accordionGeometry.expandedSearch >= accordionGeometry.collapsedSearch + 45);
+assert.equal(accordionGeometry.mapLodOpen, false, "Map LOD starts independently collapsed");
+assert.ok(accordionGeometry.collapsedMapLod <= 50, `collapsed Map LOD height ${accordionGeometry.collapsedMapLod}`);
 await evaluate("document.querySelector('[data-tool-tab=capital]').click()");
 assert.equal(await evaluate("document.querySelector('[data-tool-panel=capital]').classList.contains('tool-section-active')"), true);
+assert.equal(await evaluate("document.querySelector('[data-tool-panel=capital]').open"), true);
+const collapsedCapitalHeight = await evaluate(`(() => {
+  const panel = document.querySelector('[data-tool-panel=capital]');
+  panel.open = false;
+  return panel.getBoundingClientRect().height;
+})()`);
+assert.ok(collapsedCapitalHeight <= 50, `collapsed Capital height ${collapsedCapitalHeight}`);
+await evaluate("document.querySelector('[data-tool-panel=capital]').open = true");
+await evaluate("document.querySelector('[data-tool-tab=shared]').click()");
+const desktopRoutesGeometry = await evaluate(`(() => {
+  const panel = document.querySelector('#desktop-routes-section');
+  const collapsed = panel.getBoundingClientRect().height;
+  panel.open = true;
+  const expanded = panel.getBoundingClientRect().height;
+  panel.open = false;
+  return { collapsed, expanded };
+})()`);
+assert.ok(desktopRoutesGeometry.collapsed <= 50, `collapsed Desktop Routes height ${desktopRoutesGeometry.collapsed}`);
+assert.ok(desktopRoutesGeometry.expanded >= desktopRoutesGeometry.collapsed + 70);
+assert.equal(
+  await evaluate("document.querySelector('#shared-remember-device').checked"),
+  true,
+  "Remember this device defaults to enabled",
+);
 await capture("tablet-landscape-tools.png");
 await evaluate("document.querySelector('#tools-close').click()");
 

@@ -103,8 +103,8 @@ Roles are exactly:
 | Role | Allowed operations |
 | --- | --- |
 | `VIEWER` | Authenticate; read self, Workspace, Shared Markers, and advertised Route Handoffs |
-| `EDITOR` | Viewer operations plus create, update, and delete Shared Markers and publish Route Handoffs |
-| `ADMIN` | Editor operations plus member, invite, role, and membership-scoped device management |
+| `EDITOR` | Viewer operations plus create, update, and delete Shared Markers, publish Route Handoffs, and delete own Route Handoffs |
+| `ADMIN` | Editor operations plus delete any Workspace Route Handoff and manage members, invites, roles, memberships, and membership-scoped devices |
 
 An Admin cannot downgrade or remove the final active Admin. The server returns `LAST_ADMIN_REQUIRED`.
 
@@ -222,7 +222,10 @@ path, Waypoint occurrence/order, at most 50 Waypoints, 1–500 resolved systems,
 (`STARGATE`, `ANSIBLEX`, `WORMHOLE`), and Capital edge distances against the declared range. Request fields use a
 strict JSON schema and no token, settings, database, or unrelated Desktop state is accepted. Records expire after
 seven days and each Workspace retains at most the newest 20. Expired rows are excluded from reads and cleaned on
-publish. Audit metadata records only safe route summary fields.
+publish. A publisher may delete their own record; an Admin may delete any record in the Workspace. A Viewer is
+forbidden, while a non-owning Editor and a caller from another Workspace receive the same not-found result to avoid
+record enumeration. A repeated delete with the same idempotency key replays its success. Audit metadata records only
+safe route summary fields.
 
 ## 8. Exact REST endpoint catalog
 
@@ -244,7 +247,8 @@ All endpoints under `/api/v1` return the unified error body in section 10.
 | `DELETE /api/v1/workspaces/{workspaceId}/markers/{markerId}?expectedVersion={version}` | Bearer | Editor | Delete Shared Marker |
 | `GET /api/v1/workspaces/{workspaceId}/route-handoffs` | Bearer | Viewer | Newest non-expired Route Handoffs, bounded to 20 |
 | `POST /api/v1/workspaces/{workspaceId}/route-handoffs` | Bearer | Editor | Publish one validated Route Handoff |
-| `GET /api/v1/workspaces/{workspaceId}/members` | Bearer | Admin | List active and revoked members |
+| `DELETE /api/v1/workspaces/{workspaceId}/route-handoffs/{routeHandoffId}` | Bearer | Editor owner or Admin | Delete one Route Handoff |
+| `GET /api/v1/workspaces/{workspaceId}/members` | Bearer | Admin | List active members; revoked rows remain audit history only |
 | `POST /api/v1/workspaces/{workspaceId}/members` | Bearer | Admin | Create a user identity and membership |
 | `PATCH /api/v1/workspaces/{workspaceId}/members/{memberId}` | Bearer | Admin | Change display name and/or role |
 | `DELETE /api/v1/workspaces/{workspaceId}/members/{memberId}?expectedVersion={version}` | Bearer | Admin | Revoke membership and its devices |
@@ -626,7 +630,7 @@ users' private data.
 
 ## 12. Idempotency
 
-Create, update, delete, Route Handoff publish, member, role, invite, and device mutations require a client-generated UUID in
+Create, update, delete, Route Handoff publish/delete, member, role, invite, and device mutations require a client-generated UUID in
 `Idempotency-Key`. Invite exchange is excluded because replaying a server-generated plaintext credential would
 require persisting recoverable token plaintext.
 

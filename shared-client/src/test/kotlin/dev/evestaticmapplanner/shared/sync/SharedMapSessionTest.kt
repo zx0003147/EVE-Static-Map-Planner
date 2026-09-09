@@ -15,6 +15,7 @@ import dev.evestaticmapplanner.shared.model.SharedMarker
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedMarkerSnapshot
+import dev.evestaticmapplanner.shared.model.SharedMember
 import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedUser
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
@@ -474,6 +475,25 @@ class SharedMapSessionTest {
         session.close()
     }
 
+    @Test
+    fun `member management exposes only active members even with an older mixed server response`() = runTest {
+        val active = member("01991d62-1fcb-70d0-858b-1d65f6ce3cf1")
+        val removed = member(
+            "01991d62-1fcb-70d0-858b-1d65f6ce3cf2",
+            revokedAt = Instant.parse("2026-09-02T00:00:00Z"),
+        )
+        val client = FakeClient().apply {
+            workspace = workspace(WORKSPACE_A).copy(role = SharedWorkspaceRole.ADMIN)
+            members = listOf(active, removed)
+        }
+        val store = MemoryCredentialStore().apply { put(KEY_A, "esm_dev_saved") }
+        val session = session(client, store) {}
+        session.restore(CONFIG_A)
+
+        assertEquals(listOf(active), session.getMembers())
+        session.close()
+    }
+
     private fun TestScope.session(
         client: FakeClient,
         store: MemoryCredentialStore,
@@ -502,6 +522,7 @@ private class FakeClient(private val events: MutableList<String> = mutableListOf
     var markerCreateCalls = 0
     var routeReadCalls = 0
     var routePublishCalls = 0
+    var members: List<SharedMember> = emptyList()
     var calls = 0
     var metaCalls = 0
     var meCalls = 0
@@ -622,6 +643,12 @@ private class FakeClient(private val events: MutableList<String> = mutableListOf
         return routeHandoff().copy(route = draft)
     }
 
+    override suspend fun getMembers(
+        server: SharedServerUrl,
+        token: SecretValue,
+        workspaceId: String,
+    ): List<SharedMember> = members
+
     override fun close() {
         closed = true
     }
@@ -675,6 +702,17 @@ private val KEY_B = SharedCredentialKey(SERVER, WORKSPACE_B)
 private val CONFIG_A = SharedMapConfiguration(SERVER, WORKSPACE_A, "Laptop")
 
 private fun workspace(id: String) = SharedWorkspace(id, "Ops $id", SharedWorkspaceRole.EDITOR, 7, MEMBER_ID)
+
+private fun member(id: String, revokedAt: Instant? = null) = SharedMember(
+    memberId = id,
+    userId = USER_ID,
+    displayName = "Member $id",
+    role = SharedWorkspaceRole.VIEWER,
+    version = 1,
+    createdAt = Instant.parse("2026-09-01T00:00:00Z"),
+    updatedAt = revokedAt ?: Instant.parse("2026-09-01T00:00:00Z"),
+    revokedAt = revokedAt,
+)
 
 private fun identity(workspace: SharedWorkspace) = SharedIdentity(
     user = USER,
