@@ -1,4 +1,4 @@
-const APP_CACHE = "eve-static-map-app-1.9.0";
+const APP_CACHE = "eve-static-map-app-1.9.1";
 const DATA_CACHE = "eve-static-map-data-v1";
 const APP_SHELL = [
   "./",
