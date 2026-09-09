@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { gunzipSync } from "node:zlib";
 
 const debugPort = Number(process.argv[2] ?? 9223);
 const expectedPageUrl = process.argv[3] ?? "http://127.0.0.1:8765/";
+const expectedPackAnsiblex = Number(process.argv[4] ?? 103);
 const endpoint = `http://127.0.0.1:${debugPort}`;
 
 const page = await waitForPage();
@@ -45,6 +47,24 @@ assert.ok(ready.canvasWidth > 0 && ready.canvasHeight > 0);
 assert.equal(ready.sharedStatus, "Disconnected");
 assert.equal(ready.sharedInviteType, "password");
 assert.match(ready.sharedList, /Connect to load markers/);
+assert.match(ready.stats, new RegExp(`${expectedPackAnsiblex} Pack Ansiblex`));
+
+const packManifest = await fetch(new URL("data/manifest.json", expectedPageUrl)).then((response) => response.json());
+const packBytes = await fetch(new URL(`data/${packManifest.fileName}`, expectedPageUrl))
+  .then((response) => response.arrayBuffer());
+const publishedPack = JSON.parse(gunzipSync(Buffer.from(packBytes)).toString("utf8"));
+const enabledPackAnsiblex = publishedPack.payload.ansiblexLinks.filter((link) => link.enabled);
+assert.equal(enabledPackAnsiblex.length, expectedPackAnsiblex);
+const systemNames = new Map(publishedPack.payload.systems.map((system) => [system.id, system.name]));
+const productionAnsiblex = enabledPackAnsiblex[0];
+assert.ok(productionAnsiblex, "production Web Pack must contain an enabled Ansiblex");
+const ansiblexFrom = productionAnsiblex.direction === "SECOND_TO_FIRST"
+  ? systemNames.get(productionAnsiblex.secondSystemId)
+  : systemNames.get(productionAnsiblex.firstSystemId);
+const ansiblexTo = productionAnsiblex.direction === "SECOND_TO_FIRST"
+  ? systemNames.get(productionAnsiblex.firstSystemId)
+  : systemNames.get(productionAnsiblex.secondSystemId);
+assert.ok(ansiblexFrom && ansiblexTo, "production Ansiblex endpoints must resolve to systems");
 
 await evaluate(`(() => {
   document.querySelector('#shared-server-url').value = 'https://marker.example.com/has-a-path';
@@ -68,9 +88,23 @@ await chooseSystem("route-to", "route-to-results", "Perimeter");
 const normalStartedAt = Date.now();
 await evaluate("document.querySelector('#calculate-route').click()");
 await waitFor("document.querySelector('#route-summary')?.textContent.includes('1 jumps')", 5_000);
+await waitFor("document.querySelector('#user-message')?.textContent.startsWith('Route ready')", 2_000);
 const normalElapsedMs = Date.now() - normalStartedAt;
 const routeSummary = await evaluate("document.querySelector('#route-summary').textContent");
 assert.match(routeSummary, /Jita → Perimeter/);
+await waitFor("document.querySelector('#user-message').classList.contains('hidden')", 4_000);
+
+await evaluate("document.querySelector('#clear-route').click()");
+await waitFor("document.querySelector('#user-message')?.textContent === 'Normal route cleared.'", 2_000);
+await waitFor("document.querySelector('#user-message').classList.contains('hidden')", 4_000);
+
+await evaluate("document.querySelector('#clear-route').click()");
+await delay(2_500);
+await evaluate("document.querySelector('#clear-capital').click()");
+await delay(700);
+assert.equal(await evaluate("document.querySelector('#user-message').textContent"), "Capital route cleared.");
+assert.equal(await evaluate("document.querySelector('#user-message').classList.contains('hidden')"), false);
+await waitFor("document.querySelector('#user-message').classList.contains('hidden')", 3_000);
 
 await chooseSystem("route-from", "route-from-results", "Jita");
 await chooseSystem("route-to", "route-to-results", "Amarr");
@@ -94,8 +128,8 @@ const longRouteElapsedMs = Date.now() - longRouteStartedAt;
 const longRouteSummary = await evaluate("document.querySelector('#route-summary').textContent");
 assert.match(longRouteSummary, /jumps/);
 
-await chooseSystem("route-from", "route-from-results", "1DQ1-A");
-await chooseSystem("route-to", "route-to-results", "NOL-M9");
+await chooseSystem("route-from", "route-from-results", ansiblexFrom);
+await chooseSystem("route-to", "route-to-results", ansiblexTo);
 await evaluate(`(() => {
   const toggle = document.querySelector('#use-ansiblex');
   toggle.checked = true;
@@ -142,6 +176,10 @@ assert.match(await evaluate("document.querySelector('#overlay-list').textContent
 const coverageSummary = await evaluate("document.querySelector('#coverage-summary').textContent");
 assert.match(coverageSummary, /overlapping/);
 
+await assertInvalidCoverage("not-a-number", "Coverage range must be a number.");
+await assertInvalidCoverage("0", "Coverage range must be between 0 and 50 LY.");
+await assertInvalidCoverage("50.01", "Coverage range must be between 0 and 50 LY.");
+
 await evaluate(`(() => {
   document.querySelector('#constellation-threshold').value = '3.5';
   document.querySelector('#system-threshold').value = '8';
@@ -150,6 +188,19 @@ await evaluate(`(() => {
 assert.equal(await evaluate("localStorage.getItem('eve-static-map-planner.web-map-preferences.v1')"), "3.5|8");
 await evaluate("document.querySelector('#reset-map-lod').click()");
 assert.equal(await evaluate("localStorage.getItem('eve-static-map-planner.web-map-preferences.v1')"), null);
+
+await evaluate(`(() => {
+  const transfer = new DataTransfer();
+  transfer.items.add(new File([
+    ${JSON.stringify(`from,to,direction,enabled\n${ansiblexFrom},${ansiblexTo},${productionAnsiblex.direction},true`)}
+  ], 'pack-duplicate.csv', { type: 'text/csv' }));
+  const input = document.querySelector('#personal-ansiblex-file');
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+})()`);
+await waitFor("document.querySelector('#personal-ansiblex-preview')?.textContent.includes('1 duplicate')", 5_000);
+assert.equal(await evaluate("document.querySelector('#apply-personal-ansiblex').disabled"), true);
+await evaluate("document.querySelector('#cancel-personal-ansiblex').click()");
 
 await evaluate(`(() => {
   const transfer = new DataTransfer();
@@ -165,6 +216,27 @@ await evaluate("document.querySelector('#apply-personal-ansiblex').click()");
 await waitFor("document.querySelector('#personal-ansiblex-list')?.textContent.includes('Jita')", 5_000);
 const personalAnsiblexSummary = await evaluate("document.querySelector('#personal-ansiblex-list').textContent");
 assert.match(personalAnsiblexSummary, /Jita.*Perimeter/);
+
+await evaluate(`(() => {
+  const input = document.querySelector('#global-search');
+  input.value = 'Jita';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  document.querySelector('#global-results .search-result')?.click();
+})()`);
+await waitFor("document.querySelector('#system-info h2')?.textContent === 'Jita'", 5_000);
+await evaluate(`(() => {
+  const canvas = document.querySelector('#map-canvas');
+  const bounds = canvas.getBoundingClientRect();
+  canvas.dispatchEvent(new MouseEvent('contextmenu', {
+    clientX: bounds.left + bounds.width / 2,
+    clientY: bounds.top + bounds.height / 2,
+    bubbles: true,
+    cancelable: true
+  }));
+})()`);
+await waitFor("!document.querySelector('#system-actions').classList.contains('hidden')", 2_000);
+await evaluate("document.querySelector('#action-keepstar-marker').click()");
+await waitFor("document.querySelector('#system-info')?.textContent.includes('keepstar')", 2_000);
 
 await evaluate(`(() => {
   document.querySelector('#fit-map').click();
@@ -187,6 +259,7 @@ console.log(JSON.stringify({
   longRouteElapsedMs,
   longRouteSummary,
   ansiblexSummary,
+  productionAnsiblex: { from: ansiblexFrom, to: ansiblexTo, count: enabledPackAnsiblex.length },
   capitalElapsedMs,
   capitalSummary,
   overlaySummary,
@@ -206,6 +279,35 @@ async function chooseSystem(inputId, resultsId, name) {
     document.querySelector('#${resultsId} .search-result')?.click();
   })()`);
   await waitFor(`document.querySelector('#${inputId}').value === ${JSON.stringify(name)}`, 5_000);
+}
+
+async function assertInvalidCoverage(inputValue, expectedError) {
+  const before = await evaluate(`({
+    rows: document.querySelectorAll('#overlay-list .overlay-row').length,
+    overlays: document.querySelector('#overlay-list').textContent,
+    summary: document.querySelector('#coverage-summary').textContent
+  })`);
+  await evaluate(`(() => {
+    document.querySelector('#coverage-range').value = ${JSON.stringify(inputValue)};
+    document.querySelector('#add-jump-range').click();
+  })()`);
+  await waitFor(`document.querySelector('#user-message')?.textContent === ${JSON.stringify(expectedError)}`, 2_000);
+  await delay(100);
+  const after = await evaluate(`({
+    rows: document.querySelectorAll('#overlay-list .overlay-row').length,
+    overlays: document.querySelector('#overlay-list').textContent,
+    summary: document.querySelector('#coverage-summary').textContent,
+    errorVisible: document.querySelector('#user-message').classList.contains('error') &&
+      !document.querySelector('#user-message').classList.contains('hidden')
+  })`);
+  assert.deepEqual(after.rows, before.rows, `invalid Coverage ${inputValue} must not add an overlay`);
+  assert.deepEqual(after.overlays, before.overlays, `invalid Coverage ${inputValue} must not change existing overlays`);
+  assert.deepEqual(after.summary, before.summary, `invalid Coverage ${inputValue} must not change coverage summary`);
+  assert.equal(after.errorVisible, true);
+  await delay(3_200);
+  assert.equal(await evaluate("document.querySelector('#user-message').textContent"), expectedError);
+  assert.equal(await evaluate("document.querySelector('#user-message').classList.contains('hidden')"), false);
+  await waitFor("document.querySelector('#user-message').classList.contains('hidden')", 3_300);
 }
 
 async function waitForPage() {
@@ -249,4 +351,8 @@ async function waitFor(expression, timeoutMs) {
     readyState: document.readyState
   })`);
   throw new Error(`Timed out waiting for: ${expression}; page state: ${JSON.stringify(pageState)}`);
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

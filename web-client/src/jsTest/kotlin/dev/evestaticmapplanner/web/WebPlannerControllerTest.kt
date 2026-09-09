@@ -48,14 +48,13 @@ class WebPlannerControllerTest {
         assertEquals(listOf(4.0, 5.0, 6.0), controller.state.jumpOverlays.map { it.profile.maxRangeLy })
         assertEquals(0.6, controller.state.capitalRangeLy)
 
-        controller.setCoverageRange(10.0)
+        assertTrue(controller.setCoverageRange(10.0))
         assertEquals(listOf(4.0, 5.0, 6.0), controller.state.jumpOverlays.map { it.profile.maxRangeLy })
-        controller.setCoverageRange(Double.NaN)
-        assertEquals(10.0, controller.state.coverageRangeLy)
-        assertNotNull(controller.state.error)
-        controller.setCoverageRange(50.1)
-        assertEquals(10.0, controller.state.coverageRangeLy)
-        assertNotNull(controller.state.error)
+        listOf(Double.NaN, 0.0, -1.0, 50.1).forEach { invalidRange ->
+            assertFalse(controller.setCoverageRange(invalidRange))
+            assertEquals(10.0, controller.state.coverageRangeLy)
+            assertNotNull(controller.state.error)
+        }
         assertTrue(controller.state.coverageCounts.values.any { it > 1 })
     }
 

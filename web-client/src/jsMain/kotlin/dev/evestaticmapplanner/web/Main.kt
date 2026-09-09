@@ -197,7 +197,9 @@ private class WebApplication(
         element<HTMLInputElementCompat>("coverage-range").addEventListener("change", {
             syncCoverageRange()
         })
-        click("add-jump-range") { syncCoverageRange(); planner.addJumpRange(jumpSource.selectedSystemId) }
+        click("add-jump-range") {
+            if (syncCoverageRange()) planner.addJumpRange(jumpSource.selectedSystemId)
+        }
         click("clear-jump-ranges") { planner.clearJumpRanges() }
         click("save-map-lod") {
             val constellation = element<HTMLInputElementCompat>("constellation-threshold").value.toDoubleOrNull()
@@ -379,9 +381,13 @@ private class WebApplication(
         element<HTMLInputElementCompat>("capital-range").value.toDoubleOrNull()?.let(planner::setCapitalRange)
     }
 
-    private fun syncCoverageRange() {
+    private fun syncCoverageRange(): Boolean {
         val value = element<HTMLInputElementCompat>("coverage-range").value.toDoubleOrNull()
-        if (value == null) showTransientError("Coverage range must be a number.") else planner.setCoverageRange(value)
+        if (value == null) {
+            showTransientError("Coverage range must be a number.")
+            return false
+        }
+        return planner.setCoverageRange(value)
     }
 
     private fun renderBanner(view: WebTransientNotificationView) {

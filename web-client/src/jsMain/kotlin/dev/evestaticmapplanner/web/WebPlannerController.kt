@@ -243,11 +243,13 @@ class WebPlannerController(
         it.copy(capitalRoute = null, message = "Capital route cleared.", error = null)
     }
 
-    fun setCoverageRange(rangeLy: Double) = notify { current ->
+    fun setCoverageRange(rangeLy: Double): Boolean {
         if (!rangeLy.isFinite() || rangeLy <= 0.0 || rangeLy > MAX_WEB_JUMP_RANGE_LY) {
-            current.copy(error = "Coverage range must be between 0 and 50 LY.")
+            notify { it.copy(error = "Coverage range must be between 0 and 50 LY.", message = null) }
+            return false
         }
-        else current.copy(coverageRangeLy = rangeLy, error = null, message = null)
+        update { it.copy(coverageRangeLy = rangeLy, error = null, message = null) }
+        return true
     }
 
     fun addJumpRange(originSystemId: Int?) {
