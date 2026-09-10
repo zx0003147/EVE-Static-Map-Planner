@@ -146,6 +146,25 @@ class WebPlannerControllerTest {
     }
 
     @Test
+    fun `Fortizar Saved Marker persists independently from Keepstar`() {
+        val storage = MemoryBrowserStore()
+        val controller = WebPlannerController(
+            WebUniverseDataAdapter.adapt(fixtureDocument()),
+            {},
+            fortizarStore = WebFortizarMarkerStore(storage),
+            keepstarStore = WebKeepstarMarkerStore(storage),
+        )
+
+        controller.toggleFortizarSavedMarker(30_000_002)
+        controller.toggleKeepstarSavedMarker(30_000_002)
+
+        assertEquals(setOf(30_000_002), controller.state.fortizarSystemIds)
+        assertEquals(setOf(30_000_002), controller.state.keepstarSystemIds)
+        assertEquals(setOf(30_000_002), WebFortizarMarkerStore(storage).load())
+        assertEquals(setOf(30_000_002), WebKeepstarMarkerStore(storage).load())
+    }
+
+    @Test
     fun `Desktop Normal and Capital snapshots load only on request and restore planner intent`() {
         val controller = WebPlannerController(WebUniverseDataAdapter.adapt(fixtureDocument()), {})
         assertNull(controller.state.normalRoute)

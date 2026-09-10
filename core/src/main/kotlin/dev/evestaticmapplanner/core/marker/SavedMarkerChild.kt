@@ -23,6 +23,7 @@ value class SavedMarkerChildType private constructor(val key: String) {
         val BACKUP = of("backup")
         val INDUSTRIAL = of("industrial")
         val STRATEGIC = of("strategic")
+        val FORTIZAR = of("fortizar")
         val KEEPSTAR = of("keepstar")
 
         val supportedTypes: List<SavedMarkerChildType> = listOf(
@@ -34,6 +35,7 @@ value class SavedMarkerChildType private constructor(val key: String) {
             BACKUP,
             INDUSTRIAL,
             STRATEGIC,
+            FORTIZAR,
             KEEPSTAR,
         )
 

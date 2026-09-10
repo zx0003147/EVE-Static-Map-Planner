@@ -3,11 +3,12 @@ package dev.evestaticmapplanner.map
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
+import dev.evestaticmapplanner.core.map.MapVisualSemantics
+import dev.evestaticmapplanner.core.map.PrimarySystemNodeShape
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
-import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.marker.SavedMarkerChildVisual
 import dev.evestaticmapplanner.marker.SavedMarkerChildVisuals
 import dev.evestaticmapplanner.preferences.MarkerPreferences
@@ -34,6 +35,7 @@ data class PresentedSavedMarkerChild(
 enum class MarkerVisualStyle {
     OUTER_RING,
     OUTLINE_DIAMOND,
+    FORTIZAR_PRIMARY,
     KEEPSTAR_PRIMARY,
 }
 
@@ -88,7 +90,11 @@ object MarkerMapPresentationBuilder {
             val systemPosition = screenPosition(systemId) ?: return@mapNotNull null
             val saved = marker.persistence == MarkerPersistence.SAVED
             val children = childrenByParentSystemId[systemId].orEmpty()
-            val isKeepstar = saved && children.any { it.type == SavedMarkerChildType.KEEPSTAR }
+            val primaryNodeShape = if (saved) {
+                MapVisualSemantics.primaryNodeShape(children.map { it.type.key }, emptyList())
+            } else {
+                PrimarySystemNodeShape.SYSTEM
+            }
             PresentedMapMarker(
                 marker = marker,
                 screenCenter = if (saved) systemPosition else MapPoint(systemPosition.x - offsetPx, systemPosition.y - offsetPx),
@@ -97,15 +103,18 @@ object MarkerMapPresentationBuilder {
                 },
                 systemName = node.system.name,
                 systemNameVisible = saved && systemId in systemNameVisibleIds,
-                visualStyle = if (isKeepstar) {
-                    MarkerVisualStyle.KEEPSTAR_PRIMARY
-                } else if (saved) {
-                    MarkerVisualStyle.OUTER_RING
-                } else {
-                    MarkerVisualStyle.OUTLINE_DIAMOND
+                visualStyle = when {
+                    primaryNodeShape == PrimarySystemNodeShape.KEEPSTAR -> MarkerVisualStyle.KEEPSTAR_PRIMARY
+                    primaryNodeShape == PrimarySystemNodeShape.FORTIZAR -> MarkerVisualStyle.FORTIZAR_PRIMARY
+                    saved -> MarkerVisualStyle.OUTER_RING
+                    else -> MarkerVisualStyle.OUTLINE_DIAMOND
                 },
                 children = if (saved && systemId in expandedSystemIds) {
-                    radialChildren(children.filterNot { it.type == SavedMarkerChildType.KEEPSTAR }, systemPosition, childOrbitRadiusPx)
+                    radialChildren(
+                        children.filterNot { MapVisualSemantics.isPrimaryNodeShapeTag(it.type.key) },
+                        systemPosition,
+                        childOrbitRadiusPx,
+                    )
                 } else {
                     emptyList()
                 },
@@ -151,7 +160,13 @@ internal fun systemNameVisualObstaclesBySystemId(
 ): Map<Int, SystemNameVisualObstacles> {
     val obstacles = linkedMapOf<Int, SystemNameVisualObstacles>()
     localMarkers.asSequence()
-        .filter { it.visualStyle in setOf(MarkerVisualStyle.OUTER_RING, MarkerVisualStyle.KEEPSTAR_PRIMARY) }
+        .filter {
+            it.visualStyle in setOf(
+                MarkerVisualStyle.OUTER_RING,
+                MarkerVisualStyle.FORTIZAR_PRIMARY,
+                MarkerVisualStyle.KEEPSTAR_PRIMARY,
+            )
+        }
         .forEach { marker ->
             obstacles[marker.marker.systemId] = SystemNameVisualObstacles(
                 centeredRightExtentPx = localSavedVisualRadiusPx,
@@ -219,8 +234,11 @@ internal fun markerNameLabelLayout(
     val preferredBounds = preferredTopLeft.toScreenBounds(markerLabelSize)
     val systemBounds = systemLabelBounds
         ?.takeIf {
-            marker.systemNameVisible && marker.visualStyle in
-                setOf(MarkerVisualStyle.OUTER_RING, MarkerVisualStyle.KEEPSTAR_PRIMARY)
+            marker.systemNameVisible && marker.visualStyle in setOf(
+                MarkerVisualStyle.OUTER_RING,
+                MarkerVisualStyle.FORTIZAR_PRIMARY,
+                MarkerVisualStyle.KEEPSTAR_PRIMARY,
+            )
         }
     if (systemBounds == null || !preferredBounds.intersects(systemBounds, collisionPaddingPx)) {
         return MarkerNameLabelLayout(preferredTopLeft, preferredBounds, avoidedSystemName = false)

@@ -329,16 +329,17 @@ class WebMapView(
         val visibleBounds = transform.visibleWorldBounds(32.0)
         val visibleNodes = scene.spatialIndex.query(visibleBounds).map(scene.nodesById::getValue)
         val visibleSystemIds = visibleNodes.mapTo(mutableSetOf()) { it.system.id }
+        val primaryNodeShapesBySystemId = resolvePrimaryNodeShapes(visibleSystemIds)
         drawGrid()
         drawStargates(transform, visibleBounds)
         drawAnsiblexNetwork(transform, visibleBounds)
         drawJumpCoverage(transform, visibleSystemIds)
         drawNormalRoute(transform)
         drawCapitalRoute(transform)
-        drawNodes(transform, visibleNodes)
+        drawNodes(transform, visibleNodes, primaryNodeShapesBySystemId)
         drawSharedMarkers(transform, visibleSystemIds)
         drawLabels(transform, visibleNodes)
-        drawInteraction(transform)
+        drawInteraction(transform, primaryNodeShapesBySystemId)
         drawWaypoints(transform)
         val elapsed = window.performance.now() - startedAt
         renderCount++
@@ -486,22 +487,27 @@ class WebMapView(
         drawEndpoint(transform, route.destinationSystemId, "#ff7eb6", 13.0, 9.0)
     }
 
-    private fun drawNodes(transform: MapTransform, nodes: List<ProjectedSystemNode>) {
+    private fun drawNodes(
+        transform: MapTransform,
+        nodes: List<ProjectedSystemNode>,
+        primaryNodeShapesBySystemId: Map<Int, PrimarySystemNodeShape>,
+    ) {
         val routeIds = state.routeSystemIds
         val waypointIds = (state.normalWaypointSystemIds + state.capitalWaypointSystemIds).toSet()
         nodes.forEach { node ->
             val systemId = node.system.id
             val point = transform.worldToScreen(node.position)
             val inRoute = systemId in routeIds
-            if (MapVisualSemantics.primaryNodeShape(systemId in state.keepstarSystemIds) == PrimarySystemNodeShape.KEEPSTAR) {
-                drawKeepstar(point, if (inRoute) "#eef7fc" else "#75b9e7")
+            val shape = primaryNodeShapesBySystemId[systemId] ?: PrimarySystemNodeShape.SYSTEM
+            if (shape != PrimarySystemNodeShape.SYSTEM) {
+                val stroke = MapVisualSemantics.nodeOutlineSemantics(
+                    shape,
+                    dev.evestaticmapplanner.core.map.SystemNodeInteractionState.NORMAL,
+                )
+                drawPrimaryNodeOutline(point, shape, primaryNodeColor(systemId, shape, inRoute), stroke.widthPx)
                 return@forEach
             }
-            val radius = when {
-                systemId in waypointIds -> 4.8
-                inRoute -> 4.0
-                else -> if (node.isStargateConnected) 2.2 else 1.8
-            }
+            val radius = systemNodeRadius(node, systemId)
             context.beginPath()
             context.arc(point.x, point.y, radius, 0.0, PI2)
             context.fillStyle = when {
@@ -539,7 +545,7 @@ class WebMapView(
 
     private fun drawLabels(transform: MapTransform, visibleNodes: List<ProjectedSystemNode>) {
         val priority = state.routeSystemIds + state.normalWaypointSystemIds + sharedMarkerState.markersBySystemId.keys +
-            state.keepstarSystemIds + listOfNotNull(state.selectedSystemId, state.hoveredSystemId)
+            state.fortizarSystemIds + state.keepstarSystemIds + listOfNotNull(state.selectedSystemId, state.hoveredSystemId)
         if (semanticMode == WebSemanticLabelMode.REGION) {
             context.font = "16px Inter, system-ui, sans-serif"
             context.asDynamic().textAlign = "center"
@@ -590,22 +596,45 @@ class WebMapView(
         }
     }
 
-    private fun drawInteraction(transform: MapTransform) {
-        state.selectedSystemId?.let { drawFocus(transform, it, "#76e6a5", 8.0) }
-        state.hoveredSystemId?.takeIf { it != state.selectedSystemId }?.let { drawFocus(transform, it, "#f3d36a", 6.0) }
+    private fun drawInteraction(
+        transform: MapTransform,
+        primaryNodeShapesBySystemId: Map<Int, PrimarySystemNodeShape>,
+    ) {
+        state.selectedSystemId?.let {
+            drawFocus(transform, it, primaryNodeShapesBySystemId, isHovered = false, isSelected = true)
+        }
+        state.hoveredSystemId?.takeIf { it != state.selectedSystemId }?.let {
+            drawFocus(transform, it, primaryNodeShapesBySystemId, isHovered = true, isSelected = false)
+        }
     }
 
-    private fun drawFocus(transform: MapTransform, systemId: Int, color: String, radius: Double) {
-        val point = scene.nodesById[systemId]?.position?.let(transform::worldToScreen) ?: return
-        context.beginPath()
-        context.arc(point.x, point.y, radius + 4.0, 0.0, PI2)
-        context.fillStyle = if (color == "#76e6a5") "rgba(118, 230, 165, 0.20)" else "rgba(243, 211, 106, 0.20)"
-        context.fill()
-        context.beginPath()
-        context.arc(point.x, point.y, radius, 0.0, PI2)
-        context.strokeStyle = color
-        context.lineWidth = 2.0
-        context.stroke()
+    private fun drawFocus(
+        transform: MapTransform,
+        systemId: Int,
+        primaryNodeShapesBySystemId: Map<Int, PrimarySystemNodeShape>,
+        isHovered: Boolean,
+        isSelected: Boolean,
+    ) {
+        val node = scene.nodesById[systemId] ?: return
+        val point = transform.worldToScreen(node.position)
+        val shape = primaryNodeShapesBySystemId[systemId] ?: PrimarySystemNodeShape.SYSTEM
+        val interaction = MapVisualSemantics.interactionState(isHovered, isSelected)
+        val stroke = MapVisualSemantics.nodeOutlineSemantics(shape, interaction)
+        val baseArgb = if (shape == PrimarySystemNodeShape.SYSTEM) {
+            0L
+        } else {
+            primaryNodeColor(systemId, shape, systemId in state.routeSystemIds).toOpaqueArgb()
+        }
+        val color = cssArgb(MapVisualSemantics.nodeOutlineColorArgb(shape, interaction, baseArgb))
+        if (shape == PrimarySystemNodeShape.SYSTEM) {
+            context.beginPath()
+            context.arc(point.x, point.y, systemNodeRadius(node, systemId), 0.0, PI2)
+            context.strokeStyle = color
+            context.lineWidth = stroke.widthPx
+            context.stroke()
+        } else {
+            drawPrimaryNodeOutline(point, shape, color, stroke.widthPx)
+        }
     }
 
     private fun drawWaypoints(transform: MapTransform) {
@@ -646,22 +675,57 @@ class WebMapView(
         context.stroke()
     }
 
-    private fun drawKeepstar(point: MapPoint, color: String) {
-        val scale = 7.0
-        val points = listOf(
-            .40 to .13, .07 to .13, .07 to .87, .93 to .87,
-            .93 to .13, .60 to .13, .60 to .47, .40 to .47,
-        )
+    private fun drawPrimaryNodeOutline(
+        point: MapPoint,
+        shape: PrimarySystemNodeShape,
+        color: String,
+        strokeWidth: Double,
+    ) {
+        val size = MapVisualSemantics.PRIMARY_STRUCTURE_NODE_SIZE_PX
+        val points = MapVisualSemantics.primaryNodeOutline(shape)
         context.beginPath()
-        points.forEachIndexed { index, pair ->
-            val x = point.x + (pair.first - .5) * scale * 2.0
-            val y = point.y + (pair.second - .5) * scale * 2.0
+        points.forEachIndexed { index, outlinePoint ->
+            val x = point.x + (outlinePoint.x - .5) * size
+            val y = point.y + (outlinePoint.y - .5) * size
             if (index == 0) context.moveTo(x, y) else context.lineTo(x, y)
         }
         context.closePath()
         context.strokeStyle = color
-        context.lineWidth = 1.8
+        context.lineWidth = strokeWidth
+        context.setLineDash(emptyArray())
         context.stroke()
+    }
+
+    private fun resolvePrimaryNodeShapes(visibleSystemIds: Set<Int>): Map<Int, PrimarySystemNodeShape> {
+        val localTaggedSystemIds = (state.fortizarSystemIds + state.keepstarSystemIds).intersect(visibleSystemIds)
+        val localTagsBySystemId: Map<Int, Iterable<String>> = localTaggedSystemIds.associateWith { systemId ->
+            buildList {
+                if (systemId in state.fortizarSystemIds) add(MapVisualSemantics.FORTIZAR_MARKER_TAG)
+                if (systemId in state.keepstarSystemIds) add(MapVisualSemantics.KEEPSTAR_MARKER_TAG)
+            }
+        }
+        val sharedTagsBySystemId: Map<Int, Iterable<String>> = sharedMarkerState.markersBySystemId
+            .filterKeys { it in visibleSystemIds }
+            .mapValues { (_, marker) -> marker.tags }
+        return MapVisualSemantics.primaryNodeShapes(localTagsBySystemId, sharedTagsBySystemId)
+    }
+
+    private fun primaryNodeColor(systemId: Int, shape: PrimarySystemNodeShape, inRoute: Boolean): String {
+        if (inRoute) return "#eef7fc"
+        val localTags = buildList {
+            if (systemId in state.fortizarSystemIds) add(MapVisualSemantics.FORTIZAR_MARKER_TAG)
+            if (systemId in state.keepstarSystemIds) add(MapVisualSemantics.KEEPSTAR_MARKER_TAG)
+        }
+        val localShape = MapVisualSemantics.primaryNodeShape(localTags, emptyList())
+        if (localShape == shape) return "#75b9e7"
+        return sharedMarkerState.markersBySystemId[systemId]?.let { sharedMarkerColor(it.color) } ?: "#75b9e7"
+    }
+
+    private fun systemNodeRadius(node: ProjectedSystemNode, systemId: Int): Double = when {
+        systemId in state.normalWaypointSystemIds || systemId in state.capitalWaypointSystemIds -> 4.8
+        systemId in state.routeSystemIds -> 4.0
+        node.isStargateConnected -> 2.2
+        else -> 1.8
     }
 
     private fun drawRouteArrows(geometry: QuadraticGeometry, curved: Boolean, color: String, strokeWidth: Double) {
@@ -771,6 +835,12 @@ private fun cssArgb(argb: Long): String {
     val green = (argb shr 8) and 0xFFL
     val blue = argb and 0xFFL
     return "rgba($red, $green, $blue, $alpha)"
+}
+
+private fun String.toOpaqueArgb(): Long {
+    val value = removePrefix("#")
+    require(value.length == 6) { "Expected an opaque #RRGGBB color" }
+    return 0xFF00_0000L or value.toInt(16).toLong()
 }
 
 private fun dragThreshold(pointerType: String): Double = if (pointerType == "mouse") MOUSE_DRAG_THRESHOLD_PX else TOUCH_DRAG_THRESHOLD_PX

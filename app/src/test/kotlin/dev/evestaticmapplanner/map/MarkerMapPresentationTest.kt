@@ -231,6 +231,25 @@ class MarkerMapPresentationTest {
     }
 
     @Test
+    fun `Fortizar becomes the primary local node while Keepstar wins when both tags exist`() {
+        val marker = Marker.saved(1, MarkerDraft.create(), Instant.EPOCH, Instant.EPOCH)
+        val fortizar = SavedMarkerChild.create("fortizar", 1, SavedMarkerChildType.FORTIZAR, 0)
+        val keepstar = SavedMarkerChild.create("keepstar", 1, SavedMarkerChildType.KEEPSTAR, 1)
+
+        fun presented(children: List<SavedMarkerChild>) = MarkerMapPresentationBuilder.build(
+            scene, transform, listOf(1), mapOf(1 to marker), MarkerPreferences.Defaults,
+            SemanticLabelMode.SYSTEM, 10.0,
+            childrenByParentSystemId = mapOf(1 to children),
+            expandedSystemIds = setOf(1),
+        ).single()
+
+        assertEquals(MarkerVisualStyle.FORTIZAR_PRIMARY, presented(listOf(fortizar)).visualStyle)
+        val keepstarPrimary = presented(listOf(fortizar, keepstar))
+        assertEquals(MarkerVisualStyle.KEEPSTAR_PRIMARY, keepstarPrimary.visualStyle)
+        assertTrue(keepstarPrimary.children.isEmpty())
+    }
+
+    @Test
     fun `expansion truth table and spoke hit region keep child hover usable`() {
         assertTrue(!isSavedMarkerExpanded(false, false))
         assertTrue(isSavedMarkerExpanded(true, false))

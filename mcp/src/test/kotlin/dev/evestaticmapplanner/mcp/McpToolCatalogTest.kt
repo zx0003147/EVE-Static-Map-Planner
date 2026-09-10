@@ -116,7 +116,10 @@ class McpToolCatalogTest {
         assertEquals("array", assertIs<JsonPrimitive>(tags.getValue("type")).content)
         val items = assertIs<JsonObject>(tags.getValue("items"))
         assertEquals(
-            listOf("STAGING", "RALLY", "DANGER", "LOGISTICS", "HOME", "BACKUP", "INDUSTRIAL", "STRATEGIC", "KEEPSTAR"),
+            listOf(
+                "STAGING", "RALLY", "DANGER", "LOGISTICS", "HOME", "BACKUP", "INDUSTRIAL", "STRATEGIC",
+                "FORTIZAR", "KEEPSTAR",
+            ),
             assertIs<JsonArray>(items.getValue("enum")).map { assertIs<JsonPrimitive>(it).content },
         )
 

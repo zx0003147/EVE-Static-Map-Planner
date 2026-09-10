@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -52,6 +53,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
+import dev.evestaticmapplanner.core.map.MapVisualSemantics
+import dev.evestaticmapplanner.core.map.PrimarySystemNodeShape
 import dev.evestaticmapplanner.core.map.Real3DFrame
 import dev.evestaticmapplanner.core.map.Real3DFrameProjectionWorkspace
 import dev.evestaticmapplanner.core.map.Real3DStaticGeometry
@@ -338,6 +341,28 @@ internal fun Real3DMapCanvas(
             screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
         )
     }
+    // The projection workspace mutates one live frame instance, so camera and viewport must be explicit cache keys.
+    val presentedPrimarySystemNodes = remember(
+        frame,
+        camera,
+        state.canvasSize,
+        markerState.markersBySystemId,
+        markerState.childrenByParentSystemId,
+        state.appPreferences.marker.showMarkers,
+        sharedMarkerState,
+    ) {
+        SystemNodeShapePresentationBuilder.build(
+            visibleSystemIds = frame.projectedBySystemId.keys,
+            localMarkersBySystemId = markerState.markersBySystemId,
+            localChildrenBySystemId = markerState.childrenByParentSystemId,
+            showLocalMarkers = state.appPreferences.marker.showMarkers,
+            sharedMarkerState = sharedMarkerState,
+            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
+        )
+    }
+    val primarySystemNodesById = remember(presentedPrimarySystemNodes) {
+        presentedPrimarySystemNodes.associateBy(PresentedPrimarySystemNode::systemId)
+    }
     val decodedOverlaySystemMarkers = remember(featureOverlayState, geometry) {
         decodeOverlaySystemMarkers(featureOverlayState, geometry.nodesById.keys)
     }
@@ -491,6 +516,7 @@ internal fun Real3DMapCanvas(
                 visibleStargateConnectionKeys = visibleStargateConnectionKeys,
                 sovereigntyColorsBySystemId = featurePresentation.sovereigntyColorsBySystemId,
                 emphasis = visualEmphasis,
+                replacementSystemIds = primarySystemNodesById.keys,
             )
             drawReal3DJumpSpheres(
                 frame = frame,
@@ -545,10 +571,12 @@ internal fun Real3DMapCanvas(
                 textMeasurer = textMeasurer,
                 cache = renderCache,
                 preferences = state.appPreferences.mapDisplay,
+                replacementSystemIds = primarySystemNodesById.keys,
             )
             drawReal3DFeatureEmblems(readyFeatureEmblems)
             with(MapRenderer) {
                 drawSharedMarkers(presentedSharedMarkers, sharedMarkerGeometry)
+                drawPrimarySystemNodes(presentedPrimarySystemNodes)
                 drawMarkers(
                     markers = presentedMarkers,
                     textMeasurer = textMeasurer,
@@ -570,6 +598,8 @@ internal fun Real3DMapCanvas(
                 frame = frame,
                 hoveredSystemId = state.hoveredSystemId,
                 selectedSystemId = state.selectedSystemId,
+                primarySystemNodesById = primarySystemNodesById,
+                emphasis = visualEmphasis,
                 textMeasurer = textMeasurer,
                 cache = renderCache,
                 preferences = state.appPreferences.mapDisplay,
@@ -783,6 +813,7 @@ private fun DrawScope.drawReal3DBase(
     visibleStargateConnectionKeys: Set<Long>?,
     sovereigntyColorsBySystemId: Map<Int, Color>,
     emphasis: MapVisualEmphasis,
+    replacementSystemIds: Set<Int>,
 ) {
     frame.edges.forEach { edge ->
         val connectionKey = real3DSystemPairKey(edge.edge.firstSystemId, edge.edge.secondSystemId)
@@ -800,6 +831,7 @@ private fun DrawScope.drawReal3DBase(
         )
     }
     frame.nodesFarToNear.forEach { projected ->
+        if (projected.node.system.id in replacementSystemIds) return@forEach
         drawCircle(
             color = real3DSystemBaseColor(projected, sovereigntyColorsBySystemId)
                 .multiplyAlpha(emphasis.systemAlphaMultiplier(projected.node.system.id)),
@@ -941,9 +973,11 @@ private fun DrawScope.drawReal3DEmphasizedSystems(
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
+    replacementSystemIds: Set<Int>,
 ) {
     if (!emphasis.isActive) return
     emphasis.focusedSystemIds.forEach { systemId ->
+        if (systemId in replacementSystemIds) return@forEach
         val projected = frame.projectedBySystemId[systemId] ?: return@forEach
         drawCircle(
             color = real3DSystemBaseColor(projected, sovereigntyColorsBySystemId),
@@ -1318,6 +1352,8 @@ private fun DrawScope.drawReal3DInteraction(
     frame: Real3DFrame,
     hoveredSystemId: Int?,
     selectedSystemId: Int?,
+    primarySystemNodesById: Map<Int, PresentedPrimarySystemNode>,
+    emphasis: MapVisualEmphasis,
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
@@ -1325,8 +1361,10 @@ private fun DrawScope.drawReal3DInteraction(
     selectedSystemId?.let { frame.projectedBySystemId[it] }?.let { node ->
         drawReal3DHighlightedNode(
             node,
-            REAL_3D_SELECTED_COLOR,
-            8f,
+            primarySystemNodesById,
+            emphasis,
+            isHovered = false,
+            isSelected = true,
             textMeasurer,
             cache,
             preferences,
@@ -1335,8 +1373,10 @@ private fun DrawScope.drawReal3DInteraction(
     hoveredSystemId?.takeUnless { it == selectedSystemId }?.let { frame.projectedBySystemId[it] }?.let { node ->
         drawReal3DHighlightedNode(
             node,
-            REAL_3D_HOVER_COLOR,
-            6f,
+            primarySystemNodesById,
+            emphasis,
+            isHovered = true,
+            isSelected = false,
             textMeasurer,
             cache,
             preferences,
@@ -1346,21 +1386,52 @@ private fun DrawScope.drawReal3DInteraction(
 
 private fun DrawScope.drawReal3DHighlightedNode(
     projected: dev.evestaticmapplanner.core.map.Real3DProjectedNode,
-    color: Color,
-    radius: Float,
+    primarySystemNodesById: Map<Int, PresentedPrimarySystemNode>,
+    emphasis: MapVisualEmphasis,
+    isHovered: Boolean,
+    isSelected: Boolean,
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
 ) {
     val center = projected.screen.toOffset()
-    drawCircle(color.copy(alpha = 0.2f), radius = radius + 4f, center = center)
-    drawCircle(color, radius = radius, center = center, style = Stroke(2f))
+    val systemId = projected.node.system.id
+    val primarySystemNode = primarySystemNodesById[systemId]
+    val shape = primarySystemNode?.shape ?: PrimarySystemNodeShape.SYSTEM
+    val interaction = MapVisualSemantics.interactionState(isHovered, isSelected)
+    val stroke = MapVisualSemantics.nodeOutlineSemantics(shape, interaction)
+    val baseArgb = primarySystemNode?.color?.toArgb()?.toLong()?.and(0xFFFF_FFFFL) ?: 0L
+    val color = Color(MapVisualSemantics.nodeOutlineColorArgb(shape, interaction, baseArgb))
+    val structureSize = MapVisualSemantics.PRIMARY_STRUCTURE_NODE_SIZE_PX.dp.toPx()
+    val strokeWidth = if (shape == PrimarySystemNodeShape.SYSTEM) {
+        stroke.widthPx.toFloat().dp.toPx()
+    } else {
+        MapRenderer.primaryStructureNodeNormalStrokeWidth(structureSize)
+    }
+    val visualRadius = if (shape == PrimarySystemNodeShape.SYSTEM) {
+        projected.radiusPx + if (systemId in emphasis.focusedSystemIds) REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX else 0f
+    } else {
+        structureSize / 2f
+    }
+    if (shape == PrimarySystemNodeShape.SYSTEM) {
+        drawCircle(color, visualRadius, center, style = Stroke(strokeWidth))
+    } else {
+        with(MapRenderer) {
+            drawPrimarySystemNodeOutline(
+                shape = shape,
+                center = center,
+                size = structureSize,
+                color = color,
+                strokeWidth = strokeWidth,
+            )
+        }
+    }
     drawReal3DSystemLabel(
         projected = projected,
         textMeasurer = textMeasurer,
         cache = cache,
         preferences = preferences,
-        offsetPx = radius + 6.0,
+        offsetPx = visualRadius + strokeWidth / 2.0 + 6.0,
         drawBackground = true,
     )
 }
@@ -1373,8 +1444,6 @@ private val REAL_3D_BACKGROUND = Color(0xFF09121D)
 private val REAL_3D_EDGE_COLOR = Color(0xFF5A7185)
 private val REAL_3D_CONNECTED_NODE = Color(0xFF75B9E7)
 private val REAL_3D_UNCONNECTED_NODE = Color(0xFF596673)
-private val REAL_3D_HOVER_COLOR = Color(0xFFF3D36A)
-private val REAL_3D_SELECTED_COLOR = Color(0xFF76E6A5)
 private const val REAL_3D_EDGE_WIDTH_PX = 1f
 private const val REAL_3D_SYSTEM_LABEL_OFFSET_PX = 5.0
 private const val REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f

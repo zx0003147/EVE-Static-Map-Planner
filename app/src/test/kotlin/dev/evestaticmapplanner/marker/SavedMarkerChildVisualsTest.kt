@@ -20,6 +20,7 @@ class SavedMarkerChildVisualsTest {
             "backup" to ("Backup" to SavedMarkerChildIconKind.SHIELD),
             "industrial" to ("Industrial" to SavedMarkerChildIconKind.FACTORY),
             "strategic" to ("Strategic" to SavedMarkerChildIconKind.STAR),
+            "fortizar" to ("Fortizar" to SavedMarkerChildIconKind.FORTIZAR_BRACKET),
             "keepstar" to ("Keepstar" to SavedMarkerChildIconKind.KEEPSTAR_BRACKET),
         )
 
@@ -29,6 +30,28 @@ class SavedMarkerChildVisualsTest {
             assertEquals(metadata.first, visual.label)
             assertEquals(metadata.second, visual.iconKind)
         }
+    }
+
+    @Test
+    fun `fortizar uses a distinct medium Citadel bracket geometry without a bitmap resource`() {
+        val fortizar = SavedMarkerChildVisuals.resolve(SavedMarkerChildType.of("fortizar"))
+
+        assertEquals(SavedMarkerChildIconKind.FORTIZAR_BRACKET, fortizar.iconKind)
+        assertNull(fortizar.resourcePath)
+        assertEquals(
+            listOf(
+                Offset(0.07f, 0.82f),
+                Offset(0.07f, 0.36f),
+                Offset(0.29f, 0.36f),
+                Offset(0.29f, 0.13f),
+                Offset(0.71f, 0.13f),
+                Offset(0.71f, 0.36f),
+                Offset(0.93f, 0.36f),
+                Offset(0.93f, 0.82f),
+            ),
+            FORTIZAR_BRACKET_POINTS,
+        )
+        assertFalse(FORTIZAR_BRACKET_POINTS == KEEPSTAR_BRACKET_POINTS)
     }
 
     @Test
@@ -66,13 +89,13 @@ class SavedMarkerChildVisualsTest {
 
     @Test
     fun `available choices exclude every assigned type and preserve taxonomy order`() {
-        val assigned = listOf("staging", "danger", "keepstar").mapIndexed { index, key ->
+        val assigned = listOf("staging", "danger", "fortizar", "keepstar").mapIndexed { index, key ->
             SavedMarkerChild.create("child-$index", 1, SavedMarkerChildType.of(key), index)
         }
 
         val available = SavedMarkerChildVisuals.availableFor(assigned)
 
         assertEquals(listOf("rally", "logistics", "home", "backup", "industrial", "strategic"), available.map { it.type?.key })
-        assertFalse(available.any { it.type?.key in setOf("staging", "danger", "keepstar") })
+        assertFalse(available.any { it.type?.key in setOf("staging", "danger", "fortizar", "keepstar") })
     }
 }

@@ -136,8 +136,9 @@ delete their own handoff, and an Admin may delete any handoff in the Workspace.
 
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
 visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.4.0.
-The stable Local Saved Marker child type `keepstar` replaces the ordinary system node on Desktop and Web; unrelated
-marker names, tags, and Shared Marker text do not trigger the replacement.
+The stable `fortizar` and `keepstar` tags replace the ordinary system node on Desktop and Web whether they come from
+a Local Saved Marker or a Shared Marker. Both sources are resolved once per system, with `keepstar` taking priority
+over `fortizar`; unrelated names, notes, and tags do not change the primary node shape.
 
 ## Windows x64 distribution
 

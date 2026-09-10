@@ -40,6 +40,7 @@ data class WebPlannerState(
     val mapPreferences: WebMapPreferences = WebMapPreferences.Defaults,
     val personalAnsiblex: List<PersonalAnsiblexConnection> = emptyList(),
     val personalAnsiblexPreview: PersonalAnsiblexImportPreview? = null,
+    val fortizarSystemIds: Set<Int> = emptySet(),
     val keepstarSystemIds: Set<Int> = emptySet(),
     val message: String? = null,
     val error: String? = null,
@@ -57,6 +58,7 @@ class WebPlannerController(
     private val onStateChanged: (WebPlannerState) -> Unit,
     private val mapPreferencesStore: WebMapPreferencesStore = WebMapPreferencesStore(),
     private val personalAnsiblexStore: PersonalAnsiblexStore = PersonalAnsiblexStore(),
+    private val fortizarStore: WebFortizarMarkerStore = WebFortizarMarkerStore(),
     private val keepstarStore: WebKeepstarMarkerStore = WebKeepstarMarkerStore(),
     private val idFactory: () -> String = ::browserUuid,
 ) {
@@ -67,6 +69,7 @@ class WebPlannerController(
     var state: WebPlannerState = WebPlannerState(
         mapPreferences = mapPreferencesStore.load(),
         personalAnsiblex = restoredPersonalAnsiblex,
+        fortizarSystemIds = fortizarStore.load().filterTo(linkedSetOf(), universe.systemsById::containsKey),
         keepstarSystemIds = keepstarStore.load().filterTo(linkedSetOf(), universe.systemsById::containsKey),
     )
         private set
@@ -463,6 +466,23 @@ class WebPlannerController(
                 keepstarSystemIds = next,
                 error = null,
                 message = if (systemId in next) "Keepstar Saved Marker added." else "Keepstar Saved Marker removed.",
+            )
+        }
+    }
+
+    fun toggleFortizarSavedMarker(systemId: Int) {
+        if (systemId !in universe.systemsById) return
+        val next = if (systemId in state.fortizarSystemIds) {
+            state.fortizarSystemIds - systemId
+        } else {
+            state.fortizarSystemIds + systemId
+        }
+        fortizarStore.save(next)
+        notify {
+            it.copy(
+                fortizarSystemIds = next,
+                error = null,
+                message = if (systemId in next) "Fortizar Saved Marker added." else "Fortizar Saved Marker removed.",
             )
         }
     }

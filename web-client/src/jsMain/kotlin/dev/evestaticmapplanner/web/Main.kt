@@ -265,6 +265,7 @@ private class WebApplication(
             planner.addJumpRange(systemId)
         } }
         click("action-shared-marker") { useContextSystem("shared") { systemId -> openMarkerEditor(systemId, null) } }
+        click("action-fortizar-marker") { useContextSystem("search", planner::toggleFortizarSavedMarker) }
         click("action-keepstar-marker") { useContextSystem("search", planner::toggleKeepstarSavedMarker) }
         document.addEventListener("visibilitychange", {
             if (document.asDynamic().visibilityState == "visible") sharedMarkers.onPageVisible()
@@ -600,7 +601,11 @@ private class WebApplication(
         target.appendInfo("Stargates", (universe.stargateCountBySystemId[system.id] ?: 0).toString())
         target.appendInfo("Ansiblex", ansiblexCount.toString())
         target.appendInfo("Jump coverage", coverage.toString())
-        target.appendInfo("Saved Marker type", if (system.id in state.keepstarSystemIds) "keepstar" else "None")
+        val savedMarkerTypes = buildList {
+            if (system.id in state.fortizarSystemIds) add("fortizar")
+            if (system.id in state.keepstarSystemIds) add("keepstar")
+        }
+        target.appendInfo("Saved Marker type", savedMarkerTypes.joinToString().ifEmpty { "None" })
         target.appendInfo("Universe XYZ", "${scientific(system.position.x)}, ${scientific(system.position.y)}, ${scientific(system.position.z)}")
         val official = universe.scene.nodesById[system.id]?.position
         target.appendInfo("Official 2D", official?.let { "${formatDouble(it.x, 2)}, ${formatDouble(it.y, 2)}" } ?: "Unavailable")
@@ -773,6 +778,8 @@ private class WebApplication(
         planner.selectSystem(systemId)
         sharedMarkers.selectMarkerAtSystem(systemId)
         element<HTMLElement>("system-actions-name").textContent = planner.systemName(systemId)
+        element<HTMLElement>("action-fortizar-marker").textContent =
+            if (systemId in planner.state.fortizarSystemIds) "Remove Fortizar Saved Marker" else "Add Fortizar Saved Marker"
         element<HTMLElement>("action-keepstar-marker").textContent =
             if (systemId in planner.state.keepstarSystemIds) "Remove Keepstar Saved Marker" else "Add Keepstar Saved Marker"
         element<HTMLElement>("action-shared-marker").asDynamic().disabled = !online || !sharedMarkers.state.canWrite
@@ -896,7 +903,7 @@ private const val PANEL_TRANSITION_MILLIS = 220
 private const val KEYBOARD_SCROLL_DELAY_MILLIS = 180
 private const val EDITOR_FOCUS_DELAY_MILLIS = 80
 private const val CONTEXT_SHEET_WIDTH_PX = 270.0
-private const val CONTEXT_SHEET_HEIGHT_PX = 300.0
+private const val CONTEXT_SHEET_HEIGHT_PX = 344.0
 
 private fun browserOnline(): Boolean = window.navigator.asDynamic().onLine as? Boolean ?: true
 

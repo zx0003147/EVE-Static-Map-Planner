@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -24,6 +25,7 @@ import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapVisualSemantics
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
+import dev.evestaticmapplanner.core.map.PrimarySystemNodeShape
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
@@ -34,7 +36,6 @@ import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
 import dev.evestaticmapplanner.marker.markerColor
 import dev.evestaticmapplanner.marker.drawSavedMarkerChildIcon
-import dev.evestaticmapplanner.marker.SavedMarkerChildVisuals
 import dev.evestaticmapplanner.control.mission.MissionMarker
 
 enum class MapDetailLevel {
@@ -306,6 +307,8 @@ object MapRenderer {
         transform: MapTransform,
         hoveredSystemId: Int?,
         selectedSystemId: Int?,
+        primarySystemNodesById: Map<Int, PresentedPrimarySystemNode>,
+        emphasis: MapVisualEmphasis,
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
@@ -314,13 +317,15 @@ object MapRenderer {
     ) {
         if (selectedSystemId != null) {
             drawHighlightedNode(
-                scene, transform, selectedSystemId, SELECTED_COLOR, 8f, textMeasurer, cache, preferences,
+                scene, transform, selectedSystemId, primarySystemNodesById, emphasis, isHovered = false,
+                isSelected = true, textMeasurer, cache, preferences,
                 systemNameVisualObstaclesBySystemId[selectedSystemId], systemNameSafetyGapPx,
             )
         }
         if (hoveredSystemId != null && hoveredSystemId != selectedSystemId) {
             drawHighlightedNode(
-                scene, transform, hoveredSystemId, HOVER_COLOR, 6f, textMeasurer, cache, preferences,
+                scene, transform, hoveredSystemId, primarySystemNodesById, emphasis, isHovered = true,
+                isSelected = false, textMeasurer, cache, preferences,
                 systemNameVisualObstaclesBySystemId[hoveredSystemId], systemNameSafetyGapPx,
             )
         }
@@ -792,33 +797,13 @@ object MapRenderer {
         markers.forEach { presented ->
             val center = presented.screenCenter.toOffset()
             val color = markerColor(presented.marker.color)
-            if (presented.visualStyle == MarkerVisualStyle.KEEPSTAR_PRIMARY) {
-                drawSavedMarkerChildIcon(
-                    visual = SavedMarkerChildVisuals.resolve(dev.evestaticmapplanner.core.marker.SavedMarkerChildType.KEEPSTAR),
-                    center = center,
-                    size = 14.dp.toPx(),
-                    tint = color,
-                )
-            } else if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
+            if (presented.visualStyle == MarkerVisualStyle.OUTER_RING) {
                 val ringRadius = savedMarkerRing.radiusDp.dp.toPx()
                 savedMarkerRing.glowLayers.forEach { layer ->
                     drawCircle(color.copy(alpha = layer.alpha), ringRadius + layer.expansionDp.dp.toPx(), center)
                 }
                 drawCircle(color, ringRadius, center, style = Stroke(savedMarkerRing.lineWidthDp.dp.toPx()))
-                presented.children.forEach { child ->
-                    val childCenter = child.screenCenter.toOffset()
-                    val badgeRadius = SAVED_MARKER_CHILD_BADGE_RADIUS_DP.dp.toPx()
-                    drawCircle(Color(0xEE111C26), badgeRadius, childCenter)
-                    drawCircle(color.copy(alpha = 0.9f), badgeRadius, childCenter, style = Stroke(1.25.dp.toPx()))
-                    drawCircle(color.copy(alpha = 0.12f), badgeRadius + 2.dp.toPx(), childCenter)
-                    drawSavedMarkerChildIcon(
-                        visual = child.visual,
-                        center = childCenter,
-                        size = badgeRadius * 1.34f,
-                        tint = Color(0xFFF1F5F8),
-                    )
-                }
-            } else {
+            } else if (presented.visualStyle == MarkerVisualStyle.OUTLINE_DIAMOND) {
                 val diamond = Path().apply {
                     moveTo(center.x, center.y - halfSize)
                     lineTo(center.x + halfSize, center.y)
@@ -828,10 +813,24 @@ object MapRenderer {
                 }
                 drawPath(diamond, color, style = Stroke(2.dp.toPx()))
             }
+            presented.children.forEach { child ->
+                val childCenter = child.screenCenter.toOffset()
+                val badgeRadius = SAVED_MARKER_CHILD_BADGE_RADIUS_DP.dp.toPx()
+                drawCircle(Color(0xEE111C26), badgeRadius, childCenter)
+                drawCircle(color.copy(alpha = 0.9f), badgeRadius, childCenter, style = Stroke(1.25.dp.toPx()))
+                drawCircle(color.copy(alpha = 0.12f), badgeRadius + 2.dp.toPx(), childCenter)
+                drawSavedMarkerChildIcon(
+                    visual = child.visual,
+                    center = childCenter,
+                    size = badgeRadius * 1.34f,
+                    tint = Color(0xFFF1F5F8),
+                )
+            }
             presented.visibleName?.let { name ->
                 val label = cache.label(name, MapLabelType.SYSTEM, preferences, textMeasurer)
                 val markerRadiusPx = when (presented.visualStyle) {
                     MarkerVisualStyle.OUTER_RING -> savedMarkerRing.radiusDp.dp.toPx().toDouble()
+                    MarkerVisualStyle.FORTIZAR_PRIMARY,
                     MarkerVisualStyle.KEEPSTAR_PRIMARY -> 7.dp.toPx().toDouble()
                     MarkerVisualStyle.OUTLINE_DIAMOND -> halfSize.toDouble()
                 }
@@ -868,6 +867,20 @@ object MapRenderer {
         }
     }
 
+    fun DrawScope.drawPrimarySystemNodes(nodes: List<PresentedPrimarySystemNode>) {
+        val size = MapVisualSemantics.PRIMARY_STRUCTURE_NODE_SIZE_PX.dp.toPx()
+        val normalStrokeWidth = primaryStructureNodeNormalStrokeWidth(size)
+        nodes.forEach { node ->
+            drawPrimarySystemNodeOutline(
+                shape = node.shape,
+                center = node.screenCenter.toOffset(),
+                size = size,
+                color = node.color,
+                strokeWidth = normalStrokeWidth,
+            )
+        }
+    }
+
     private fun DrawScope.drawSegmentedSharedRing(
         center: Offset,
         radius: Float,
@@ -893,8 +906,10 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         systemId: Int,
-        color: Color,
-        radius: Float,
+        primarySystemNodesById: Map<Int, PresentedPrimarySystemNode>,
+        emphasis: MapVisualEmphasis,
+        isHovered: Boolean,
+        isSelected: Boolean,
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
@@ -903,13 +918,43 @@ object MapRenderer {
     ) {
         val node = scene.nodesById[systemId] ?: return
         val screen = transform.worldToScreen(node.position).toOffset()
-        drawCircle(color = color.copy(alpha = 0.2f), radius = radius + 4f, center = screen)
-        drawCircle(color = color, radius = radius, center = screen, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
+        val primarySystemNode = primarySystemNodesById[systemId]
+        val shape = primarySystemNode?.shape ?: PrimarySystemNodeShape.SYSTEM
+        val interaction = MapVisualSemantics.interactionState(isHovered, isSelected)
+        val stroke = MapVisualSemantics.nodeOutlineSemantics(shape, interaction)
+        val baseArgb = primarySystemNode?.color?.toArgb()?.toLong()?.and(0xFFFF_FFFFL) ?: 0L
+        val color = Color(MapVisualSemantics.nodeOutlineColorArgb(shape, interaction, baseArgb))
+        val structureSize = MapVisualSemantics.PRIMARY_STRUCTURE_NODE_SIZE_PX.dp.toPx()
+        val strokeWidth = if (shape == PrimarySystemNodeShape.SYSTEM) {
+            stroke.widthPx.toFloat().dp.toPx()
+        } else {
+            primaryStructureNodeNormalStrokeWidth(structureSize)
+        }
+        val visualRadius = if (shape == PrimarySystemNodeShape.SYSTEM) {
+            systemNodeRadius(detailLevel(transform.viewport.zoom)) + if (systemId in emphasis.focusedSystemIds) {
+                EMPHASIZED_NODE_RADIUS_INCREASE_PX
+            } else {
+                0f
+            }
+        } else {
+            structureSize / 2f
+        }
+        if (shape == PrimarySystemNodeShape.SYSTEM) {
+            drawCircle(color, visualRadius, screen, style = Stroke(strokeWidth))
+        } else {
+            drawPrimarySystemNodeOutline(
+                shape = shape,
+                center = screen,
+                size = structureSize,
+                color = color,
+                strokeWidth = strokeWidth,
+            )
+        }
         val label = cache.label(node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
         val labelLayout = systemNameLabelLayout(
             center = MapPoint(screen.x.toDouble(), screen.y.toDouble()),
             labelSize = MapSize(label.size.width.toDouble(), label.size.height.toDouble()),
-            existingOffsetPx = radius + 6.0,
+            existingOffsetPx = visualRadius + strokeWidth / 2.0 + 6.0,
             visualObstacles = systemNameVisualObstacles,
             safetyGapPx = systemNameSafetyGapPx,
         )
@@ -927,6 +972,30 @@ object MapRenderer {
             topLeft = labelLayout.topLeft.toOffset(),
         )
     }
+
+    internal fun DrawScope.drawPrimarySystemNodeOutline(
+        shape: PrimarySystemNodeShape,
+        center: Offset,
+        size: Float,
+        color: Color,
+        strokeWidth: Float,
+    ) {
+        val half = size / 2f
+        val left = center.x - half
+        val top = center.y - half
+        val path = Path().apply {
+            MapVisualSemantics.primaryNodeOutline(shape).forEachIndexed { index, point ->
+                val x = left + size * point.x.toFloat()
+                val y = top + size * point.y.toFloat()
+                if (index == 0) moveTo(x, y) else lineTo(x, y)
+            }
+            close()
+        }
+        drawPath(path, color, style = Stroke(strokeWidth))
+    }
+
+    internal fun primaryStructureNodeNormalStrokeWidth(size: Float): Float =
+        (size * 0.11f).coerceAtLeast(1f)
 
     private fun DrawScope.drawPresentedLabels(
         labels: List<PresentedMapLabel>,
@@ -995,8 +1064,6 @@ private val LABEL_COLOR = Color(0xFFD7E6F2)
 private val REGION_LABEL_BASE_COLOR = Color(0xFFE8F2FA)
 private val REGION_BACKGROUND_LABEL_BASE_COLOR = Color(0xFFD7E6F2)
 private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
-private val HOVER_COLOR = Color(0xFFF3D36A)
-private val SELECTED_COLOR = Color(0xFF76E6A5)
 internal val ANSIBLEX_NETWORK_COLOR = Color(MapVisualSemantics.ansiblexNetwork.argb)
 internal val ANSIBLEX_NETWORK_DASH_PATTERN = MapVisualSemantics.ansiblexNetwork.dashPatternPx.map { it.toFloat() }.toFloatArray()
 private val ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(ANSIBLEX_NETWORK_DASH_PATTERN)

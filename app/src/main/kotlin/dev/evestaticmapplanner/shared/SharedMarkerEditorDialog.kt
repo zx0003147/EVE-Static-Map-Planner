@@ -325,5 +325,5 @@ private fun CommonSharedMarkerTags(current: List<String>, enabled: Boolean, onTo
 }
 
 private val COMMON_SHARED_MARKER_TAGS = listOf(
-    "staging", "rally", "danger", "logistics", "home", "backup", "industrial", "strategic", "keepstar",
+    "staging", "rally", "danger", "logistics", "home", "backup", "industrial", "strategic", "fortizar", "keepstar",
 )

@@ -12,8 +12,9 @@ EVE Static Map Planner is an unofficial third-party tool. It is not affiliated w
 
 The custom Keepstar child-marker vector is traced from CCP's
 `Icons/items/Brackets/citadelExtraLarge.png` in the official
-`Uprising_V21.03_Icons.zip` Image Export Collection. The source bitmap is used only as a
-development geometry reference and is not bundled or loaded at runtime. The reference imagery remains © CCP hf.
+`Uprising_V21.03_Icons.zip` Image Export Collection. The Fortizar vector is an independently authored,
+normalized outline in the same EVE structure-bracket style. Source imagery is used only as a development geometry
+reference and is not bundled or loaded at runtime. The reference imagery remains © CCP hf.
 
 The 1.2.0 public-distribution review retains the descriptive project name, original abstract icon, proprietary notice,
 and explicit unofficial/not-endorsed wording. Distributors remain responsible for compliance with the then-current

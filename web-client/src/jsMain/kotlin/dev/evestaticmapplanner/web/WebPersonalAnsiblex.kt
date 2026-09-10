@@ -259,16 +259,37 @@ class PersonalAnsiblexStore(private val storage: BrowserStringStore = LocalStora
     }
 }
 
-class WebKeepstarMarkerStore(private val storage: BrowserStringStore = LocalStorageStringStore) {
-    fun load(): Set<Int> = storage.get(STORAGE_KEY).orEmpty().split(',').mapNotNull(String::toIntOrNull)
+private class WebSavedMarkerTagStore(
+    private val storage: BrowserStringStore,
+    private val storageKey: String,
+) {
+    fun load(): Set<Int> = storage.get(storageKey).orEmpty().split(',').mapNotNull(String::toIntOrNull)
         .filter { it > 0 }.toSet()
 
     fun save(systemIds: Set<Int>) {
-        storage.set(STORAGE_KEY, systemIds.sorted().joinToString(","))
+        storage.set(storageKey, systemIds.sorted().joinToString(","))
     }
+}
+
+class WebKeepstarMarkerStore(storage: BrowserStringStore = LocalStorageStringStore) {
+    private val delegate = WebSavedMarkerTagStore(storage, STORAGE_KEY)
+
+    fun load(): Set<Int> = delegate.load()
+    fun save(systemIds: Set<Int>) = delegate.save(systemIds)
 
     private companion object {
         const val STORAGE_KEY = "eve-static-map-planner.saved-marker.keepstar.v1"
+    }
+}
+
+class WebFortizarMarkerStore(storage: BrowserStringStore = LocalStorageStringStore) {
+    private val delegate = WebSavedMarkerTagStore(storage, STORAGE_KEY)
+
+    fun load(): Set<Int> = delegate.load()
+    fun save(systemIds: Set<Int>) = delegate.save(systemIds)
+
+    private companion object {
+        const val STORAGE_KEY = "eve-static-map-planner.saved-marker.fortizar.v1"
     }
 }
 

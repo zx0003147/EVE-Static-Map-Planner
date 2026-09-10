@@ -67,8 +67,8 @@ ESI, Sovereignty Pack, or production source.
 `MarkerDraft.create` trims blank text to null but currently has no text-length or control-character limit.
 `Marker.saved` and `Marker.temporary` deliberately encode different lifecycle metadata in one type.
 
-`core/.../marker/SavedMarkerChild.kt` models Saved Marker tags as child entities. The nine UI-supported semantic keys
-are `staging`, `rally`, `danger`, `logistics`, `home`, `backup`, `industrial`, `strategic`, and `keepstar`. The value
+`core/.../marker/SavedMarkerChild.kt` models Saved Marker tags as child entities. The ten UI-supported semantic keys
+are `staging`, `rally`, `danger`, `logistics`, `home`, `backup`, `industrial`, `strategic`, `fortizar`, and `keepstar`. The value
 class itself is forward-compatible with unknown lowercase semantic keys; the normalizer restricts local editing to
 the supported set.
 

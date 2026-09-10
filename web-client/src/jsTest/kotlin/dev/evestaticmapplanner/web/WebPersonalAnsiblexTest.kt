@@ -121,4 +121,17 @@ class WebPersonalAnsiblexTest {
         store.save(setOf(30_000_004))
         assertEquals(setOf(30_000_004), WebKeepstarMarkerStore(storage).load())
     }
+
+    @Test
+    fun `Fortizar Saved Marker storage is browser local and does not alter Keepstar data`() {
+        val storage = MemoryBrowserStore()
+        val fortizar = WebFortizarMarkerStore(storage)
+        val keepstar = WebKeepstarMarkerStore(storage)
+
+        fortizar.save(setOf(30_000_002))
+        keepstar.save(setOf(30_000_004))
+
+        assertEquals(setOf(30_000_002), WebFortizarMarkerStore(storage).load())
+        assertEquals(setOf(30_000_004), WebKeepstarMarkerStore(storage).load())
+    }
 }

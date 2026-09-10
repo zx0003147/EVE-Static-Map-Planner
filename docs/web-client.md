@@ -35,7 +35,7 @@ shared :core
 WebPlannerController -> WebMapView -> Canvas and DOM UI
 
 browser localStorage
-  Map label preferences + Personal Ansiblex + Keepstar Saved Marker state
+  Map label preferences + Personal Ansiblex + Fortizar/Keepstar Saved Marker state
 
 browser IndexedDB
   Optional remembered Device Token + Server origin + device name + Workspace ID
@@ -71,7 +71,7 @@ The UI never reads raw dynamic JSON. `parseWebPackDocument` creates typed Web DT
 
 `WebMapView` renders the Official 2D scene with browser Canvas. It draws culled Stargate edges, every enabled Pack and Personal Ansiblex, Jump Range/coverage halos, Normal route legs, Capital jump legs, nodes, selected/hovered states, Waypoints, and LOD-controlled labels. Shared presentation constants align the map semantics with Desktop: muted solid Stargates, amber curved/dashed base Ansiblex, cyan solid Normal Stargate legs, orange curved/dashed Normal Ansiblex legs, teal Wormhole legs, and purple solid Capital legs. Directional route arrows use the same spacing, count, minimum-length, size, and dark halo semantics. Route endpoints, Normal versus Capital Waypoints, selection, hover, coverage, and overlap remain visually distinct.
 
-The drawing order is topology, coverage, routes, primary nodes, Shared Marker overlays, hierarchy labels, interaction highlights, then Waypoint badges. Route/Waypoint/selection therefore remain legible over coverage. A Keepstar Saved Marker changes the system's primary node shape instead of adding a second ordinary marker ring; selection, hover, route and Waypoint treatments remain above it.
+The drawing order is topology, coverage, routes, primary nodes, Shared Marker overlays, hierarchy labels, interaction highlights, then Waypoint badges. Route/Waypoint/selection therefore remain legible over coverage. A `fortizar` or `keepstar` tag from either Saved or Shared Marker data changes the system's primary node shape instead of adding a second structure icon. Saved and Shared tags are resolved together once, with Keepstar taking priority. Selection and hover restroke that final shape, while route, Waypoint, and marker content remain above it.
 
 The shared `MapTransform` supplies fit, pan, world/screen conversion, cursor-centered zoom, and visible bounds. The shared `SystemSpatialIndex` supplies viewport node queries and hit testing, avoiding a full-system scan for every pointer move. Edge rendering uses scene-bound intersection culling. Label density increases with zoom; selected, hovered, route, and Waypoint systems have priority.
 
@@ -103,7 +103,7 @@ Operation feedback uses the existing top banner as a transient notification. Inf
 
 The stable manifest is never treated as immutable. On every online page load it is revalidated; if Desktop publishes a new versioned Pack first and the new manifest last, the next load discovers the new filename without a Web-side Update action. App-shell updates use a new shell cache revision, install a waiting service worker, and show **A new version is available — Reload**. Reload occurs only after the user chooses it, so marker-editor input is not discarded unexpectedly. Any future shell release must change `APP_CACHE` in `service-worker.js`; shell files are fetched with `cache: reload` during installation.
 
-After one successful cached load, offline reopen supports the static map, Search, Normal/Ansiblex routes, Waypoints, Capital Route, Jump Range, Coverage, persisted label preferences, Keepstar Saved Markers, and persisted Personal Ansiblex. Shared Marker and discovery of new Route Handoffs stay online-only: the UI says Offline, write actions are disabled, and no mutation queue exists. A route already loaded into planner state remains usable. A first-ever offline launch with no usable cache shows a recoverable error and Retry action.
+After one successful cached load, offline reopen supports the static map, Search, Normal/Ansiblex routes, Waypoints, Capital Route, Jump Range, Coverage, persisted label preferences, Fortizar/Keepstar Saved Markers, and persisted Personal Ansiblex. Shared Marker and discovery of new Route Handoffs stay online-only: the UI says Offline, write actions are disabled, and no mutation queue exists. A route already loaded into planner state remains usable. A first-ever offline launch with no usable cache shows a recoverable error and Retry action.
 
 ## Search and System Info
 
@@ -140,9 +140,13 @@ Capital Coverage follows the current Desktop meaning: the per-system count of en
 
 Semantic labels follow Desktop's absolute zoom direction and defaults. Region is the primary zoomed-out layer; Constellation begins at `2.0`; System begins at `6.0`. The **Map Display / Labels** settings accept custom positive finite thresholds only when Constellation is lower than System and System is at most 250. A return ratio of `0.83` adds hysteresis around threshold crossings. Save persists the pair to browser `localStorage`; **Reset to Defaults** removes the override. Focused fields are not overwritten by redraws while the user types.
 
-## Keepstar Saved Markers
+## Structure Marker node shapes
 
-The stable Saved Marker child type is `keepstar`; marker names and Shared Marker text/tags are not used for classification. A Keepstar replaces the ordinary system node on both Desktop and Web. Search, identity, hit testing, routing, Capital, coverage, selected/hovered state, and Waypoints continue to target the underlying Solar System. Removing the Saved Marker restores the normal node immediately.
+The stable structure tags are `fortizar` and `keepstar`. Desktop and Web combine Local Saved Marker child types with
+Shared Marker tags for each system, then choose exactly one primary node shape: Keepstar, otherwise Fortizar,
+otherwise the ordinary system node. Search, identity, hit testing, routing, Capital, coverage, selected/hovered state,
+and Waypoints continue to target the underlying Solar System. Hover and selection stroke the chosen shape directly;
+they do not add a circular halo. Removing the last applicable tag restores the normal node immediately.
 
 ## Shared Marker connection and permissions
 

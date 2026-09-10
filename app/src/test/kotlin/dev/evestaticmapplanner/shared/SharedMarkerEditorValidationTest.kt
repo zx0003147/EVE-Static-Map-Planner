@@ -12,11 +12,11 @@ import kotlin.test.assertNull
 class SharedMarkerEditorValidationTest {
     @Test
     fun `free text tags accept future valid keys and normalize marker text like server`() {
-        val tags = parseSharedMarkerTags("staging, future.tag custom-key")
+        val tags = parseSharedMarkerTags("staging, fortizar, keepstar future.tag custom-key")
         val normalized = SharedMarkerValidation.normalize(
             SharedMarkerDraft("  Enemy Staging  ", SharedMarkerColor.RED, tags, "\r\n notes \r\n"),
         )
-        assertEquals(listOf("staging", "future.tag", "custom-key"), normalized.tags)
+        assertEquals(listOf("staging", "fortizar", "keepstar", "future.tag", "custom-key"), normalized.tags)
         assertEquals("Enemy Staging", normalized.name)
         assertEquals("notes", normalized.notes)
     }

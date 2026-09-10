@@ -187,7 +187,7 @@ Audit events separately retain an event-time display-name snapshot.
 
 Color vocabulary matches the current Local Marker palette but remains a protocol string rather than a dependency on
 the Map's `MarkerColor` Kotlin type. Tags use the current Saved Marker semantic keys (`staging`, `rally`, `danger`,
-`logistics`, `home`, `backup`, `industrial`, `strategic`, `keepstar`) but are not a closed wire enum. An older client
+`logistics`, `home`, `backup`, `industrial`, `strategic`, `fortizar`, `keepstar`) but are not a closed wire enum. An older client
 renders an unknown valid tag as a generic tag instead of rejecting the whole marker.
 
 ### 7.2 Solar-system validation

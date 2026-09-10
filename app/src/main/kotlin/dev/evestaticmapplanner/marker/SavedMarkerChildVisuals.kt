@@ -8,6 +8,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import dev.evestaticmapplanner.core.map.MapVisualSemantics
+import dev.evestaticmapplanner.core.map.PrimarySystemNodeShape
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import java.util.Locale
@@ -21,6 +23,7 @@ enum class SavedMarkerChildIconKind {
     SHIELD,
     FACTORY,
     STAR,
+    FORTIZAR_BRACKET,
     KEEPSTAR_BRACKET,
     GENERIC,
 }
@@ -42,6 +45,7 @@ object SavedMarkerChildVisuals {
         known(SavedMarkerChildType.BACKUP, "Backup", SavedMarkerChildIconKind.SHIELD),
         known(SavedMarkerChildType.INDUSTRIAL, "Industrial", SavedMarkerChildIconKind.FACTORY),
         known(SavedMarkerChildType.STRATEGIC, "Strategic", SavedMarkerChildIconKind.STAR),
+        known(SavedMarkerChildType.FORTIZAR, "Fortizar", SavedMarkerChildIconKind.FORTIZAR_BRACKET),
         known(SavedMarkerChildType.KEEPSTAR, "Keepstar", SavedMarkerChildIconKind.KEEPSTAR_BRACKET),
     )
 
@@ -95,9 +99,16 @@ internal fun DrawScope.drawSavedMarkerChildIcon(
     val top = center.y - half
     val stroke = (size * 0.11f).coerceAtLeast(1f)
     when (visual.iconKind) {
-        SavedMarkerChildIconKind.KEEPSTAR_BRACKET -> {
+        SavedMarkerChildIconKind.FORTIZAR_BRACKET,
+        SavedMarkerChildIconKind.KEEPSTAR_BRACKET,
+        -> {
+            val points = if (visual.iconKind == SavedMarkerChildIconKind.KEEPSTAR_BRACKET) {
+                KEEPSTAR_BRACKET_POINTS
+            } else {
+                FORTIZAR_BRACKET_POINTS
+            }
             val path = Path().apply {
-                KEEPSTAR_BRACKET_POINTS.forEachIndexed { index, point ->
+                points.forEachIndexed { index, point ->
                     val x = left + size * point.x
                     val y = top + size * point.y
                     if (index == 0) moveTo(x, y) else lineTo(x, y)
@@ -193,13 +204,8 @@ internal fun DrawScope.drawSavedMarkerChildIcon(
     }
 }
 
-internal val KEEPSTAR_BRACKET_POINTS = listOf(
-    Offset(0.40f, 0.13f),
-    Offset(0.07f, 0.13f),
-    Offset(0.07f, 0.87f),
-    Offset(0.93f, 0.87f),
-    Offset(0.93f, 0.13f),
-    Offset(0.60f, 0.13f),
-    Offset(0.60f, 0.47f),
-    Offset(0.40f, 0.47f),
-)
+internal val KEEPSTAR_BRACKET_POINTS = MapVisualSemantics.primaryNodeOutline(PrimarySystemNodeShape.KEEPSTAR)
+    .map { Offset(it.x.toFloat(), it.y.toFloat()) }
+
+internal val FORTIZAR_BRACKET_POINTS = MapVisualSemantics.primaryNodeOutline(PrimarySystemNodeShape.FORTIZAR)
+    .map { Offset(it.x.toFloat(), it.y.toFloat()) }

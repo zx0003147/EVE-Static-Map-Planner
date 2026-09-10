@@ -87,6 +87,7 @@ class MarkerEditorDialogTest {
         onNodeWithText("Cancel").assertIsDisplayed()
         onNodeWithText("+ Add Tag").performScrollTo().assertIsDisplayed().performClick()
         onNodeWithText("Keepstar").assertIsDisplayed()
+        onNodeWithText("Fortizar").assertIsDisplayed()
         onNodeWithText("Save").assertIsDisplayed()
         onNodeWithText("Cancel").assertIsDisplayed()
     }

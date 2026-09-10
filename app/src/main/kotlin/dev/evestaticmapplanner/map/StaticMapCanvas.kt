@@ -445,10 +445,29 @@ fun StaticMapCanvas(
             localSavedRingRadiusPx = localSavedRingRadiusPx,
         )
     }
-    val keepstarPrimarySystemIds = remember(presentedMarkers) {
-        presentedMarkers.asSequence()
-            .filter { it.visualStyle == MarkerVisualStyle.KEEPSTAR_PRIMARY }
-            .mapTo(linkedSetOf()) { it.marker.systemId }
+    val presentedPrimarySystemNodes = remember(
+        labelPresentation.visibleSystemIds,
+        markerState.markersBySystemId,
+        markerState.childrenByParentSystemId,
+        state.appPreferences.marker.showMarkers,
+        sharedMarkerState,
+        transform,
+        scene,
+    ) {
+        SystemNodeShapePresentationBuilder.build(
+            visibleSystemIds = labelPresentation.visibleSystemIds,
+            localMarkersBySystemId = markerState.markersBySystemId,
+            localChildrenBySystemId = markerState.childrenByParentSystemId,
+            showLocalMarkers = state.appPreferences.marker.showMarkers,
+            sharedMarkerState = sharedMarkerState,
+            screenPosition = { systemId -> scene.nodesById[systemId]?.position?.let(transform::worldToScreen) },
+        )
+    }
+    val primarySystemNodesById = remember(presentedPrimarySystemNodes) {
+        presentedPrimarySystemNodes.associateBy(PresentedPrimarySystemNode::systemId)
+    }
+    val primaryStructureSystemIds = remember(primarySystemNodesById) {
+        primarySystemNodesById.keys
     }
     val localSavedVisualRadiusPx = with(density) {
         savedMarkerRingRenderState(savedMarkerAppearance).visualRadiusDp().dp.toPx().toDouble()
@@ -637,7 +656,7 @@ fun StaticMapCanvas(
                     featureEmblems = presentedFeatureEmblems,
                     systemNameVisualObstaclesBySystemId = systemNameVisualObstaclesBySystemId,
                     systemNameSafetyGapPx = systemNameSafetyGapPx,
-                    replacementSystemIds = keepstarPrimarySystemIds,
+                    replacementSystemIds = primaryStructureSystemIds,
                 )
             }
         }
@@ -724,14 +743,15 @@ fun StaticMapCanvas(
                         preferences = mapDisplayPreferences,
                         systemNameVisualObstaclesBySystemId = systemNameVisualObstaclesBySystemId,
                         systemNameSafetyGapPx = systemNameSafetyGapPx,
-                        replacementSystemIds = keepstarPrimarySystemIds,
+                        replacementSystemIds = primaryStructureSystemIds,
                     )
                 }
             }
         }
-        if (presentedMarkers.isNotEmpty()) {
+        if (presentedMarkers.isNotEmpty() || presentedPrimarySystemNodes.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.SAVED_MARKER)) {
                 with(MapRenderer) {
+                    drawPrimarySystemNodes(presentedPrimarySystemNodes)
                     drawMarkers(
                         presentedMarkers,
                         textMeasurer,
@@ -770,6 +790,8 @@ fun StaticMapCanvas(
                     transform = transform,
                     hoveredSystemId = state.hoveredSystemId,
                     selectedSystemId = state.selectedSystemId,
+                    primarySystemNodesById = primarySystemNodesById,
+                    emphasis = visualEmphasis,
                     textMeasurer = textMeasurer,
                     cache = renderCache,
                     preferences = mapDisplayPreferences,
