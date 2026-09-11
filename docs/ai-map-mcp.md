@@ -1,6 +1,6 @@
 # AI Map MCP transports
 
-EVE Static Map Planner exposes the same fixed 32-tool MCP server through two local transports:
+EVE Static Map Planner exposes the same fixed 33-tool MCP server through two local transports:
 
 ```text
 Streamable HTTP client -> http://127.0.0.1:27892/mcp -> MCP server in the Map JVM
