@@ -77,11 +77,20 @@ object SystemContextMenuPresentationBuilder {
                 label = item.label,
             )
         } + listOf(
-            PresentedSystemContextAction(SystemContextAction.ADD_JUMP_RANGE_OVERLAY),
-            PresentedSystemContextAction(SystemContextAction.SET_ROUTE_START),
+            PresentedSystemContextAction(
+                action = SystemContextAction.ADD_JUMP_RANGE_OVERLAY,
+                startsNewSection = true,
+            ),
+            PresentedSystemContextAction(
+                action = SystemContextAction.SET_ROUTE_START,
+                startsNewSection = true,
+            ),
             PresentedSystemContextAction(SystemContextAction.ADD_ROUTE_WAYPOINT),
             PresentedSystemContextAction(SystemContextAction.SET_ROUTE_DESTINATION),
-            PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_START),
+            PresentedSystemContextAction(
+                action = SystemContextAction.SET_CAPITAL_START,
+                startsNewSection = true,
+            ),
             PresentedSystemContextAction(SystemContextAction.ADD_CAPITAL_WAYPOINT),
             PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_DESTINATION),
         ) + listOf(

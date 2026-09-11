@@ -12,7 +12,7 @@ import kotlin.test.Test
 @OptIn(ExperimentalTestApi::class)
 class FeatureOverlayLegendTest {
     @Test
-    fun `legend is collapsed by default and expands without changing presentation data`() = runComposeUiTest {
+    fun `sovereignty shortcut is hidden while other legend sections remain available`() = runComposeUiTest {
         setContent {
             MaterialTheme {
                 FeatureOverlayLegend(
@@ -24,19 +24,26 @@ class FeatureOverlayLegendTest {
                                 FeatureOverlayLegendEntry("Alliance B", Color.Blue),
                             ),
                         ),
+                        FeatureOverlayLegendSection(
+                            title = "Characters",
+                            entries = listOf(FeatureOverlayLegendEntry("Pilot A", Color.Green)),
+                        ),
                     ),
                 )
             }
         }
 
-        onNodeWithText("Sovereignty ▸").assertIsDisplayed()
+        onNodeWithText("Sovereignty ▸").assertDoesNotExist()
         onNodeWithText("Alliance A").assertDoesNotExist()
         onNodeWithText("Alliance B").assertDoesNotExist()
+        onNodeWithText("Characters ▸").assertIsDisplayed()
+        onNodeWithText("Pilot A").assertDoesNotExist()
 
-        onNodeWithText("Sovereignty ▸").performClick()
+        onNodeWithText("Characters ▸").performClick()
 
-        onNodeWithText("Sovereignty ▾").assertIsDisplayed()
-        onNodeWithText("Alliance A").assertIsDisplayed()
-        onNodeWithText("Alliance B").assertIsDisplayed()
+        onNodeWithText("Characters ▾").assertIsDisplayed()
+        onNodeWithText("Pilot A").assertIsDisplayed()
+        onNodeWithText("Alliance A").assertDoesNotExist()
+        onNodeWithText("Alliance B").assertDoesNotExist()
     }
 }

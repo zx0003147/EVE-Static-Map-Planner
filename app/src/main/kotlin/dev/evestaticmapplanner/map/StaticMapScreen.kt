@@ -142,6 +142,7 @@ internal fun StaticMapScreen(
     var markerPendingRemoval by remember { mutableStateOf<Int?>(null) }
     var savedRemovalStarted by remember { mutableStateOf(false) }
     var sharedMarkerEditor by remember { mutableStateOf<SharedMarkerEditorRequest?>(null) }
+    var sidebarExpanded by remember { mutableStateOf(true) }
     val rendererNormalRoute = activeNormalRouteForRenderer(routeState.activeRoute)
 
     LaunchedEffect(sharedMapState.selectedWorkspaceId) {
@@ -171,6 +172,8 @@ internal fun StaticMapScreen(
     }
     Row(modifier.fillMaxSize().background(EveColors.MapBackground)) {
         RouteToolsPanel(
+            expanded = sidebarExpanded,
+            onToggleExpanded = { sidebarExpanded = !sidebarExpanded },
             state = routeState,
             viewModel = routeViewModel,
             jumpState = jumpState,

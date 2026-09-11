@@ -23,6 +23,7 @@ class ToolSidebarLayoutTest {
     fun `sidebar contains only the three tools in requested order`() {
         assertEquals(
             listOf(
+                ToolSidebarSection.SEARCH,
                 ToolSidebarSection.JUMP_RANGE,
                 ToolSidebarSection.NORMAL_ROUTE,
                 ToolSidebarSection.CAPITAL_ROUTE,
@@ -32,11 +33,12 @@ class ToolSidebarLayoutTest {
     }
 
     @Test
-    fun `all sections default collapsed and can all expand or collapse`() {
+    fun `search defaults expanded and all sections can expand or collapse`() {
         var state = ToolSidebarExpansionState()
-        TOOL_SIDEBAR_SECTION_ORDER.forEach { section ->
+        assertTrue(state.isExpanded(ToolSidebarSection.SEARCH))
+        TOOL_SIDEBAR_SECTION_ORDER.drop(1).forEach { section ->
             assertFalse(state.isExpanded(section))
-            state = state.toggle(section)
+            state = state.expand(section)
         }
         assertEquals(TOOL_SIDEBAR_SECTION_ORDER.toSet(), state.expandedSections)
 
@@ -126,6 +128,7 @@ class ToolSidebarLayoutTest {
     fun `global search is permanently identified at the top of the sidebar`() {
         assertEquals("Search system...", SIDEBAR_SEARCH_LABEL)
         assertEquals(270, TOOL_SIDEBAR_WIDTH.value.toInt())
+        assertEquals(48, TOOL_SIDEBAR_COLLAPSED_WIDTH.value.toInt())
         assertEquals(2, MAP_TOOLBAR_VERTICAL_PADDING.value.toInt())
         assertEquals(36, MAP_TOOLBAR_BUTTON_HEIGHT.value.toInt())
     }

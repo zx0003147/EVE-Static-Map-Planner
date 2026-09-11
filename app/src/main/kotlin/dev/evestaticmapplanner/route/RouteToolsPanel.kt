@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.route
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,10 +28,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
@@ -52,7 +62,6 @@ import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveDivider
-import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EvePanel
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
@@ -62,22 +71,35 @@ import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import kotlin.math.abs
 
-internal enum class ToolSidebarSection {
+internal enum class SidebarToolIcon {
+    SEARCH,
     JUMP_RANGE,
     NORMAL_ROUTE,
     CAPITAL_ROUTE,
 }
 
+internal enum class ToolSidebarSection(val label: String, val icon: SidebarToolIcon) {
+    SEARCH("Search", SidebarToolIcon.SEARCH),
+    JUMP_RANGE("Jump Range Overlays", SidebarToolIcon.JUMP_RANGE),
+    NORMAL_ROUTE("Normal Route", SidebarToolIcon.NORMAL_ROUTE),
+    CAPITAL_ROUTE("Capital Route", SidebarToolIcon.CAPITAL_ROUTE),
+}
+
 internal val TOOL_SIDEBAR_SECTION_ORDER = listOf(
+    ToolSidebarSection.SEARCH,
     ToolSidebarSection.JUMP_RANGE,
     ToolSidebarSection.NORMAL_ROUTE,
     ToolSidebarSection.CAPITAL_ROUTE,
 )
 
 internal data class ToolSidebarExpansionState(
-    val expandedSections: Set<ToolSidebarSection> = emptySet(),
+    val expandedSections: Set<ToolSidebarSection> = setOf(ToolSidebarSection.SEARCH),
 ) {
     fun isExpanded(section: ToolSidebarSection): Boolean = section in expandedSections
+
+    fun expand(section: ToolSidebarSection): ToolSidebarExpansionState = copy(
+        expandedSections = expandedSections + section,
+    )
 
     fun toggle(section: ToolSidebarSection): ToolSidebarExpansionState = copy(
         expandedSections = if (isExpanded(section)) expandedSections - section else expandedSections + section,
@@ -86,6 +108,8 @@ internal data class ToolSidebarExpansionState(
 
 @Composable
 internal fun RouteToolsPanel(
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
     capitalState: CapitalRouteUiState,
@@ -110,83 +134,216 @@ internal fun RouteToolsPanel(
 ) {
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
     EvePanel(
-        modifier = Modifier.width(TOOL_SIDEBAR_WIDTH).fillMaxHeight(),
+        modifier = Modifier
+            .width(if (expanded) TOOL_SIDEBAR_WIDTH else TOOL_SIDEBAR_COLLAPSED_WIDTH)
+            .fillMaxHeight(),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SystemSearchField(
-                value = state.systemQuery,
-                label = SIDEBAR_SEARCH_LABEL,
-                results = state.systemResults,
-                onValueChange = viewModel::updateSystemQuery,
-                onSelect = { system ->
-                    confirmGlobalSystemSearch(system, viewModel::selectSystemSearch, onFocusSystem)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                compact = true,
-            )
-            EveDivider()
-            EveVerticalScrollColumn(
-                Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+        if (expanded) {
+            Column(
+                Modifier.fillMaxSize().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TOOL_SIDEBAR_SECTION_ORDER.forEachIndexed { index, section ->
-                if (index > 0) EveDivider()
-                val expanded = expansionState.isExpanded(section)
-                when (section) {
-                    ToolSidebarSection.JUMP_RANGE -> CollapsibleToolSection(
-                        title = "Jump Range Overlays",
-                        summary = jumpState.overlays.takeIf(List<*>::isNotEmpty)?.let {
-                            "${jumpState.overlays.count { overlay -> overlay.enabled }}/${jumpState.overlays.size}"
-                        },
-                        expanded = expanded,
-                        onToggle = { expansionState = expansionState.toggle(section) },
-                    ) {
-                        JumpRangeSectionContent(jumpState, jumpViewModel)
+                EveVerticalScrollColumn(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    TOOL_SIDEBAR_SECTION_ORDER.forEachIndexed { index, section ->
+                        if (index > 0) EveDivider()
+                        val sectionExpanded = expansionState.isExpanded(section)
+                        when (section) {
+                            ToolSidebarSection.SEARCH -> CollapsibleToolSection(
+                                title = section.label,
+                                icon = section.icon,
+                                summary = null,
+                                expanded = sectionExpanded,
+                                onToggle = { expansionState = expansionState.toggle(section) },
+                            ) {
+                                SystemSearchField(
+                                    value = state.systemQuery,
+                                    label = SIDEBAR_SEARCH_LABEL,
+                                    results = state.systemResults,
+                                    onValueChange = viewModel::updateSystemQuery,
+                                    onSelect = { system ->
+                                        confirmGlobalSystemSearch(
+                                            system,
+                                            viewModel::selectSystemSearch,
+                                            onFocusSystem,
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    compact = true,
+                                )
+                            }
+                            ToolSidebarSection.JUMP_RANGE -> CollapsibleToolSection(
+                                title = section.label,
+                                icon = section.icon,
+                                summary = jumpState.overlays.takeIf(List<*>::isNotEmpty)?.let {
+                                    "${jumpState.overlays.count { overlay -> overlay.enabled }}/${jumpState.overlays.size}"
+                                },
+                                expanded = sectionExpanded,
+                                onToggle = { expansionState = expansionState.toggle(section) },
+                            ) {
+                                JumpRangeSectionContent(jumpState, jumpViewModel)
+                            }
+                            ToolSidebarSection.NORMAL_ROUTE -> CollapsibleToolSection(
+                                title = section.label,
+                                icon = section.icon,
+                                summary = state.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
+                                expanded = sectionExpanded,
+                                onToggle = { expansionState = expansionState.toggle(section) },
+                            ) {
+                                NormalRouteSectionContent(
+                                    state,
+                                    viewModel,
+                                    routeActions,
+                                    normalRouteSnapshot,
+                                    normalNavigationSnapshot,
+                                    selectedRouteActionTargets,
+                                    onSelectRouteActionTarget,
+                                    onInvokeRouteAction,
+                                    onInvokeNavigationAction,
+                                    onOpenAnsiblexManager,
+                                    onOpenWormholeManager,
+                                    sharedMapState,
+                                    routeHandoffPublishState,
+                                    onPublishNormalRoute,
+                                )
+                            }
+                            ToolSidebarSection.CAPITAL_ROUTE -> CollapsibleToolSection(
+                                title = section.label,
+                                icon = section.icon,
+                                summary = capitalState.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
+                                expanded = sectionExpanded,
+                                onToggle = { expansionState = expansionState.toggle(section) },
+                            ) {
+                                CapitalRouteSectionContent(
+                                    capitalState,
+                                    capitalViewModel,
+                                    routeActions,
+                                    capitalRouteSnapshot,
+                                    selectedRouteActionTargets,
+                                    onSelectRouteActionTarget,
+                                    onInvokeRouteAction,
+                                    sharedMapState,
+                                    routeHandoffPublishState,
+                                    onPublishCapitalRoute,
+                                )
+                            }
+                        }
                     }
-                    ToolSidebarSection.NORMAL_ROUTE -> CollapsibleToolSection(
-                        title = "Normal Route",
-                        summary = state.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
-                        expanded = expanded,
-                        onToggle = { expansionState = expansionState.toggle(section) },
-                    ) {
-                        NormalRouteSectionContent(
-                            state,
-                            viewModel,
-                            routeActions,
-                            normalRouteSnapshot,
-                            normalNavigationSnapshot,
-                            selectedRouteActionTargets,
-                            onSelectRouteActionTarget,
-                            onInvokeRouteAction,
-                            onInvokeNavigationAction,
-                            onOpenAnsiblexManager,
-                            onOpenWormholeManager,
-                            sharedMapState,
-                            routeHandoffPublishState,
-                            onPublishNormalRoute,
-                        )
-                    }
-                    ToolSidebarSection.CAPITAL_ROUTE -> CollapsibleToolSection(
-                        title = "Capital Route",
-                        summary = capitalState.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
-                        expanded = expanded,
-                        onToggle = { expansionState = expansionState.toggle(section) },
-                    ) {
-                        CapitalRouteSectionContent(
-                            capitalState,
-                            capitalViewModel,
-                            routeActions,
-                            capitalRouteSnapshot,
-                            selectedRouteActionTargets,
-                            onSelectRouteActionTarget,
-                            onInvokeRouteAction,
-                            sharedMapState,
-                            routeHandoffPublishState,
-                            onPublishCapitalRoute,
+                }
+                EveDivider()
+                SidebarToggleButton(
+                    expanded = true,
+                    onClick = onToggleExpanded,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Box(Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    TOOL_SIDEBAR_SECTION_ORDER.forEach { section ->
+                        SidebarRailActionButton(
+                            section = section,
+                            onClick = {
+                                expansionState = expansionState.expand(section)
+                                onToggleExpanded()
+                            },
                         )
                     }
                 }
+                SidebarToggleButton(
+                    expanded = false,
+                    onClick = onToggleExpanded,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SidebarRailActionButton(
+    section: ToolSidebarSection,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .background(if (hovered) EveColors.HoverSurface else EveColors.PrimarySurface)
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = section.label }
+            .testTag("sidebar-rail-${section.name.lowercase()}"),
+        contentAlignment = Alignment.Center,
+    ) {
+        SidebarToolIcon(
+            icon = section.icon,
+            color = if (hovered) EveColors.PrimaryAccent else EveColors.PrimaryText,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun SidebarToggleButton(
+    expanded: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val description = if (expanded) "Collapse sidebar" else "Expand sidebar"
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .background(if (hovered) EveColors.HoverSurface else EveColors.PrimarySurface)
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = description }
+            .testTag("sidebar-toggle"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(18.dp)) {
+            val color = if (hovered) EveColors.PrimaryAccent else EveColors.PrimaryText
+            val strokeWidth = 1.5.dp.toPx()
+            if (expanded) {
+                listOf(0.27f, 0.50f, 0.73f).forEach { y ->
+                    drawLine(
+                        color = color,
+                        start = Offset(size.width * 0.18f, size.height * y),
+                        end = Offset(size.width * 0.82f, size.height * y),
+                        strokeWidth = strokeWidth,
+                    )
                 }
+            } else {
+                drawLine(
+                    color = color,
+                    start = Offset(size.width * 0.38f, size.height * 0.22f),
+                    end = Offset(size.width * 0.68f, size.height * 0.50f),
+                    strokeWidth = strokeWidth,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(size.width * 0.68f, size.height * 0.50f),
+                    end = Offset(size.width * 0.38f, size.height * 0.78f),
+                    strokeWidth = strokeWidth,
+                )
             }
         }
     }
@@ -195,6 +352,7 @@ internal fun RouteToolsPanel(
 @Composable
 private fun CollapsibleToolSection(
     title: String,
+    icon: SidebarToolIcon,
     summary: String?,
     expanded: Boolean,
     onToggle: () -> Unit,
@@ -205,17 +363,19 @@ private fun CollapsibleToolSection(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
                 .background(if (hovered) EveColors.HoverSurface else EveColors.PrimarySurface)
                 .hoverable(interactionSource)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onToggle)
                 .padding(vertical = 6.dp, horizontal = 2.dp),
         ) {
-            Text(if (expanded) "▼" else "▶", style = MaterialTheme.typography.labelMedium)
+            SidebarDisclosureIcon(expanded = expanded, modifier = Modifier.size(10.dp))
+            SidebarToolIcon(icon = icon, modifier = Modifier.size(18.dp))
             Text(
                 title,
                 style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(start = 8.dp).weight(1f),
+                modifier = Modifier.weight(1f),
             )
             summary?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = EveColors.SecondaryText)
@@ -223,6 +383,106 @@ private fun CollapsibleToolSection(
         }
         if (expanded) content()
     }
+}
+
+@Composable
+private fun SidebarDisclosureIcon(
+    expanded: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier) {
+        val triangle = Path().apply {
+            if (expanded) {
+                moveTo(size.width * 0.16f, size.height * 0.30f)
+                lineTo(size.width * 0.84f, size.height * 0.30f)
+                lineTo(size.width * 0.50f, size.height * 0.72f)
+            } else {
+                moveTo(size.width * 0.28f, size.height * 0.16f)
+                lineTo(size.width * 0.72f, size.height * 0.50f)
+                lineTo(size.width * 0.28f, size.height * 0.84f)
+            }
+            close()
+        }
+        drawPath(triangle, EveColors.PrimaryText)
+    }
+}
+
+@Composable
+private fun SidebarToolIcon(
+    icon: SidebarToolIcon,
+    modifier: Modifier = Modifier,
+    color: Color = EveColors.PrimaryText,
+) {
+    Canvas(modifier) {
+        val strokeWidth = 1.5.dp.toPx()
+        val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        when (icon) {
+            SidebarToolIcon.SEARCH -> {
+                val center = Offset(size.width * 0.42f, size.height * 0.42f)
+                drawCircle(color, size.minDimension * 0.25f, center, style = stroke)
+                drawLine(
+                    color = color,
+                    start = Offset(size.width * 0.60f, size.height * 0.60f),
+                    end = Offset(size.width * 0.84f, size.height * 0.84f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
+            SidebarToolIcon.JUMP_RANGE -> {
+                val center = Offset(size.width * 0.50f, size.height * 0.50f)
+                drawCircle(color, size.minDimension * 0.17f, center, style = stroke)
+                drawCircle(color, size.minDimension * 0.36f, center, style = stroke)
+            }
+            SidebarToolIcon.NORMAL_ROUTE -> {
+                val end = Offset(size.width * 0.82f, size.height * 0.18f)
+                drawLine(
+                    color = color,
+                    start = Offset(size.width * 0.18f, size.height * 0.82f),
+                    end = end,
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawRouteArrowHead(color, end, strokeWidth)
+            }
+            SidebarToolIcon.CAPITAL_ROUTE -> {
+                val viewport = 24f
+                fun point(x: Float, y: Float) = Offset(
+                    x = size.width * x / viewport,
+                    y = size.height * y / viewport,
+                )
+                val end = point(19.5f, 4.5f)
+                val jumpArc = Path().apply {
+                    val start = point(4.5f, 19.5f)
+                    val control = point(12f, 7f)
+                    moveTo(start.x, start.y)
+                    quadraticTo(control.x, control.y, end.x, end.y)
+                }
+                drawPath(jumpArc, color, style = stroke)
+                drawRouteArrowHead(color, end, strokeWidth)
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRouteArrowHead(
+    color: Color,
+    end: Offset,
+    strokeWidth: Float,
+) {
+    drawLine(
+        color = color,
+        start = Offset(end.x - size.width * 0.26f, end.y),
+        end = end,
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round,
+    )
+    drawLine(
+        color = color,
+        start = Offset(end.x, end.y + size.height * 0.26f),
+        end = end,
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round,
+    )
 }
 
 @Composable
@@ -237,12 +497,12 @@ private fun JumpRangeSectionContent(
             results = state.originResults,
             onValueChange = viewModel::updateOriginQuery,
             onSelect = viewModel::selectOrigin,
+            compact = true,
         )
-        OutlinedTextField(
+        CompactOutlinedTextField(
             value = state.manualRangeText,
             onValueChange = viewModel::updateManualRange,
-            label = { Text("Effective maximum LY") },
-            singleLine = true,
+            label = "Effective maximum LY",
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -523,6 +783,7 @@ private fun CapitalRouteSectionContent(
 }
 
 internal val TOOL_SIDEBAR_WIDTH = 270.dp
+internal val TOOL_SIDEBAR_COLLAPSED_WIDTH = 48.dp
 internal val ROUTE_CONTROL_VERTICAL_SPACING = 5.dp
 internal val ROUTE_OPTION_CONTROL_SIZE = 28.dp
 internal const val SIDEBAR_SEARCH_LABEL = "Search system..."

@@ -104,6 +104,7 @@ import dev.evestaticmapplanner.shared.toPreferences
 import dev.evestaticmapplanner.staticdata.StaticDataBootstrapScreen
 import dev.evestaticmapplanner.staticdata.StaticDataManagerDialog
 import dev.evestaticmapplanner.staticdata.StaticDataManagerViewModel
+import dev.evestaticmapplanner.ui.EveAlwaysOnTopButton
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveTheme
@@ -168,6 +169,7 @@ fun main(arguments: Array<String>) {
         val windowState = rememberWindowState(width = 1280.dp, height = 780.dp)
         var startup by remember { mutableStateOf(initial) }
         var exitRequested by remember { mutableStateOf(false) }
+        var isAlwaysOnTop by remember { mutableStateOf(false) }
         val windowIcon = painterResource("icons/app-icon.png")
         Window(
             onCloseRequest = {
@@ -176,6 +178,7 @@ fun main(arguments: Array<String>) {
             title = "EVE Static Map Planner",
             state = windowState,
             icon = windowIcon,
+            alwaysOnTop = isAlwaysOnTop,
         ) {
             EveTheme {
                 EveWindowChrome(window)
@@ -186,6 +189,8 @@ fun main(arguments: Array<String>) {
                         wormholeSessionStore,
                         exitRequested,
                         ::exitApplication,
+                        isAlwaysOnTop,
+                        { isAlwaysOnTop = !isAlwaysOnTop },
                     )
                     is StartupResolution.Bootstrap -> BootstrapApplication(
                         resolution.configuration,
@@ -228,6 +233,8 @@ private fun FrameWindowScope.ReadyApplication(
     wormholeSessionStore: WormholeSessionStore,
     exitRequested: Boolean,
     onExitApplication: () -> Unit,
+    isAlwaysOnTop: Boolean,
+    onToggleAlwaysOnTop: () -> Unit,
 ) {
     configuration.notice?.let { AppDiagnostics.warning("Static data startup notice: $it") }
     val staticRepository = remember(configuration) {
@@ -670,7 +677,7 @@ private fun FrameWindowScope.ReadyApplication(
     }
     Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
         EveTopMenuBar(
-            plannerTopMenus(
+            menus = plannerTopMenus(
                 state = PlannerTopMenuState(
                     markerManagerOpen = showMarkerManager,
                     sharedMarkerManagerOpen = showSharedMarkerManager,
@@ -698,6 +705,12 @@ private fun FrameWindowScope.ReadyApplication(
                     openStaticData = { showStaticData = true },
                 ),
             ),
+            trailingContent = {
+                EveAlwaysOnTopButton(
+                    isAlwaysOnTop = isAlwaysOnTop,
+                    onClick = onToggleAlwaysOnTop,
+                )
+            },
         )
         StaticMapScreen(
             modifier = Modifier.weight(1f).fillMaxWidth(),

@@ -7,6 +7,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,7 +36,11 @@ data class EveMenuSpec(
 )
 
 @Composable
-fun EveTopMenuBar(menus: List<EveMenuSpec>, modifier: Modifier = Modifier) {
+fun EveTopMenuBar(
+    menus: List<EveMenuSpec>,
+    modifier: Modifier = Modifier,
+    trailingContent: @Composable RowScope.() -> Unit = {},
+) {
     var expandedMenu by remember { mutableStateOf<String?>(null) }
     Row(
         modifier = modifier.fillMaxWidth().height(EveDimensions.MenuBarHeight)
@@ -86,6 +92,8 @@ fun EveTopMenuBar(menus: List<EveMenuSpec>, modifier: Modifier = Modifier) {
                 }
             }
         }
+        Spacer(Modifier.weight(1f))
+        trailingContent()
     }
     EveDivider(color = TOP_MENU_DIVIDER_COLOR)
 }

@@ -25,9 +25,10 @@ internal fun FeatureOverlayLegend(
     sections: List<FeatureOverlayLegendSection>,
     modifier: Modifier = Modifier,
 ) {
-    if (sections.isEmpty()) return
+    val visibleSections = sections.filterNot { it.title == HIDDEN_OVERLAY_LEGEND_TITLE }
+    if (visibleSections.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
-    val header = if (sections.size == 1) sections.single().title else "Map overlays"
+    val header = if (visibleSections.size == 1) visibleSections.single().title else "Map overlays"
     EvePanel(modifier = modifier, secondary = true) {
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -41,12 +42,12 @@ internal fun FeatureOverlayLegend(
                     .padding(horizontal = 10.dp),
             )
             if (expanded) {
-                sections.forEach { section ->
+                visibleSections.forEach { section ->
                     Column(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier.padding(horizontal = 10.dp),
                     ) {
-                        if (sections.size > 1) {
+                        if (visibleSections.size > 1) {
                             Text(section.title, style = MaterialTheme.typography.labelMedium)
                         }
                         section.entries.forEach { entry ->
@@ -64,3 +65,5 @@ internal fun FeatureOverlayLegend(
         }
     }
 }
+
+private const val HIDDEN_OVERLAY_LEGEND_TITLE = "Sovereignty"

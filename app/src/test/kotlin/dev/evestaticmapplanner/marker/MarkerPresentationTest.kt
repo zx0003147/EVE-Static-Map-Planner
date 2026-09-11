@@ -22,7 +22,7 @@ class MarkerPresentationTest {
     }
 
     @Test
-    fun `empty system context is flat strictly ordered and has no duplicate system info`() {
+    fun `empty system context is strictly ordered and grouped without duplicate system info`() {
         val presented = SystemContextMenuPresentationBuilder.build(null, readyState())
         val actions = presented.map { it.action }
 
@@ -42,6 +42,15 @@ class MarkerPresentationTest {
             actions,
         )
         assertTrue(actions.none { it.label == "Marker ›" || it.label == "System Info" })
+        assertEquals(
+            listOf(
+                SystemContextAction.ADD_JUMP_RANGE_OVERLAY,
+                SystemContextAction.SET_ROUTE_START,
+                SystemContextAction.SET_CAPITAL_START,
+                SystemContextAction.CREATE_WORMHOLE,
+            ),
+            presented.filter(PresentedSystemContextAction::startsNewSection).map { it.action },
+        )
         assertEquals(
             listOf(
                 "Set as Normal Start",
