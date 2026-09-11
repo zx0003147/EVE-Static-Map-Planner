@@ -14,6 +14,7 @@ object LocalControlProtocol {
     }
     const val REQUEST_BODY_LIMIT_BYTES = 64 * 1024
     const val RESPONSE_BODY_LIMIT_BYTES = 1024 * 1024
+    const val NORMAL_ROUTE_GRAPH_RESPONSE_BODY_LIMIT_BYTES = 8 * 1024 * 1024
     const val HTTP_WORKER_COUNT = 4
     const val HTTP_QUEUE_CAPACITY = 32
     const val HTTP_BUSY_RESPONDER_COUNT = 1
@@ -61,6 +62,12 @@ enum class LocalControlOperation(
     SEARCH_SYSTEM("/v1/query/search-system", "searchSystems", false, TimeoutKind.QUERY),
     SYSTEM_INFO("/v1/query/system-info", "getSystemInfo", false, TimeoutKind.QUERY),
     SYSTEM_MARKERS("/v1/query/system-markers", "getSystemMarkers", false, TimeoutKind.QUERY),
+    NORMAL_ROUTE_GRAPH(
+        "/v1/query/normal-route-graph",
+        "getNormalRouteGraph",
+        false,
+        TimeoutKind.ROUTE_OR_JUMP,
+    ),
     NORMAL_ROUTE("/v1/query/normal-route", "calculateNormalRoute", false, TimeoutKind.ROUTE_OR_JUMP),
     LIST_WORMHOLES("/v1/query/wormholes", "listWormholes", false, TimeoutKind.QUERY),
     CAPITAL_ROUTE("/v1/query/capital-route", "calculateCapitalRoute", false, TimeoutKind.CAPITAL_ROUTE),
@@ -113,6 +120,13 @@ enum class LocalControlOperation(
         TimeoutKind.CAPITAL_ROUTE -> config.capitalRoute
         TimeoutKind.NAVIGATION_SEND -> config.navigationSend
     }
+
+    internal val responseBodyLimitBytes: Int
+        get() = if (this == NORMAL_ROUTE_GRAPH) {
+            LocalControlProtocol.NORMAL_ROUTE_GRAPH_RESPONSE_BODY_LIMIT_BYTES
+        } else {
+            LocalControlProtocol.RESPONSE_BODY_LIMIT_BYTES
+        }
 
     companion object {
         val byPath: Map<String, LocalControlOperation> = entries.associateBy(LocalControlOperation::path)

@@ -7,6 +7,7 @@ internal interface McpMapClient : AutoCloseable {
     suspend fun searchSystem(query: String): LocalControlClientResult
     suspend fun getSystemInfo(systemId: Int): LocalControlClientResult
     suspend fun getSystemMarkers(systemId: Int): LocalControlClientResult
+    suspend fun getNormalRouteGraph(useAnsiblex: Boolean): LocalControlClientResult = unsupportedRouteGraphClientResult()
     suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean): LocalControlClientResult
     suspend fun calculateNormalRoute(
         startSystemId: Int,
@@ -135,6 +136,7 @@ internal class LocalMcpMapClient(
     override suspend fun searchSystem(query: String) = client.searchSystem(query)
     override suspend fun getSystemInfo(systemId: Int) = client.getSystemInfo(systemId)
     override suspend fun getSystemMarkers(systemId: Int) = client.getSystemMarkers(systemId)
+    override suspend fun getNormalRouteGraph(useAnsiblex: Boolean) = client.getNormalRouteGraph(useAnsiblex)
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
     override suspend fun calculateNormalRoute(
@@ -257,6 +259,13 @@ private fun unsupportedWormholeClientResult() = LocalControlClientResult.Failure
     dev.evestaticmapplanner.control.transport.LocalControlClientError(
         dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.APP_NOT_READY,
         "Wormhole session control is unavailable",
+    ),
+)
+
+private fun unsupportedRouteGraphClientResult() = LocalControlClientResult.Failure(
+    dev.evestaticmapplanner.control.transport.LocalControlClientError(
+        dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.APP_NOT_READY,
+        "Normal route graph export is unavailable",
     ),
 )
 

@@ -6,6 +6,8 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.jump.UniverseDistanceCalculator
 import dev.evestaticmapplanner.core.model.SolarSystem
+import dev.evestaticmapplanner.core.model.SchematicPosition
+import dev.evestaticmapplanner.core.model.StargateConnection
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
@@ -20,10 +22,59 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExistingPlanningPortsTest {
+    @Test
+    fun `normal route graph snapshot preserves directed topology and nodes without official coordinates`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val ansiblex = SnapshotAnsiblexRepository()
+        val wormholes = WormholeSessionStore().apply { add(FIRST, FIFTH) }
+        val ports = ExistingPlanningPorts(
+            StaticMapRepository { snapshotStaticData() },
+            ansiblex,
+            wormholes,
+            ioDispatcher = dispatcher,
+            calculationDispatcher = dispatcher,
+        )
+
+        val stargatesOnly = ports.getNormalRouteGraph(useAnsiblex = false)
+        val withAnsiblex = ports.getNormalRouteGraph(useAnsiblex = true)
+
+        assertEquals(1, withAnsiblex.schemaVersion)
+        assertEquals(NormalRouteGraphProjection.OFFICIAL_2D, withAnsiblex.projection)
+        assertEquals(listOf(FIRST, SECOND, THIRD, FOURTH, FIFTH), withAnsiblex.nodes.map { it.systemId })
+        assertEquals(2.0, withAnsiblex.nodes.first { it.systemId == FIRST }.official2dX)
+        assertEquals(3.0, withAnsiblex.nodes.first { it.systemId == FIRST }.official2dY)
+        with(withAnsiblex.nodes.first { it.systemId == THIRD }) {
+            assertNull(official2dX)
+            assertNull(official2dY)
+        }
+        assertEquals(
+            listOf(
+                Triple(FIRST, SECOND, NormalRouteGraphEdgeType.STARGATE),
+                Triple(SECOND, FIRST, NormalRouteGraphEdgeType.STARGATE),
+            ),
+            stargatesOnly.edges.map { Triple(it.fromSystemId, it.toSystemId, it.type) },
+        )
+        assertEquals(
+            setOf(
+                Triple(FIRST, SECOND, NormalRouteGraphEdgeType.STARGATE),
+                Triple(SECOND, FIRST, NormalRouteGraphEdgeType.STARGATE),
+                Triple(SECOND, THIRD, NormalRouteGraphEdgeType.ANSIBLEX),
+                Triple(FOURTH, THIRD, NormalRouteGraphEdgeType.ANSIBLEX),
+                Triple(FOURTH, FIFTH, NormalRouteGraphEdgeType.ANSIBLEX),
+                Triple(FIFTH, FOURTH, NormalRouteGraphEdgeType.ANSIBLEX),
+            ),
+            withAnsiblex.edges.mapTo(linkedSetOf()) { Triple(it.fromSystemId, it.toSystemId, it.type) },
+        )
+        assertTrue(stargatesOnly.edges.none { it.type == NormalRouteGraphEdgeType.ANSIBLEX })
+        assertTrue(withAnsiblex.edges.none { setOf(it.fromSystemId, it.toSystemId) == setOf(FIRST, FIFTH) })
+        assertEquals(1, ansiblex.readCount)
+    }
+
     @Test
     fun `normal routing reads enabled Ansiblex snapshot without any mutation capability use`() = runTest {
         val repository = ReadOnlyProofAnsiblexRepository()
@@ -125,6 +176,48 @@ private class ReadOnlyProofAnsiblexRepository : AnsiblexRepository {
     }
 }
 
+private class SnapshotAnsiblexRepository : AnsiblexRepository {
+    var readCount = 0
+
+    override fun getAll(): List<AnsiblexConnection> {
+        readCount++
+        return listOf(
+            ansiblex("forward", SECOND, THIRD, AnsiblexDirection.FIRST_TO_SECOND),
+            ansiblex("reverse", THIRD, FOURTH, AnsiblexDirection.SECOND_TO_FIRST),
+            ansiblex("both", FOURTH, FIFTH, AnsiblexDirection.BIDIRECTIONAL),
+            ansiblex("disabled", FIRST, FIFTH, AnsiblexDirection.BIDIRECTIONAL, enabled = false),
+        )
+    }
+
+    override fun addManual(draft: AnsiblexDraft): AnsiblexConnection = unsupported()
+    override fun setEnabled(id: String, enabled: Boolean): Boolean = unsupported()
+    override fun delete(id: String): Boolean = unsupported()
+    override fun clearImported(): Int = unsupported()
+    override fun clearAll(): Int = unsupported()
+
+    private fun <T> unsupported(): T = error("Snapshot repository is read-only")
+}
+
+private fun ansiblex(
+    id: String,
+    firstSystemId: Int,
+    secondSystemId: Int,
+    direction: AnsiblexDirection,
+    enabled: Boolean = true,
+) = AnsiblexConnection(
+    id,
+    firstSystemId,
+    secondSystemId,
+    direction,
+    null,
+    null,
+    AnsiblexSource.MANUAL,
+    null,
+    enabled,
+    Instant.EPOCH,
+    Instant.EPOCH,
+)
+
 private fun staticData() = StaticMapData(
     systems = listOf(
         system(FIRST, 0.0),
@@ -133,7 +226,18 @@ private fun staticData() = StaticMapData(
     connections = emptyList(),
 )
 
-private fun system(id: Int, x: Double) = SolarSystem(
+private fun snapshotStaticData() = StaticMapData(
+    systems = listOf(
+        system(FIRST, 0.0, SchematicPosition(2.0e15, -3.0e15)),
+        system(SECOND, 1.0),
+        system(THIRD, 2.0),
+        system(FOURTH, 3.0),
+        system(FIFTH, 4.0),
+    ),
+    connections = listOf(StargateConnection.between(FIRST, SECOND)),
+)
+
+private fun system(id: Int, x: Double, schematicPosition: SchematicPosition? = null) = SolarSystem(
     id = id,
     constellationId = 20_000_001,
     regionId = 10_000_001,
@@ -141,7 +245,7 @@ private fun system(id: Int, x: Double) = SolarSystem(
     securityStatus = 0.1,
     securityClass = null,
     position = UniversePosition(x, 0.0, 0.0),
-    schematicPosition = null,
+    schematicPosition = schematicPosition,
     radius = 1.0,
     factionId = null,
     wormholeClassId = null,
@@ -149,3 +253,6 @@ private fun system(id: Int, x: Double) = SolarSystem(
 
 private const val FIRST = 30_000_001
 private const val SECOND = 30_000_002
+private const val THIRD = 30_000_003
+private const val FOURTH = 30_000_004
+private const val FIFTH = 30_000_005

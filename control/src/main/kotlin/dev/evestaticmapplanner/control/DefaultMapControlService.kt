@@ -99,6 +99,15 @@ class DefaultMapControlService(
             SystemMarkersDto(request.systemId, savedMarker, missionMarkers)
         }
 
+    override suspend fun getNormalRouteGraph(
+        request: GetNormalRouteGraphRequest,
+    ): ControlResult<NormalRouteGraphSnapshotDto> = query(request.requestId) {
+        validateRequestId(request.requestId)
+        expensiveQueries.withPermit {
+            routePlanningPort.getNormalRouteGraph(request.useAnsiblex)
+        }
+    }
+
     override suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest): ControlResult<NormalRouteDto> =
         query(request.requestId) {
             validateRequestId(request.requestId)

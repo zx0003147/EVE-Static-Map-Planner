@@ -121,6 +121,14 @@ class LocalControlClient internal constructor(
         }
     }
 
+    suspend fun getNormalRouteGraph(useAnsiblex: Boolean): LocalControlClientResult =
+        query(LocalControlOperation.NORMAL_ROUTE_GRAPH) { requestId ->
+            buildJsonObject {
+                put("requestId", requestId)
+                put("useAnsiblex", useAnsiblex)
+            }
+        }
+
     suspend fun listWormholes(): LocalControlClientResult = query(LocalControlOperation.LIST_WORMHOLES) { requestId ->
         buildJsonObject { put("requestId", requestId) }
     }
@@ -463,7 +471,11 @@ class LocalControlClient internal constructor(
             .build()
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream())
         response.body().use { input ->
-            val bytes = readBoundedResponse(input, response.headers().firstValueAsLong("Content-Length").orElse(-1L))
+            val bytes = readBoundedResponse(
+                input,
+                response.headers().firstValueAsLong("Content-Length").orElse(-1L),
+                operation.responseBodyLimitBytes,
+            )
             if (response.statusCode() in 300..399) return internalError()
             val contentType = response.headers().allValues("Content-Type")
             if (contentType.size != 1 || !contentType.single().substringBefore(';').trim().equals("application/json", true)) {
@@ -473,8 +485,8 @@ class LocalControlClient internal constructor(
         }
     }
 
-    private fun readBoundedResponse(input: java.io.InputStream, declaredLength: Long): ByteArray {
-        if (declaredLength > LocalControlProtocol.RESPONSE_BODY_LIMIT_BYTES) throw IOException("Response too large")
+    private fun readBoundedResponse(input: java.io.InputStream, declaredLength: Long, limit: Int): ByteArray {
+        if (declaredLength > limit) throw IOException("Response too large")
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(8192)
         var total = 0
@@ -482,7 +494,7 @@ class LocalControlClient internal constructor(
             val read = input.read(buffer)
             if (read < 0) break
             total += read
-            if (total > LocalControlProtocol.RESPONSE_BODY_LIMIT_BYTES) throw IOException("Response too large")
+            if (total > limit) throw IOException("Response too large")
             output.write(buffer, 0, read)
         }
         return output.toByteArray()

@@ -23,6 +23,7 @@ import dev.evestaticmapplanner.control.FocusSystemCommand
 import dev.evestaticmapplanner.control.GetActiveMissionsRequest
 import dev.evestaticmapplanner.control.GetCurrentViewRequest
 import dev.evestaticmapplanner.control.GetMissionRequest
+import dev.evestaticmapplanner.control.GetNormalRouteGraphRequest
 import dev.evestaticmapplanner.control.ListEveNavigationTargetsRequest
 import dev.evestaticmapplanner.control.EveNavigationTargetDto
 import dev.evestaticmapplanner.control.SendMissionNavigationReceipt
@@ -38,6 +39,9 @@ import dev.evestaticmapplanner.control.MissionMutationReceipt
 import dev.evestaticmapplanner.control.MissionRouteReceipt
 import dev.evestaticmapplanner.control.MissionSummaryDto
 import dev.evestaticmapplanner.control.NormalRouteDto
+import dev.evestaticmapplanner.control.NormalRouteGraphEdgeDto
+import dev.evestaticmapplanner.control.NormalRouteGraphNodeDto
+import dev.evestaticmapplanner.control.NormalRouteGraphSnapshotDto
 import dev.evestaticmapplanner.control.PlanningViewDto
 import dev.evestaticmapplanner.control.RemoveJumpRangeCommand
 import dev.evestaticmapplanner.control.RemoveMissionMarkerCommand
@@ -141,6 +145,15 @@ internal class LocalControlJsonCodec {
             controlResponse(
                 service.getSystemMarkers(GetSystemMarkersRequest(request.requestId(), request.int("systemId"))),
                 ::systemMarkersJson,
+            )
+        }
+        LocalControlOperation.NORMAL_ROUTE_GRAPH -> {
+            request.requireFields(setOf("requestId", "useAnsiblex"))
+            controlResponse(
+                service.getNormalRouteGraph(
+                    GetNormalRouteGraphRequest(request.requestId(), request.boolean("useAnsiblex")),
+                ),
+                ::normalRouteGraphJson,
             )
         }
         LocalControlOperation.NORMAL_ROUTE -> {
@@ -710,6 +723,27 @@ private fun normalRouteJson(value: NormalRouteDto) = buildJsonObject {
     put("wormholeJumps", value.wormholeJumps)
     put("waypointSystemIds", value.waypointSystemIds.toJsonArray())
     put("explicitDestinationSystemId", value.explicitDestinationSystemId?.let(::JsonPrimitive) ?: JsonNull)
+}
+
+private fun normalRouteGraphJson(value: NormalRouteGraphSnapshotDto) = buildJsonObject {
+    put("schemaVersion", value.schemaVersion)
+    put("projection", value.projection.name)
+    put("useAnsiblex", value.useAnsiblex)
+    put("nodes", buildJsonArray { value.nodes.forEach { add(normalRouteGraphNodeJson(it)) } })
+    put("edges", buildJsonArray { value.edges.forEach { add(normalRouteGraphEdgeJson(it)) } })
+}
+
+private fun normalRouteGraphNodeJson(value: NormalRouteGraphNodeDto) = buildJsonObject {
+    put("systemId", value.systemId)
+    put("systemName", value.systemName)
+    put("official2dX", value.official2dX?.let(::JsonPrimitive) ?: JsonNull)
+    put("official2dY", value.official2dY?.let(::JsonPrimitive) ?: JsonNull)
+}
+
+private fun normalRouteGraphEdgeJson(value: NormalRouteGraphEdgeDto) = buildJsonObject {
+    put("fromSystemId", value.fromSystemId)
+    put("toSystemId", value.toSystemId)
+    put("type", value.type.name)
 }
 
 private fun wormholeConnectionJson(value: WormholeConnectionDto) = buildJsonObject {

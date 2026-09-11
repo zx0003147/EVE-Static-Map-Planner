@@ -77,6 +77,36 @@ data class NormalRouteDto(
     val explicitDestinationSystemId: Int? = destinationSystemId,
 )
 
+data class NormalRouteGraphSnapshotDto(
+    val schemaVersion: Int,
+    val projection: NormalRouteGraphProjection,
+    val useAnsiblex: Boolean,
+    val nodes: List<NormalRouteGraphNodeDto>,
+    val edges: List<NormalRouteGraphEdgeDto>,
+)
+
+enum class NormalRouteGraphProjection {
+    OFFICIAL_2D,
+}
+
+data class NormalRouteGraphNodeDto(
+    val systemId: Int,
+    val systemName: String,
+    val official2dX: Double?,
+    val official2dY: Double?,
+)
+
+data class NormalRouteGraphEdgeDto(
+    val fromSystemId: Int,
+    val toSystemId: Int,
+    val type: NormalRouteGraphEdgeType,
+)
+
+enum class NormalRouteGraphEdgeType {
+    STARGATE,
+    ANSIBLEX,
+}
+
 data class WormholeConnectionDto(
     val connectionId: String,
     val firstSystemId: Int,
@@ -238,6 +268,10 @@ data class CalculateNormalRouteRequest(
     val useAnsiblex: Boolean,
     val useWormholes: Boolean = false,
     val waypointSystemIds: List<Int> = emptyList(),
+) : QueryRequest
+data class GetNormalRouteGraphRequest(
+    override val requestId: String,
+    val useAnsiblex: Boolean,
 ) : QueryRequest
 data class ListWormholesRequest(override val requestId: String) : QueryRequest
 data class CalculateCapitalRouteRequest(

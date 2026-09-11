@@ -17,12 +17,12 @@ import kotlin.test.assertTrue
 
 class McpToolCatalogTest {
     @Test
-    fun `capability surface is exactly the fixed thirty-two tools`() {
+    fun `capability surface is exactly the fixed thirty-three tools`() {
         val client = RecordingClient()
         val definitions = McpToolCatalog.definitions(client)
         val server = createMcpServer(client)
 
-        assertEquals(32, definitions.size)
+        assertEquals(33, definitions.size)
         assertEquals(McpToolCatalog.names, definitions.map { it.tool.name })
         assertEquals(McpToolCatalog.names.toSet(), server.tools.keys)
         assertTrue(server.resources.isEmpty())
@@ -146,6 +146,52 @@ class McpToolCatalogTest {
             },
         )
         assertEquals(listOf("STAGING", "STRATEGIC"), client.createdTags)
+    }
+
+    @Test
+    fun `normal route graph schema is versioned directed and accepts only the Ansiblex switch`() = runBlocking {
+        val client = RecordingClient()
+        val definition = McpToolCatalog.definitions(client).associateBy { it.tool.name }
+            .getValue("get_normal_route_graph")
+
+        assertEquals(setOf("useAnsiblex"), definition.tool.inputSchema.properties.orEmpty().keys)
+        assertEquals(listOf("useAnsiblex"), definition.tool.inputSchema.required)
+        assertTrue(definition.tool.annotations?.readOnlyHint == true)
+        val output = requireNotNull(definition.tool.outputSchema)
+        assertEquals(
+            setOf("schemaVersion", "projection", "useAnsiblex", "nodes", "edges"),
+            output.properties.orEmpty().keys,
+        )
+        assertEquals(
+            listOf("schemaVersion", "projection", "useAnsiblex", "nodes", "edges"),
+            output.required,
+        )
+        val nodeItems = assertIs<JsonObject>(
+            assertIs<JsonObject>(output.properties.orEmpty().getValue("nodes")).getValue("items"),
+        )
+        val nodeRequired = assertIs<JsonArray>(nodeItems.getValue("required")).map {
+            assertIs<JsonPrimitive>(it).content
+        }
+        assertEquals(listOf("systemId", "systemName", "official2dX", "official2dY"), nodeRequired)
+        val nodeProperties = assertIs<JsonObject>(nodeItems.getValue("properties"))
+        assertEquals(
+            listOf("number", "null"),
+            assertIs<JsonArray>(
+                assertIs<JsonObject>(nodeProperties.getValue("official2dX")).getValue("type"),
+            ).map { assertIs<JsonPrimitive>(it).content },
+        )
+        val edgeItems = assertIs<JsonObject>(
+            assertIs<JsonObject>(output.properties.orEmpty().getValue("edges")).getValue("items"),
+        )
+        val edgeProperties = assertIs<JsonObject>(edgeItems.getValue("properties"))
+        assertEquals(
+            listOf("STARGATE", "ANSIBLEX"),
+            assertIs<JsonArray>(assertIs<JsonObject>(edgeProperties.getValue("type")).getValue("enum"))
+                .map { assertIs<JsonPrimitive>(it).content },
+        )
+
+        definition.invoke(buildJsonObject { put("useAnsiblex", true) })
+        assertEquals(true, client.lastGraphUseAnsiblex)
     }
 
     @Test
@@ -301,6 +347,7 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
     "get_system_info" to mapOf("systemId" to JsonPrimitive(30000142)),
     "get_system_markers" to mapOf("systemId" to JsonPrimitive(30000142)),
     "list_wormholes" to emptyMap(),
+    "get_normal_route_graph" to mapOf("useAnsiblex" to JsonPrimitive(false)),
     "calculate_normal_route" to mapOf(
         "startSystemId" to JsonPrimitive(1), "destinationSystemId" to JsonPrimitive(2), "useAnsiblex" to JsonPrimitive(false),
     ),
@@ -355,6 +402,7 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
 private class RecordingClient : McpMapClient {
     var called: String? = null
     var createdTags: List<String>? = null
+    var lastGraphUseAnsiblex: Boolean? = null
     var lastUseWormholes: Boolean? = null
     var lastWaypointSystemIds: List<Int>? = null
     var lastDestinationSystemId: Int? = null
@@ -370,6 +418,9 @@ private class RecordingClient : McpMapClient {
     override suspend fun getSystemInfo(systemId: Int) = result("get_system_info")
     override suspend fun getSystemMarkers(systemId: Int) = result("get_system_markers")
     override suspend fun listWormholes() = result("list_wormholes")
+    override suspend fun getNormalRouteGraph(useAnsiblex: Boolean) = result("get_normal_route_graph").also {
+        lastGraphUseAnsiblex = useAnsiblex
+    }
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         result("calculate_normal_route")
     override suspend fun calculateNormalRoute(

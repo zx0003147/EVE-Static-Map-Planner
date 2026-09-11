@@ -29,7 +29,8 @@ internal data class McpToolDefinition(
 
 internal object McpToolCatalog {
     val names = listOf(
-        "search_system", "get_system_info", "get_system_markers", "list_wormholes", "calculate_normal_route", "calculate_capital_route",
+        "search_system", "get_system_info", "get_system_markers", "list_wormholes", "get_normal_route_graph",
+        "calculate_normal_route", "calculate_capital_route",
         "list_views", "get_current_view", "create_view", "rename_view", "switch_view", "delete_view",
         "get_active_missions", "get_mission", "list_eve_navigation_targets", "begin_mission", "focus_system", "create_wormhole", "show_normal_route",
         "show_capital_route", "remove_mission_route", "clear_mission_routes", "show_jump_range",
@@ -77,6 +78,16 @@ internal object McpToolCatalog {
         ) { arguments ->
             StrictArguments(arguments, emptySet(), emptySet())
             client.listWormholes()
+        },
+        queryTool(
+            "get_normal_route_graph",
+            "Return a versioned snapshot of the complete directed normal-route graph. The snapshot always includes " +
+                "Stargates, optionally includes enabled Ansiblex connections, and never includes Wormholes.",
+            schema(listOf("useAnsiblex"), "useAnsiblex" to booleanProperty()),
+            normalRouteGraphOutput(),
+        ) { arguments ->
+            val input = StrictArguments(arguments, setOf("useAnsiblex"), setOf("useAnsiblex"))
+            client.getNormalRouteGraph(input.boolean("useAnsiblex"))
         },
         queryTool(
             "calculate_normal_route",
@@ -601,6 +612,30 @@ private fun objectOutput(vararg required: String) = schema(
     *required.map { it to JsonObject(emptyMap()) }.toTypedArray(),
 )
 
+private fun normalRouteGraphOutput(): ToolSchema {
+    val node = objectProperty(
+        listOf("systemId", "systemName", "official2dX", "official2dY"),
+        "systemId" to positiveIntegerProperty(),
+        "systemName" to plainStringProperty(),
+        "official2dX" to nullableNumberProperty(),
+        "official2dY" to nullableNumberProperty(),
+    )
+    val edge = objectProperty(
+        listOf("fromSystemId", "toSystemId", "type"),
+        "fromSystemId" to positiveIntegerProperty(),
+        "toSystemId" to positiveIntegerProperty(),
+        "type" to enumProperty(linkedSetOf("STARGATE", "ANSIBLEX")),
+    )
+    return schema(
+        listOf("schemaVersion", "projection", "useAnsiblex", "nodes", "edges"),
+        "schemaVersion" to buildJsonObject { put("type", "integer"); put("const", 1) },
+        "projection" to enumProperty(linkedSetOf("OFFICIAL_2D")),
+        "useAnsiblex" to booleanProperty(),
+        "nodes" to arrayProperty(node),
+        "edges" to arrayProperty(edge),
+    )
+}
+
 private fun routeInput(includeMission: Boolean, capital: Boolean): ToolSchema {
     val properties = mutableListOf<Pair<String, JsonObject>>()
     val required = mutableListOf<String>()
@@ -625,6 +660,7 @@ private fun routeInput(includeMission: Boolean, capital: Boolean): ToolSchema {
 
 private fun missionOnlyInput() = schema(listOf("missionId"), "missionId" to opaqueIdProperty())
 private fun stringProperty(maxLength: Int) = buildJsonObject { put("type", "string"); put("maxLength", maxLength) }
+private fun plainStringProperty() = buildJsonObject { put("type", "string") }
 private fun opaqueIdProperty() = buildJsonObject {
     put("type", "string"); put("pattern", "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
 }
@@ -638,7 +674,19 @@ private fun booleanProperty(default: Boolean? = null) = buildJsonObject {
     put("type", "boolean")
     if (default != null) put("default", default)
 }
-private fun arrayProperty() = buildJsonObject { put("type", "array") }
+private fun arrayProperty(items: JsonObject? = null) = buildJsonObject {
+    put("type", "array")
+    if (items != null) put("items", items)
+}
+private fun objectProperty(required: List<String>, vararg properties: Pair<String, JsonObject>) = buildJsonObject {
+    put("type", "object")
+    put("properties", buildJsonObject { properties.forEach { (name, value) -> put(name, value) } })
+    put("required", buildJsonArray { required.forEach { add(JsonPrimitive(it)) } })
+    put("additionalProperties", false)
+}
+private fun nullableNumberProperty() = buildJsonObject {
+    put("type", buildJsonArray { add(JsonPrimitive("number")); add(JsonPrimitive("null")) })
+}
 private fun enumArrayProperty(values: Set<String>) = buildJsonObject {
     put("type", "array")
     put("items", enumProperty(values))

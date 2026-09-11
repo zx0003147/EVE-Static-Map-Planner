@@ -35,6 +35,7 @@ class DefaultMapControlServiceTest {
         try {
             val search = fixture.service.searchSystems(SearchSystemsRequest("q1", "One", 10)).success()
             val info = fixture.service.getSystemInfo(GetSystemInfoRequest("q2", 1)).success()
+            val graph = fixture.service.getNormalRouteGraph(GetNormalRouteGraphRequest("graph", true)).success()
             val normal = fixture.service.calculateNormalRoute(
                 CalculateNormalRouteRequest("q3", 1, 2, useAnsiblex = true),
             ).success()
@@ -44,6 +45,7 @@ class DefaultMapControlServiceTest {
 
             assertEquals(listOf("One"), search.value.map(SystemSummaryDto::name))
             assertEquals(1, info.value.system.systemId)
+            assertEquals(true, graph.value.useAnsiblex)
             assertEquals(1, normal.value.ansiblexJumps)
             assertEquals(1, capital.value.totalJumps)
             assertTrue(fixture.rendered.isEmpty())
@@ -464,6 +466,14 @@ private class FakeSystemPort : SystemReadPort {
 }
 
 private class FakeRoutePort : RoutePlanningPort {
+    override suspend fun getNormalRouteGraph(useAnsiblex: Boolean) = NormalRouteGraphSnapshotDto(
+        schemaVersion = 1,
+        projection = NormalRouteGraphProjection.OFFICIAL_2D,
+        useAnsiblex = useAnsiblex,
+        nodes = listOf(NormalRouteGraphNodeDto(1, "One", null, null)),
+        edges = emptyList(),
+    )
+
     val normalAnsiblexFlags = mutableListOf<Boolean>()
     val normalWormholeFlags = mutableListOf<Boolean>()
     var capitalCalls = 0

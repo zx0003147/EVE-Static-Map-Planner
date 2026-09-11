@@ -130,9 +130,11 @@ class LocalControlServer(
     private fun handle(exchange: HttpExchange) {
         val startedNanos = System.nanoTime()
         var operationName = "UNKNOWN"
+        var responseBodyLimitBytes = LocalControlProtocol.RESPONSE_BODY_LIMIT_BYTES
         var response = try {
             val operation = LocalControlOperation.byPath[exchange.requestURI.path]
             operationName = operation?.name ?: "UNKNOWN"
+            responseBodyLimitBytes = operation?.responseBodyLimitBytes ?: responseBodyLimitBytes
             process(exchange, operation, BoundedHttpExecutor.isBusyResponseTask())
         } catch (_: TimeoutCancellationException) {
             wireError(504, "TIMEOUT", "The operation timed out")
@@ -143,7 +145,7 @@ class LocalControlServer(
         }
 
         var bytes = codec.encode(response.json)
-        if (bytes.size > LocalControlProtocol.RESPONSE_BODY_LIMIT_BYTES) {
+        if (bytes.size > responseBodyLimitBytes) {
             response = wireError(500, "INTERNAL_ERROR", "The control operation failed", response.requestId)
             bytes = codec.encode(response.json)
         }

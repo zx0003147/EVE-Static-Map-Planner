@@ -39,6 +39,12 @@ object DeniedSavedMarkerControlPort : SavedMarkerControlPort {
 }
 
 interface RoutePlanningPort {
+    suspend fun getNormalRouteGraph(useAnsiblex: Boolean): NormalRouteGraphSnapshotDto =
+        throw ControlPortFailure(
+            ControlErrorCode.APP_NOT_READY,
+            "Normal route graph export is unavailable",
+        )
+
     suspend fun calculateNormalRoute(
         startSystemId: Int,
         destinationSystemId: Int,

@@ -6,6 +6,9 @@ interface MapControlService {
     suspend fun searchSystems(request: SearchSystemsRequest): ControlResult<List<SystemSummaryDto>>
     suspend fun getSystemInfo(request: GetSystemInfoRequest): ControlResult<SystemInfoDto>
     suspend fun getSystemMarkers(request: GetSystemMarkersRequest): ControlResult<SystemMarkersDto>
+    suspend fun getNormalRouteGraph(
+        request: GetNormalRouteGraphRequest,
+    ): ControlResult<NormalRouteGraphSnapshotDto> = unsupportedRouteGraph(request.requestId)
     suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest): ControlResult<NormalRouteDto>
     suspend fun listWormholes(request: ListWormholesRequest): ControlResult<List<WormholeConnectionDto>> =
         unsupportedWormholes(request.requestId)
@@ -52,6 +55,11 @@ private fun <T> unsupported(requestId: String): ControlResult<T> = ControlResult
 private fun <T> unsupportedWormholes(requestId: String): ControlResult<T> = ControlResult.Failure(
     requestId,
     ControlError(ControlErrorCode.APP_NOT_READY, "Wormhole session control is unavailable"),
+)
+
+private fun <T> unsupportedRouteGraph(requestId: String): ControlResult<T> = ControlResult.Failure(
+    requestId,
+    ControlError(ControlErrorCode.APP_NOT_READY, "Normal route graph export is unavailable"),
 )
 
 private fun <T> unsupportedEveNavigation(requestId: String): ControlResult<T> = ControlResult.Failure(

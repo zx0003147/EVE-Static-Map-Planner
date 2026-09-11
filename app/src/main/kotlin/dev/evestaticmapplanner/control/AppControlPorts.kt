@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.control
 import dev.evestaticmapplanner.core.jump.CapitalJumpCandidateProvider
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.UniformGridSystemPositionIndex
+import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
@@ -15,6 +16,7 @@ import dev.evestaticmapplanner.core.route.CapitalNavigationPlanner
 import dev.evestaticmapplanner.core.route.NavigationIntent
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
+import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.route.buildDesktopRouteGraph
 import dev.evestaticmapplanner.core.route.RouteOptions
 import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
@@ -61,6 +63,48 @@ class ExistingPlanningPorts(
 ) : RoutePlanningPort, JumpPlanningPort {
     private val initialization = Mutex()
     @Volatile private var candidateProvider: CapitalJumpCandidateProvider? = null
+
+    override suspend fun getNormalRouteGraph(useAnsiblex: Boolean): NormalRouteGraphSnapshotDto {
+        val (data, enabledSnapshot) = withContext(ioDispatcher) {
+            staticMapRepository.load() to if (useAnsiblex) {
+                ansiblexRepository?.getAll()?.filter { it.enabled }.orEmpty()
+            } else {
+                emptyList()
+            }
+        }
+        return withContext(calculationDispatcher) {
+            val graph = buildDesktopRouteGraph(data, enabledSnapshot, emptyList())
+            val systemsById = data.systems.associateBy(SolarSystem::id)
+            NormalRouteGraphSnapshotDto(
+                schemaVersion = 1,
+                projection = NormalRouteGraphProjection.OFFICIAL_2D,
+                useAnsiblex = useAnsiblex,
+                nodes = graph.systemIds.sorted().map { systemId ->
+                    val system = checkNotNull(systemsById[systemId])
+                    val point = OfficialPosition2DProjection.project(system)
+                    NormalRouteGraphNodeDto(
+                        systemId = system.id,
+                        systemName = system.name,
+                        official2dX = point?.x,
+                        official2dY = point?.y,
+                    )
+                },
+                edges = graph.systemIds.sorted().flatMap { systemId ->
+                    graph.neighbors(systemId).map { edge ->
+                        NormalRouteGraphEdgeDto(
+                            fromSystemId = edge.fromSystemId,
+                            toSystemId = edge.toSystemId,
+                            type = when (edge.type) {
+                                RouteEdgeType.STARGATE -> NormalRouteGraphEdgeType.STARGATE
+                                RouteEdgeType.ANSIBLEX -> NormalRouteGraphEdgeType.ANSIBLEX
+                                RouteEdgeType.WORMHOLE -> error("Wormholes are excluded from normal route graph snapshots")
+                            },
+                        )
+                    }
+                },
+            )
+        }
+    }
 
     override suspend fun calculateNormalRoute(
         startSystemId: Int,
