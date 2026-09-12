@@ -42,6 +42,8 @@ import dev.evestaticmapplanner.control.NormalRouteDto
 import dev.evestaticmapplanner.control.NormalRouteGraphEdgeDto
 import dev.evestaticmapplanner.control.NormalRouteGraphNodeDto
 import dev.evestaticmapplanner.control.NormalRouteGraphSnapshotDto
+import dev.evestaticmapplanner.control.MultiPointRouteOptimizationDto
+import dev.evestaticmapplanner.control.OptimizeMultiPointRouteRequest
 import dev.evestaticmapplanner.control.PlanningViewDto
 import dev.evestaticmapplanner.control.RemoveJumpRangeCommand
 import dev.evestaticmapplanner.control.RemoveMissionMarkerCommand
@@ -154,6 +156,20 @@ internal class LocalControlJsonCodec {
                     GetNormalRouteGraphRequest(request.requestId(), request.boolean("useAnsiblex")),
                 ),
                 ::normalRouteGraphJson,
+            )
+        }
+        LocalControlOperation.OPTIMIZE_MULTI_POINT_ROUTE -> {
+            request.requireFields(setOf("requestId", "startSystemId", "targetSystemIds", "useAnsiblex"))
+            controlResponse(
+                service.optimizeMultiPointRoute(
+                    OptimizeMultiPointRouteRequest(
+                        request.requestId(),
+                        request.int("startSystemId"),
+                        request.intArray("targetSystemIds"),
+                        request.boolean("useAnsiblex"),
+                    ),
+                ),
+                ::multiPointRouteOptimizationJson,
             )
         }
         LocalControlOperation.NORMAL_ROUTE -> {
@@ -603,6 +619,13 @@ private fun JsonObject.optionalIntArray(name: String): List<Int> = when (val val
     else -> invalid()
 }
 
+private fun JsonObject.intArray(name: String): List<Int> = when (val value = this[name]) {
+    is JsonArray -> value.map { item ->
+        (item as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull ?: invalid()
+    }
+    else -> invalid()
+}
+
 private fun <T> JsonObject.enum(name: String, parse: (String) -> T): T =
     runCatching { parse(string(name)) }.getOrElse { invalid() }
 
@@ -744,6 +767,65 @@ private fun normalRouteGraphEdgeJson(value: NormalRouteGraphEdgeDto) = buildJson
     put("fromSystemId", value.fromSystemId)
     put("toSystemId", value.toSystemId)
     put("type", value.type.name)
+}
+
+private fun multiPointRouteOptimizationJson(value: MultiPointRouteOptimizationDto): JsonObject = when (value) {
+    is MultiPointRouteOptimizationDto.Succeeded -> buildJsonObject {
+        put("schemaVersion", value.schemaVersion)
+        put("success", value.success)
+        put("startSystemId", value.startSystemId)
+        put("inputTargetCount", value.inputTargetCount)
+        put("uniqueTargetCount", value.uniqueTargetCount)
+        put("startWasTarget", value.startWasTarget)
+        put("useAnsiblex", value.useAnsiblex)
+        put("optimization", buildJsonObject {
+            put("method", value.optimization.method)
+            put("guaranteedOptimal", value.optimization.guaranteedOptimal)
+        })
+        put("orderedTargets", buildJsonArray {
+            value.orderedTargets.forEach { target ->
+                add(buildJsonObject {
+                    put("systemId", target.systemId)
+                    put("systemName", target.systemName)
+                })
+            }
+        })
+        put("segments", buildJsonArray {
+            value.segments.forEach { segment ->
+                add(buildJsonObject {
+                    put("fromSystemId", segment.fromSystemId)
+                    put("toSystemId", segment.toSystemId)
+                    put("jumps", segment.jumps)
+                })
+            }
+        })
+        put("totalJumps", value.totalJumps)
+        put("coverage", buildJsonObject {
+            put("required", value.coverage.required)
+            put("visited", value.coverage.visited)
+            put("missingSystemIds", value.coverage.missingSystemIds.toJsonArray())
+        })
+        put("stats", buildJsonObject {
+            put("graphNodes", value.stats.graphNodes)
+            put("graphEdges", value.stats.graphEdges)
+            put("bfsRuns", value.stats.bfsRuns)
+        })
+    }
+    is MultiPointRouteOptimizationDto.Failed -> buildJsonObject {
+        put("schemaVersion", value.schemaVersion)
+        put("success", value.success)
+        put("error", value.error)
+        put("message", value.message)
+        if (value.missingTargetSystemIds.isNotEmpty()) {
+            put("missingTargetSystemIds", value.missingTargetSystemIds.toJsonArray())
+        }
+        if (value.unreachableSystemIds.isNotEmpty()) {
+            put("unreachableSystemIds", value.unreachableSystemIds.toJsonArray())
+        }
+        if (value.missingSystemIds.isNotEmpty()) put("missingSystemIds", value.missingSystemIds.toJsonArray())
+        value.uniqueTargetCount?.let { put("uniqueTargetCount", it) }
+        value.maximumTargetCount?.let { put("maximumTargetCount", it) }
+    }
 }
 
 private fun wormholeConnectionJson(value: WormholeConnectionDto) = buildJsonObject {

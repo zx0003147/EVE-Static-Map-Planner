@@ -81,7 +81,7 @@ an existing Saved Marker, or alter user routes, Ansiblex connections, preference
 state.
 
 The map repository validates the application, Control API, localhost HTTP MCP, Portable launchers/ZIP, and fixed
-33-tool server contract. The Plugin repository validates the manifest, Skill, HTTP `.mcp.json`, marketplace metadata,
+34-tool server contract. The Plugin repository validates the manifest, Skill, HTTP `.mcp.json`, marketplace metadata,
 and 54 natural-language behavior contracts.
 
 Official references: [Package your plugin](https://developers.openai.com/plugins/build/plugins), [Build skills](https://developers.openai.com/plugins/build/skills), and [Model Context Protocol](https://learn.chatgpt.com/docs/extend/mcp).

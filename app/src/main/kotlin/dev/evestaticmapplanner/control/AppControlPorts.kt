@@ -14,6 +14,8 @@ import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.CapitalNavigationOutcome
 import dev.evestaticmapplanner.core.route.CapitalNavigationPlanner
 import dev.evestaticmapplanner.core.route.NavigationIntent
+import dev.evestaticmapplanner.core.route.MultiPointRouteOptimizationOutcome
+import dev.evestaticmapplanner.core.route.MultiPointRouteOptimizer
 import dev.evestaticmapplanner.core.route.NormalRouteEngine
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.RouteEdgeType
@@ -103,6 +105,84 @@ class ExistingPlanningPorts(
                     }
                 },
             )
+        }
+    }
+
+    override suspend fun optimizeMultiPointRoute(
+        startSystemId: Int,
+        targetSystemIds: List<Int>,
+        useAnsiblex: Boolean,
+    ): MultiPointRouteOptimizationDto {
+        val (data, enabledSnapshot) = withContext(ioDispatcher) {
+            staticMapRepository.load() to if (useAnsiblex) {
+                ansiblexRepository?.getAll()?.filter { it.enabled }.orEmpty()
+            } else {
+                emptyList()
+            }
+        }
+        return withContext(calculationDispatcher) {
+            val outcome = try {
+                MultiPointRouteOptimizer().optimize(
+                    buildDesktopRouteGraph(data, enabledSnapshot, emptyList()),
+                    startSystemId,
+                    targetSystemIds,
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@withContext MultiPointRouteOptimizationDto.Failed(
+                    error = "INTERNAL_OPTIMIZATION_FAILURE",
+                    message = "The multi-point route optimizer failed internally.",
+                )
+            }
+            when (outcome) {
+                is MultiPointRouteOptimizationOutcome.Success -> {
+                    val systemsById = data.systems.associateBy(SolarSystem::id)
+                    MultiPointRouteOptimizationDto.Succeeded(
+                        startSystemId = outcome.startSystemId,
+                        inputTargetCount = outcome.inputTargetCount,
+                        uniqueTargetCount = outcome.uniqueTargetCount,
+                        startWasTarget = outcome.startWasTarget,
+                        useAnsiblex = useAnsiblex,
+                        optimization = MultiPointRouteOptimizationDetailsDto(
+                            outcome.method.name,
+                            outcome.guaranteedOptimal,
+                        ),
+                        orderedTargets = outcome.orderedTargetSystemIds.map { systemId ->
+                            MultiPointRouteTargetDto(systemId, checkNotNull(systemsById[systemId]).name)
+                        },
+                        segments = outcome.segments.map { segment ->
+                            MultiPointRouteSegmentDto(segment.fromSystemId, segment.toSystemId, segment.jumps)
+                        },
+                        totalJumps = outcome.totalJumps,
+                        coverage = MultiPointRouteCoverageDto(
+                            required = outcome.uniqueTargetCount,
+                            visited = outcome.orderedTargetSystemIds.size,
+                            missingSystemIds = emptyList(),
+                        ),
+                        stats = MultiPointRouteStatsDto(
+                            graphNodes = outcome.stats.graphNodes,
+                            graphEdges = outcome.stats.graphEdges,
+                            bfsRuns = outcome.stats.bfsRuns,
+                        ),
+                    )
+                }
+                is MultiPointRouteOptimizationOutcome.Failure -> MultiPointRouteOptimizationDto.Failed(
+                    error = outcome.error.name,
+                    message = outcome.message,
+                    missingTargetSystemIds = if (
+                        outcome.error == dev.evestaticmapplanner.core.route.MultiPointRouteOptimizationError.TARGET_SYSTEM_NOT_FOUND
+                    ) outcome.systemIds else emptyList(),
+                    unreachableSystemIds = if (
+                        outcome.error == dev.evestaticmapplanner.core.route.MultiPointRouteOptimizationError.UNREACHABLE_TARGETS
+                    ) outcome.systemIds else emptyList(),
+                    missingSystemIds = if (
+                        outcome.error == dev.evestaticmapplanner.core.route.MultiPointRouteOptimizationError.INTERNAL_OPTIMIZATION_FAILURE
+                    ) outcome.systemIds else emptyList(),
+                    uniqueTargetCount = outcome.uniqueTargetCount,
+                    maximumTargetCount = outcome.maximumTargetCount,
+                )
+            }
         }
     }
 

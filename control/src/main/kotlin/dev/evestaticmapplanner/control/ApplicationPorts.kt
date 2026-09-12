@@ -45,6 +45,15 @@ interface RoutePlanningPort {
             "Normal route graph export is unavailable",
         )
 
+    suspend fun optimizeMultiPointRoute(
+        startSystemId: Int,
+        targetSystemIds: List<Int>,
+        useAnsiblex: Boolean,
+    ): MultiPointRouteOptimizationDto = throw ControlPortFailure(
+        ControlErrorCode.APP_NOT_READY,
+        "Multi-point route optimization is unavailable",
+    )
+
     suspend fun calculateNormalRoute(
         startSystemId: Int,
         destinationSystemId: Int,

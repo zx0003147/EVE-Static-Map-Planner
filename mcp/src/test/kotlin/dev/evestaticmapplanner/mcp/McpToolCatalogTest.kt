@@ -17,12 +17,12 @@ import kotlin.test.assertTrue
 
 class McpToolCatalogTest {
     @Test
-    fun `capability surface is exactly the fixed thirty-three tools`() {
+    fun `capability surface is exactly the fixed thirty-four tools`() {
         val client = RecordingClient()
         val definitions = McpToolCatalog.definitions(client)
         val server = createMcpServer(client)
 
-        assertEquals(33, definitions.size)
+        assertEquals(34, definitions.size)
         assertEquals(McpToolCatalog.names, definitions.map { it.tool.name })
         assertEquals(McpToolCatalog.names.toSet(), server.tools.keys)
         assertTrue(server.resources.isEmpty())
@@ -195,6 +195,47 @@ class McpToolCatalogTest {
     }
 
     @Test
+    fun `multi-point optimizer schema is strict versioned and maps one native call`() = runBlocking {
+        val client = RecordingClient()
+        val definition = McpToolCatalog.definitions(client).associateBy { it.tool.name }
+            .getValue("optimize_multi_point_route")
+
+        assertEquals(
+            setOf("startSystemId", "targetSystemIds", "useAnsiblex"),
+            definition.tool.inputSchema.properties.orEmpty().keys,
+        )
+        assertEquals(listOf("startSystemId", "targetSystemIds", "useAnsiblex"), definition.tool.inputSchema.required)
+        assertTrue(definition.tool.annotations?.readOnlyHint == true)
+        assertFalse(definition.tool.inputSchema.properties.orEmpty().containsKey("useWormholes"))
+        val output = requireNotNull(definition.tool.outputSchema)
+        assertEquals(listOf("schemaVersion", "success"), output.required)
+        listOf("optimization", "orderedTargets", "segments", "totalJumps", "coverage", "stats").forEach {
+            assertTrue(it in output.properties.orEmpty(), it)
+        }
+
+        definition.invoke(
+            buildJsonObject {
+                put("startSystemId", 1)
+                put("targetSystemIds", JsonArray(listOf(JsonPrimitive(2), JsonPrimitive(3), JsonPrimitive(2))))
+                put("useAnsiblex", true)
+            },
+        )
+        assertEquals(1, client.lastOptimizerStartSystemId)
+        assertEquals(listOf(2, 3, 2), client.lastOptimizerTargetSystemIds)
+        assertEquals(true, client.lastOptimizerUseAnsiblex)
+        assertFails {
+            definition.invoke(
+                buildJsonObject {
+                    put("startSystemId", 1)
+                    put("targetSystemIds", JsonArray(listOf(JsonPrimitive(2))))
+                    put("useAnsiblex", false)
+                    put("useWormholes", false)
+                },
+            )
+        }
+    }
+
+    @Test
     fun `Wormhole schemas are create-only and route options default false`() = runBlocking {
         val client = RecordingClient()
         val definitions = McpToolCatalog.definitions(client).associateBy { it.tool.name }
@@ -348,6 +389,11 @@ private val validArguments: Map<String, Map<String, kotlinx.serialization.json.J
     "get_system_markers" to mapOf("systemId" to JsonPrimitive(30000142)),
     "list_wormholes" to emptyMap(),
     "get_normal_route_graph" to mapOf("useAnsiblex" to JsonPrimitive(false)),
+    "optimize_multi_point_route" to mapOf(
+        "startSystemId" to JsonPrimitive(1),
+        "targetSystemIds" to JsonArray(listOf(JsonPrimitive(2), JsonPrimitive(3))),
+        "useAnsiblex" to JsonPrimitive(false),
+    ),
     "calculate_normal_route" to mapOf(
         "startSystemId" to JsonPrimitive(1), "destinationSystemId" to JsonPrimitive(2), "useAnsiblex" to JsonPrimitive(false),
     ),
@@ -406,6 +452,9 @@ private class RecordingClient : McpMapClient {
     var lastUseWormholes: Boolean? = null
     var lastWaypointSystemIds: List<Int>? = null
     var lastDestinationSystemId: Int? = null
+    var lastOptimizerStartSystemId: Int? = null
+    var lastOptimizerTargetSystemIds: List<Int>? = null
+    var lastOptimizerUseAnsiblex: Boolean? = null
     var callCount = 0
 
     private fun result(name: String): LocalControlClientResult {
@@ -420,6 +469,15 @@ private class RecordingClient : McpMapClient {
     override suspend fun listWormholes() = result("list_wormholes")
     override suspend fun getNormalRouteGraph(useAnsiblex: Boolean) = result("get_normal_route_graph").also {
         lastGraphUseAnsiblex = useAnsiblex
+    }
+    override suspend fun optimizeMultiPointRoute(
+        startSystemId: Int,
+        targetSystemIds: List<Int>,
+        useAnsiblex: Boolean,
+    ) = result("optimize_multi_point_route").also {
+        lastOptimizerStartSystemId = startSystemId
+        lastOptimizerTargetSystemIds = targetSystemIds
+        lastOptimizerUseAnsiblex = useAnsiblex
     }
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         result("calculate_normal_route")

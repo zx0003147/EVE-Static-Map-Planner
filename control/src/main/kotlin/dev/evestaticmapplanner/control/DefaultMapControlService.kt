@@ -108,6 +108,19 @@ class DefaultMapControlService(
         }
     }
 
+    override suspend fun optimizeMultiPointRoute(
+        request: OptimizeMultiPointRouteRequest,
+    ): ControlResult<MultiPointRouteOptimizationDto> = query(request.requestId) {
+        validateRequestId(request.requestId)
+        expensiveQueries.withPermit {
+            routePlanningPort.optimizeMultiPointRoute(
+                request.startSystemId,
+                request.targetSystemIds,
+                request.useAnsiblex,
+            )
+        }
+    }
+
     override suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest): ControlResult<NormalRouteDto> =
         query(request.requestId) {
             validateRequestId(request.requestId)

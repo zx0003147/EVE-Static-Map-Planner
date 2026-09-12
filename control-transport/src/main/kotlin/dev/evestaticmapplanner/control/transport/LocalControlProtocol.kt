@@ -8,7 +8,7 @@ import java.util.Locale
 
 object LocalControlProtocol {
     const val PROTOCOL_VERSION = 1
-    const val CONTROL_API_VERSION = 3
+    const val CONTROL_API_VERSION = 4
     val SAVED_MARKER_TAGS: List<String> = SavedMarkerChildType.supportedTypes.map {
         it.key.uppercase(Locale.ROOT)
     }
@@ -65,6 +65,12 @@ enum class LocalControlOperation(
     NORMAL_ROUTE_GRAPH(
         "/v1/query/normal-route-graph",
         "getNormalRouteGraph",
+        false,
+        TimeoutKind.ROUTE_OR_JUMP,
+    ),
+    OPTIMIZE_MULTI_POINT_ROUTE(
+        "/v1/query/optimize-multi-point-route",
+        "optimizeMultiPointRoute",
         false,
         TimeoutKind.ROUTE_OR_JUMP,
     ),

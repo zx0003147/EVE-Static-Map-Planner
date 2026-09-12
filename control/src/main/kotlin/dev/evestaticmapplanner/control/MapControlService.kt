@@ -9,6 +9,9 @@ interface MapControlService {
     suspend fun getNormalRouteGraph(
         request: GetNormalRouteGraphRequest,
     ): ControlResult<NormalRouteGraphSnapshotDto> = unsupportedRouteGraph(request.requestId)
+    suspend fun optimizeMultiPointRoute(
+        request: OptimizeMultiPointRouteRequest,
+    ): ControlResult<MultiPointRouteOptimizationDto> = unsupportedMultiPointRoute(request.requestId)
     suspend fun calculateNormalRoute(request: CalculateNormalRouteRequest): ControlResult<NormalRouteDto>
     suspend fun listWormholes(request: ListWormholesRequest): ControlResult<List<WormholeConnectionDto>> =
         unsupportedWormholes(request.requestId)
@@ -60,6 +63,11 @@ private fun <T> unsupportedWormholes(requestId: String): ControlResult<T> = Cont
 private fun <T> unsupportedRouteGraph(requestId: String): ControlResult<T> = ControlResult.Failure(
     requestId,
     ControlError(ControlErrorCode.APP_NOT_READY, "Normal route graph export is unavailable"),
+)
+
+private fun <T> unsupportedMultiPointRoute(requestId: String): ControlResult<T> = ControlResult.Failure(
+    requestId,
+    ControlError(ControlErrorCode.APP_NOT_READY, "Multi-point route optimization is unavailable"),
 )
 
 private fun <T> unsupportedEveNavigation(requestId: String): ControlResult<T> = ControlResult.Failure(

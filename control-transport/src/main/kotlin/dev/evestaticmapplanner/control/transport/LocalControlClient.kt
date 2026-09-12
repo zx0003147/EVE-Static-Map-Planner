@@ -34,6 +34,7 @@ enum class LocalControlClientErrorCode {
     OBJECT_NOT_FOUND,
     AMBIGUOUS_SYSTEM,
     INVALID_ARGUMENT,
+    INVALID_INPUT,
     INVALID_MARKER_DATA,
     CAPABILITY_DENIED,
     MARKER_ALREADY_EXISTS,
@@ -128,6 +129,19 @@ class LocalControlClient internal constructor(
                 put("useAnsiblex", useAnsiblex)
             }
         }
+
+    suspend fun optimizeMultiPointRoute(
+        startSystemId: Int,
+        targetSystemIds: List<Int>,
+        useAnsiblex: Boolean,
+    ): LocalControlClientResult = query(LocalControlOperation.OPTIMIZE_MULTI_POINT_ROUTE) { requestId ->
+        buildJsonObject {
+            put("requestId", requestId)
+            put("startSystemId", startSystemId)
+            put("targetSystemIds", buildJsonArray { targetSystemIds.forEach { add(JsonPrimitive(it)) } })
+            put("useAnsiblex", useAnsiblex)
+        }
+    }
 
     suspend fun listWormholes(): LocalControlClientResult = query(LocalControlOperation.LIST_WORMHOLES) { requestId ->
         buildJsonObject { put("requestId", requestId) }
@@ -575,7 +589,8 @@ class LocalControlClient internal constructor(
         fun clientTimeout(operation: LocalControlOperation): Duration = when (operation) {
             LocalControlOperation.SEND_MISSION_NAVIGATION_TO_EVE -> Duration.ofSeconds(302)
             LocalControlOperation.CAPITAL_ROUTE, LocalControlOperation.SHOW_CAPITAL_ROUTE -> Duration.ofSeconds(32)
-            LocalControlOperation.NORMAL_ROUTE, LocalControlOperation.SHOW_NORMAL_ROUTE,
+            LocalControlOperation.NORMAL_ROUTE, LocalControlOperation.OPTIMIZE_MULTI_POINT_ROUTE,
+            LocalControlOperation.SHOW_NORMAL_ROUTE,
             LocalControlOperation.SHOW_JUMP_RANGE -> Duration.ofSeconds(17)
             else -> Duration.ofSeconds(5)
         }
@@ -601,6 +616,7 @@ private fun failureForWireCode(code: String): LocalControlClientResult = when (c
     "OBJECT_NOT_FOUND" -> failure(LocalControlClientErrorCode.OBJECT_NOT_FOUND)
     "AMBIGUOUS_SYSTEM" -> failure(LocalControlClientErrorCode.AMBIGUOUS_SYSTEM)
     "INVALID_ARGUMENT" -> failure(LocalControlClientErrorCode.INVALID_ARGUMENT)
+    "INVALID_INPUT" -> failure(LocalControlClientErrorCode.INVALID_INPUT)
     "INVALID_MARKER_DATA" -> failure(LocalControlClientErrorCode.INVALID_MARKER_DATA)
     "CAPABILITY_DENIED" -> failure(LocalControlClientErrorCode.CAPABILITY_DENIED)
     "MARKER_ALREADY_EXISTS" -> failure(LocalControlClientErrorCode.MARKER_ALREADY_EXISTS)
@@ -633,6 +649,7 @@ private fun safeMessage(code: LocalControlClientErrorCode): String = when (code)
     LocalControlClientErrorCode.MISSION_NOT_FOUND -> "The requested object was not found."
     LocalControlClientErrorCode.AMBIGUOUS_SYSTEM -> "The solar system reference is ambiguous."
     LocalControlClientErrorCode.INVALID_ARGUMENT -> "The request is invalid."
+    LocalControlClientErrorCode.INVALID_INPUT -> "The optimizer input is invalid."
     LocalControlClientErrorCode.INVALID_MARKER_DATA -> "The saved marker data is invalid."
     LocalControlClientErrorCode.CAPABILITY_DENIED -> "The operation is not allowed."
     LocalControlClientErrorCode.MARKER_ALREADY_EXISTS -> "A saved marker already exists for this solar system."

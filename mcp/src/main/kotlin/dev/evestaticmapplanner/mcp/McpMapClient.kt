@@ -8,6 +8,11 @@ internal interface McpMapClient : AutoCloseable {
     suspend fun getSystemInfo(systemId: Int): LocalControlClientResult
     suspend fun getSystemMarkers(systemId: Int): LocalControlClientResult
     suspend fun getNormalRouteGraph(useAnsiblex: Boolean): LocalControlClientResult = unsupportedRouteGraphClientResult()
+    suspend fun optimizeMultiPointRoute(
+        startSystemId: Int,
+        targetSystemIds: List<Int>,
+        useAnsiblex: Boolean,
+    ): LocalControlClientResult = unsupportedMultiPointRouteClientResult()
     suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean): LocalControlClientResult
     suspend fun calculateNormalRoute(
         startSystemId: Int,
@@ -137,6 +142,11 @@ internal class LocalMcpMapClient(
     override suspend fun getSystemInfo(systemId: Int) = client.getSystemInfo(systemId)
     override suspend fun getSystemMarkers(systemId: Int) = client.getSystemMarkers(systemId)
     override suspend fun getNormalRouteGraph(useAnsiblex: Boolean) = client.getNormalRouteGraph(useAnsiblex)
+    override suspend fun optimizeMultiPointRoute(
+        startSystemId: Int,
+        targetSystemIds: List<Int>,
+        useAnsiblex: Boolean,
+    ) = client.optimizeMultiPointRoute(startSystemId, targetSystemIds, useAnsiblex)
     override suspend fun calculateNormalRoute(startSystemId: Int, destinationSystemId: Int, useAnsiblex: Boolean) =
         client.calculateNormalRoute(startSystemId, destinationSystemId, useAnsiblex)
     override suspend fun calculateNormalRoute(
@@ -266,6 +276,13 @@ private fun unsupportedRouteGraphClientResult() = LocalControlClientResult.Failu
     dev.evestaticmapplanner.control.transport.LocalControlClientError(
         dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.APP_NOT_READY,
         "Normal route graph export is unavailable",
+    ),
+)
+
+private fun unsupportedMultiPointRouteClientResult() = LocalControlClientResult.Failure(
+    dev.evestaticmapplanner.control.transport.LocalControlClientError(
+        dev.evestaticmapplanner.control.transport.LocalControlClientErrorCode.APP_NOT_READY,
+        "Multi-point route optimization is unavailable",
     ),
 )
 

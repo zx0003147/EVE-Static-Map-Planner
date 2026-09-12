@@ -32,7 +32,7 @@ See `docs/real-3d-performance.md` for the repeatable full-universe CPU projectio
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
 - `feature-api`: Feature API compatibility family 2 contracts (current artifact `2.2.0`) and generic external Pack test fixture.
-- `mcp`: Core-owned MCP server and its fixed 33-tool catalog, including View control, session Wormhole read/create, permission-gated Saved Marker read/create, and explicit EVE navigation targeting.
+- `mcp`: Core-owned MCP server and its fixed 34-tool catalog, including native multi-point route optimization, View control, session Wormhole read/create, permission-gated Saved Marker read/create, and explicit EVE navigation targeting.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 - `shared-client`: Compose-independent Shared Map protocol, HTTPS client, Workspace session, polling, and secure credential contracts.
 

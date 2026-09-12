@@ -107,6 +107,67 @@ enum class NormalRouteGraphEdgeType {
     ANSIBLEX,
 }
 
+sealed interface MultiPointRouteOptimizationDto {
+    val schemaVersion: Int
+    val success: Boolean
+
+    data class Succeeded(
+        override val schemaVersion: Int = 1,
+        override val success: Boolean = true,
+        val startSystemId: Int,
+        val inputTargetCount: Int,
+        val uniqueTargetCount: Int,
+        val startWasTarget: Boolean,
+        val useAnsiblex: Boolean,
+        val optimization: MultiPointRouteOptimizationDetailsDto,
+        val orderedTargets: List<MultiPointRouteTargetDto>,
+        val segments: List<MultiPointRouteSegmentDto>,
+        val totalJumps: Int,
+        val coverage: MultiPointRouteCoverageDto,
+        val stats: MultiPointRouteStatsDto,
+    ) : MultiPointRouteOptimizationDto
+
+    data class Failed(
+        override val schemaVersion: Int = 1,
+        override val success: Boolean = false,
+        val error: String,
+        val message: String,
+        val missingTargetSystemIds: List<Int> = emptyList(),
+        val unreachableSystemIds: List<Int> = emptyList(),
+        val missingSystemIds: List<Int> = emptyList(),
+        val uniqueTargetCount: Int? = null,
+        val maximumTargetCount: Int? = null,
+    ) : MultiPointRouteOptimizationDto
+}
+
+data class MultiPointRouteOptimizationDetailsDto(
+    val method: String,
+    val guaranteedOptimal: Boolean,
+)
+
+data class MultiPointRouteTargetDto(
+    val systemId: Int,
+    val systemName: String,
+)
+
+data class MultiPointRouteSegmentDto(
+    val fromSystemId: Int,
+    val toSystemId: Int,
+    val jumps: Int,
+)
+
+data class MultiPointRouteCoverageDto(
+    val required: Int,
+    val visited: Int,
+    val missingSystemIds: List<Int>,
+)
+
+data class MultiPointRouteStatsDto(
+    val graphNodes: Int,
+    val graphEdges: Int,
+    val bfsRuns: Int,
+)
+
 data class WormholeConnectionDto(
     val connectionId: String,
     val firstSystemId: Int,
@@ -271,6 +332,12 @@ data class CalculateNormalRouteRequest(
 ) : QueryRequest
 data class GetNormalRouteGraphRequest(
     override val requestId: String,
+    val useAnsiblex: Boolean,
+) : QueryRequest
+data class OptimizeMultiPointRouteRequest(
+    override val requestId: String,
+    val startSystemId: Int,
+    val targetSystemIds: List<Int>,
     val useAnsiblex: Boolean,
 ) : QueryRequest
 data class ListWormholesRequest(override val requestId: String) : QueryRequest

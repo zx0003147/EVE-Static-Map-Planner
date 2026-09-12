@@ -96,6 +96,33 @@ class ExistingPlanningPortsTest {
     }
 
     @Test
+    fun `multi-point optimization uses enabled Ansiblex only when requested`() = runTest {
+        val repository = ReadOnlyProofAnsiblexRepository()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val ports = ExistingPlanningPorts(
+            StaticMapRepository { staticData() },
+            repository,
+            WormholeSessionStore(),
+            ioDispatcher = dispatcher,
+            calculationDispatcher = dispatcher,
+        )
+
+        val stargatesOnly = assertIs<MultiPointRouteOptimizationDto.Failed>(
+            ports.optimizeMultiPointRoute(FIRST, listOf(SECOND), useAnsiblex = false),
+        )
+        val withAnsiblex = assertIs<MultiPointRouteOptimizationDto.Succeeded>(
+            ports.optimizeMultiPointRoute(FIRST, listOf(SECOND), useAnsiblex = true),
+        )
+
+        assertEquals("UNREACHABLE_TARGETS", stargatesOnly.error)
+        assertEquals(1, withAnsiblex.totalJumps)
+        assertEquals(listOf(SECOND), withAnsiblex.orderedTargets.map(MultiPointRouteTargetDto::systemId))
+        assertEquals("System $SECOND", withAnsiblex.orderedTargets.single().systemName)
+        assertEquals(1, repository.readCount)
+        assertEquals(0, repository.mutationCount)
+    }
+
+    @Test
     fun `capital and jump operations reuse existing spatial candidate calculations`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val ports = ExistingPlanningPorts(

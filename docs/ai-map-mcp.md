@@ -1,6 +1,6 @@
 # AI Map MCP transports
 
-EVE Static Map Planner exposes the same fixed 33-tool MCP server through two local transports:
+EVE Static Map Planner exposes the same fixed 34-tool MCP server through two local transports:
 
 ```text
 Streamable HTTP client -> http://127.0.0.1:27892/mcp -> MCP server in the Map JVM
@@ -137,13 +137,15 @@ elsewhere, repeat the registration with the new launcher path.
 
 ## Fixed tool surface
 
-The server exposes exactly these 32 tools:
+The server exposes exactly these 34 tools:
 
 ```text
 search_system
 get_system_info
 get_system_markers
 list_wormholes
+get_normal_route_graph
+optimize_multi_point_route
 calculate_normal_route
 calculate_capital_route
 list_views
@@ -181,6 +183,10 @@ an error. Self-loops and unknown systems are rejected. Wormholes are session-onl
 Planning View and disappear when the app exits. AI can list and create them, but the Control and MCP surfaces expose
 no Wormhole update, remove, delete, clear, replace, or persistence capability.
 
+`optimize_multi_point_route` performs request-scoped native Kotlin optimization over the same Stargate and optional
+enabled-Ansiblex graph used by normal routing. It accepts a fixed start and 1 to 50 unique explicit targets, never
+uses Wormholes, and retains no distance matrix, BFS tree, candidate route, or route history after the response.
+
 `calculate_normal_route` and `show_normal_route` accept optional `useWormholes`; omission is backward-compatible and
 means `false`. Normal-route output includes `wormholeJumps`, and the total remains the sum of Stargate, Ansiblex, and
 Wormhole jumps. Creating a Wormhole updates the shared topology without focusing the map, switching Views, changing a
@@ -188,7 +194,7 @@ View's `Use Wormholes` preference, recalculating an existing user route, or chan
 removal or Clear All invalidates only Normal Mission routes that used the removed connection, across every View; AI
 cannot invoke that removal path.
 
-`get_system_markers` aggregates the persistent Saved Marker and current View's AI Mission Markers for one canonical `systemId`. `create_saved_marker` accepts `systemId`, a supported `color`, optional `name`/`notes`, and optional supported initial `tags`. Marker and initial tags are committed atomically; application code always records AI provenance. The tool cannot modify tags on an existing Saved Marker. Both operations use `LocalControlClient` and Control API v2. They never read storage directly, and Saved Marker access must be enabled in Preferences.
+`get_system_markers` aggregates the persistent Saved Marker and current View's AI Mission Markers for one canonical `systemId`. `create_saved_marker` accepts `systemId`, a supported `color`, optional `name`/`notes`, and optional supported initial `tags`. Marker and initial tags are committed atomically; application code always records AI provenance. The tool cannot modify tags on an existing Saved Marker. Both operations use `LocalControlClient` and Control API v4. They never read storage directly, and Saved Marker access must be enabled in Preferences.
 
 Permission denial remains `CAPABILITY_DENIED`, an existing marker remains `MARKER_ALREADY_EXISTS`, and retries reuse the Control client's session-scoped idempotency key. MCP exposes no Saved Marker update, delete, clear, replace, existing-tag mutation, or child mutation operation.
 

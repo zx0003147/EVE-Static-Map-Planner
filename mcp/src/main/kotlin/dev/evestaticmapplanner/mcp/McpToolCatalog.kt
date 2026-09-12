@@ -30,7 +30,7 @@ internal data class McpToolDefinition(
 internal object McpToolCatalog {
     val names = listOf(
         "search_system", "get_system_info", "get_system_markers", "list_wormholes", "get_normal_route_graph",
-        "calculate_normal_route", "calculate_capital_route",
+        "optimize_multi_point_route", "calculate_normal_route", "calculate_capital_route",
         "list_views", "get_current_view", "create_view", "rename_view", "switch_view", "delete_view",
         "get_active_missions", "get_mission", "list_eve_navigation_targets", "begin_mission", "focus_system", "create_wormhole", "show_normal_route",
         "show_capital_route", "remove_mission_route", "clear_mission_routes", "show_jump_range",
@@ -88,6 +88,27 @@ internal object McpToolCatalog {
         ) { arguments ->
             val input = StrictArguments(arguments, setOf("useAnsiblex"), setOf("useAnsiblex"))
             client.getNormalRouteGraph(input.boolean("useAnsiblex"))
+        },
+        queryTool(
+            "optimize_multi_point_route",
+            "Optimize the explicit visit order for 1 to 50 unique normal-route target systems from a fixed start " +
+                "with a free final target. Uses Stargates and optionally enabled Ansiblex connections; never uses Wormholes. " +
+                "This is deterministic, does not display a route, and does not change the map.",
+            schema(
+                listOf("startSystemId", "targetSystemIds", "useAnsiblex"),
+                "startSystemId" to positiveIntegerProperty(),
+                "targetSystemIds" to positiveIntegerArrayProperty(),
+                "useAnsiblex" to booleanProperty(),
+            ),
+            multiPointRouteOutput(),
+        ) { arguments ->
+            val fields = setOf("startSystemId", "targetSystemIds", "useAnsiblex")
+            val input = StrictArguments(arguments, fields, fields)
+            client.optimizeMultiPointRoute(
+                input.positiveInt("startSystemId"),
+                input.positiveIntArray("targetSystemIds"),
+                input.boolean("useAnsiblex"),
+            )
         },
         queryTool(
             "calculate_normal_route",
@@ -448,7 +469,11 @@ internal object McpToolCatalog {
                 } catch (failure: kotlinx.coroutines.CancellationException) {
                     throw failure
                 } catch (_: IllegalArgumentException) {
-                    invalidArgumentsFailure()
+                    if (definition.tool.name == "optimize_multi_point_route") {
+                        invalidOptimizerInputFailure()
+                    } else {
+                        invalidArgumentsFailure()
+                    }
                 } catch (_: Exception) {
                     internalToolFailure()
                 }
@@ -525,6 +550,9 @@ private class StrictArguments(
             (item as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull?.takeIf { it > 0 } ?: invalid()
         } ?: invalid()
     }
+    fun positiveIntArray(name: String): List<Int> = (values[name] as? JsonArray)?.map { item ->
+        (item as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull?.takeIf { it > 0 } ?: invalid()
+    } ?: invalid()
     fun range(name: String): Double = (values[name] as? JsonPrimitive)
         ?.takeUnless(JsonPrimitive::isString)?.doubleOrNull?.takeIf { it.isFinite() && it > 0.0 && it <= 20.0 } ?: invalid()
     fun boolean(name: String): Boolean = (values[name] as? JsonPrimitive)
@@ -562,7 +590,9 @@ internal fun LocalControlClientResult.toMcpResult(toolName: String, listResultKe
         CallToolResult(
             content = listOf(TextContent(McpTextFallbackFormatter.format(toolName, structured))),
             isError = toolName == "send_mission_navigation_to_eve" &&
-                (structured["status"] as? JsonPrimitive)?.content != "SUCCEEDED",
+                (structured["status"] as? JsonPrimitive)?.content != "SUCCEEDED" ||
+                toolName == "optimize_multi_point_route" &&
+                (structured["success"] as? JsonPrimitive)?.booleanOrNull == false,
             structuredContent = structured,
         )
     }
@@ -612,6 +642,10 @@ private fun objectOutput(vararg required: String) = schema(
     *required.map { it to JsonObject(emptyMap()) }.toTypedArray(),
 )
 
+private fun invalidOptimizerInputFailure() = LocalControlClientResult.Failure(
+    LocalControlClientError(LocalControlClientErrorCode.INVALID_INPUT, "The optimizer input is invalid."),
+)
+
 private fun normalRouteGraphOutput(): ToolSchema {
     val node = objectProperty(
         listOf("systemId", "systemName", "official2dX", "official2dY"),
@@ -633,6 +667,59 @@ private fun normalRouteGraphOutput(): ToolSchema {
         "useAnsiblex" to booleanProperty(),
         "nodes" to arrayProperty(node),
         "edges" to arrayProperty(edge),
+    )
+}
+
+private fun multiPointRouteOutput(): ToolSchema {
+    val optimization = objectProperty(
+        listOf("method", "guaranteedOptimal"),
+        "method" to enumProperty(linkedSetOf("EXACT_HELD_KARP", "HEURISTIC")),
+        "guaranteedOptimal" to booleanProperty(),
+    )
+    val orderedTarget = objectProperty(
+        listOf("systemId", "systemName"),
+        "systemId" to positiveIntegerProperty(),
+        "systemName" to plainStringProperty(),
+    )
+    val segment = objectProperty(
+        listOf("fromSystemId", "toSystemId", "jumps"),
+        "fromSystemId" to positiveIntegerProperty(),
+        "toSystemId" to positiveIntegerProperty(),
+        "jumps" to nonNegativeIntegerProperty(),
+    )
+    val coverage = objectProperty(
+        listOf("required", "visited", "missingSystemIds"),
+        "required" to nonNegativeIntegerProperty(),
+        "visited" to nonNegativeIntegerProperty(),
+        "missingSystemIds" to positiveIntegerArrayProperty(),
+    )
+    val stats = objectProperty(
+        listOf("graphNodes", "graphEdges", "bfsRuns"),
+        "graphNodes" to nonNegativeIntegerProperty(),
+        "graphEdges" to nonNegativeIntegerProperty(),
+        "bfsRuns" to nonNegativeIntegerProperty(),
+    )
+    return schema(
+        listOf("schemaVersion", "success"),
+        "schemaVersion" to buildJsonObject { put("type", "integer"); put("const", 1) },
+        "success" to booleanProperty(),
+        "startSystemId" to positiveIntegerProperty(),
+        "inputTargetCount" to nonNegativeIntegerProperty(),
+        "uniqueTargetCount" to nonNegativeIntegerProperty(),
+        "startWasTarget" to booleanProperty(),
+        "useAnsiblex" to booleanProperty(),
+        "optimization" to optimization,
+        "orderedTargets" to arrayProperty(orderedTarget),
+        "segments" to arrayProperty(segment),
+        "totalJumps" to nonNegativeIntegerProperty(),
+        "coverage" to coverage,
+        "stats" to stats,
+        "error" to plainStringProperty(),
+        "message" to plainStringProperty(),
+        "missingTargetSystemIds" to positiveIntegerArrayProperty(),
+        "unreachableSystemIds" to positiveIntegerArrayProperty(),
+        "missingSystemIds" to positiveIntegerArrayProperty(),
+        "maximumTargetCount" to nonNegativeIntegerProperty(),
     )
 }
 
@@ -665,6 +752,7 @@ private fun opaqueIdProperty() = buildJsonObject {
     put("type", "string"); put("pattern", "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
 }
 private fun positiveIntegerProperty() = buildJsonObject { put("type", "integer"); put("minimum", 1) }
+private fun nonNegativeIntegerProperty() = buildJsonObject { put("type", "integer"); put("minimum", 0) }
 private fun positiveIntegerArrayProperty() = buildJsonObject {
     put("type", "array")
     put("items", positiveIntegerProperty())

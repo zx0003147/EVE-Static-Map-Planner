@@ -48,10 +48,10 @@ class LocalhostMcpHostTest {
     }
 
     @Test
-    fun `official client initializes lists exactly 33 tools and calls search over stateless HTTP`(): Unit = runBlocking {
+    fun `official client initializes lists exactly 34 tools and calls search over stateless HTTP`(): Unit = runBlocking {
         withOfficialClientHost { port, client ->
             val httpToolNames = client.listTools().tools.map { it.name }
-            assertEquals(33, httpToolNames.size)
+            assertEquals(34, httpToolNames.size)
             assertEquals(McpToolCatalog.names, httpToolNames)
             val result = client.callTool("search_system", mapOf("query" to "Jita"))
             assertFalse(result.isError == true)

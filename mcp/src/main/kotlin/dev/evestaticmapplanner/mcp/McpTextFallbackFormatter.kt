@@ -21,6 +21,7 @@ internal object McpTextFallbackFormatter {
             "get_system_info" -> formatSystemInfo(structuredContent)
             "get_system_markers" -> formatSystemMarkers(structuredContent)
             "list_wormholes" -> formatWormholes(structuredContent)
+            "optimize_multi_point_route" -> formatMultiPointRoute(structuredContent)
             "calculate_normal_route" -> formatRoute(structuredContent, "NORMAL", "Route calculated.")
             "calculate_capital_route" -> formatRoute(structuredContent, "CAPITAL", "Route calculated.")
             "get_active_missions" -> formatActiveMissions(structuredContent)
@@ -262,6 +263,33 @@ internal object McpTextFallbackFormatter {
         }
         appendField("Path (system IDs)", formatPath(content.array("systemIds")))
     }.trimEnd()
+
+    private fun formatMultiPointRoute(content: JsonObject): String {
+        if (content.text("success") != "true") {
+            return "${content.text("error") ?: "INTERNAL_OPTIMIZATION_FAILURE"}: " +
+                (content.text("message") ?: "Multi-point route optimization failed.")
+        }
+        val ordered = content.array("orderedTargets").mapNotNull { target ->
+            val value = target as? JsonObject ?: return@mapNotNull null
+            val id = value.text("systemId") ?: return@mapNotNull null
+            value.text("systemName")?.let { "$it ($id)" } ?: id
+        }
+        val coverage = content.obj("coverage")
+        val optimization = content.obj("optimization")
+        return buildString {
+            appendLine("Multi-point route optimized.")
+            appendLine()
+            appendField("Method", optimization?.text("method"))
+            appendField("Guaranteed optimal", optimization?.text("guaranteedOptimal"))
+            appendField("Total jumps", content.text("totalJumps"))
+            appendField("Ordered targets", ordered.joinToString(" -> "))
+            appendField(
+                "Coverage",
+                "${coverage?.text("visited") ?: "?"} / ${coverage?.text("required") ?: "?"} required systems covered",
+            )
+            appendField("Missing", coverage?.array("missingSystemIds")?.size?.toString())
+        }.trimEnd()
+    }
 
     private fun formatDisplayedRoute(content: JsonObject): String {
         val route = content.obj("route") ?: JsonObject(emptyMap())
