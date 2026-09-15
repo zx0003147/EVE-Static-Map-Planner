@@ -37,6 +37,11 @@ internal class IdempotencyCache(
         while (entries.size > maxEntries) entries.remove(entries.keys.first())
     }
 
+    @Synchronized
+    fun clear() {
+        entries.clear()
+    }
+
     private fun prune() {
         val cutoff = now().minus(ttl)
         entries.entries.removeIf { it.value.createdAt.isBefore(cutoff) }

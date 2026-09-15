@@ -177,6 +177,11 @@ class MissionRegistry(
         return mission
     }
 
+    @Synchronized
+    fun clear() {
+        missions.clear()
+    }
+
     private fun ensureRouteCapacity(mission: Mission) {
         if (mission.routes.size >= ControlLimits.MAX_ROUTES_PER_MISSION) {
             fail(ControlErrorCode.MISSION_LIMIT_EXCEEDED, "The mission route limit has been reached")

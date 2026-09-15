@@ -26,6 +26,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.sun.jna.Platform
 import java.awt.EventQueue
+import dev.evestaticmapplanner.ai.EmbeddedAiAssistantWindow
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
@@ -55,6 +56,8 @@ import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
 import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
 import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
+import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
+import dev.evestaticmapplanner.embeddedai.OpenAiKoogAgentFactory
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
@@ -402,48 +405,65 @@ private fun FrameWindowScope.ReadyApplication(
         PlanningViewCoordinator(routeViewModel, capitalViewModel)
     }
     val missionMapStateStore = remember(configuration) { MissionMapStateStore() }
-    val controlLifecycle = remember(configuration, planningViewCoordinator, featurePackRuntime) {
-        val planningPorts = ExistingPlanningPorts(
+    val controlServiceScope = remember(configuration) {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
+    val planningPorts = remember(configuration, wormholeSessionStore, userComponents) {
+        ExistingPlanningPorts(
             staticMapRepository = staticRepository,
             ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
             wormholeSessionStore = wormholeSessionStore,
         )
-        val systemReadPort = RepositorySystemReadPort(
+    }
+    val systemReadPort = remember(configuration) {
+        RepositorySystemReadPort(
             searchRepository,
             universeRepository,
         )
+    }
+    val mapControlCoordinator = remember(
+        configuration,
+        planningPorts,
+        planningViewCoordinator,
+        featurePackRuntime,
+        aiSavedMarkerApplicationService,
+    ) {
+        AppMapControlCoordinator(
+            systemReadPort = systemReadPort,
+            routePlanningPort = planningPorts,
+            jumpPlanningPort = planningPorts,
+            viewportControlPort = MapViewportControlAdapter(mapViewModel),
+            missionRenderStatePort = missionMapStateStore,
+            savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
+            wormholeControlPort = AppWormholeControlAdapter(wormholeSessionStore),
+            missionNavigationActionPort = FeaturePackMissionNavigationActionAdapter(
+                featurePackRuntime.routeActionHost,
+            ),
+            wormholeConnectionIds = wormholeSessionStore.connections.map { connections ->
+                connections.mapTo(mutableSetOf()) { it.id }
+            },
+            planningViewControlPort = dev.evestaticmapplanner.view.PlanningViewControlAdapter(planningViewCoordinator),
+            scope = controlServiceScope,
+        )
+    }
+    val embeddedAiController = remember(mapControlCoordinator) {
+        EmbeddedAiController(
+            OpenAiKoogAgentFactory(mapControlCoordinator),
+            uiDispatcher = Dispatchers.Main.immediate,
+        )
+    }
+    val controlLifecycle = remember(configuration, mapControlCoordinator) {
         AiMapControlLifecycleController(
             discoveryRoot = ApplicationDirectories.root().resolve("control"),
             sessionFactory = {
-                val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-                val coordinator = AppMapControlCoordinator(
-                    systemReadPort = systemReadPort,
-                    routePlanningPort = planningPorts,
-                    jumpPlanningPort = planningPorts,
-                    viewportControlPort = MapViewportControlAdapter(mapViewModel),
-                    missionRenderStatePort = missionMapStateStore,
-                    savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
-                    wormholeControlPort = AppWormholeControlAdapter(wormholeSessionStore),
-                    missionNavigationActionPort = FeaturePackMissionNavigationActionAdapter(
-                        featurePackRuntime.routeActionHost,
-                    ),
-                    wormholeConnectionIds = wormholeSessionStore.connections.map { connections ->
-                        connections.mapTo(mutableSetOf()) { it.id }
-                    },
-                    planningViewControlPort = dev.evestaticmapplanner.view.PlanningViewControlAdapter(planningViewCoordinator),
-                    scope = sessionScope,
-                )
                 AppAiControlSession(
                     server = LocalControlServer(
-                        service = coordinator,
+                        service = mapControlCoordinator,
                         appVersion = ApplicationBuildInfo.current.appVersion,
                         auditSink = AppLocalControlAuditSink,
                     ),
-                    clearMissionState = { missionMapStateStore.publish(emptyList()) },
-                    closeControlSession = {
-                        coordinator.close()
-                        sessionScope.cancel()
-                    },
+                    clearMissionState = mapControlCoordinator::resetExternalSession,
+                    closeControlSession = {},
                 )
             },
         )
@@ -483,11 +503,19 @@ private fun FrameWindowScope.ReadyApplication(
         markerViewModel,
         savedMarkerService,
         staticDataViewModel,
+        embeddedAiController,
+        mapControlCoordinator,
+        controlServiceScope,
     ) {
         ApplicationShutdownCoordinator(
             shutdownLocalhostMcp = localhostMcpHost::shutdown,
-            shutdownAiControl = controlLifecycle::shutdown,
+            shutdownAiControl = {
+                controlLifecycle.shutdown()
+                embeddedAiController.shutdown()
+            },
             resourceClosers = listOf(
+                mapControlCoordinator::close,
+                { controlServiceScope.cancel() },
                 sharedMapViewModel::close,
                 mapViewModel::close,
                 routeViewModel::close,
@@ -646,6 +674,7 @@ private fun FrameWindowScope.ReadyApplication(
     val aiControlStatus by controlLifecycle.status.collectAsState()
     val uiScope = rememberCoroutineScope()
     var showStaticData by remember { mutableStateOf(false) }
+    var showEmbeddedAi by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
     var markerSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
     var miniMapSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
@@ -685,6 +714,7 @@ private fun FrameWindowScope.ReadyApplication(
                     characterTrackingAvailable = characterTrackingAvailable,
                     miniMapEnabled = miniMapState.preferences.enabled,
                     staticDataOpen = showStaticData,
+                    embeddedAiOpen = showEmbeddedAi,
                 ),
                 actions = PlannerTopMenuActions(
                     openMarkerManager = { showMarkerManager = true },
@@ -703,6 +733,7 @@ private fun FrameWindowScope.ReadyApplication(
                     },
                     openPreferences = { showPreferences = true },
                     openStaticData = { showStaticData = true },
+                    openEmbeddedAi = { showEmbeddedAi = true },
                 ),
             ),
             trailingContent = {
@@ -774,6 +805,12 @@ private fun FrameWindowScope.ReadyApplication(
     }
     if (showStaticData) {
         StaticDataManagerDialog(staticDataState, staticDataViewModel) { showStaticData = false }
+    }
+    if (showEmbeddedAi) {
+        EmbeddedAiAssistantWindow(
+            controller = embeddedAiController,
+            onDismiss = { showEmbeddedAi = false },
+        )
     }
     if (showPreferences) {
         PreferencesWindow(

@@ -51,6 +51,7 @@ tasks.named("build") {
         ":control-transport:build",
         ":core:build",
         ":data:build",
+        ":embedded-ai:build",
         ":feature-api:build",
         ":marker-application:build",
         ":mcp:build",

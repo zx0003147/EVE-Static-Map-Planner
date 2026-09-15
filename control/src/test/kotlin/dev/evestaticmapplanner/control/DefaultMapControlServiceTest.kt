@@ -391,6 +391,34 @@ class DefaultMapControlServiceTest {
             fixture.close()
         }
     }
+
+    @Test
+    fun `reset session clears Missions and idempotency without closing read access`() = runTest {
+        val fixture = Fixture(this)
+        try {
+            fixture.begin("First", "shared-key")
+            assertEquals(
+                ControlErrorCode.IDEMPOTENCY_CONFLICT,
+                fixture.service.beginMission(
+                    BeginMissionCommand("conflict", "shared-key", "Different"),
+                ).failure().error.code,
+            )
+
+            fixture.service.resetSession()
+
+            assertTrue(fixture.rendered.isEmpty())
+            assertTrue(
+                fixture.service.getActiveMissions(GetActiveMissionsRequest("active-after-reset"))
+                    .success().value.isEmpty(),
+            )
+            fixture.service.beginMission(
+                BeginMissionCommand("reused", "shared-key", "Second"),
+            ).success()
+            assertEquals(1, fixture.service.getSystemInfo(GetSystemInfoRequest("info-after-reset", 1)).success().value.system.systemId)
+        } finally {
+            fixture.close()
+        }
+    }
 }
 
 private data class UserStateSentinel(

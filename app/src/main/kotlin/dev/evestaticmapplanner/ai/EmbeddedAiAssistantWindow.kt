@@ -1,0 +1,110 @@
+package dev.evestaticmapplanner.ai
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.rememberWindowState
+import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
+import dev.evestaticmapplanner.ui.EveButton as Button
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveWindowChrome
+import dev.evestaticmapplanner.ui.EveWindowSurface
+
+@Composable
+fun EmbeddedAiAssistantWindow(
+    controller: EmbeddedAiController,
+    onDismiss: () -> Unit,
+) {
+    val state by controller.state.collectAsState()
+    var prompt by remember { mutableStateOf("Tell me about system 30000142") }
+
+    Window(
+        onCloseRequest = {
+            controller.cancel()
+            onDismiss()
+        },
+        title = "Embedded AI Assistant",
+        state = rememberWindowState(width = 640.dp, height = 460.dp),
+    ) {
+        EveWindowChrome(window)
+        EveWindowSurface(Modifier.fillMaxSize()) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+            ) {
+                Text("Embedded AI Assistant", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "PoC scope: system information by numeric system ID.",
+                    color = EveColors.SecondaryText,
+                )
+                OutlinedTextField(
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    label = { Text("Ask the Planner") },
+                    enabled = !state.isLoading,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = { controller.send(prompt) },
+                        enabled = prompt.isNotBlank() && !state.isLoading,
+                    ) { Text("Send") }
+                    Button(
+                        onClick = controller::cancel,
+                        enabled = state.isLoading,
+                    ) { Text("Cancel") }
+                    if (state.isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.padding(start = 4.dp))
+                        Text("Waiting for OpenAI…", color = EveColors.SecondaryText)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 160.dp)
+                        .weight(1f)
+                        .background(EveColors.InputSurface)
+                        .padding(12.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    when {
+                        state.errorMessage != null -> Text(
+                            state.errorMessage.orEmpty(),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        state.response.isNotBlank() -> Text(state.response)
+                        else -> Text(
+                            "The answer will appear here.",
+                            color = EveColors.SecondaryText,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

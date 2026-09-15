@@ -6,14 +6,16 @@ This document identifies third-party material distributed with EVE Static Map Pl
 
 The following distributed families are licensed under Apache License 2.0. A complete copy is at `legal/apache-2.0/LICENSE.txt`.
 
-- Kotlin runtime 2.3.x and JetBrains annotations 23.0.0
-- kotlinx.coroutines 1.10.2/1.11.0, kotlinx.serialization 1.10.0/1.11.0, kotlinx immutable collections 0.5.0, kotlinx-io 0.9.1, kotlinx-datetime 0.7.1, and atomicfu 0.23.2
+- Kotlin runtime 2.3.x and JetBrains annotations 23.0.0/26.0.2-1
+- kotlinx.coroutines 1.10.2/1.11.0, kotlinx.serialization 1.10.0/1.11.0, kotlinx immutable collections 0.5.0, kotlinx-io 0.9.1, kotlinx-datetime 0.7.1, kotlinx-schema 0.4.4, and atomicfu 0.23.2
 - JetBrains Compose Multiplatform 1.10.0, Material3 1.9.0-beta03, JetBrains Compose/AndroidX support artifacts, JetBrains Runtime API 1.5.0, and JSpecify 1.0.0
 - Skiko 0.9.37.3. Its upstream NOTICE is reproduced at `legal/skiko/NOTICE.txt`.
 - Xerial SQLite JDBC 3.53.1.0
 - Apache Commons CSV 1.14.1, Commons IO 2.20.0, and Commons Codec 1.19.0
 - kotlin-logging 8.0.4
 - Ktor 3.4.3 client/server runtime and CIO engines
+- Koog 1.2.0 agent, prompt, serialization, OpenAI client, and Java HTTP client artifacts
+- Jackson core, annotations, databind, and Kotlin module 2.21.x
 - Java Native Access (JNA and JNA Platform) 5.19.1, distributed under its Apache License 2.0 option
 
 The resolved artifacts and version-specific upstream NOTICE entries were inspected. Skiko's NOTICE attributes code adapted from the Android Open Source Project; Apache Commons NOTICE files contain Apache Software Foundation copyright/attribution only.

@@ -24,6 +24,7 @@ include(
     ":control-transport",
     ":core",
     ":data",
+    ":embedded-ai",
     ":feature-api",
     ":mcp",
     ":marker-application",

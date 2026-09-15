@@ -31,5 +31,7 @@ class AppMapControlCoordinator(
         scope = scope,
     ),
 ) : MapControlService by service, AutoCloseable {
+    suspend fun resetExternalSession() = service.resetSession()
+
     override fun close() = service.close()
 }

@@ -518,6 +518,12 @@ class DefaultMapControlService(
         dispatcher.close()
     }
 
+    suspend fun resetSession() {
+        registry.clear()
+        idempotency.clear()
+        publishMissions()
+    }
+
     private suspend fun mutationReceipt(
         operation: String,
         command: MutationCommand,
