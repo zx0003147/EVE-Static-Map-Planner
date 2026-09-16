@@ -49,7 +49,8 @@ class GetSystemInfoToolTest {
     @Test
     fun `Koog agent executes the native tool before answering`() = runBlocking {
         val requestedIds = mutableListOf<Int>()
-        val tool = GetSystemInfoTool(recordingService(requestedIds))
+        val tools = PlannerToolSet(recordingService(requestedIds))
+        val tool = tools.getSystemInfo
         val question = "Tell me about system 30000142"
         val answer = "Jita is in The Forge and has 7 stargates."
         val executor = getMockExecutor {
@@ -57,7 +58,7 @@ class GetSystemInfoToolTest {
             mockLLMAnswer(answer) onRequestContains "\"name\":\"Jita\""
         }
         try {
-            val agent = createKoogAgent(tool, executor)
+            val agent = createKoogAgent(tools, executor)
 
             assertEquals(answer, agent.run(question))
             assertEquals(listOf(30_000_142), requestedIds)

@@ -2,10 +2,8 @@ package dev.evestaticmapplanner.embeddedai
 
 import ai.koog.agents.core.tools.SimpleTool
 import ai.koog.serialization.typeToken
-import dev.evestaticmapplanner.control.ControlResult
 import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.MapControlService
-import java.util.UUID
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -22,39 +20,23 @@ class GetSystemInfoTool(
     data class Args(val systemId: Int)
 
     override suspend fun execute(args: Args): String {
-        diagnostics(TOOL_CALL_DIAGNOSTIC)
-        val result = try {
+        return executePlannerQuery(NAME, diagnostics, query = {
             mapControlService.getSystemInfo(
                 GetSystemInfoRequest(
-                    requestId = "embedded-ai-${UUID.randomUUID()}",
+                    requestId = embeddedAiRequestId(),
                     systemId = args.systemId,
                 ),
             )
-        } catch (failure: Throwable) {
-            diagnostics(TOOL_FAILURE_DIAGNOSTIC)
-            throw failure
-        }
-        return when (result) {
-            is ControlResult.Success -> {
-                diagnostics(TOOL_SUCCESS_DIAGNOSTIC)
-                result.value.toToolJson()
-            }
-            is ControlResult.Failure -> {
-                diagnostics(TOOL_FAILURE_DIAGNOSTIC)
-                throw EmbeddedAiToolException("${result.error.code}: ${result.error.message}")
-            }
-        }
+        }, serialize = { it.toToolJson() })
     }
 
     companion object {
         const val NAME = "get_system_info"
-        const val TOOL_CALL_DIAGNOSTIC = "Tool call: $NAME"
-        const val TOOL_SUCCESS_DIAGNOSTIC = "Tool result: success"
-        const val TOOL_FAILURE_DIAGNOSTIC = "Tool result: failure"
+        val TOOL_CALL_DIAGNOSTIC = toolCallDiagnostic(NAME)
+        val TOOL_SUCCESS_DIAGNOSTIC = toolSuccessDiagnostic()
+        val TOOL_FAILURE_DIAGNOSTIC = toolFailureDiagnostic()
     }
 }
-
-internal class EmbeddedAiToolException(message: String) : RuntimeException(message)
 
 private fun dev.evestaticmapplanner.control.SystemInfoDto.toToolJson(): String = buildJsonObject {
     put("systemId", system.systemId)
