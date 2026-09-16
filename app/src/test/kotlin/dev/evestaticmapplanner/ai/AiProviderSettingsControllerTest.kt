@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiConnectionTestResult
 import dev.evestaticmapplanner.embeddedai.AiConnectionTester
 import dev.evestaticmapplanner.embeddedai.AiCredentialResolver
+import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
@@ -166,7 +167,47 @@ class AiProviderSettingsControllerTest {
             session.close()
         }
     }
+
+    @Test
+    fun `all provider credentials are stored under independent references`() = runTest {
+        val secure = InMemoryAiCredentialStore()
+        val session = InMemoryAiCredentialStore()
+        val controller = controller(
+            secure = secure,
+            session = session,
+            persist = { Result.success(Unit) },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+        try {
+            AiProviderType.entries.forEach { providerType ->
+                controller.save(testConfig(providerType), SecretValue.from("key-${providerType.name.lowercase()}"))
+                advanceUntilIdle()
+            }
+
+            AiProviderType.entries.forEach { providerType ->
+                val reference = AiCredentialRef.forProvider(providerType)
+                assertSecretEquals("key-${providerType.name.lowercase()}", secure.load(reference))
+            }
+
+            controller.deleteCredential(AiProviderType.ANTHROPIC)
+            advanceUntilIdle()
+            assertFalse(secure.contains(AiCredentialRef.forProvider(AiProviderType.ANTHROPIC)))
+            AiProviderType.entries.filterNot { it == AiProviderType.ANTHROPIC }.forEach { providerType ->
+                assertTrue(secure.contains(AiCredentialRef.forProvider(providerType)))
+            }
+        } finally {
+            controller.close()
+            secure.close()
+            session.close()
+        }
+    }
 }
+
+private fun testConfig(providerType: AiProviderType) = AiProviderConfig.normalized(
+    providerType = providerType,
+    baseUrl = "https://api.example.com/v1".takeIf { providerType.requiresBaseUrl },
+    modelId = "fixture-${providerType.name.lowercase()}",
+)
 
 private fun controller(
     secure: dev.evestaticmapplanner.embeddedai.AiCredentialStore,

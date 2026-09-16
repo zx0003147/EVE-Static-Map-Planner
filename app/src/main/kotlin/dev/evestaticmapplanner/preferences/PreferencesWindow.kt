@@ -162,6 +162,7 @@ internal fun PreferencesWindow(
                             )
                             PreferencesCategory.AI_ASSISTANT -> AiProviderPreferencesContent(
                                 savedConfig = preferences.aiProvider,
+                                savedProviderConfigs = preferences.aiProviderProfiles,
                                 state = aiProviderSettingsState,
                                 onProviderViewed = onAiProviderViewed,
                                 onTest = onAiProviderTest,
@@ -227,6 +228,9 @@ internal enum class PreferencesCategory(val label: String) {
 @Composable
 internal fun AiProviderPreferencesContent(
     savedConfig: AiProviderConfig?,
+    savedProviderConfigs: Map<AiProviderType, AiProviderConfig> = savedConfig
+        ?.let { mapOf(it.providerType to it) }
+        .orEmpty(),
     state: AiProviderSettingsUiState,
     onProviderViewed: (AiProviderType) -> Unit,
     onTest: (AiProviderConfig, SecretValue?) -> Unit,
@@ -234,12 +238,16 @@ internal fun AiProviderPreferencesContent(
     onDeleteCredential: (AiProviderType) -> Unit,
 ) {
     val initial = savedConfig ?: AiProviderConfig.DefaultOpenRouter
-    var providerType by remember(savedConfig) { mutableStateOf(initial.providerType) }
-    var baseUrl by remember(savedConfig) { mutableStateOf(initial.baseUrl.orEmpty()) }
-    var modelId by remember(savedConfig) { mutableStateOf(initial.modelId) }
-    var timeout by remember(savedConfig) { mutableStateOf(initial.requestTimeoutSeconds.toString()) }
-    var temperature by remember(savedConfig) { mutableStateOf(initial.temperature?.toString().orEmpty()) }
-    var apiKeyDraft by remember(savedConfig) { mutableStateOf("") }
+    var providerType by remember(savedConfig, savedProviderConfigs) { mutableStateOf(initial.providerType) }
+    var baseUrl by remember(savedConfig, savedProviderConfigs) { mutableStateOf(initial.baseUrl.orEmpty()) }
+    var modelId by remember(savedConfig, savedProviderConfigs) { mutableStateOf(initial.modelId) }
+    var timeout by remember(savedConfig, savedProviderConfigs) {
+        mutableStateOf(initial.requestTimeoutSeconds.toString())
+    }
+    var temperature by remember(savedConfig, savedProviderConfigs) {
+        mutableStateOf(initial.temperature?.toString().orEmpty())
+    }
+    var apiKeyDraft by remember(savedConfig, savedProviderConfigs) { mutableStateOf("") }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var validationError by remember { mutableStateOf<String?>(null) }
     val busy = state.isSaving || state.isTesting
@@ -250,19 +258,17 @@ internal fun AiProviderPreferencesContent(
         providerType = next
         apiKeyDraft = ""
         validationError = null
-        when (next) {
-            AiProviderType.OPENROUTER -> {
-                baseUrl = ""
-                if (modelId.isBlank() || savedConfig?.providerType != next) {
-                    modelId = AiProviderConfig.DEFAULT_OPENROUTER_MODEL
-                }
-            }
-            AiProviderType.OPENAI_COMPATIBLE -> {
-                if (savedConfig?.providerType != next) {
-                    baseUrl = ""
-                    modelId = ""
-                }
-            }
+        val saved = savedProviderConfigs[next]
+        if (saved != null) {
+            baseUrl = saved.baseUrl.orEmpty()
+            modelId = saved.modelId
+            timeout = saved.requestTimeoutSeconds.toString()
+            temperature = saved.temperature?.toString().orEmpty()
+        } else {
+            baseUrl = ""
+            modelId = if (next == AiProviderType.OPENROUTER) AiProviderConfig.DEFAULT_OPENROUTER_MODEL else ""
+            timeout = AiProviderConfig.DEFAULT_TIMEOUT_SECONDS.toString()
+            temperature = AiProviderConfig.DEFAULT_TEMPERATURE.toString()
         }
     }
 
@@ -318,9 +324,7 @@ internal fun AiProviderPreferencesContent(
             }
         }
     }
-    if (providerType == AiProviderType.OPENROUTER) {
-        Text("Base URL: https://openrouter.ai/api/v1", color = EveColors.SecondaryText)
-    } else {
+    if (providerType.requiresBaseUrl) {
         OutlinedTextField(
             value = baseUrl,
             onValueChange = { baseUrl = it },
@@ -330,12 +334,14 @@ internal fun AiProviderPreferencesContent(
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         )
+    } else {
+        Text("Uses the official ${providerType.displayName} API endpoint.", color = EveColors.SecondaryText)
     }
     OutlinedTextField(
         value = modelId,
         onValueChange = { modelId = it },
         label = { Text("Model") },
-        placeholder = { Text("provider/model-name") },
+        placeholder = { Text(providerType.modelPlaceholder()) },
         singleLine = true,
         enabled = !busy,
         modifier = Modifier.fillMaxWidth(),
@@ -407,6 +413,15 @@ internal fun AiProviderPreferencesContent(
     }
     state.message?.let { Text(it, color = EveColors.SecondaryText) }
     state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+}
+
+private fun AiProviderType.modelPlaceholder(): String = when (this) {
+    AiProviderType.OPENROUTER -> "provider/model-name"
+    AiProviderType.OPENAI -> "OpenAI model ID"
+    AiProviderType.ANTHROPIC -> "Claude model ID"
+    AiProviderType.DEEPSEEK -> "DeepSeek model ID"
+    AiProviderType.GOOGLE -> "Gemini model ID"
+    AiProviderType.OPENAI_COMPATIBLE -> "Provider model ID"
 }
 
 @Composable

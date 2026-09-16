@@ -47,12 +47,22 @@ class AiProviderSettingsController(
 
     fun refresh(config: AiProviderConfig?) {
         if (closed.get()) return
-        mutableState.value = mutableState.value.copy(credentialSource = config?.let(credentialResolver::source))
+        mutableState.value = mutableState.value.copy(
+            credentialSource = config?.let(credentialResolver::source),
+            testResult = null,
+            message = null,
+            errorMessage = null,
+        )
     }
 
     fun refresh(providerType: AiProviderType) {
         if (closed.get()) return
-        mutableState.value = mutableState.value.copy(credentialSource = credentialResolver.source(providerType))
+        mutableState.value = mutableState.value.copy(
+            credentialSource = credentialResolver.source(providerType),
+            testResult = null,
+            message = null,
+            errorMessage = null,
+        )
     }
 
     /** Takes ownership of [replacementSecret] and clears it after the test. */

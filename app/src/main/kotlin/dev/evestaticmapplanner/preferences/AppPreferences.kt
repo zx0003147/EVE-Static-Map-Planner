@@ -15,6 +15,9 @@ data class AppPreferences(
     val marker: MarkerPreferences = MarkerPreferences.Defaults,
     val aiControl: AiControlPreferences = AiControlPreferences.Defaults,
     val aiProvider: AiProviderConfig? = null,
+    val aiProviderProfiles: Map<AiProviderType, AiProviderConfig> = aiProvider
+        ?.let { mapOf(it.providerType to it) }
+        .orEmpty(),
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
@@ -185,6 +188,10 @@ class PropertiesPreferencesStore(
         } else {
             defaults.real3DConstellationScaleThreshold to defaults.real3DSystemScaleThreshold
         }
+        val legacyAiProvider = properties.aiProviderConfig(warningSink)
+        val aiProviderProfiles = properties.aiProviderProfiles(warningSink).toMutableMap().apply {
+            legacyAiProvider?.let { putIfAbsent(it.providerType, it) }
+        }
         return AppPreferences(
             mapDisplay = MapDisplayPreferences(
                 constellationZoomThreshold = thresholds.first,
@@ -253,7 +260,8 @@ class PropertiesPreferencesStore(
                 enabled = properties.safeAiControlEnabled(warningSink),
                 savedMarkerAccessEnabled = properties.safeAiSavedMarkerAccessEnabled(warningSink),
             ),
-            aiProvider = properties.aiProviderConfig(warningSink),
+            aiProvider = legacyAiProvider,
+            aiProviderProfiles = aiProviderProfiles,
             overlayVisibility = properties.overlayVisibilityPreferences(),
             sharedMap = SharedMapPreferences(
                 serverUrl = properties.getProperty(KEY_SHARED_MAP_SERVER_URL)
@@ -318,6 +326,9 @@ class PropertiesPreferencesStore(
             val marker = preferences.marker
             val aiControl = preferences.aiControl
             val aiProvider = preferences.aiProvider
+            val aiProviderProfiles = preferences.aiProviderProfiles.toMutableMap().apply {
+                aiProvider?.let { put(it.providerType, it) }
+            }
             val overlayVisibility = preferences.overlayVisibility
             val sharedMap = preferences.sharedMap
             val miniMap = preferences.miniMap
@@ -356,6 +367,14 @@ class PropertiesPreferencesStore(
                     setProperty(KEY_AI_PROVIDER_MODEL_ID, config.modelId)
                     config.temperature?.let { setProperty(KEY_AI_PROVIDER_TEMPERATURE, it.toString()) }
                     setProperty(KEY_AI_PROVIDER_TIMEOUT_SECONDS, config.requestTimeoutSeconds.toString())
+                }
+                aiProviderProfiles.forEach { (providerType, config) ->
+                    val prefix = "$KEY_AI_PROVIDER_PROFILES_PREFIX${providerType.name}."
+                    config.baseUrl?.let { setProperty("${prefix}baseUrl", it) }
+                    config.credentialRef?.let { setProperty("${prefix}credentialRef", it.value) }
+                    setProperty("${prefix}modelId", config.modelId)
+                    config.temperature?.let { setProperty("${prefix}temperature", it.toString()) }
+                    setProperty("${prefix}requestTimeoutSeconds", config.requestTimeoutSeconds.toString())
                 }
                 setProperty(
                     KEY_OVERLAY_DISABLED_LAYERS,
@@ -451,6 +470,30 @@ private fun Properties.aiProviderConfig(warningSink: (String) -> Unit): AiProvid
     }
 }
 
+private fun Properties.aiProviderProfiles(warningSink: (String) -> Unit): Map<AiProviderType, AiProviderConfig> =
+    AiProviderType.entries.mapNotNull { providerType ->
+        val prefix = "$KEY_AI_PROVIDER_PROFILES_PREFIX${providerType.name}."
+        val modelId = getProperty("${prefix}modelId") ?: return@mapNotNull null
+        runCatching {
+            val credentialRef = getProperty("${prefix}credentialRef")
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?.let(::AiCredentialRef)
+            providerType to AiProviderConfig.normalized(
+                providerType = providerType,
+                baseUrl = getProperty("${prefix}baseUrl"),
+                credentialRef = credentialRef ?: AiCredentialRef.forProvider(providerType),
+                modelId = modelId,
+                temperature = getProperty("${prefix}temperature")?.toDoubleOrNull(),
+                requestTimeoutSeconds = getProperty("${prefix}requestTimeoutSeconds")?.toIntOrNull()
+                    ?: AiProviderConfig.DEFAULT_TIMEOUT_SECONDS,
+            )
+        }.getOrElse {
+            warningSink("${providerType.displayName} AI provider settings are invalid and were ignored")
+            null
+        }
+    }.toMap()
+
 private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferences {
     val disabledLayers = getProperty(KEY_OVERLAY_DISABLED_LAYERS)
         ?.split(',')
@@ -466,8 +509,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "2"
-private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", SETTINGS_VERSION)
+const val SETTINGS_VERSION = "3"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -521,6 +564,7 @@ private const val KEY_AI_PROVIDER_CREDENTIAL_REF = "aiProvider.credentialRef"
 private const val KEY_AI_PROVIDER_MODEL_ID = "aiProvider.modelId"
 private const val KEY_AI_PROVIDER_TEMPERATURE = "aiProvider.temperature"
 private const val KEY_AI_PROVIDER_TIMEOUT_SECONDS = "aiProvider.requestTimeoutSeconds"
+private const val KEY_AI_PROVIDER_PROFILES_PREFIX = "aiProviderProfiles."
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"

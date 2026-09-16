@@ -16,10 +16,11 @@ enum class AiProviderErrorCode {
     MODEL_UNAVAILABLE,
     REGION_RESTRICTED,
     TOOL_CALLING_UNSUPPORTED,
-    PROVIDER_TIMEOUT,
-    PROVIDER_NETWORK_ERROR,
+    BASE_URL_UNREACHABLE,
+    TIMEOUT,
+    NETWORK_ERROR,
+    RATE_LIMITED,
     PROVIDER_ERROR,
-    UNKNOWN_PROVIDER_ERROR,
 }
 
 class AiProviderException(
@@ -29,7 +30,10 @@ class AiProviderException(
     override fun toString(): String = "AiProviderException(code=$code, message=$safeMessage)"
 }
 
-internal fun Throwable.toSafeProviderException(toolProbe: Boolean = false): AiProviderException {
+internal fun Throwable.toSafeProviderException(
+    toolProbe: Boolean = false,
+    customBaseUrl: Boolean = false,
+): AiProviderException {
     if (this is AiProviderException) return this
     val chain = generateSequence(this) { it.cause }.toList()
     val http = chain.filterIsInstance<KoogHttpClientException>().firstOrNull()
@@ -38,15 +42,19 @@ internal fun Throwable.toSafeProviderException(toolProbe: Boolean = false): AiPr
         val body = http.errorBody.orEmpty().lowercase()
         return when {
             status == 401 -> providerError(AiProviderErrorCode.INVALID_CREDENTIAL, "Authentication failed.")
-            status == 403 && body.contains("not available in your region") -> providerError(
+            status == 451 || status == 403 && body.contains("not available in your region") -> providerError(
                 AiProviderErrorCode.REGION_RESTRICTED,
                 "The selected model is not available from your current region.",
             )
             status == 403 -> providerError(AiProviderErrorCode.INVALID_CREDENTIAL, "Authentication failed.")
             status == 404 -> providerError(AiProviderErrorCode.MODEL_NOT_FOUND, "The selected model was not found.")
             status == 408 || status == 504 -> providerError(
-                AiProviderErrorCode.PROVIDER_TIMEOUT,
+                AiProviderErrorCode.TIMEOUT,
                 "The provider request timed out.",
+            )
+            status == 429 -> providerError(
+                AiProviderErrorCode.RATE_LIMITED,
+                "The provider rate limit was reached. Please wait and try again.",
             )
             toolProbe && status in 400..499 -> providerError(
                 AiProviderErrorCode.TOOL_CALLING_UNSUPPORTED,
@@ -61,14 +69,18 @@ internal fun Throwable.toSafeProviderException(toolProbe: Boolean = false): AiPr
     }
     return when {
         chain.any { it is TimeoutCancellationException || it is TimeoutException || it is SocketTimeoutException } ->
-            providerError(AiProviderErrorCode.PROVIDER_TIMEOUT, "The provider request timed out.")
+            providerError(AiProviderErrorCode.TIMEOUT, "The provider request timed out.")
         chain.any { it is ConnectException || it is UnknownHostException } ->
-            providerError(AiProviderErrorCode.PROVIDER_NETWORK_ERROR, "The provider could not be reached.")
+            if (customBaseUrl) {
+                providerError(AiProviderErrorCode.BASE_URL_UNREACHABLE, "The provider Base URL could not be reached.")
+            } else {
+                providerError(AiProviderErrorCode.NETWORK_ERROR, "The provider could not be reached.")
+            }
         toolProbe -> providerError(
             AiProviderErrorCode.TOOL_CALLING_UNSUPPORTED,
             "The selected model did not complete the required tool call.",
         )
-        else -> providerError(AiProviderErrorCode.UNKNOWN_PROVIDER_ERROR, "The provider request failed.")
+        else -> providerError(AiProviderErrorCode.PROVIDER_ERROR, "The provider request failed.")
     }
 }
 

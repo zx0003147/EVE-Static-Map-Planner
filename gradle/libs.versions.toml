@@ -7,6 +7,7 @@ sqlite-jdbc = "3.53.1.0"
 kotlinx-coroutines = "1.10.2"
 commons-csv = "1.14.1"
 koog = "1.2.0"
+koog-beta = "1.2.0-beta"
 mcp-kotlin = "0.14.0"
 ktor = "3.4.3"
 kotlin-logging = "8.0.4"
@@ -33,6 +34,9 @@ koog-agents-test = { module = "ai.koog:agents-test", version.ref = "koog" }
 koog-http-client-java = { module = "ai.koog:http-client-java", version.ref = "koog" }
 koog-prompt-executor-openai-client = { module = "ai.koog:prompt-executor-openai-client", version.ref = "koog" }
 koog-prompt-executor-openrouter-client = { module = "ai.koog:prompt-executor-openrouter-client", version.ref = "koog" }
+koog-prompt-executor-anthropic-client = { module = "ai.koog:prompt-executor-anthropic-client", version.ref = "koog" }
+koog-prompt-executor-deepseek-client = { module = "ai.koog:prompt-executor-deepseek-client", version.ref = "koog-beta" }
+koog-prompt-executor-google-client = { module = "ai.koog:prompt-executor-google-client", version.ref = "koog-beta" }
 mcp-kotlin-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin" }
 mcp-kotlin-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp-kotlin" }
 mcp-kotlin-testing = { module = "io.modelcontextprotocol:kotlin-sdk-testing", version.ref = "mcp-kotlin" }

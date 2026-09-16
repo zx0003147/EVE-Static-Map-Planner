@@ -203,6 +203,63 @@ class EmbeddedAiControllerTest {
     }
 
     @Test
+    fun `OpenRouter Anthropic DeepSeek OpenAI switching keeps exactly one lazy runtime`() = runTest {
+        val sequence = listOf(
+            AiProviderType.OPENROUTER,
+            AiProviderType.ANTHROPIC,
+            AiProviderType.DEEPSEEK,
+            AiProviderType.OPENAI,
+        )
+        var selected = sequence.first()
+        var live = 0
+        var maxLive = 0
+        val created = mutableListOf<AiProviderType>()
+        val closedProviders = mutableListOf<AiProviderType>()
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                val provider = selected
+                created += provider
+                live++
+                maxLive = maxOf(maxLive, live)
+                object : EmbeddedAiAgent {
+                    override val runtimeInfo = EmbeddedAiRuntimeInfo(
+                        provider,
+                        "fixture-${provider.name.lowercase()}",
+                        AiCredentialSource.SECURE_STORAGE,
+                    )
+                    override suspend fun run(prompt: String) = provider.displayName
+                    override suspend fun close() {
+                        live--
+                        closedProviders += provider
+                    }
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        sequence.forEachIndexed { index, provider ->
+            if (index > 0) {
+                selected = provider
+                controller.configurationChanged()
+                advanceUntilIdle()
+                assertEquals(index, created.size, "Provider change must not eagerly create a client")
+                assertEquals(0, live)
+            }
+            controller.send("request-$index")
+            advanceUntilIdle()
+            assertEquals(provider.displayName, controller.state.value.response)
+            assertEquals(provider, controller.state.value.runtimeInfo?.providerType)
+            assertEquals(1, live)
+        }
+
+        controller.shutdown()
+        assertEquals(sequence, created)
+        assertEquals(sequence, closedProviders)
+        assertEquals(1, maxLive)
+        assertEquals(0, live)
+    }
+
+    @Test
     fun `cancel invalidates a pending confirmation and prevents execution`() = runTest {
         val confirmations = AiActionConfirmationService()
         var executed = false

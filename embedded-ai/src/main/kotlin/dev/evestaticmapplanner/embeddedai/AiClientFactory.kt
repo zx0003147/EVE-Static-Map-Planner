@@ -3,6 +3,13 @@ package dev.evestaticmapplanner.embeddedai
 import ai.koog.http.client.KoogHttpClient
 import ai.koog.http.client.java.JavaKoogHttpClient
 import ai.koog.prompt.executor.clients.ConnectionTimeoutConfig
+import ai.koog.prompt.executor.clients.LLMClient
+import ai.koog.prompt.executor.clients.anthropic.AnthropicClientSettings
+import ai.koog.prompt.executor.clients.anthropic.AnthropicLLMClient
+import ai.koog.prompt.executor.clients.deepseek.DeepSeekClientSettings
+import ai.koog.prompt.executor.clients.deepseek.DeepSeekLLMClient
+import ai.koog.prompt.executor.clients.google.GoogleClientSettings
+import ai.koog.prompt.executor.clients.google.GoogleLLMClient
 import ai.koog.prompt.executor.clients.openai.OpenAIClientSettings
 import ai.koog.prompt.executor.clients.openai.OpenAILLMClient
 import ai.koog.prompt.executor.clients.openrouter.OpenRouterClientSettings
@@ -19,6 +26,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 interface ManagedAiClient : AutoCloseable {
     val promptExecutor: PromptExecutor
     val model: LLModel
+    val clientImplementation: String
+    val httpBackend: String
 }
 
 fun interface AiClientFactory {
@@ -40,6 +49,26 @@ class DefaultAiClientFactory(
                 AiProviderType.OPENROUTER -> OpenRouterLLMClient(
                     apiKey = apiKey,
                     settings = OpenRouterClientSettings(timeoutConfig = timeouts),
+                    httpClientFactory = httpClientFactory,
+                )
+                AiProviderType.OPENAI -> OpenAILLMClient(
+                    apiKey = apiKey,
+                    settings = OpenAIClientSettings(timeoutConfig = timeouts),
+                    httpClientFactory = httpClientFactory,
+                )
+                AiProviderType.ANTHROPIC -> AnthropicLLMClient(
+                    apiKey = apiKey,
+                    settings = AnthropicClientSettings(timeoutConfig = timeouts),
+                    httpClientFactory = httpClientFactory,
+                )
+                AiProviderType.DEEPSEEK -> DeepSeekLLMClient(
+                    apiKey = apiKey,
+                    settings = DeepSeekClientSettings(timeoutConfig = timeouts),
+                    httpClientFactory = httpClientFactory,
+                )
+                AiProviderType.GOOGLE -> GoogleLLMClient(
+                    apiKey = apiKey,
+                    settings = GoogleClientSettings(timeoutConfig = timeouts),
                     httpClientFactory = httpClientFactory,
                 )
                 AiProviderType.OPENAI_COMPATIBLE -> {
@@ -68,8 +97,9 @@ class DefaultAiClientFactory(
             }
         }
         return KoogManagedAiClient(
-            promptExecutor = MultiLLMPromptExecutor(client),
+            client = client,
             model = config.toKoogModel(),
+            httpBackend = httpClientFactory::class.simpleName ?: "KoogHttpClient.Factory",
         )
     }
 
@@ -79,9 +109,12 @@ class DefaultAiClientFactory(
 }
 
 private class KoogManagedAiClient(
-    override val promptExecutor: PromptExecutor,
+    client: LLMClient,
     override val model: LLModel,
+    override val httpBackend: String,
 ) : ManagedAiClient {
+    override val promptExecutor: PromptExecutor = MultiLLMPromptExecutor(client)
+    override val clientImplementation: String = client::class.simpleName ?: "LLMClient"
     private val closed = AtomicBoolean()
     override fun close() {
         if (closed.compareAndSet(false, true)) promptExecutor.close()
@@ -117,6 +150,10 @@ internal data class OpenAiCompatibleEndpoint(
 internal fun AiProviderConfig.toKoogModel(): LLModel = LLModel(
     provider = when (providerType) {
         AiProviderType.OPENROUTER -> LLMProvider.OpenRouter
+        AiProviderType.OPENAI -> LLMProvider.OpenAI
+        AiProviderType.ANTHROPIC -> LLMProvider.Anthropic
+        AiProviderType.DEEPSEEK -> LLMProvider.DeepSeek
+        AiProviderType.GOOGLE -> LLMProvider.Google
         AiProviderType.OPENAI_COMPATIBLE -> LLMProvider.OpenAI
     },
     id = modelId,
@@ -125,7 +162,7 @@ internal fun AiProviderConfig.toKoogModel(): LLModel = LLModel(
         add(LLMCapability.Temperature)
         add(LLMCapability.Tools)
         add(LLMCapability.ToolChoice)
-        if (providerType == AiProviderType.OPENAI_COMPATIBLE) {
+        if (providerType == AiProviderType.OPENAI || providerType == AiProviderType.OPENAI_COMPATIBLE) {
             add(LLMCapability.OpenAIEndpoint.Completions)
         }
     },

@@ -77,6 +77,42 @@ class OpenAiCompatibleConnectionTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun `rate limit is mapped to a safe retry message`() = runBlocking {
+        val rawBody = """{"error":{"message":"private quota and account details"}}"""
+        val server = errorServer(429, rawBody)
+        server.start()
+        try {
+            val result = SecretValue.from("fixture-api-key").use { secret ->
+                KoogAiConnectionTester(DefaultAiClientFactory()).test(compatibleConfig(server), secret)
+            }
+
+            assertEquals(AiProviderErrorCode.RATE_LIMITED, result.errorCode)
+            assertTrue(result.connection.message.contains("rate limit"))
+            assertFalse(result.toString().contains("private quota"))
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `unreachable custom endpoint is distinguished from provider network failure`() = runBlocking {
+        val port = java.net.ServerSocket(0).use { it.localPort }
+        val config = AiProviderConfig.normalized(
+            providerType = AiProviderType.OPENAI_COMPATIBLE,
+            baseUrl = "http://127.0.0.1:$port/v1",
+            modelId = "fixture-model",
+            requestTimeoutSeconds = 5,
+        )
+
+        val result = SecretValue.from("fixture-api-key").use { secret ->
+            KoogAiConnectionTester(DefaultAiClientFactory()).test(config, secret)
+        }
+
+        assertEquals(AiProviderErrorCode.BASE_URL_UNREACHABLE, result.errorCode)
+        assertTrue(result.connection.message.contains("Base URL"))
+    }
 }
 
 private fun compatibleConfig(server: HttpServer) = AiProviderConfig.normalized(

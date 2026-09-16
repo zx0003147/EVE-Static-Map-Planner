@@ -57,6 +57,73 @@ class PreferencesStoreTest {
     }
 
     @Test
+    fun `Phase 3 version two AI settings migrate without changing the credential reference`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            Files.writeString(
+                path,
+                """
+                settings.version=2
+                aiProvider.type=OPENROUTER
+                aiProvider.credentialRef=openrouter
+                aiProvider.modelId=deepseek/deepseek-v4-flash-0731
+                aiProvider.temperature=0.2
+                aiProvider.requestTimeoutSeconds=90
+                """.trimIndent(),
+            )
+
+            val store = PropertiesPreferencesStore(path)
+            val migrated = store.load()
+            val active = checkNotNull(migrated.aiProvider)
+
+            assertEquals(AiProviderType.OPENROUTER, active.providerType)
+            assertEquals(AiCredentialRef("openrouter"), active.credentialRef)
+            assertEquals(active, migrated.aiProviderProfiles[AiProviderType.OPENROUTER])
+
+            store.save(migrated)
+            val reloaded = store.load()
+            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=3" })
+            assertEquals(AiCredentialRef("openrouter"), reloaded.aiProvider?.credentialRef)
+            assertEquals(active, reloaded.aiProviderProfiles[AiProviderType.OPENROUTER])
+        }
+
+    @Test
+    fun `multiple provider profiles round trip independently while one remains active`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            val openRouter = AiProviderConfig.DefaultOpenRouter
+            val anthropic = AiProviderConfig.normalized(
+                providerType = AiProviderType.ANTHROPIC,
+                baseUrl = null,
+                modelId = "claude-fixture",
+                temperature = 0.4,
+                requestTimeoutSeconds = 70,
+            )
+            val compatible = AiProviderConfig.normalized(
+                providerType = AiProviderType.OPENAI_COMPATIBLE,
+                baseUrl = "https://api.example.com/v1",
+                modelId = "compatible-fixture",
+            )
+            val expected = AppPreferences(
+                aiProvider = anthropic,
+                aiProviderProfiles = mapOf(
+                    AiProviderType.OPENROUTER to openRouter,
+                    AiProviderType.ANTHROPIC to anthropic,
+                    AiProviderType.OPENAI_COMPATIBLE to compatible,
+                ),
+            )
+
+            PropertiesPreferencesStore(path).save(expected)
+            val loaded = PropertiesPreferencesStore(path).load()
+
+            assertEquals(anthropic, loaded.aiProvider)
+            assertEquals(expected.aiProviderProfiles, loaded.aiProviderProfiles)
+            assertTrue(Files.readString(path).contains("aiProviderProfiles.OPENROUTER.modelId"))
+            assertTrue(Files.readString(path).contains("aiProviderProfiles.ANTHROPIC.modelId"))
+            assertTrue(Files.readString(path).contains("aiProviderProfiles.OPENAI_COMPATIBLE.baseUrl"))
+        }
+
+    @Test
     fun `mini-map settings round trip including negative monitor coordinates`() {
         val root = createTempDirectory("mini-map-preferences")
         val path = root.resolve("settings.properties")
@@ -147,7 +214,7 @@ class PreferencesStoreTest {
     }
 
     @Test
-    fun `save writes version two and a new store reloads all values`() = withTemporaryDirectory { root ->
+    fun `save writes version three and a new store reloads all values`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val expected = AppPreferences(
             mapDisplay = MapDisplayPreferences(
@@ -185,7 +252,7 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=2" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=3" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })

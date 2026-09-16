@@ -14,7 +14,9 @@ The following distributed families are licensed under Apache License 2.0. A comp
 - Apache Commons CSV 1.14.1, Commons IO 2.20.0, and Commons Codec 1.19.0
 - kotlin-logging 8.0.4
 - Ktor 3.4.3 client/server runtime and CIO engines
-- Koog 1.2.0 agent, prompt, serialization, OpenAI/OpenRouter client, and Java HTTP client artifacts
+- Koog 1.2.0 agent, prompt, serialization, OpenAI, OpenRouter, Anthropic, and Java HTTP client artifacts;
+  Koog 1.2.0-beta DeepSeek and Google provider client artifacts. All are Apache-2.0 and use the same Koog 1.2.0
+  prompt/HTTP runtime line.
 - Jackson core, annotations, databind, and Kotlin module 2.21.x
 - Java Native Access (JNA and JNA Platform) 5.19.1, distributed under its Apache License 2.0 option
 

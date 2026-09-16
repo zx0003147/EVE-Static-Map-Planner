@@ -5,9 +5,14 @@ import java.net.URI
 enum class AiProviderType(
     val displayName: String,
     val environmentVariable: String,
+    val requiresBaseUrl: Boolean = false,
 ) {
     OPENROUTER("OpenRouter", "OPENROUTER_API_KEY"),
-    OPENAI_COMPATIBLE("OpenAI Compatible", "OPENAI_API_KEY"),
+    OPENAI("OpenAI", "OPENAI_API_KEY"),
+    ANTHROPIC("Anthropic (Claude)", "ANTHROPIC_API_KEY"),
+    DEEPSEEK("DeepSeek", "DEEPSEEK_API_KEY"),
+    GOOGLE("Google Gemini", "GOOGLE_API_KEY"),
+    OPENAI_COMPATIBLE("OpenAI Compatible", "OPENAI_COMPATIBLE_API_KEY", requiresBaseUrl = true),
 }
 
 @JvmInline
@@ -19,6 +24,10 @@ value class AiCredentialRef(val value: String) {
     companion object {
         fun forProvider(providerType: AiProviderType): AiCredentialRef = when (providerType) {
             AiProviderType.OPENROUTER -> AiCredentialRef("openrouter")
+            AiProviderType.OPENAI -> AiCredentialRef("openai")
+            AiProviderType.ANTHROPIC -> AiCredentialRef("anthropic")
+            AiProviderType.DEEPSEEK -> AiCredentialRef("deepseek")
+            AiProviderType.GOOGLE -> AiCredentialRef("google")
             AiProviderType.OPENAI_COMPATIBLE -> AiCredentialRef("openai-compatible")
         }
 
@@ -46,7 +55,12 @@ data class AiProviderConfig(
             "Request timeout must be between $MIN_TIMEOUT_SECONDS and $MAX_TIMEOUT_SECONDS seconds"
         }
         when (providerType) {
-            AiProviderType.OPENROUTER -> require(baseUrl == null) { "OpenRouter uses its official endpoint" }
+            AiProviderType.OPENROUTER,
+            AiProviderType.OPENAI,
+            AiProviderType.ANTHROPIC,
+            AiProviderType.DEEPSEEK,
+            AiProviderType.GOOGLE,
+            -> require(baseUrl == null) { "${providerType.displayName} uses its official endpoint" }
             AiProviderType.OPENAI_COMPATIBLE -> requireNotNull(baseUrl) {
                 "OpenAI-compatible providers require a Base URL"
             }.also(::validateBaseUrl)
@@ -82,7 +96,12 @@ data class AiProviderConfig(
         ): AiProviderConfig = AiProviderConfig(
             providerType = providerType,
             baseUrl = when (providerType) {
-                AiProviderType.OPENROUTER -> null
+                AiProviderType.OPENROUTER,
+                AiProviderType.OPENAI,
+                AiProviderType.ANTHROPIC,
+                AiProviderType.DEEPSEEK,
+                AiProviderType.GOOGLE,
+                -> null
                 AiProviderType.OPENAI_COMPATIBLE -> baseUrl?.trim()?.trimEnd('/')
             },
             credentialRef = credentialRef,

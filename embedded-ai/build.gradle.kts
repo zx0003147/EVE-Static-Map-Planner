@@ -12,6 +12,9 @@ dependencies {
     implementation(libs.koog.http.client.java)
     implementation(libs.koog.prompt.executor.openai.client)
     implementation(libs.koog.prompt.executor.openrouter.client)
+    implementation(libs.koog.prompt.executor.anthropic.client)
+    implementation(libs.koog.prompt.executor.deepseek.client)
+    implementation(libs.koog.prompt.executor.google.client)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
 

@@ -99,7 +99,7 @@ class FeatureSettingsWindowsTest {
         }
 
         onNodeWithText("AI Provider").assertIsDisplayed()
-        onNodeWithText("Base URL: https://openrouter.ai/api/v1").assertIsDisplayed()
+        onNodeWithText("Uses the official OpenRouter API endpoint.").assertIsDisplayed()
         onNodeWithText("API Key: Saved securely").assertIsDisplayed()
         onNodeWithText("✓ API connection successful").assertIsDisplayed()
         onNodeWithText("✓ Model: fixture-model").assertIsDisplayed()

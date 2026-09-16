@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.embeddedai
 
 import dev.evestaticmapplanner.shared.auth.SecretValue
+import ai.koog.prompt.llm.LLMProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -9,6 +10,52 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AiProviderArchitectureTest {
+    @Test
+    fun `factory creates the native Koog client and model provider for every backend`() {
+        val cases = listOf(
+            providerCase(AiProviderType.OPENROUTER, "OpenRouterLLMClient", LLMProvider.OpenRouter),
+            providerCase(AiProviderType.OPENAI, "OpenAILLMClient", LLMProvider.OpenAI),
+            providerCase(AiProviderType.ANTHROPIC, "AnthropicLLMClient", LLMProvider.Anthropic),
+            providerCase(AiProviderType.DEEPSEEK, "DeepSeekLLMClient", LLMProvider.DeepSeek),
+            providerCase(AiProviderType.GOOGLE, "GoogleLLMClient", LLMProvider.Google),
+            providerCase(AiProviderType.OPENAI_COMPATIBLE, "OpenAILLMClient", LLMProvider.OpenAI),
+        )
+
+        cases.forEach { case ->
+            SecretValue.from("fixture-${case.config.providerType.name.lowercase()}").use { secret ->
+                DefaultAiClientFactory().create(case.config, secret).use { client ->
+                    assertEquals(case.clientImplementation, client.clientImplementation)
+                    assertEquals(case.provider, client.model.provider)
+                    assertEquals(case.config.modelId, client.model.id)
+                    assertTrue(client.httpBackend.isNotBlank())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `provider credential references and environment fallbacks are strictly isolated`() {
+        val secure = InMemoryAiCredentialStore()
+        val session = InMemoryAiCredentialStore()
+        val environment = AiProviderType.entries.associate { it.environmentVariable to "env-${it.name.lowercase()}" }
+        val resolver = AiCredentialResolver(secure, session, environment::get)
+        try {
+            AiProviderType.entries.forEach { providerType ->
+                val config = providerConfig(providerType)
+                assertEquals(providerType.name.lowercase().replace('_', '-'), checkNotNull(config.credentialRef).value)
+                resolver.resolve(config).useResolved { source, value ->
+                    assertEquals(AiCredentialSource.ENVIRONMENT, source)
+                    assertEquals("env-${providerType.name.lowercase()}", value)
+                }
+            }
+            assertEquals(AiProviderType.entries.size, AiProviderType.entries.map { it.environmentVariable }.toSet().size)
+            assertEquals(AiProviderType.entries.size, AiProviderType.entries.map(AiCredentialRef::forProvider).toSet().size)
+        } finally {
+            secure.close()
+            session.close()
+        }
+    }
+
     @Test
     fun `provider config is normalized and contains only a credential reference`() {
         val config = AiProviderConfig.normalized(
@@ -99,7 +146,7 @@ class AiProviderArchitectureTest {
             assertFalse(error.toString().contains(secretMarker))
             assertTrue(error.toString().contains("NO_CREDENTIAL"))
             val mapped = IllegalStateException(secretMarker).toSafeProviderException()
-            assertEquals(AiProviderErrorCode.UNKNOWN_PROVIDER_ERROR, mapped.code)
+            assertEquals(AiProviderErrorCode.PROVIDER_ERROR, mapped.code)
             assertNull(mapped.cause)
             assertFalse(mapped.toString().contains(secretMarker))
             assertFalse(mapped.stackTraceToString().contains(secretMarker))
@@ -112,6 +159,24 @@ class AiProviderArchitectureTest {
         }
     }
 }
+
+private data class ProviderFactoryCase(
+    val config: AiProviderConfig,
+    val clientImplementation: String,
+    val provider: LLMProvider,
+)
+
+private fun providerCase(
+    providerType: AiProviderType,
+    clientImplementation: String,
+    provider: LLMProvider,
+) = ProviderFactoryCase(providerConfig(providerType), clientImplementation, provider)
+
+private fun providerConfig(providerType: AiProviderType): AiProviderConfig = AiProviderConfig.normalized(
+    providerType = providerType,
+    baseUrl = "https://api.example.com/v1".takeIf { providerType.requiresBaseUrl },
+    modelId = "fixture-${providerType.name.lowercase()}",
+)
 
 private fun ResolvedAiCredential?.useResolved(block: (AiCredentialSource, String) -> Unit) {
     val credential = checkNotNull(this)
