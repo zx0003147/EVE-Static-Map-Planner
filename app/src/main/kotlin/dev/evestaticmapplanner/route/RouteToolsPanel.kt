@@ -409,43 +409,75 @@ private fun ProjectionToggleGraphic(projectionId: MapProjectionId) {
     val is2D = projectionId == MapProjectionId.OFFICIAL_2D
     val currentColor = EveColors.PrimaryAccent
     val inactiveColor = EveColors.SecondaryText.copy(alpha = 0.62f)
-    Box(Modifier.size(width = 40.dp, height = 34.dp)) {
+    Box(Modifier.size(width = 46.dp, height = 38.dp)) {
         Text(
             "2D",
             color = if (is2D) currentColor else inactiveColor,
             fontWeight = if (is2D) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
             fontSize = 12.sp,
-            modifier = Modifier.align(Alignment.BottomStart).testTag(SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 1.dp)
+                .testTag(SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG),
         )
         Text(
             "3D",
             color = if (is2D) inactiveColor else currentColor,
             fontWeight = if (is2D) androidx.compose.ui.text.font.FontWeight.Normal else androidx.compose.ui.text.font.FontWeight.Bold,
             fontSize = 12.sp,
-            modifier = Modifier.align(Alignment.TopEnd).testTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 1.dp)
+                .testTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG),
         )
         Canvas(
             Modifier
-                .size(20.dp)
+                .size(width = 24.dp, height = 20.dp)
                 .align(Alignment.Center)
                 .testTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG),
         ) {
             val color = EveColors.PrimaryText
             val strokeWidth = 1.7.dp.toPx()
-            val cap = StrokeCap.Round
-            fun arrow(from: Offset, to: Offset) {
-                drawLine(color, from, to, strokeWidth, cap)
-                val direction = to - from
-                val length = direction.getDistance().coerceAtLeast(1f)
-                val unit = direction / length
+            val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            fun arrowHead(tip: Offset, tangent: Offset) {
+                val length = tangent.getDistance().coerceAtLeast(1f)
+                val unit = tangent / length
                 val normal = Offset(-unit.y, unit.x)
-                val headLength = size.minDimension * 0.20f
-                val headWidth = size.minDimension * 0.12f
-                drawLine(color, to, to - unit * headLength + normal * headWidth, strokeWidth, cap)
-                drawLine(color, to, to - unit * headLength - normal * headWidth, strokeWidth, cap)
+                val headLength = size.minDimension * 0.19f
+                val headWidth = size.minDimension * 0.11f
+                drawLine(color, tip, tip - unit * headLength + normal * headWidth, strokeWidth, StrokeCap.Round)
+                drawLine(color, tip, tip - unit * headLength - normal * headWidth, strokeWidth, StrokeCap.Round)
             }
-            arrow(Offset(size.width * 0.18f, size.height * 0.62f), Offset(size.width * 0.62f, size.height * 0.18f))
-            arrow(Offset(size.width * 0.82f, size.height * 0.38f), Offset(size.width * 0.38f, size.height * 0.82f))
+
+            val risingTip = Offset(size.width * 0.67f, size.height * 0.20f)
+            val risingArrow = Path().apply {
+                moveTo(size.width * 0.25f, size.height * 0.70f)
+                cubicTo(
+                    size.width * 0.30f,
+                    size.height * 0.40f,
+                    size.width * 0.52f,
+                    size.height * 0.36f,
+                    risingTip.x,
+                    risingTip.y,
+                )
+            }
+            drawPath(risingArrow, color, style = stroke)
+            arrowHead(risingTip, Offset(size.width * 0.15f, -size.height * 0.16f))
+
+            val fallingTip = Offset(size.width * 0.33f, size.height * 0.80f)
+            val fallingArrow = Path().apply {
+                moveTo(size.width * 0.75f, size.height * 0.30f)
+                cubicTo(
+                    size.width * 0.70f,
+                    size.height * 0.60f,
+                    size.width * 0.48f,
+                    size.height * 0.64f,
+                    fallingTip.x,
+                    fallingTip.y,
+                )
+            }
+            drawPath(fallingArrow, color, style = stroke)
+            arrowHead(fallingTip, Offset(-size.width * 0.15f, size.height * 0.16f))
         }
     }
 }

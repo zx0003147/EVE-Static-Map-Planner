@@ -54,9 +54,23 @@ class SidebarControlClusterTest {
         assertTrue(projection.left < ai.left && ai.left < collapse.left)
         assertTrue(abs(projection.width - ai.width) <= 1.1f)
         assertTrue(abs(ai.width - collapse.width) <= 1.1f)
-        onNodeWithTag(SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
-        onNodeWithTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
-        onNodeWithTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG, useUnmergedTree = true).assertExists()
+        val twoDimensionalLabel = onNodeWithTag(
+            SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG,
+            useUnmergedTree = true,
+        ).assertExists().fetchSemanticsNode().boundsInRoot
+        val threeDimensionalLabel = onNodeWithTag(
+            SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG,
+            useUnmergedTree = true,
+        ).assertExists().fetchSemanticsNode().boundsInRoot
+        val switchIcon = onNodeWithTag(
+            SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG,
+            useUnmergedTree = true,
+        ).assertExists().fetchSemanticsNode().boundsInRoot
+        assertTrue(twoDimensionalLabel.center.x < switchIcon.center.x)
+        assertTrue(twoDimensionalLabel.center.y > switchIcon.center.y)
+        assertTrue(threeDimensionalLabel.center.x > switchIcon.center.x)
+        assertTrue(threeDimensionalLabel.center.y < switchIcon.center.y)
+        assertTrue(twoDimensionalLabel.right < threeDimensionalLabel.left)
         assertEquals(
             "Official 2D selected",
             onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG)
@@ -99,8 +113,27 @@ class SidebarControlClusterTest {
         assertTrue(projection.top < ai.top && ai.top < expand.top)
         assertTrue(abs(projection.height - ai.height) < 1f)
         assertTrue(abs(ai.height - expand.height) < 1f)
-        onNodeWithTag(SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
-        onNodeWithTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
-        onNodeWithTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG, useUnmergedTree = true).assertExists()
+        val twoDimensionalLabel = onNodeWithTag(
+            SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG,
+            useUnmergedTree = true,
+        ).assertExists().fetchSemanticsNode().boundsInRoot
+        val threeDimensionalLabel = onNodeWithTag(
+            SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG,
+            useUnmergedTree = true,
+        ).assertExists().fetchSemanticsNode().boundsInRoot
+        val switchIcon = onNodeWithTag(
+            SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG,
+            useUnmergedTree = true,
+        ).assertExists().fetchSemanticsNode().boundsInRoot
+        assertTrue(twoDimensionalLabel.center.x < switchIcon.center.x)
+        assertTrue(twoDimensionalLabel.center.y > switchIcon.center.y)
+        assertTrue(threeDimensionalLabel.center.x > switchIcon.center.x)
+        assertTrue(threeDimensionalLabel.center.y < switchIcon.center.y)
+        assertTrue(twoDimensionalLabel.right < threeDimensionalLabel.left)
+        assertEquals(
+            "Real 3D selected",
+            onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG)
+                .fetchSemanticsNode().config[SemanticsProperties.StateDescription],
+        )
     }
 }

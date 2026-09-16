@@ -36,6 +36,7 @@ import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageRole
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiUiState
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import java.time.Instant
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -170,12 +171,46 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertIsDisplayed()
         onAllNodesWithText("Hide Sidebar").assertCountEquals(0)
         onAllNodesWithText("Show Sidebar").assertCountEquals(0)
+        val sidebarBounds = onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val expandedHandleBounds = onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val expandedTitleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
+        val expandedStatusBounds = onNodeWithText(READY_PROVIDER.description).fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            expandedHandleBounds.center.x in sidebarBounds.right..(sidebarBounds.right + 12f),
+            "Expanded handle should remain centered on the sidebar's padded outer edge.",
+        )
+        assertTrue(
+            expandedHandleBounds.right < expandedTitleBounds.left,
+            "Expanded handle must not overlap the Assistant title.",
+        )
+        assertTrue(
+            expandedHandleBounds.right < expandedStatusBounds.left,
+            "Expanded handle must not overlap provider status.",
+        )
         onNodeWithText("Second chat").performClick()
         assertEquals("session-2", selected)
         onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).performClick()
+        waitForIdle()
         onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertDoesNotExist()
         onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
-        onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed().performClick()
+        val collapsedHandle = onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed()
+        val collapsedHandleBounds = collapsedHandle.fetchSemanticsNode().boundsInRoot
+        val collapsedTitleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
+        val collapsedStatusBounds = onNodeWithText(READY_PROVIDER.description).fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            collapsedHandleBounds.right < collapsedTitleBounds.left,
+            "Collapsed handle must not overlap the Assistant title.",
+        )
+        assertTrue(
+            collapsedHandleBounds.right < collapsedStatusBounds.left,
+            "Collapsed handle must not overlap provider status.",
+        )
+        assertTrue(
+            abs(collapsedHandleBounds.top - expandedHandleBounds.top) <= 1.1f,
+            "Chevron height should stay fixed when the sidebar changes state.",
+        )
+        assertTrue(abs(collapsedHandleBounds.width - expandedHandleBounds.width) <= 1.1f)
+        collapsedHandle.performClick()
         onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-1").assertIsDisplayed()
         onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-2").assertIsDisplayed()
     }

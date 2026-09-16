@@ -169,12 +169,25 @@ internal fun EmbeddedAiAssistantContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.weight(1f).fillMaxSize(),
             ) {
-                Text(
-                    "Embedded AI Assistant",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(start = if (sidebarVisible) 0.dp else 36.dp),
-                )
-                Text(providerStatus.description, color = EveColors.SecondaryText)
+                Box(Modifier.fillMaxWidth()) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(start = if (sidebarVisible) 4.dp else 32.dp),
+                    ) {
+                        Text(
+                            "Embedded AI Assistant",
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        Text(providerStatus.description, color = EveColors.SecondaryText)
+                    }
+                    ChatSidebarChevronButton(
+                        expanded = sidebarVisible,
+                        onClick = { sidebarVisible = !sidebarVisible },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = if (sidebarVisible) (-24).dp else 0.dp),
+                    )
+                }
                 state.contextNotice?.let { Text(it, color = EveColors.SecondaryText) }
                 if (!providerStatus.ready) {
                     TextButton(onClick = onOpenSettings) { Text("Open AI Settings") }
@@ -259,13 +272,6 @@ internal fun EmbeddedAiAssistantContent(
                 }
             }
         }
-        ChatSidebarChevronButton(
-            expanded = sidebarVisible,
-            onClick = { sidebarVisible = !sidebarVisible },
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(x = if (sidebarVisible) 194.dp else 0.dp, y = 1.dp),
-        )
     }
 
     confirmation?.let { action ->
@@ -440,14 +446,14 @@ private fun ChatSidebarChevronButton(
 ) {
     Box(
         modifier = modifier
-            .size(28.dp)
+            .size(24.dp)
             .background(EveColors.SecondarySurface, RoundedCornerShape(4.dp))
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = if (expanded) "Collapse chat sidebar" else "Expand chat sidebar" }
             .testTag(if (expanded) AI_HIDE_SIDEBAR_TEST_TAG else AI_SHOW_SIDEBAR_TEST_TAG),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(16.dp)) {
+        Canvas(Modifier.size(14.dp)) {
             val color = EveColors.PrimaryText
             val stroke = 1.8.dp.toPx()
             val edge = if (expanded) 0.68f else 0.32f
