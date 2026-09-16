@@ -119,14 +119,37 @@ internal class PlannerToolSet(
     val calculateNormalRoute = CalculateNormalRouteTool(mapControlService, diagnostics)
     val calculateCapitalRoute = CalculateCapitalRouteTool(mapControlService, diagnostics)
     val optimizeMultiPointRoute = OptimizeMultiPointRouteTool(mapControlService, diagnostics)
+    val focusSystem = FocusSystemTool(mapControlService, diagnostics)
+    val beginMission = BeginMissionTool(mapControlService, diagnostics)
+    val getMission = GetMissionTool(mapControlService, diagnostics)
+    val showNormalRoute = ShowNormalRouteTool(mapControlService, diagnostics)
+    val showCapitalRoute = ShowCapitalRouteTool(mapControlService, diagnostics)
+    val showJumpRange = ShowJumpRangeTool(mapControlService, diagnostics)
+    val addMissionMarker = AddMissionMarkerTool(mapControlService, diagnostics)
+    val fitMission = FitMissionTool(mapControlService, diagnostics)
 
+    val permissions: List<PlannerToolPermission> = PlannerToolPermissions.registered
     val names: List<String> = listOf(
         getSystemInfo.name,
         searchSystem.name,
         calculateNormalRoute.name,
         calculateCapitalRoute.name,
         optimizeMultiPointRoute.name,
+        focusSystem.name,
+        beginMission.name,
+        getMission.name,
+        showNormalRoute.name,
+        showCapitalRoute.name,
+        showJumpRange.name,
+        addMissionMarker.name,
+        fitMission.name,
     )
+
+    init {
+        check(names == permissions.map(PlannerToolPermission::name)) {
+            "Planner tool permission catalog must match the native Tool Registry"
+        }
+    }
 }
 
 internal fun createKoogAgent(
@@ -143,11 +166,20 @@ internal fun createKoogAgent(
         tool(tools.calculateNormalRoute)
         tool(tools.calculateCapitalRoute)
         tool(tools.optimizeMultiPointRoute)
+        tool(tools.focusSystem)
+        tool(tools.beginMission)
+        tool(tools.getMission)
+        tool(tools.showNormalRoute)
+        tool(tools.showCapitalRoute)
+        tool(tools.showJumpRange)
+        tool(tools.addMissionMarker)
+        tool(tools.fitMission)
     },
     systemPrompt = PLANNER_SYSTEM_PROMPT,
     temperature = temperature,
     strategy = singleRunStrategy(),
-    maxIterations = 24,
+    // A displayed route normally needs two searches plus begin/show/fit and a final answer.
+    maxIterations = 48,
 )
 
 internal val DEFAULT_OPENROUTER_MODEL = AiProviderConfig.DefaultOpenRouter.toKoogModel()
@@ -165,6 +197,19 @@ private val PLANNER_SYSTEM_PROMPT = """
     Use calculate_capital_route for capital navigation and pass the user's effectiveRangeLy. Never infer a missing jump range.
     Use optimize_multi_point_route when the user supplies an unordered target set and asks Planner to choose the visit order.
     Never calculate routes, distances, BFS paths, or target ordering yourself.
+
+    Map-changing tools may be used only when the user explicitly asks to display, focus, locate, mark, show, draw, visualize, or otherwise modify the temporary Mission view.
+    If the user asks only for information or how to travel, use the read-only tools and do not change the map.
+    Use focus_system alone when the user asks only to locate or focus one system.
+    For an explicit display task involving routes, jump ranges, or temporary markers, call begin_mission once and reuse the returned missionId for every action in that same task.
+    Never invent or reconstruct a missionId. Do not reuse a Mission across user requests because this runtime has no active-Mission abstraction; start one Mission per explicit display task.
+    Use get_mission only with a missionId returned by begin_mission when verification is needed.
+    Use show_normal_route instead of calculate_normal_route when the user explicitly asks to display the route. Its default is Stargates only; enable Ansiblex or temporary Wormholes only when the user requests them.
+    Use show_capital_route only when the user explicitly asks to display a capital route and supplies effectiveRangeLy.
+    Use show_jump_range only when the user explicitly asks to display a jump range and supplies effectiveRangeLy. Never infer jump range from a ship name.
+    add_mission_marker creates a temporary Mission marker only, never a Saved Marker. Use its RALLY default unless the user clearly requests another supported role.
+    After adding all requested Mission visual content, use fit_mission so the result of that explicit display request is visible in the viewport.
+    Every map-changing tool is atomic. If a later step is cancelled or fails, report the completed and failed steps; never claim that earlier successful Mission changes were rolled back.
 
     Respect the tool parameters and Planner defaults. If a required option is unknown, ask the user instead of guessing.
     Keep answers concise and state only facts supported by tool results. Do not add general EVE background or map facts from model knowledge.

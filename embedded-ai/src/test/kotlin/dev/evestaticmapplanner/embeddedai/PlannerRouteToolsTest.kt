@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 
 class PlannerRouteToolsTest {
     @Test
-    fun `registry contains only the five Phase 2 read-only tools`() {
+    fun `registry contains Phase 2 read-only and Phase 4 temporary UI tools only`() {
         val tools = PlannerToolSet(recordingPlannerService(Calls()))
 
         assertEquals(
@@ -36,12 +36,24 @@ class PlannerRouteToolsTest {
                 "calculate_normal_route",
                 "calculate_capital_route",
                 "optimize_multi_point_route",
+                "focus_system",
+                "begin_mission",
+                "get_mission",
+                "show_normal_route",
+                "show_capital_route",
+                "show_jump_range",
+                "add_mission_marker",
+                "fit_mission",
             ),
             tools.names,
         )
         assertFalse(tools.names.contains("get_normal_route_graph"))
+        assertTrue(tools.permissions.all { it.risk in PlannerToolPermissions.allowedRisks })
+        assertFalse(tools.permissions.any { it.risk == PlannerToolRisk.PERSISTENT_WRITE })
+        assertFalse(tools.permissions.any { it.risk == PlannerToolRisk.EXTERNAL_ACTION })
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Never calculate routes"))
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Use search_system first"))
+        assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("only when the user explicitly asks"))
     }
 
     @Test

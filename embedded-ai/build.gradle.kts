@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(platform(libs.ktor.bom))
     implementation(project(":control"))
+    implementation(project(":core"))
     implementation(project(":shared-client"))
     implementation(libs.koog.agents.core)
     implementation(libs.koog.http.client.java)
