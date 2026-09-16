@@ -98,6 +98,52 @@ class DefaultMapControlServiceTest {
     }
 
     @Test
+    fun `fine grained clears preserve every unrelated Mission content type`() = runTest {
+        val fixture = Fixture(this)
+        try {
+            val mission = fixture.begin().value.missionId
+            fixture.service.showNormalRoute(
+                ShowNormalRouteCommand("route-1", "route-1", mission, 1, 2, true),
+            ).success()
+            fixture.service.showJumpRange(
+                ShowJumpRangeCommand("range-1", "range-1", mission, 1, 5.0),
+            ).success()
+            fixture.service.addMissionMarker(
+                AddMissionMarkerCommand("marker-1", "marker-1", mission, 1, MissionMarkerRole.RALLY),
+            ).success()
+
+            fixture.service.clearMissionRoutes(ClearMissionRoutesCommand("routes", "routes", mission)).success()
+            fixture.service.getMission(GetMissionRequest("after-routes", mission)).success().value.let { state ->
+                assertTrue(state.routes.isEmpty())
+                assertEquals(1, state.jumpRanges.size)
+                assertEquals(1, state.markers.size)
+            }
+
+            fixture.service.showNormalRoute(
+                ShowNormalRouteCommand("route-2", "route-2", mission, 1, 2, true),
+            ).success()
+            fixture.service.clearMissionJumpRanges(ClearMissionJumpRangesCommand("ranges", "ranges", mission)).success()
+            fixture.service.getMission(GetMissionRequest("after-ranges", mission)).success().value.let { state ->
+                assertEquals(1, state.routes.size)
+                assertTrue(state.jumpRanges.isEmpty())
+                assertEquals(1, state.markers.size)
+            }
+
+            fixture.service.showJumpRange(
+                ShowJumpRangeCommand("range-2", "range-2", mission, 1, 5.0),
+            ).success()
+            fixture.service.clearMissionMarkers(ClearMissionMarkersCommand("markers", "markers", mission)).success()
+            fixture.service.getMission(GetMissionRequest("after-markers", mission)).success().value.let { state ->
+                assertEquals(1, state.routes.size)
+                assertEquals(1, state.jumpRanges.size)
+                assertTrue(state.markers.isEmpty())
+            }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun `cross Mission removals do not reveal ownership and leave both Missions unchanged`() = runTest {
         val fixture = Fixture(this)
         try {

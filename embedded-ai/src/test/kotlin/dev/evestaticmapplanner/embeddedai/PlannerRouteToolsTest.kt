@@ -32,6 +32,7 @@ class PlannerRouteToolsTest {
         assertEquals(
             listOf(
                 "get_system_info",
+                "get_system_markers",
                 "search_system",
                 "calculate_normal_route",
                 "calculate_capital_route",
@@ -41,8 +42,14 @@ class PlannerRouteToolsTest {
                 "get_mission",
                 "show_normal_route",
                 "show_capital_route",
+                "remove_mission_route",
+                "clear_mission_routes",
                 "show_jump_range",
+                "remove_jump_range",
+                "clear_mission_jump_ranges",
                 "add_mission_marker",
+                "remove_mission_marker",
+                "clear_mission_markers",
                 "fit_mission",
                 "list_views",
                 "get_current_view",
@@ -60,8 +67,9 @@ class PlannerRouteToolsTest {
             ),
             tools.names,
         )
+        // The full universe RouteGraph is deliberately MCP-only. Embedded AI has bounded route operations.
         assertFalse(tools.names.contains("get_normal_route_graph"))
-        assertEquals(26, tools.names.size)
+        assertEquals(33, tools.names.size)
         assertEquals(
             setOf("create_saved_marker", "delete_view", "send_mission_navigation_to_eve"),
             tools.permissions.filter { it.risk.requiresConfirmation }.mapTo(mutableSetOf()) { it.name },
@@ -69,9 +77,22 @@ class PlannerRouteToolsTest {
         assertEquals(PlannerToolRisk.PERSISTENT_WRITE, tools.permissions.single { it.name == "create_saved_marker" }.risk)
         assertEquals(PlannerToolRisk.DESTRUCTIVE_WRITE, tools.permissions.single { it.name == "delete_view" }.risk)
         assertEquals(PlannerToolRisk.EXTERNAL_ACTION, tools.permissions.single { it.name == "send_mission_navigation_to_eve" }.risk)
+        listOf(
+            "remove_mission_route",
+            "clear_mission_routes",
+            "remove_jump_range",
+            "clear_mission_jump_ranges",
+            "remove_mission_marker",
+            "clear_mission_markers",
+        ).forEach { name ->
+            assertEquals(PlannerToolRisk.TEMPORARY_UI, tools.permissions.single { it.name == name }.risk)
+        }
+        assertEquals(PlannerToolRisk.READ_ONLY, tools.permissions.single { it.name == "get_system_markers" }.risk)
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Never calculate routes"))
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Use search_system first"))
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("only when the user explicitly asks"))
+        assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Never invent or reconstruct a missionId, routeId, overlayId, or markerId"))
+        assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Never use clear_mission merely as a shortcut"))
     }
 
     @Test

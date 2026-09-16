@@ -23,6 +23,7 @@ internal interface ConfirmationRequiredPlannerTool
 internal object PlannerToolPermissions {
     val registered = listOf(
         PlannerToolPermission(GetSystemInfoTool.NAME, PlannerToolRisk.READ_ONLY),
+        PlannerToolPermission(GetSystemMarkersTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(SearchSystemTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(CalculateNormalRouteTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(CalculateCapitalRouteTool.NAME, PlannerToolRisk.READ_ONLY),
@@ -32,8 +33,14 @@ internal object PlannerToolPermissions {
         PlannerToolPermission(GetMissionTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(ShowNormalRouteTool.NAME, PlannerToolRisk.TEMPORARY_UI),
         PlannerToolPermission(ShowCapitalRouteTool.NAME, PlannerToolRisk.TEMPORARY_UI),
+        PlannerToolPermission(RemoveMissionRouteTool.NAME, PlannerToolRisk.TEMPORARY_UI),
+        PlannerToolPermission(ClearMissionRoutesTool.NAME, PlannerToolRisk.TEMPORARY_UI),
         PlannerToolPermission(ShowJumpRangeTool.NAME, PlannerToolRisk.TEMPORARY_UI),
+        PlannerToolPermission(RemoveJumpRangeTool.NAME, PlannerToolRisk.TEMPORARY_UI),
+        PlannerToolPermission(ClearMissionJumpRangesTool.NAME, PlannerToolRisk.TEMPORARY_UI),
         PlannerToolPermission(AddMissionMarkerTool.NAME, PlannerToolRisk.TEMPORARY_UI),
+        PlannerToolPermission(RemoveMissionMarkerTool.NAME, PlannerToolRisk.TEMPORARY_UI),
+        PlannerToolPermission(ClearMissionMarkersTool.NAME, PlannerToolRisk.TEMPORARY_UI),
         PlannerToolPermission(FitMissionTool.NAME, PlannerToolRisk.TEMPORARY_UI),
         PlannerToolPermission(ListViewsTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(GetCurrentViewTool.NAME, PlannerToolRisk.READ_ONLY),

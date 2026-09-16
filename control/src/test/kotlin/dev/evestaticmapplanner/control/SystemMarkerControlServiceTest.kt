@@ -89,6 +89,36 @@ class SystemMarkerControlServiceTest {
     }
 
     @Test
+    fun `Mission marker remove and clear never affect the Saved Marker`() = runTest {
+        val saved = savedMarker()
+        service(FakeSavedMarkerControlPort(saved)).use { service ->
+            val mission = service.beginMission(BeginMissionCommand("begin", "begin", "Mission")).success().value
+            val first = service.addMissionMarker(
+                AddMissionMarkerCommand("first", "first", mission.missionId, 1, MissionMarkerRole.RALLY),
+            ).success().value
+            service.addMissionMarker(
+                AddMissionMarkerCommand("second", "second", mission.missionId, 1, MissionMarkerRole.INFO),
+            ).success()
+
+            service.removeMissionMarker(
+                RemoveMissionMarkerCommand("remove", "remove", mission.missionId, first.markerId),
+            ).success()
+            service.getSystemMarkers(GetSystemMarkersRequest("after-remove", 1)).success().value.let { markers ->
+                assertEquals(saved, markers.savedMarker)
+                assertEquals(1, markers.missionMarkers.size)
+            }
+
+            service.clearMissionMarkers(
+                ClearMissionMarkersCommand("clear", "clear", mission.missionId),
+            ).success()
+            service.getSystemMarkers(GetSystemMarkersRequest("after-clear", 1)).success().value.let { markers ->
+                assertEquals(saved, markers.savedMarker)
+                assertTrue(markers.missionMarkers.isEmpty())
+            }
+        }
+    }
+
+    @Test
     fun `create uses marker port idempotency and stable marker errors`() = runTest {
         val port = FakeSavedMarkerControlPort()
         service(port).use { service ->
