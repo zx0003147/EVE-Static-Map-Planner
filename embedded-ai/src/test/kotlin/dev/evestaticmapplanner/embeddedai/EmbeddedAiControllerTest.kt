@@ -76,6 +76,42 @@ class EmbeddedAiControllerTest {
     }
 
     @Test
+    fun `completed turns become bounded context for the next request`() = runTest {
+        val prompts = mutableListOf<String>()
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                testAgent { prompt ->
+                    prompts += prompt
+                    if (prompts.size == 1) "已显示 Jita 到 Amarr。" else "已删除刚才的路线。"
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("显示 Jita 到 Amarr。")
+        advanceUntilIdle()
+        controller.send("把刚才那条删掉。")
+        advanceUntilIdle()
+
+        assertEquals(2, prompts.size)
+        assertEquals("显示 Jita 到 Amarr。", prompts.first())
+        assertTrue(prompts.last().contains("显示 Jita 到 Amarr。"))
+        assertTrue(prompts.last().contains("已显示 Jita 到 Amarr。"))
+        assertTrue(prompts.last().contains("把刚才那条删掉。"))
+        assertTrue(prompts.last().contains("context only"))
+        assertEquals(
+            listOf(
+                EmbeddedAiMessageRole.USER,
+                EmbeddedAiMessageRole.ASSISTANT,
+                EmbeddedAiMessageRole.USER,
+                EmbeddedAiMessageRole.ASSISTANT,
+            ),
+            controller.state.value.chatSession.messages.map(EmbeddedAiMessage::role),
+        )
+        controller.shutdown()
+    }
+
+    @Test
     fun `cancel stops an in-flight request and returns to idle`() = runTest {
         val gate = CompletableDeferred<String>()
         val controller = EmbeddedAiController(
@@ -91,6 +127,54 @@ class EmbeddedAiControllerTest {
         assertEquals("Request cancelled.", controller.state.value.response)
         assertFalse(controller.state.value.isLoading)
         assertNull(controller.state.value.errorMessage)
+        assertEquals(2, controller.state.value.chatSession.messages.size)
+        assertEquals(EmbeddedAiMessageRole.USER, controller.state.value.chatSession.messages.first().role)
+        assertEquals(EmbeddedAiMessageStatus.CANCELLED, controller.state.value.chatSession.messages.last().status)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `New Chat clears UI and agent context without touching provider configuration`() = runTest {
+        val prompts = mutableListOf<String>()
+        var closeCount = 0
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                object : EmbeddedAiAgent {
+                    override val runtimeInfo = EmbeddedAiRuntimeInfo(
+                        AiProviderType.DEEPSEEK,
+                        "deepseek-flash",
+                        AiCredentialSource.SECURE_STORAGE,
+                    )
+
+                    override suspend fun run(prompt: String): String {
+                        prompts += prompt
+                        return "answer"
+                    }
+
+                    override suspend fun close() {
+                        closeCount++
+                    }
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("first")
+        advanceUntilIdle()
+        val oldSession = controller.state.value.chatSession.id
+        assertEquals(2, controller.state.value.chatSession.messages.size)
+        assertEquals(AiProviderType.DEEPSEEK, controller.state.value.runtimeInfo?.providerType)
+
+        controller.newChat()
+        advanceUntilIdle()
+
+        assertTrue(controller.state.value.chatSession.messages.isEmpty())
+        assertTrue(controller.state.value.chatSession.id != oldSession)
+        assertEquals(AiProviderType.DEEPSEEK, controller.state.value.runtimeInfo?.providerType)
+        assertEquals(1, closeCount)
+        controller.send("second")
+        advanceUntilIdle()
+        assertEquals("second", prompts.last(), "New Chat must not reuse the previous conversation context")
         controller.shutdown()
     }
 
@@ -203,12 +287,14 @@ class EmbeddedAiControllerTest {
     }
 
     @Test
-    fun `OpenRouter Anthropic DeepSeek OpenAI switching keeps exactly one lazy runtime`() = runTest {
+    fun `switching every provider keeps exactly one lazy runtime`() = runTest {
         val sequence = listOf(
             AiProviderType.OPENROUTER,
             AiProviderType.ANTHROPIC,
             AiProviderType.DEEPSEEK,
             AiProviderType.OPENAI,
+            AiProviderType.GOOGLE,
+            AiProviderType.OPENAI_COMPATIBLE,
         )
         var selected = sequence.first()
         var live = 0
@@ -285,6 +371,36 @@ class EmbeddedAiControllerTest {
         assertNull(controller.confirmation.value)
         assertFalse(executed)
         assertEquals("Request cancelled.", controller.state.value.response)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `New Chat invalidates a pending confirmation and prevents execution`() = runTest {
+        val confirmations = AiActionConfirmationService()
+        var executed = false
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                testAgent {
+                    confirmations.confirmAndExecute(testConfirmationRequest()) {
+                        executed = true
+                        "done"
+                    }
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+            confirmationService = confirmations,
+        )
+
+        controller.send("save this")
+        runCurrent()
+        assertNotNull(controller.confirmation.value)
+        controller.newChat()
+        advanceUntilIdle()
+
+        assertNull(controller.confirmation.value)
+        assertFalse(executed)
+        assertTrue(controller.state.value.chatSession.messages.isEmpty())
+        assertFalse(controller.state.value.isLoading)
         controller.shutdown()
     }
 

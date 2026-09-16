@@ -7,33 +7,43 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
-import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
+import dev.evestaticmapplanner.embeddedai.AiActionConfirmation
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
+import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessage
+import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageRole
+import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageStatus
+import dev.evestaticmapplanner.embeddedai.EmbeddedAiUiState
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.ui.EveButton as Button
-import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveWindowChrome
 import dev.evestaticmapplanner.ui.EveWindowSurface
 
@@ -46,7 +56,6 @@ fun EmbeddedAiAssistantWindow(
 ) {
     val state by controller.state.collectAsState()
     val confirmation by controller.confirmation.collectAsState()
-    var prompt by remember { mutableStateOf("Tell me about system 30000142") }
 
     Window(
         onCloseRequest = {
@@ -54,96 +63,206 @@ fun EmbeddedAiAssistantWindow(
             onDismiss()
         },
         title = "Embedded AI Assistant",
-        state = rememberWindowState(width = 640.dp, height = 460.dp),
+        state = rememberWindowState(width = 680.dp, height = 640.dp),
     ) {
         EveWindowChrome(window)
         EveWindowSurface(Modifier.fillMaxSize()) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-            ) {
-                Text("Embedded AI Assistant", style = MaterialTheme.typography.titleLarge)
+            EmbeddedAiAssistantContent(
+                state = state,
+                confirmation = confirmation,
+                providerStatus = providerStatus,
+                onSend = controller::send,
+                onCancel = controller::cancel,
+                onNewChat = controller::newChat,
+                onOpenSettings = onOpenSettings,
+                onApprove = controller::approveAction,
+                onDeny = controller::denyAction,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun EmbeddedAiAssistantContent(
+    state: EmbeddedAiUiState,
+    confirmation: AiActionConfirmation?,
+    providerStatus: AiAssistantProviderStatus,
+    onSend: (String) -> Unit,
+    onCancel: () -> Unit,
+    onNewChat: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onApprove: (String) -> Boolean,
+    onDeny: (String) -> Boolean,
+) {
+    var prompt by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val messages = state.chatSession.messages
+    val nearBottom by remember {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            layout.totalItemsCount == 0 || lastVisible >= layout.totalItemsCount - 2
+        }
+    }
+    val lastMessageSnapshot = messages.lastOrNull()?.let { "${it.id}:${it.status}:${it.content.length}" }
+
+    LaunchedEffect(state.scrollRequest) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    }
+    LaunchedEffect(lastMessageSnapshot) {
+        if (messages.isNotEmpty() && nearBottom) listState.animateScrollToItem(messages.lastIndex)
+    }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp).testTag(AI_ASSISTANT_ROOT_TEST_TAG),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Embedded AI Assistant", style = MaterialTheme.typography.titleLarge)
+            TextButton(onClick = onNewChat) { Text("New Chat") }
+        }
+        Text(providerStatus.description, color = EveColors.SecondaryText)
+        if (!providerStatus.ready) {
+            TextButton(onClick = onOpenSettings) { Text("Open AI Settings") }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(EveColors.InputSurface, RoundedCornerShape(6.dp))
+                .padding(10.dp),
+        ) {
+            if (messages.isEmpty()) {
                 Text(
-                    providerStatus.description,
+                    if (providerStatus.ready) "Start a conversation with the Planner." else providerStatus.actionMessage,
                     color = EveColors.SecondaryText,
+                    modifier = Modifier.align(Alignment.Center),
                 )
-                if (!providerStatus.ready) {
-                    TextButton(onClick = onOpenSettings) { Text("Open AI Settings") }
-                }
-                OutlinedTextField(
-                    value = prompt,
-                    onValueChange = { prompt = it },
-                    label = { Text("Ask the Planner") },
-                    enabled = !state.isLoading && providerStatus.ready,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            } else {
+                LazyColumn(
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize().testTag(AI_CHAT_LIST_TEST_TAG),
                 ) {
-                    Button(
-                        onClick = { controller.send(prompt) },
-                        enabled = prompt.isNotBlank() && !state.isLoading && providerStatus.ready,
-                    ) { Text("Send") }
-                    Button(
-                        onClick = controller::cancel,
-                        enabled = state.isLoading,
-                    ) { Text("Cancel") }
-                    if (state.isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.padding(start = 4.dp))
-                        Text(
-                            if (confirmation == null) "Waiting for AI provider…" else "Waiting for your confirmation…",
-                            color = EveColors.SecondaryText,
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 160.dp)
-                        .weight(1f)
-                        .background(EveColors.InputSurface)
-                        .padding(12.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    when {
-                        state.errorMessage != null -> Text(
-                            state.errorMessage.orEmpty(),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        state.response.isNotBlank() -> Text(state.response)
-                        else -> Text(
-                            if (providerStatus.ready) "The answer will appear here." else providerStatus.actionMessage,
-                            color = EveColors.SecondaryText,
+                    items(messages, key = EmbeddedAiMessage::id) { message ->
+                        ChatMessageBubble(
+                            message = message,
+                            waitingForConfirmation = confirmation != null &&
+                                message.status == EmbeddedAiMessageStatus.THINKING,
                         )
                     }
                 }
             }
         }
-        confirmation?.let { action ->
-            AlertDialog(
-                onDismissRequest = { controller.denyAction(action.actionId) },
-                title = { Text("AI wants to perform an action") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Action: ${action.action}")
-                        Text("Target: ${action.target}")
-                        Text("Risk: ${action.risk.userFacingLabel()}")
-                        action.details.forEach { detail ->
-                            Text("${detail.label}: ${detail.value}")
-                        }
-                        Text("Effect: ${action.effect}", color = EveColors.SecondaryText)
-                    }
+
+        OutlinedTextField(
+            value = prompt,
+            onValueChange = { prompt = it },
+            label = { Text("Message") },
+            enabled = !state.isLoading && providerStatus.ready,
+            modifier = Modifier.fillMaxWidth().testTag(AI_CHAT_INPUT_TEST_TAG),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (state.isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 10.dp))
+            Button(
+                onClick = {
+                    val submitted = prompt
+                    prompt = ""
+                    onSend(submitted)
                 },
-                dismissButton = {
-                    TextButton(onClick = { controller.denyAction(action.actionId) }) { Text("Deny") }
-                },
-                confirmButton = {
-                    Button(onClick = { controller.approveAction(action.actionId) }) { Text("Allow") }
-                },
-            )
+                enabled = prompt.isNotBlank() && !state.isLoading && providerStatus.ready,
+            ) { Text("Send") }
+            Button(
+                onClick = onCancel,
+                enabled = state.isLoading,
+                modifier = Modifier.padding(start = 8.dp),
+            ) { Text("Cancel") }
         }
     }
+
+    confirmation?.let { action ->
+        AiActionConfirmationDialog(
+            confirmation = action,
+            onCancel = { onDeny(action.actionId) },
+            onAllow = { onApprove(action.actionId) },
+        )
+    }
+}
+
+@Composable
+private fun ChatMessageBubble(message: EmbeddedAiMessage, waitingForConfirmation: Boolean) {
+    val user = message.role == EmbeddedAiMessageRole.USER
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (user) Arrangement.End else Arrangement.Start,
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .fillMaxWidth(0.78f)
+                .background(
+                    if (user) EveColors.PrimaryAccent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(8.dp),
+                )
+                .padding(horizontal = 12.dp, vertical = 9.dp)
+                .testTag("$AI_CHAT_MESSAGE_TEST_TAG_PREFIX-${message.id}"),
+        ) {
+            Text(
+                if (user) "You" else "AI",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (user) EveColors.PrimaryAccent else EveColors.SecondaryText,
+            )
+            if (user) {
+                Text(message.content)
+            } else {
+                val display = when {
+                    message.status != EmbeddedAiMessageStatus.THINKING -> message.content
+                    waitingForConfirmation -> "Waiting for confirmation…"
+                    else -> "Thinking…"
+                }
+                AssistantMarkdown(display)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiActionConfirmationDialog(
+    confirmation: AiActionConfirmation,
+    onCancel: () -> Unit,
+    onAllow: () -> Unit,
+) {
+    AlertDialog(
+        modifier = Modifier.testTag(AI_CONFIRMATION_DIALOG_TEST_TAG),
+        onDismissRequest = onCancel,
+        title = { Text("Confirm AI action") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Action: ${confirmation.action}")
+                confirmation.details.forEach { detail -> Text("${detail.label}: ${detail.value}") }
+                if (confirmation.details.none { it.label == "Character" }) Text("Target: ${confirmation.target}")
+                Text("Risk: ${confirmation.risk.userFacingLabel()}")
+                Text("Effect: ${confirmation.effect}", color = EveColors.SecondaryText)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onCancel,
+                modifier = Modifier.testTag(AI_CONFIRMATION_CANCEL_TEST_TAG),
+            ) { Text("Cancel") }
+        },
+        confirmButton = { Button(onClick = onAllow) { Text("Allow") } },
+    )
 }
 
 private fun PlannerToolRisk.userFacingLabel(): String = when (this) {
@@ -164,8 +283,15 @@ data class AiAssistantProviderStatus(
         get() = when {
             providerType == null -> "AI provider is not configured."
             credentialSource == null -> "Provider: ${providerType.displayName} · AI API Key is not configured."
-            else -> "Provider: ${providerType.displayName} · Model: $modelId · Credential: ${credentialSource.displayName}"
+            else -> "${providerType.displayName} · $modelId · ${credentialSource.displayName}"
         }
     val actionMessage: String
         get() = if (providerType == null) "Configure an AI provider to begin." else "Configure an AI API Key to begin."
 }
+
+internal const val AI_ASSISTANT_ROOT_TEST_TAG = "embedded-ai-assistant-root"
+internal const val AI_CHAT_LIST_TEST_TAG = "embedded-ai-chat-list"
+internal const val AI_CHAT_INPUT_TEST_TAG = "embedded-ai-chat-input"
+internal const val AI_CHAT_MESSAGE_TEST_TAG_PREFIX = "embedded-ai-chat-message"
+internal const val AI_CONFIRMATION_DIALOG_TEST_TAG = "embedded-ai-confirmation-dialog"
+internal const val AI_CONFIRMATION_CANCEL_TEST_TAG = "embedded-ai-confirmation-cancel"

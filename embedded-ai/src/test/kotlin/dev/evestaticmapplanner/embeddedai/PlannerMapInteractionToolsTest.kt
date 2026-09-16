@@ -195,6 +195,37 @@ class PlannerMapInteractionToolsTest {
     }
 
     @Test
+    fun `multi-turn pronoun displays the route described by recent conversation`() = runBlocking {
+        val calls = MapCalls()
+        val tools = PlannerToolSet(recordingMapService(calls))
+        val question = buildAgentPrompt(
+            history = listOf(
+                AgentConversationMessage(EmbeddedAiMessageRole.USER, "Jita 到 Amarr 几跳？"),
+                AgentConversationMessage(EmbeddedAiMessageRole.ASSISTANT, "Jita 到 Amarr 共 11 跳。"),
+            ),
+            currentUserMessage = "把它显示出来。",
+        )
+        val executor = getMockExecutor {
+            mockLLMToolCall(tools.searchSystem, SearchSystemTool.Args("Jita")) onRequestEquals question
+            mockLLMToolCall(tools.searchSystem, SearchSystemTool.Args("Amarr")) onRequestContains "\"name\":\"Jita\""
+            mockLLMToolCall(tools.beginMission, BeginMissionTool.Args("Jita to Amarr")) onRequestContains "\"name\":\"Amarr\""
+            mockLLMToolCall(
+                tools.showNormalRoute,
+                ShowNormalRouteTool.Args(MISSION_ID.value, JITA.systemId, AMARR.systemId),
+            ) onRequestContains "\"title\":\"Jita to Amarr\""
+            mockLLMToolCall(tools.fitMission, FitMissionTool.Args(MISSION_ID.value)) onRequestContains "\"jumpCount\":11"
+            mockLLMAnswer("已显示 Jita → Amarr 路线。") onRequestContains "\"success\":true"
+        }
+        try {
+            assertEquals("已显示 Jita → Amarr 路线。", createKoogAgent(tools, executor).run(question))
+            assertEquals(1, calls.normal.size)
+            assertEquals(1, calls.fit.size)
+        } finally {
+            executor.close()
+        }
+    }
+
+    @Test
     fun `Koog displays capital route only with explicit range`() = runBlocking {
         val calls = MapCalls()
         val tools = PlannerToolSet(recordingMapService(calls))

@@ -7,15 +7,19 @@ import dev.evestaticmapplanner.control.CreateSavedMarkerReceipt
 import dev.evestaticmapplanner.control.DeleteViewCommand
 import dev.evestaticmapplanner.control.EveNavigationTargetDto
 import dev.evestaticmapplanner.control.GetMissionRequest
+import dev.evestaticmapplanner.control.GetActiveMissionsRequest
 import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.ListEveNavigationTargetsRequest
 import dev.evestaticmapplanner.control.ListViewsRequest
 import dev.evestaticmapplanner.control.MapControlService
+import dev.evestaticmapplanner.control.MissionSummaryDto
+import dev.evestaticmapplanner.control.MissionMutationReceipt
 import dev.evestaticmapplanner.control.NavigationActionExecutionStatus
 import dev.evestaticmapplanner.control.PlanningViewDto
 import dev.evestaticmapplanner.control.SavedMarkerSummaryDto
 import dev.evestaticmapplanner.control.SendMissionNavigationReceipt
 import dev.evestaticmapplanner.control.SendMissionNavigationToEveCommand
+import dev.evestaticmapplanner.control.RemoveMissionRouteCommand
 import dev.evestaticmapplanner.control.SystemInfoDto
 import dev.evestaticmapplanner.control.SystemSummaryDto
 import dev.evestaticmapplanner.control.mission.Mission
@@ -167,10 +171,103 @@ class ProtectedActionToolsTest {
         val pending = confirmations.pending.value!!
         assertEquals(PlannerToolRisk.EXTERNAL_ACTION, pending.risk)
         assertEquals("Capsuleer One", pending.target)
-        assertTrue(pending.details.any { it.label == "Route" && "30000142 → 30002187" in it.value })
+        assertTrue(pending.details.any { it.label == "Character" && it.value == "Capsuleer One" })
+        assertTrue(pending.details.any { it.label == "Mission" && it.value == "Jita to Amarr" })
+        assertTrue(pending.details.any { it.label == "Route" && it.value == "Jita → Amarr" })
+        assertTrue(pending.details.any { it.label == "Target count" && it.value == "1" })
+        assertEquals("This will send navigation data to EVE Online.", pending.effect)
         assertTrue(confirmations.approve(pending.actionId))
         assertTrue(result.await().contains("\"status\":\"succeeded\""))
         assertEquals("char-1", calls.sentNavigation.single().characterId)
+    }
+
+    @Test
+    fun `duplicate EVE send tool calls share one confirmation and execute exactly once`() = runTest {
+        val calls = ProtectedCalls()
+        val confirmations = AiActionConfirmationService()
+        confirmations.startRequest("request-1")
+        val tool = SendMissionNavigationToEveTool(protectedService(calls), confirmations)
+        val args = SendMissionNavigationToEveTool.Args(MISSION_ID.value, ROUTE_ID.value, "char-1")
+
+        val first = async { tool.execute(args) }
+        val duplicate = async { tool.execute(args) }
+        runCurrent()
+
+        val pending = checkNotNull(confirmations.pending.value)
+        assertTrue(confirmations.approve(pending.actionId))
+        assertEquals(first.await(), duplicate.await())
+        assertEquals(1, calls.sentNavigation.size)
+    }
+
+    @Test
+    fun `explicit EVE send intent reaches the protected tool instead of promising a dialog`() = runTest {
+        val calls = ProtectedCalls()
+        val confirmations = AiActionConfirmationService()
+        confirmations.startRequest("request-1")
+        val tools = PlannerToolSet(protectedService(calls), actionConfirmationService = confirmations)
+        val question = buildAgentPrompt(
+            history = listOf(
+                AgentConversationMessage(EmbeddedAiMessageRole.USER, "把 Jita 到 Amarr 显示在地图上。"),
+                AgentConversationMessage(EmbeddedAiMessageRole.ASSISTANT, "已在地图上显示 Jita → Amarr 路线。"),
+            ),
+            currentUserMessage = "把它发送给 Capsuleer One。",
+        )
+        val executor = getMockExecutor {
+            mockLLMToolCall(tools.getActiveMissions, GetActiveMissionsTool.Args()) onRequestEquals question
+            mockLLMToolCall(tools.getMission, GetMissionTool.Args(MISSION_ID.value)) onRequestContains "\"routeCount\":1"
+            mockLLMToolCall(tools.listEveNavigationTargets, ListEveNavigationTargetsTool.Args()) onRequestContains ROUTE_ID.value
+            mockLLMToolCall(
+                tools.sendMissionNavigationToEve,
+                SendMissionNavigationToEveTool.Args(MISSION_ID.value, ROUTE_ID.value, "char-1"),
+            ) onRequestContains "Capsuleer One"
+            mockLLMAnswer("发送已取消。") onRequestContains "\"status\":\"cancelled\""
+        }
+        try {
+            val result = async { createKoogAgent(tools, executor).run(question) }
+            runCurrent()
+
+            assertTrue(calls.sentNavigation.isEmpty())
+            val pending = checkNotNull(confirmations.pending.value)
+            assertEquals(SendMissionNavigationToEveTool.NAME, pending.toolName)
+            assertEquals(PlannerToolRisk.EXTERNAL_ACTION, pending.risk)
+            assertTrue(confirmations.deny(pending.actionId))
+            assertEquals("发送已取消。", result.await())
+            assertTrue(calls.sentNavigation.isEmpty())
+        } finally {
+            executor.close()
+            confirmations.finishRequest("request-1")
+        }
+    }
+
+    @Test
+    fun `multi-turn route reference removes the exact route and never clears the Mission`() = runTest {
+        val calls = ProtectedCalls()
+        val tools = PlannerToolSet(protectedService(calls))
+        val question = buildAgentPrompt(
+            history = listOf(
+                AgentConversationMessage(EmbeddedAiMessageRole.USER, "显示 Jita 到 Amarr。"),
+                AgentConversationMessage(EmbeddedAiMessageRole.ASSISTANT, "已显示 Jita → Amarr 路线。"),
+            ),
+            currentUserMessage = "把刚才那条删掉。",
+        )
+        val executor = getMockExecutor {
+            mockLLMToolCall(tools.getActiveMissions, GetActiveMissionsTool.Args()) onRequestEquals question
+            mockLLMToolCall(tools.getMission, GetMissionTool.Args(MISSION_ID.value)) onRequestContains "\"routeCount\":1"
+            mockLLMToolCall(
+                tools.removeMissionRoute,
+                RemoveMissionRouteTool.Args(MISSION_ID.value, ROUTE_ID.value),
+            ) onRequestContains ROUTE_ID.value
+            mockLLMAnswer("已删除刚才的路线。") onRequestContains "\"success\":true"
+        }
+        try {
+            val answer = createKoogAgent(tools, executor).run(question)
+
+            assertEquals("已删除刚才的路线。", answer)
+            assertEquals(1, calls.removedRoutes.size)
+            assertEquals(ROUTE_ID, calls.removedRoutes.single().routeId)
+        } finally {
+            executor.close()
+        }
     }
 
     @Test
@@ -179,6 +276,8 @@ class ProtectedActionToolsTest {
 
         assertTrue(prompt.contains("already confirmed"))
         assertTrue(prompt.contains("Only the Planner confirmation UI can approve"))
+        assertTrue(prompt.contains("must call send_mission_navigation_to_eve"))
+        assertTrue(prompt.contains("never merely promise that a confirmation dialog will appear"))
         assertTrue(prompt.contains("Never claim a denied, cancelled, rejected, or failed action succeeded"))
         assertFalse(prompt.contains("get_normal_route_graph"))
     }
@@ -188,6 +287,7 @@ private data class ProtectedCalls(
     val savedMarkers: MutableList<CreateSavedMarkerCommand> = mutableListOf(),
     val deletedViews: MutableList<DeleteViewCommand> = mutableListOf(),
     val sentNavigation: MutableList<SendMissionNavigationToEveCommand> = mutableListOf(),
+    val removedRoutes: MutableList<RemoveMissionRouteCommand> = mutableListOf(),
 )
 
 private fun protectedService(calls: ProtectedCalls): MapControlService = Proxy.newProxyInstance(
@@ -199,7 +299,33 @@ private fun protectedService(calls: ProtectedCalls): MapControlService = Proxy.n
             val request = arguments!!.first() as GetSystemInfoRequest
             ControlResult.Success(
                 request.requestId,
-                SystemInfoDto(JITA, "The Forge", "Kimotoro", 1.0, 2.0, 3.0, 7),
+                SystemInfoDto(
+                    if (request.systemId == JITA.systemId) JITA else AMARR,
+                    if (request.systemId == JITA.systemId) "The Forge" else "Domain",
+                    if (request.systemId == JITA.systemId) "Kimotoro" else "Throne Worlds",
+                    1.0,
+                    2.0,
+                    3.0,
+                    7,
+                ),
+            )
+        }
+        "getActiveMissions" -> {
+            val request = arguments!!.first() as GetActiveMissionsRequest
+            ControlResult.Success(
+                request.requestId,
+                listOf(
+                    MissionSummaryDto(
+                        missionId = MISSION_ID,
+                        title = "Jita to Amarr",
+                        createdAtEpochMillis = 0,
+                        revision = 2,
+                        routeCount = 1,
+                        jumpRangeCount = 0,
+                        markerCount = 0,
+                        referencedSystemCount = 2,
+                    ),
+                ),
             )
         }
         "createSavedMarker" -> {
@@ -258,6 +384,15 @@ private fun protectedService(calls: ProtectedCalls): MapControlService = Proxy.n
                     NavigationActionExecutionStatus.SUCCEEDED,
                     "Navigation sent.",
                 ),
+            )
+        }
+        "removeMissionRoute" -> {
+            val command = arguments!!.first() as RemoveMissionRouteCommand
+            calls.removedRoutes += command
+            ControlResult.Success(
+                command.requestId,
+                MissionMutationReceipt(command.missionId),
+                missionRevision = 3,
             )
         }
         "toString" -> "ProtectedActionMapControlService"

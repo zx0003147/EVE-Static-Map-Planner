@@ -255,6 +255,14 @@ class SendMissionNavigationToEveTool(
         }
         val targetSystemIds = route.navigationIntent.waypointSystemIds +
             listOfNotNull(route.navigationIntent.destinationSystemId)
+        val routeLabel = route.systemIds
+            .let { systemIds -> listOfNotNull(systemIds.firstOrNull(), systemIds.lastOrNull()).distinct() }
+            .map { systemId ->
+                requirePlannerValue(query = {
+                    mapControlService.getSystemInfo(GetSystemInfoRequest(embeddedAiRequestId(), systemId))
+                }).system.name
+            }
+            .joinToString(" → ")
         val normalizedArguments = buildJsonObject {
             put("missionId", args.missionId)
             put("routeId", args.routeId)
@@ -268,12 +276,12 @@ class SendMissionNavigationToEveTool(
                 action = "Send navigation to EVE",
                 target = target.label,
                 details = listOf(
-                    AiActionDetail("Character", "${target.label} (${target.characterId})"),
+                    AiActionDetail("Character", target.label),
                     AiActionDetail("Mission", mission.title),
-                    AiActionDetail("Route", route.systemIds.joinToString(" → ")),
+                    AiActionDetail("Route", routeLabel),
                     AiActionDetail("Target count", targetSystemIds.size.toString()),
                 ),
-                effect = "This sends navigation targets outside the Planner to the selected EVE character.",
+                effect = "This will send navigation data to EVE Online.",
             ),
         ) { idempotencyKey ->
             executePlannerQuery(NAME, diagnostics, query = {
