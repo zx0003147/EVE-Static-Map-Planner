@@ -3,16 +3,19 @@ package dev.evestaticmapplanner.embeddedai
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.singleRunStrategy
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.http.client.java.JavaKoogHttpClient
-import ai.koog.prompt.executor.clients.openrouter.OpenRouterLLMClient
-import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.executor.model.PromptExecutor
-import ai.koog.prompt.llm.LLMCapability
-import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import dev.evestaticmapplanner.control.MapControlService
+import java.util.concurrent.atomic.AtomicBoolean
+
+data class EmbeddedAiRuntimeInfo(
+    val providerType: AiProviderType,
+    val modelId: String,
+    val credentialSource: AiCredentialSource,
+)
 
 interface EmbeddedAiAgent {
+    val runtimeInfo: EmbeddedAiRuntimeInfo? get() = null
     suspend fun run(prompt: String): String
     suspend fun close()
 }
@@ -21,55 +24,89 @@ fun interface EmbeddedAiAgentFactory {
     fun create(): EmbeddedAiAgent
 }
 
-class OpenRouterKoogAgentFactory(
+class ConfiguredKoogAgentFactory(
     private val mapControlService: MapControlService,
-    private val environment: (String) -> String? = System::getenv,
+    private val configSource: AiProviderConfigSource,
+    private val credentialResolver: AiCredentialResolver,
+    private val clientFactory: AiClientFactory = DefaultAiClientFactory(),
     private val diagnostics: (String) -> Unit = {},
 ) : EmbeddedAiAgentFactory {
     override fun create(): EmbeddedAiAgent {
-        val apiKey = environment(OPENROUTER_API_KEY)?.trim().orEmpty()
-        if (apiKey.isEmpty()) throw MissingOpenRouterApiKeyException()
-
-        diagnostics(PROVIDER_DIAGNOSTIC)
-        diagnostics(MODEL_DIAGNOSTIC)
-        val client = OpenRouterLLMClient(
-            apiKey = apiKey,
-            httpClientFactory = JavaKoogHttpClient.Factory(),
+        val config = configSource.current() ?: throw AiProviderException(
+            AiProviderErrorCode.NO_PROVIDER_CONFIGURED,
+            "AI provider is not configured.",
         )
-        val executor = MultiLLMPromptExecutor(client)
-        val koogAgent = createKoogAgent(PlannerToolSet(mapControlService, diagnostics), executor)
-        return object : EmbeddedAiAgent {
-            override suspend fun run(prompt: String): String = koogAgent.run(prompt)
-
-            override suspend fun close() {
-                executor.close()
-            }
+        val credential = credentialResolver.resolve(config) ?: throw AiProviderException(
+            AiProviderErrorCode.NO_CREDENTIAL,
+            "AI API Key is not configured.",
+        )
+        val source = credential.source
+        val managedClient = try {
+            credential.useSecret { clientFactory.create(config, it) }
+        } finally {
+            credential.close()
         }
+        val koogAgent = try {
+            createKoogAgent(
+                tools = PlannerToolSet(mapControlService, diagnostics),
+                promptExecutor = managedClient.promptExecutor,
+                model = managedClient.model,
+                temperature = config.temperature,
+            )
+        } catch (failure: Throwable) {
+            managedClient.close()
+            throw failure
+        }
+        diagnostics("Provider: ${config.providerType.displayName}")
+        diagnostics("Model: ${config.modelId}")
+        diagnostics("Credential: ${source.displayName}")
+        return ManagedKoogEmbeddedAiAgent(
+            koogAgent = koogAgent,
+            managedClient = managedClient,
+            runtimeInfo = EmbeddedAiRuntimeInfo(config.providerType, config.modelId, source),
+        )
     }
+}
+
+private class ManagedKoogEmbeddedAiAgent(
+    private val koogAgent: AIAgent<String, String>,
+    private val managedClient: ManagedAiClient,
+    override val runtimeInfo: EmbeddedAiRuntimeInfo,
+) : EmbeddedAiAgent {
+    private val closed = AtomicBoolean()
+
+    override suspend fun run(prompt: String): String = koogAgent.run(prompt)
+
+    override suspend fun close() {
+        if (closed.compareAndSet(false, true)) managedClient.close()
+    }
+}
+
+/** Compatibility adapter retained for the Phase 2 environment-only smoke test. */
+class OpenRouterKoogAgentFactory(
+    mapControlService: MapControlService,
+    environment: (String) -> String? = System::getenv,
+    diagnostics: (String) -> Unit = {},
+) : EmbeddedAiAgentFactory {
+    private val delegate = ConfiguredKoogAgentFactory(
+        mapControlService = mapControlService,
+        configSource = AiProviderConfigSource { AiProviderConfig.DefaultOpenRouter },
+        credentialResolver = AiCredentialResolver(
+            secureStore = UnavailableAiCredentialStore,
+            sessionStore = UnavailableAiCredentialStore,
+            environment = environment,
+        ),
+        diagnostics = diagnostics,
+    )
+
+    override fun create(): EmbeddedAiAgent = delegate.create()
 
     companion object {
         const val OPENROUTER_API_KEY = "OPENROUTER_API_KEY"
-        const val MODEL_ID = "deepseek/deepseek-v4-flash-0731"
+        const val MODEL_ID = AiProviderConfig.DEFAULT_OPENROUTER_MODEL
         const val PROVIDER_DIAGNOSTIC = "Provider: OpenRouter"
         const val MODEL_DIAGNOSTIC = "Model: $MODEL_ID"
-
-        internal val SYSTEM_PROMPT = """
-            You are the embedded assistant for EVE Static Map Planner.
-            Planner facts are available only from the registered Planner tools. Treat tool results as authoritative.
-            Never guess a solar-system ID, name, location, route, jump count, edge type, capital distance, or optimized order.
-
-            Use search_system first whenever the user supplies a solar-system name or partial name instead of a canonical numeric systemId.
-            If search_system returns multiple plausible systems and the user's context does not select exactly one, ask the user to clarify.
-            Use get_system_info for information about one canonical numeric systemId.
-            Use calculate_normal_route when the user already specifies the visit order, including ordered waypoints.
-            Use calculate_capital_route for capital navigation and pass the user's effectiveRangeLy. Never infer a missing jump range.
-            Use optimize_multi_point_route when the user supplies an unordered target set and asks Planner to choose the visit order.
-            Never calculate routes, distances, BFS paths, or target ordering yourself.
-
-            Respect the tool parameters and Planner defaults. If a required option is unknown, ask the user instead of guessing.
-            Keep answers concise and state only facts supported by tool results. Do not add general EVE background or map facts from model knowledge.
-            Do not derive labels or classifications from numeric fields; for example, report securityStatus as returned without labeling it high-sec, low-sec, or null-sec.
-        """.trimIndent()
+        internal val SYSTEM_PROMPT = PLANNER_SYSTEM_PROMPT
     }
 }
 
@@ -95,9 +132,11 @@ internal class PlannerToolSet(
 internal fun createKoogAgent(
     tools: PlannerToolSet,
     promptExecutor: PromptExecutor,
+    model: LLModel = DEFAULT_OPENROUTER_MODEL,
+    temperature: Double? = AiProviderConfig.DEFAULT_TEMPERATURE,
 ) = AIAgent(
     promptExecutor = promptExecutor,
-    llmModel = OPENROUTER_MODEL,
+    llmModel = model,
     toolRegistry = ToolRegistry {
         tool(tools.getSystemInfo)
         tool(tools.searchSystem)
@@ -105,21 +144,29 @@ internal fun createKoogAgent(
         tool(tools.calculateCapitalRoute)
         tool(tools.optimizeMultiPointRoute)
     },
-    systemPrompt = OpenRouterKoogAgentFactory.SYSTEM_PROMPT,
+    systemPrompt = PLANNER_SYSTEM_PROMPT,
+    temperature = temperature,
     strategy = singleRunStrategy(),
     maxIterations = 24,
 )
 
-internal val OPENROUTER_MODEL = LLModel(
-    provider = LLMProvider.OpenRouter,
-    id = OpenRouterKoogAgentFactory.MODEL_ID,
-    capabilities = listOf(
-        LLMCapability.Completion,
-        LLMCapability.Tools,
-        LLMCapability.ToolChoice,
-    ),
-)
+internal val DEFAULT_OPENROUTER_MODEL = AiProviderConfig.DefaultOpenRouter.toKoogModel()
+internal val OPENROUTER_MODEL = DEFAULT_OPENROUTER_MODEL
 
-class MissingOpenRouterApiKeyException : IllegalStateException(
-    "OPENROUTER_API_KEY is not configured",
-)
+private val PLANNER_SYSTEM_PROMPT = """
+    You are the embedded assistant for EVE Static Map Planner.
+    Planner facts are available only from the registered Planner tools. Treat tool results as authoritative.
+    Never guess a solar-system ID, name, location, route, jump count, edge type, capital distance, or optimized order.
+
+    Use search_system first whenever the user supplies a solar-system name or partial name instead of a canonical numeric systemId.
+    If search_system returns multiple plausible systems and the user's context does not select exactly one, ask the user to clarify.
+    Use get_system_info for information about one canonical numeric systemId.
+    Use calculate_normal_route when the user already specifies the visit order, including ordered waypoints.
+    Use calculate_capital_route for capital navigation and pass the user's effectiveRangeLy. Never infer a missing jump range.
+    Use optimize_multi_point_route when the user supplies an unordered target set and asks Planner to choose the visit order.
+    Never calculate routes, distances, BFS paths, or target ordering yourself.
+
+    Respect the tool parameters and Planner defaults. If a required option is unknown, ask the user instead of guessing.
+    Keep answers concise and state only facts supported by tool results. Do not add general EVE background or map facts from model knowledge.
+    Do not derive labels or classifications from numeric fields; for example, report securityStatus as returned without labeling it high-sec, low-sec, or null-sec.
+""".trimIndent()

@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmbeddedAiControllerTest {
     @Test
-    fun `production model is fixed to OpenRouter DeepSeek V4 Flash 0731`() {
+    fun `default OpenRouter model remains DeepSeek V4 Flash 0731`() {
         assertEquals(LLMProvider.OpenRouter, OPENROUTER_MODEL.provider)
         assertEquals("deepseek/deepseek-v4-flash-0731", OPENROUTER_MODEL.id)
     }
@@ -90,7 +90,7 @@ class EmbeddedAiControllerTest {
 
         assertEquals(1, environmentReads)
         assertEquals(
-            "OPENROUTER_API_KEY is not set. Set it before using the embedded assistant.",
+            "AI API Key is not configured.",
             controller.state.value.errorMessage,
         )
         controller.shutdown()
@@ -105,7 +105,7 @@ class EmbeddedAiControllerTest {
         provider.send("Tell me about system 30000142")
         advanceUntilIdle()
         val providerMessage = assertNotNull(provider.state.value.errorMessage)
-        assertTrue(providerMessage.startsWith("AI request failed (IOException)"))
+        assertEquals("The provider request failed.", providerMessage)
         assertFalse(providerMessage.contains("secret transport details"))
         provider.shutdown()
 
@@ -143,6 +143,39 @@ class EmbeddedAiControllerTest {
         controller.shutdown()
 
         assertEquals(1, closeCount)
+    }
+
+    @Test
+    fun `configuration change keeps current request then closes old runtime before next request`() = runTest {
+        val firstGate = CompletableDeferred<String>()
+        var createCount = 0
+        var closeCount = 0
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory {
+                createCount++
+                val instance = createCount
+                object : EmbeddedAiAgent {
+                    override suspend fun run(prompt: String): String = if (instance == 1) firstGate.await() else "new"
+                    override suspend fun close() { closeCount++ }
+                }
+            },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("old request")
+        runCurrent()
+        controller.configurationChanged()
+        firstGate.complete("old")
+        advanceUntilIdle()
+
+        assertEquals("old", controller.state.value.response)
+        assertEquals(1, closeCount)
+        controller.send("new request")
+        advanceUntilIdle()
+        assertEquals("new", controller.state.value.response)
+        assertEquals(2, createCount)
+        controller.shutdown()
+        assertEquals(2, closeCount)
     }
 }
 

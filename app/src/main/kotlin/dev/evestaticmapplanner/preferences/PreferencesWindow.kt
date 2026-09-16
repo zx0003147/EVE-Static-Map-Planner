@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -33,6 +34,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.control.AiControlStatus
+import dev.evestaticmapplanner.ai.AiProviderSettingsUiState
+import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
+import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
+import dev.evestaticmapplanner.embeddedai.AiCredentialRef
+import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.AiProviderConfig
+import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.featurepack.FeaturePackInstallationState
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerItem
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
@@ -71,6 +79,12 @@ internal fun PreferencesWindow(
     currentZoom: Double?,
     preferences: AppPreferences,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
+    aiProviderSettingsState: AiProviderSettingsUiState = AiProviderSettingsUiState(),
+    initialCategory: PreferencesCategory = PreferencesCategory.MAP_DISPLAY,
+    onAiProviderViewed: (AiProviderType) -> Unit = {},
+    onAiProviderTest: (AiProviderConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onAiProviderSave: (AiProviderConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onAiCredentialDelete: (AiProviderType) -> Unit = {},
     aiControlStatus: AiControlStatus,
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
@@ -101,7 +115,7 @@ internal fun PreferencesWindow(
     onResetAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var selectedCategory by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
+    var selectedCategory by remember(initialCategory) { mutableStateOf(initialCategory) }
     Window(
         onCloseRequest = onDismiss,
         title = "Preferences",
@@ -145,6 +159,14 @@ internal fun PreferencesWindow(
                                 onAiControlChange,
                                 onAiSavedMarkerAccessChange,
                                 onResetAiControl,
+                            )
+                            PreferencesCategory.AI_ASSISTANT -> AiProviderPreferencesContent(
+                                savedConfig = preferences.aiProvider,
+                                state = aiProviderSettingsState,
+                                onProviderViewed = onAiProviderViewed,
+                                onTest = onAiProviderTest,
+                                onSave = onAiProviderSave,
+                                onDeleteCredential = onAiCredentialDelete,
                             )
                             PreferencesCategory.FEATURE_PACKS -> FeaturePacksPreferencesContent(
                                 featurePackManagerViewModel,
@@ -194,11 +216,210 @@ internal fun PreferencesWindow(
 
 internal enum class PreferencesCategory(val label: String) {
     MAP_DISPLAY("Map Display"),
+    AI_ASSISTANT("AI Assistant"),
     AI_CONTROL("AI Control"),
     FEATURE_PACKS("Feature Packs"),
     OVERLAYS("Overlays"),
     WEB_PACK("Web Pack"),
     SHARED_MAP("Shared Map"),
+}
+
+@Composable
+internal fun AiProviderPreferencesContent(
+    savedConfig: AiProviderConfig?,
+    state: AiProviderSettingsUiState,
+    onProviderViewed: (AiProviderType) -> Unit,
+    onTest: (AiProviderConfig, SecretValue?) -> Unit,
+    onSave: (AiProviderConfig, SecretValue?) -> Unit,
+    onDeleteCredential: (AiProviderType) -> Unit,
+) {
+    val initial = savedConfig ?: AiProviderConfig.DefaultOpenRouter
+    var providerType by remember(savedConfig) { mutableStateOf(initial.providerType) }
+    var baseUrl by remember(savedConfig) { mutableStateOf(initial.baseUrl.orEmpty()) }
+    var modelId by remember(savedConfig) { mutableStateOf(initial.modelId) }
+    var timeout by remember(savedConfig) { mutableStateOf(initial.requestTimeoutSeconds.toString()) }
+    var temperature by remember(savedConfig) { mutableStateOf(initial.temperature?.toString().orEmpty()) }
+    var apiKeyDraft by remember(savedConfig) { mutableStateOf("") }
+    var providerMenuExpanded by remember { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
+    val busy = state.isSaving || state.isTesting
+
+    LaunchedEffect(providerType) { onProviderViewed(providerType) }
+
+    fun switchProvider(next: AiProviderType) {
+        providerType = next
+        apiKeyDraft = ""
+        validationError = null
+        when (next) {
+            AiProviderType.OPENROUTER -> {
+                baseUrl = ""
+                if (modelId.isBlank() || savedConfig?.providerType != next) {
+                    modelId = AiProviderConfig.DEFAULT_OPENROUTER_MODEL
+                }
+            }
+            AiProviderType.OPENAI_COMPATIBLE -> {
+                if (savedConfig?.providerType != next) {
+                    baseUrl = ""
+                    modelId = ""
+                }
+            }
+        }
+    }
+
+    fun buildConfig(): AiProviderConfig? = runCatching {
+        AiProviderConfig.normalized(
+            providerType = providerType,
+            baseUrl = baseUrl,
+            credentialRef = AiCredentialRef.forProvider(providerType),
+            modelId = modelId,
+            temperature = temperature.trim().takeIf(String::isNotEmpty)?.toDouble()
+                ?: throw IllegalArgumentException("Temperature is required"),
+            requestTimeoutSeconds = timeout.trim().toInt(),
+        )
+    }.fold(
+        onSuccess = {
+            validationError = null
+            it
+        },
+        onFailure = {
+            validationError = it.message ?: "Provider settings are invalid."
+            null
+        },
+    )
+
+    fun draftSecret(clear: Boolean): SecretValue? {
+        val normalized = apiKeyDraft.trim()
+        if (clear) apiKeyDraft = ""
+        return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
+    }
+
+    Text("AI Provider", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "The provider is initialized only when you test the connection or send an AI message.",
+        color = EveColors.SecondaryText,
+    )
+    Text("Provider", style = MaterialTheme.typography.titleSmall)
+    Box {
+        TextButton(onClick = { providerMenuExpanded = true }, enabled = !busy) {
+            Text(providerType.displayName)
+        }
+        DropdownMenu(
+            expanded = providerMenuExpanded,
+            onDismissRequest = { providerMenuExpanded = false },
+        ) {
+            AiProviderType.entries.forEach { provider ->
+                DropdownMenuItem(
+                    text = { Text(provider.displayName) },
+                    onClick = {
+                        providerMenuExpanded = false
+                        switchProvider(provider)
+                    },
+                )
+            }
+        }
+    }
+    if (providerType == AiProviderType.OPENROUTER) {
+        Text("Base URL: https://openrouter.ai/api/v1", color = EveColors.SecondaryText)
+    } else {
+        OutlinedTextField(
+            value = baseUrl,
+            onValueChange = { baseUrl = it },
+            label = { Text("Base URL") },
+            placeholder = { Text("https://example.com/v1") },
+            singleLine = true,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    OutlinedTextField(
+        value = modelId,
+        onValueChange = { modelId = it },
+        label = { Text("Model") },
+        placeholder = { Text("provider/model-name") },
+        singleLine = true,
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = apiKeyDraft,
+        onValueChange = { apiKeyDraft = it },
+        label = { Text(if (state.credentialSource == null) "API Key" else "Replace API Key") },
+        placeholder = { Text(if (state.credentialSource == null) "Enter API Key" else "Leave blank to keep current Key") },
+        singleLine = true,
+        enabled = !busy,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        when (state.credentialSource) {
+            AiCredentialSource.SECURE_STORAGE -> "API Key: Saved securely"
+            AiCredentialSource.SESSION_ONLY -> "API Key: This session only — Key will not be saved"
+            AiCredentialSource.ENVIRONMENT -> "Credential: Environment variable"
+            null -> "API Key: Not configured"
+        },
+        color = EveColors.SecondaryText,
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = timeout,
+            onValueChange = { timeout = it },
+            label = { Text("Timeout (seconds)") },
+            singleLine = true,
+            enabled = !busy,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedTextField(
+            value = temperature,
+            onValueChange = { temperature = it },
+            label = { Text("Temperature") },
+            singleLine = true,
+            enabled = !busy,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.weight(1f),
+        )
+    }
+    validationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(
+            onClick = { buildConfig()?.let { onTest(it, draftSecret(clear = false)) } },
+            enabled = !busy,
+        ) { Text("Test Connection") }
+        TextButton(
+            onClick = { buildConfig()?.let { onSave(it, draftSecret(clear = true)) } },
+            enabled = !busy,
+        ) { Text("Save") }
+        TextButton(
+            onClick = { onDeleteCredential(providerType) },
+            enabled = !busy && state.credentialSource in setOf(
+                AiCredentialSource.SECURE_STORAGE,
+                AiCredentialSource.SESSION_ONLY,
+            ),
+        ) { Text("Delete API Key") }
+        if (busy) CircularProgressIndicator()
+    }
+    state.testResult?.let { result ->
+        HorizontalDivider()
+        Text("Connection Test", style = MaterialTheme.typography.titleSmall)
+        AiConnectionCheckRow(result.connection)
+        AiConnectionCheckRow(result.model)
+        AiConnectionCheckRow(result.toolCalling)
+    }
+    state.message?.let { Text(it, color = EveColors.SecondaryText) }
+    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+}
+
+@Composable
+private fun AiConnectionCheckRow(check: AiConnectionCheck) {
+    val prefix = when (check.status) {
+        AiConnectionCheckStatus.PASSED -> "✓"
+        AiConnectionCheckStatus.FAILED -> "✗"
+        AiConnectionCheckStatus.NOT_RUN -> "–"
+    }
+    Text(
+        "$prefix ${check.message}",
+        color = if (check.status == AiConnectionCheckStatus.FAILED) MaterialTheme.colorScheme.error else EveColors.SecondaryText,
+    )
 }
 
 internal val PREFERENCES_CONTENT_START_GUTTER = 24.dp

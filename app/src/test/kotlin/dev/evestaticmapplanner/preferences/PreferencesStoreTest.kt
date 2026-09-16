@@ -1,5 +1,8 @@
 package dev.evestaticmapplanner.preferences
 
+import dev.evestaticmapplanner.embeddedai.AiCredentialRef
+import dev.evestaticmapplanner.embeddedai.AiProviderConfig
+import dev.evestaticmapplanner.embeddedai.AiProviderType
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.name
@@ -8,12 +11,51 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapPreferences
 import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
 
 class PreferencesStoreTest {
+    @Test
+    fun `AI provider settings round trip without writing an API Key`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val secretMarker = "SECRET_SHOULD_NEVER_APPEAR_12345"
+        val config = AiProviderConfig.normalized(
+            providerType = AiProviderType.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.example.com/v1",
+            credentialRef = AiCredentialRef("openai-compatible"),
+            modelId = "example-model",
+            temperature = 0.35,
+            requestTimeoutSeconds = 42,
+        )
+
+        PropertiesPreferencesStore(path).save(AppPreferences(aiProvider = config))
+
+        val text = Files.readString(path)
+        assertTrue(text.contains("aiProvider.type=OPENAI_COMPATIBLE"))
+        assertTrue(text.contains("aiProvider.credentialRef=openai-compatible"))
+        assertFalse(text.contains("apiKey", ignoreCase = true))
+        assertFalse(text.contains(secretMarker))
+        assertEquals(config, PropertiesPreferencesStore(path).load().aiProvider)
+    }
+
+    @Test
+    fun `version one settings migrate without discarding existing preferences`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(
+            path,
+            "settings.version=1\nmapDisplay.systemZoomThreshold=9.0\nmarker.showMarkers=false\n",
+        )
+
+        val loaded = PropertiesPreferencesStore(path).load()
+
+        assertEquals(9.0, loaded.mapDisplay.systemZoomThreshold)
+        assertFalse(loaded.marker.showMarkers)
+        assertNull(loaded.aiProvider)
+    }
+
     @Test
     fun `mini-map settings round trip including negative monitor coordinates`() {
         val root = createTempDirectory("mini-map-preferences")
@@ -105,7 +147,7 @@ class PreferencesStoreTest {
     }
 
     @Test
-    fun `save writes version one and a new store reloads all values`() = withTemporaryDirectory { root ->
+    fun `save writes version two and a new store reloads all values`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val expected = AppPreferences(
             mapDisplay = MapDisplayPreferences(
@@ -143,7 +185,7 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=1" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=2" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
@@ -378,7 +420,7 @@ class PreferencesStoreTest {
     @Test
     fun `unsupported or missing settings version safely uses defaults`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
-        Files.writeString(path, "settings.version=2\nmapDisplay.systemZoomThreshold=12\n")
+        Files.writeString(path, "settings.version=99\nmapDisplay.systemZoomThreshold=12\n")
         assertEquals(AppPreferences.Defaults, PropertiesPreferencesStore(path).load())
 
         Files.writeString(path, "mapDisplay.systemZoomThreshold=12\n")

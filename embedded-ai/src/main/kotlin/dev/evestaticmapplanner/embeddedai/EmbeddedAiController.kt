@@ -22,6 +22,7 @@ data class EmbeddedAiUiState(
     val response: String = "",
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
+    val runtimeInfo: EmbeddedAiRuntimeInfo? = null,
 )
 
 class EmbeddedAiController(
@@ -33,9 +34,11 @@ class EmbeddedAiController(
     private val scope = CoroutineScope(supervisor + dispatcher)
     private val agentMutation = Mutex()
     private val generation = AtomicLong()
+    private val configurationRevision = AtomicLong()
     private val closed = AtomicBoolean()
     private val mutableState = MutableStateFlow(EmbeddedAiUiState())
     private var agent: EmbeddedAiAgent? = null
+    private var agentRevision: Long = -1
     private var request: Job? = null
 
     val state: StateFlow<EmbeddedAiUiState> = mutableState.asStateFlow()
@@ -48,13 +51,21 @@ class EmbeddedAiController(
         mutableState.value = EmbeddedAiUiState(isLoading = true)
         request = scope.launch {
             try {
+                val currentRevision = configurationRevision.get()
                 val currentAgent = agentMutation.withLock {
-                    agent ?: agentFactory.create().also { agent = it }
+                    if (agent != null && agentRevision != currentRevision) {
+                        agent?.close()
+                        agent = null
+                    }
+                    agent ?: agentFactory.create().also {
+                        agent = it
+                        agentRevision = currentRevision
+                    }
                 }
                 val response = currentAgent.run(normalized)
                 withContext(uiDispatcher) {
                     updateIfCurrent(requestGeneration) {
-                        EmbeddedAiUiState(response = response)
+                        EmbeddedAiUiState(response = response, runtimeInfo = currentAgent.runtimeInfo)
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -62,11 +73,20 @@ class EmbeddedAiController(
             } catch (failure: Throwable) {
                 withContext(uiDispatcher) {
                     updateIfCurrent(requestGeneration) {
-                        EmbeddedAiUiState(errorMessage = failure.safeUiMessage())
+                        EmbeddedAiUiState(errorMessage = failure.safeUiMessage(), runtimeInfo = agent?.runtimeInfo)
                     }
                 }
+            } finally {
+                closeStaleAgent()
             }
         }
+    }
+
+    /** Current work finishes on its existing provider; the next request lazily creates a fresh runtime. */
+    fun configurationChanged() {
+        if (closed.get()) return
+        configurationRevision.incrementAndGet()
+        if (request?.isActive != true) scope.launch { closeStaleAgent() }
     }
 
     fun cancel() {
@@ -87,6 +107,18 @@ class EmbeddedAiController(
         agentMutation.withLock {
             agent?.close()
             agent = null
+            agentRevision = -1
+        }
+    }
+
+    private suspend fun closeStaleAgent() {
+        if (agentRevision == configurationRevision.get()) return
+        agentMutation.withLock {
+            if (agentRevision != configurationRevision.get()) {
+                agent?.close()
+                agent = null
+                agentRevision = -1
+            }
         }
     }
 
@@ -99,8 +131,7 @@ class EmbeddedAiController(
 }
 
 private fun Throwable.safeUiMessage(): String = when (this) {
-    is MissingOpenRouterApiKeyException ->
-        "OPENROUTER_API_KEY is not set. Set it before using the embedded assistant."
+    is AiProviderException -> safeMessage
     is EmbeddedAiToolException -> "Planner tool failed: $message"
-    else -> "AI request failed (${this::class.simpleName ?: "unknown error"}). Check network access and provider settings."
+    else -> toSafeProviderException().safeMessage
 }

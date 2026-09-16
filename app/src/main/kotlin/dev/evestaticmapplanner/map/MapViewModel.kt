@@ -20,6 +20,7 @@ import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.preferences.AiControlPreferences
+import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.preferences.DefaultPreferencesStore
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
@@ -363,6 +364,20 @@ class MapViewModel(
             if (saved.isSuccess) {
                 mutableState.update { current ->
                     current.copy(appPreferences = current.appPreferences.copy(aiControl = preferences))
+                }
+            }
+            saved
+        }
+    }
+
+    suspend fun updateAiProviderConfig(config: AiProviderConfig?): Result<Unit> = withContext(NonCancellable) {
+        preferencesMutation.withLock {
+            settingsSaveJob?.cancel()
+            val next = mutableState.value.appPreferences.copy(aiProvider = config)
+            val saved = withContext(ioDispatcher) { runCatching { preferencesStore.save(next) } }
+            if (saved.isSuccess) {
+                mutableState.update { current ->
+                    current.copy(appPreferences = current.appPreferences.copy(aiProvider = config))
                 }
             }
             saved

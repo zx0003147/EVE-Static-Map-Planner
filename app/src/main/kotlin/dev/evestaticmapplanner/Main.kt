@@ -27,6 +27,9 @@ import androidx.compose.ui.window.rememberWindowState
 import com.sun.jna.Platform
 import java.awt.EventQueue
 import dev.evestaticmapplanner.ai.EmbeddedAiAssistantWindow
+import dev.evestaticmapplanner.ai.AiAssistantProviderStatus
+import dev.evestaticmapplanner.ai.AiProviderSettingsController
+import dev.evestaticmapplanner.ai.WindowsDpapiAiCredentialStore
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
@@ -57,7 +60,14 @@ import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
 import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
-import dev.evestaticmapplanner.embeddedai.OpenRouterKoogAgentFactory
+import dev.evestaticmapplanner.embeddedai.AiCredentialResolver
+import dev.evestaticmapplanner.embeddedai.AiProviderConfig
+import dev.evestaticmapplanner.embeddedai.ConfiguredKoogAgentFactory
+import dev.evestaticmapplanner.embeddedai.DefaultAiClientFactory
+import dev.evestaticmapplanner.embeddedai.InMemoryAiCredentialStore
+import dev.evestaticmapplanner.embeddedai.KoogAiConnectionTester
+import dev.evestaticmapplanner.embeddedai.SavedOrEnvironmentAiProviderConfigSource
+import dev.evestaticmapplanner.embeddedai.UnavailableAiCredentialStore
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
@@ -84,6 +94,7 @@ import dev.evestaticmapplanner.preferences.FeatureSettingsWindowState
 import dev.evestaticmapplanner.preferences.MarkerSettingsWindow
 import dev.evestaticmapplanner.preferences.MiniMapSettingsWindow
 import dev.evestaticmapplanner.preferences.PreferencesWindow
+import dev.evestaticmapplanner.preferences.PreferencesCategory
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
 import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
@@ -446,13 +457,52 @@ private fun FrameWindowScope.ReadyApplication(
             scope = controlServiceScope,
         )
     }
-    val embeddedAiController = remember(mapControlCoordinator) {
+    val aiSessionCredentialStore = remember(configuration) { InMemoryAiCredentialStore() }
+    val aiSecureCredentialStore = remember(configuration) {
+        if (Platform.isWindows()) {
+            WindowsDpapiAiCredentialStore(ApplicationDirectories.root())
+        } else {
+            UnavailableAiCredentialStore
+        }
+    }
+    val aiCredentialResolver = remember(configuration, aiSecureCredentialStore, aiSessionCredentialStore) {
+        AiCredentialResolver(aiSecureCredentialStore, aiSessionCredentialStore)
+    }
+    val aiClientFactory = remember(configuration) { DefaultAiClientFactory() }
+    val aiConfigSource = remember(configuration, mapViewModel) {
+        SavedOrEnvironmentAiProviderConfigSource(
+            savedConfig = { mapViewModel.state.value.appPreferences.aiProvider },
+        )
+    }
+    val embeddedAiController = remember(mapControlCoordinator, aiCredentialResolver, aiClientFactory, aiConfigSource) {
         EmbeddedAiController(
-            OpenRouterKoogAgentFactory(
-                mapControlCoordinator,
+            ConfiguredKoogAgentFactory(
+                mapControlService = mapControlCoordinator,
+                configSource = aiConfigSource,
+                credentialResolver = aiCredentialResolver,
+                clientFactory = aiClientFactory,
                 diagnostics = AppDiagnostics::info,
             ),
             uiDispatcher = Dispatchers.Main.immediate,
+        )
+    }
+    val aiProviderSettingsController = remember(
+        configuration,
+        aiSecureCredentialStore,
+        aiSessionCredentialStore,
+        aiCredentialResolver,
+        aiClientFactory,
+        mapViewModel,
+        embeddedAiController,
+    ) {
+        AiProviderSettingsController(
+            secureStore = aiSecureCredentialStore,
+            sessionStore = aiSessionCredentialStore,
+            credentialResolver = aiCredentialResolver,
+            connectionTester = KoogAiConnectionTester(aiClientFactory),
+            persistConfig = mapViewModel::updateAiProviderConfig,
+            onConfigurationChanged = embeddedAiController::configurationChanged,
+            diagnostics = AppDiagnostics::info,
         )
     }
     val controlLifecycle = remember(configuration, mapControlCoordinator) {
@@ -507,6 +557,8 @@ private fun FrameWindowScope.ReadyApplication(
         savedMarkerService,
         staticDataViewModel,
         embeddedAiController,
+        aiProviderSettingsController,
+        aiSessionCredentialStore,
         mapControlCoordinator,
         controlServiceScope,
     ) {
@@ -528,6 +580,8 @@ private fun FrameWindowScope.ReadyApplication(
                 markerViewModel::close,
                 savedMarkerService::close,
                 staticDataViewModel::close,
+                aiProviderSettingsController::close,
+                aiSessionCredentialStore::close,
             ),
             closeDiagnostics = AppDiagnostics::close,
             exitApplication = onExitApplication,
@@ -546,6 +600,7 @@ private fun FrameWindowScope.ReadyApplication(
     }
 
     val mapState by mapViewModel.state.collectAsState()
+    val aiProviderSettingsState by aiProviderSettingsController.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
     val miniMapHudState by miniMapHudController.state.collectAsState()
@@ -679,6 +734,7 @@ private fun FrameWindowScope.ReadyApplication(
     var showStaticData by remember { mutableStateOf(false) }
     var showEmbeddedAi by remember { mutableStateOf(false) }
     var showPreferences by remember { mutableStateOf(false) }
+    var preferencesInitialCategory by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
     var markerSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
     var miniMapSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
     var showMarkerManager by remember { mutableStateOf(false) }
@@ -734,7 +790,10 @@ private fun FrameWindowScope.ReadyApplication(
                             miniMapSettingsWindow = miniMapSettingsWindow.show()
                         }
                     },
-                    openPreferences = { showPreferences = true },
+                    openPreferences = {
+                        preferencesInitialCategory = PreferencesCategory.MAP_DISPLAY
+                        showPreferences = true
+                    },
                     openStaticData = { showStaticData = true },
                     openEmbeddedAi = { showEmbeddedAi = true },
                 ),
@@ -810,8 +869,18 @@ private fun FrameWindowScope.ReadyApplication(
         StaticDataManagerDialog(staticDataState, staticDataViewModel) { showStaticData = false }
     }
     if (showEmbeddedAi) {
+        val effectiveAiConfig = mapState.appPreferences.aiProvider ?: aiConfigSource.current()
         EmbeddedAiAssistantWindow(
             controller = embeddedAiController,
+            providerStatus = AiAssistantProviderStatus(
+                providerType = effectiveAiConfig?.providerType,
+                modelId = effectiveAiConfig?.modelId,
+                credentialSource = effectiveAiConfig?.let(aiCredentialResolver::source),
+            ),
+            onOpenSettings = {
+                preferencesInitialCategory = PreferencesCategory.AI_ASSISTANT
+                showPreferences = true
+            },
             onDismiss = { showEmbeddedAi = false },
         )
     }
@@ -820,6 +889,12 @@ private fun FrameWindowScope.ReadyApplication(
             currentZoom = mapState.viewport?.zoom,
             preferences = mapState.appPreferences,
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
+            aiProviderSettingsState = aiProviderSettingsState,
+            initialCategory = preferencesInitialCategory,
+            onAiProviderViewed = aiProviderSettingsController::refresh,
+            onAiProviderTest = aiProviderSettingsController::test,
+            onAiProviderSave = aiProviderSettingsController::save,
+            onAiCredentialDelete = aiProviderSettingsController::deleteCredential,
             aiControlStatus = aiControlStatus,
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,
@@ -913,7 +988,9 @@ private fun FrameWindowScope.ReadyApplication(
                     mapViewModel.updateAiControlPreferences(
                         dev.evestaticmapplanner.preferences.AiControlPreferences.Defaults,
                     ).fold(
-                        onSuccess = { controlLifecycle.setEnabled(false) },
+                        onSuccess = {
+                            controlLifecycle.setEnabled(false)
+                        },
                         onFailure = {
                             aiPreferenceError = "The setting could not be reset; AI Map Control was not changed."
                             AppDiagnostics.warning("AI Control preference reset failed", it)
@@ -932,7 +1009,10 @@ private fun FrameWindowScope.ReadyApplication(
                         return@launch
                     }
                     mapViewModel.resetAllPreferences().fold(
-                        onSuccess = { controlLifecycle.setEnabled(false) },
+                        onSuccess = {
+                            controlLifecycle.setEnabled(false)
+                            embeddedAiController.configurationChanged()
+                        },
                         onFailure = {
                             aiPreferenceError = "Preferences could not be reset."
                             AppDiagnostics.warning("Preferences reset failed", it)

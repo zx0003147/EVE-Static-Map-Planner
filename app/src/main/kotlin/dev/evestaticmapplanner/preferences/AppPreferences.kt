@@ -1,5 +1,8 @@
 package dev.evestaticmapplanner.preferences
 
+import dev.evestaticmapplanner.embeddedai.AiCredentialRef
+import dev.evestaticmapplanner.embeddedai.AiProviderConfig
+import dev.evestaticmapplanner.embeddedai.AiProviderType
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -11,6 +14,7 @@ data class AppPreferences(
     val mapDisplay: MapDisplayPreferences = MapDisplayPreferences.Defaults,
     val marker: MarkerPreferences = MarkerPreferences.Defaults,
     val aiControl: AiControlPreferences = AiControlPreferences.Defaults,
+    val aiProvider: AiProviderConfig? = null,
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
@@ -148,7 +152,9 @@ class PropertiesPreferencesStore(
             warningSink("Preferences could not be read; AI Control remains disabled")
             return AppPreferences.Defaults
         }
-        if (properties.getProperty(KEY_SETTINGS_VERSION) != SETTINGS_VERSION) return AppPreferences.Defaults
+        if (properties.getProperty(KEY_SETTINGS_VERSION) !in SUPPORTED_SETTINGS_VERSIONS) {
+            return AppPreferences.Defaults
+        }
 
         val defaults = MapDisplayPreferences.Defaults
         val markerDefaults = MarkerPreferences.Defaults
@@ -247,6 +253,7 @@ class PropertiesPreferencesStore(
                 enabled = properties.safeAiControlEnabled(warningSink),
                 savedMarkerAccessEnabled = properties.safeAiSavedMarkerAccessEnabled(warningSink),
             ),
+            aiProvider = properties.aiProviderConfig(warningSink),
             overlayVisibility = properties.overlayVisibilityPreferences(),
             sharedMap = SharedMapPreferences(
                 serverUrl = properties.getProperty(KEY_SHARED_MAP_SERVER_URL)
@@ -310,6 +317,7 @@ class PropertiesPreferencesStore(
             val mapDisplay = preferences.mapDisplay
             val marker = preferences.marker
             val aiControl = preferences.aiControl
+            val aiProvider = preferences.aiProvider
             val overlayVisibility = preferences.overlayVisibility
             val sharedMap = preferences.sharedMap
             val miniMap = preferences.miniMap
@@ -341,6 +349,14 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_SAVED_MARKER_GLOW_STRENGTH, marker.savedMarkerAppearance.glowStrength.toString())
                 setProperty(KEY_AI_CONTROL_ENABLED, aiControl.enabled.toString())
                 setProperty(KEY_AI_SAVED_MARKER_ACCESS_ENABLED, aiControl.savedMarkerAccessEnabled.toString())
+                aiProvider?.let { config ->
+                    setProperty(KEY_AI_PROVIDER_TYPE, config.providerType.name)
+                    config.baseUrl?.let { setProperty(KEY_AI_PROVIDER_BASE_URL, it) }
+                    config.credentialRef?.let { setProperty(KEY_AI_PROVIDER_CREDENTIAL_REF, it.value) }
+                    setProperty(KEY_AI_PROVIDER_MODEL_ID, config.modelId)
+                    config.temperature?.let { setProperty(KEY_AI_PROVIDER_TEMPERATURE, it.toString()) }
+                    setProperty(KEY_AI_PROVIDER_TIMEOUT_SECONDS, config.requestTimeoutSeconds.toString())
+                }
                 setProperty(
                     KEY_OVERLAY_DISABLED_LAYERS,
                     overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
@@ -412,6 +428,29 @@ private fun Properties.safeAiSavedMarkerAccessEnabled(warningSink: (String) -> U
         }
     }
 
+private fun Properties.aiProviderConfig(warningSink: (String) -> Unit): AiProviderConfig? {
+    val rawType = getProperty(KEY_AI_PROVIDER_TYPE) ?: return null
+    return runCatching {
+        val providerType = AiProviderType.valueOf(rawType)
+        val credentialRef = getProperty(KEY_AI_PROVIDER_CREDENTIAL_REF)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.let(::AiCredentialRef)
+        AiProviderConfig.normalized(
+            providerType = providerType,
+            baseUrl = getProperty(KEY_AI_PROVIDER_BASE_URL),
+            credentialRef = credentialRef,
+            modelId = requireNotNull(getProperty(KEY_AI_PROVIDER_MODEL_ID)),
+            temperature = getProperty(KEY_AI_PROVIDER_TEMPERATURE)?.toDoubleOrNull(),
+            requestTimeoutSeconds = getProperty(KEY_AI_PROVIDER_TIMEOUT_SECONDS)?.toIntOrNull()
+                ?: AiProviderConfig.DEFAULT_TIMEOUT_SECONDS,
+        )
+    }.getOrElse {
+        warningSink("AI provider settings are invalid and were ignored")
+        null
+    }
+}
+
 private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferences {
     val disabledLayers = getProperty(KEY_OVERLAY_DISABLED_LAYERS)
         ?.split(',')
@@ -427,7 +466,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "1"
+const val SETTINGS_VERSION = "2"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -475,6 +515,12 @@ private const val KEY_SAVED_MARKER_GLOW_ENABLED = "marker.savedMarkerAppearance.
 private const val KEY_SAVED_MARKER_GLOW_STRENGTH = "marker.savedMarkerAppearance.glowStrength"
 private const val KEY_AI_CONTROL_ENABLED = "aiControl.enabled"
 private const val KEY_AI_SAVED_MARKER_ACCESS_ENABLED = "aiControl.savedMarkerAccessEnabled"
+private const val KEY_AI_PROVIDER_TYPE = "aiProvider.type"
+private const val KEY_AI_PROVIDER_BASE_URL = "aiProvider.baseUrl"
+private const val KEY_AI_PROVIDER_CREDENTIAL_REF = "aiProvider.credentialRef"
+private const val KEY_AI_PROVIDER_MODEL_ID = "aiProvider.modelId"
+private const val KEY_AI_PROVIDER_TEMPERATURE = "aiProvider.temperature"
+private const val KEY_AI_PROVIDER_TIMEOUT_SECONDS = "aiProvider.requestTimeoutSeconds"
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"

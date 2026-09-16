@@ -26,7 +26,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
+import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.ui.EveButton as Button
+import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EveWindowChrome
@@ -35,6 +38,8 @@ import dev.evestaticmapplanner.ui.EveWindowSurface
 @Composable
 fun EmbeddedAiAssistantWindow(
     controller: EmbeddedAiController,
+    providerStatus: AiAssistantProviderStatus,
+    onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val state by controller.state.collectAsState()
@@ -56,14 +61,17 @@ fun EmbeddedAiAssistantWindow(
             ) {
                 Text("Embedded AI Assistant", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "PoC scope: system information by numeric system ID.",
+                    providerStatus.description,
                     color = EveColors.SecondaryText,
                 )
+                if (!providerStatus.ready) {
+                    TextButton(onClick = onOpenSettings) { Text("Open AI Settings") }
+                }
                 OutlinedTextField(
                     value = prompt,
                     onValueChange = { prompt = it },
                     label = { Text("Ask the Planner") },
-                    enabled = !state.isLoading,
+                    enabled = !state.isLoading && providerStatus.ready,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(
@@ -72,7 +80,7 @@ fun EmbeddedAiAssistantWindow(
                 ) {
                     Button(
                         onClick = { controller.send(prompt) },
-                        enabled = prompt.isNotBlank() && !state.isLoading,
+                        enabled = prompt.isNotBlank() && !state.isLoading && providerStatus.ready,
                     ) { Text("Send") }
                     Button(
                         onClick = controller::cancel,
@@ -80,7 +88,7 @@ fun EmbeddedAiAssistantWindow(
                     ) { Text("Cancel") }
                     if (state.isLoading) {
                         CircularProgressIndicator(modifier = Modifier.padding(start = 4.dp))
-                        Text("Waiting for OpenRouter…", color = EveColors.SecondaryText)
+                        Text("Waiting for AI provider…", color = EveColors.SecondaryText)
                     }
                 }
                 Box(
@@ -99,7 +107,7 @@ fun EmbeddedAiAssistantWindow(
                         )
                         state.response.isNotBlank() -> Text(state.response)
                         else -> Text(
-                            "The answer will appear here.",
+                            if (providerStatus.ready) "The answer will appear here." else providerStatus.actionMessage,
                             color = EveColors.SecondaryText,
                         )
                     }
@@ -107,4 +115,20 @@ fun EmbeddedAiAssistantWindow(
             }
         }
     }
+}
+
+data class AiAssistantProviderStatus(
+    val providerType: AiProviderType?,
+    val modelId: String?,
+    val credentialSource: AiCredentialSource?,
+) {
+    val ready: Boolean get() = providerType != null && credentialSource != null
+    val description: String
+        get() = when {
+            providerType == null -> "AI provider is not configured."
+            credentialSource == null -> "Provider: ${providerType.displayName} · AI API Key is not configured."
+            else -> "Provider: ${providerType.displayName} · Model: $modelId · Credential: ${credentialSource.displayName}"
+        }
+    val actionMessage: String
+        get() = if (providerType == null) "Configure an AI provider to begin." else "Configure an AI API Key to begin."
 }

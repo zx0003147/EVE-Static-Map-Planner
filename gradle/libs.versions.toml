@@ -31,6 +31,7 @@ commons-csv = { module = "org.apache.commons:commons-csv", version.ref = "common
 koog-agents-core = { module = "ai.koog:agents-core", version.ref = "koog" }
 koog-agents-test = { module = "ai.koog:agents-test", version.ref = "koog" }
 koog-http-client-java = { module = "ai.koog:http-client-java", version.ref = "koog" }
+koog-prompt-executor-openai-client = { module = "ai.koog:prompt-executor-openai-client", version.ref = "koog" }
 koog-prompt-executor-openrouter-client = { module = "ai.koog:prompt-executor-openrouter-client", version.ref = "koog" }
 mcp-kotlin-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin" }
 mcp-kotlin-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp-kotlin" }
