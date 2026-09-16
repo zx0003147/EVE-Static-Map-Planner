@@ -39,7 +39,6 @@ class MapToolbarTest {
                 projectionId = MapProjectionId.OFFICIAL_2D,
                 fitEnabled = true,
                 planningViewsState = state,
-                onSwitchProjection = { calls += "projection:${it.name}" },
                 onSwitchView = { calls += "switch:${it.value}"; true },
                 onCreateView = { calls += "create"; PlanningViewId("created") },
                 onRenameView = { calls += "rename:${it.id.value}" },
@@ -52,9 +51,11 @@ class MapToolbarTest {
         onNodeWithTag(TOOLBAR_TAG).assertHeightIsEqualTo(MAP_TOOLBAR_EXPECTED_HEIGHT)
         assertEquals(40, MAP_TOOLBAR_EXPECTED_HEIGHT.value.toInt())
         assertTrue(MAP_TOOLBAR_EXPECTED_HEIGHT < 56.dp)
-        listOf("Official 2D", "Real 3D", "View 1", "View 2", "+", "Fit Map").forEach {
+        listOf("View 1", "View 2", "+", "Fit Map").forEach {
             onNodeWithText(it).assertIsDisplayed()
         }
+        onNodeWithText("Official 2D").assertDoesNotExist()
+        onNodeWithText("Real 3D").assertDoesNotExist()
         onNodeWithText("✎").assertDoesNotExist()
         onNodeWithText("×").assertDoesNotExist()
         assertTrue(
@@ -63,13 +64,12 @@ class MapToolbarTest {
             "+ must remain after the final View tab",
         )
 
-        onNodeWithText("Real 3D").performClick()
         onNodeWithText("View 2").performMouseInput { rightClick() }
         onNodeWithText("Rename").assertIsDisplayed().performClick()
         onNodeWithText("View 2").performMouseInput { rightClick() }
         onNodeWithText("Delete").assertIsDisplayed().performClick()
         assertEquals(
-            listOf("projection:REAL_3D", "rename:view-2", "delete:view-2"),
+            listOf("rename:view-2", "delete:view-2"),
             calls,
             "right-click actions must target View 2 without switching the current View",
         )
@@ -80,7 +80,6 @@ class MapToolbarTest {
 
         assertEquals(
             listOf(
-                "projection:REAL_3D",
                 "rename:view-2",
                 "delete:view-2",
                 "switch:view-2",
@@ -129,7 +128,7 @@ class MapToolbarTest {
     }
 
     @Test
-    fun `narrow toolbar keeps projections and fit fixed while wheel scrolls views horizontally`() = runComposeUiTest {
+    fun `narrow toolbar keeps View controls and fit while wheel scrolls views horizontally`() = runComposeUiTest {
         var createCount = 0
         val viewScrollState = ScrollState(0)
         setContent {
@@ -138,7 +137,6 @@ class MapToolbarTest {
                     projectionId = MapProjectionId.OFFICIAL_2D,
                     fitEnabled = true,
                     planningViewsState = state(8),
-                    onSwitchProjection = {},
                     onSwitchView = { true },
                     onCreateView = { createCount += 1; PlanningViewId("created-$createCount") },
                     onRenameView = {},
@@ -153,8 +151,8 @@ class MapToolbarTest {
         onNodeWithTag(TOOLBAR_TAG)
             .assertWidthIsEqualTo(360.dp)
             .assertHeightIsEqualTo(MAP_TOOLBAR_EXPECTED_HEIGHT)
-        onNodeWithText("Official 2D").assertIsDisplayed()
-        onNodeWithText("Real 3D").assertIsDisplayed()
+        onNodeWithText("Official 2D").assertDoesNotExist()
+        onNodeWithText("Real 3D").assertDoesNotExist()
         onNodeWithText("Fit Map").assertIsDisplayed().performClick()
 
         onNode(hasScrollAction())

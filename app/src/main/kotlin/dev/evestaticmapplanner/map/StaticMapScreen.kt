@@ -131,6 +131,7 @@ internal fun StaticMapScreen(
     planningViewCoordinator: PlanningViewCoordinator,
     markerViewModel: MarkerViewModel,
     sharedMapViewModel: SharedMapViewModel,
+    onOpenEmbeddedAi: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
     suppressMarkerOperationErrorDialog: Boolean = false,
 ) {
@@ -174,6 +175,17 @@ internal fun StaticMapScreen(
         RouteToolsPanel(
             expanded = sidebarExpanded,
             onToggleExpanded = { sidebarExpanded = !sidebarExpanded },
+            projectionId = state.projectionId,
+            onToggleProjection = {
+                viewModel.switchProjection(
+                    if (state.projectionId == MapProjectionId.OFFICIAL_2D) {
+                        MapProjectionId.REAL_3D
+                    } else {
+                        MapProjectionId.OFFICIAL_2D
+                    },
+                )
+            },
+            onOpenEmbeddedAi = onOpenEmbeddedAi,
             state = routeState,
             viewModel = routeViewModel,
             jumpState = jumpState,
@@ -533,7 +545,6 @@ private fun MapToolbar(
         projectionId = state.projectionId,
         fitEnabled = state.scene != null,
         planningViewsState = planningViewsState,
-        onSwitchProjection = viewModel::switchProjection,
         onSwitchView = planningViewCoordinator::switchView,
         onCreateView = planningViewCoordinator::createView,
         onRenameView = { view -> renameViewId = view.id },
@@ -597,7 +608,6 @@ internal fun MapToolbarContent(
     projectionId: MapProjectionId,
     fitEnabled: Boolean,
     planningViewsState: PlanningViewsState,
-    onSwitchProjection: (MapProjectionId) -> Unit,
     onSwitchView: (PlanningViewId) -> Boolean,
     onCreateView: () -> PlanningViewId,
     onRenameView: (PlanningView) -> Unit,
@@ -615,7 +625,6 @@ internal fun MapToolbarContent(
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = MAP_TOOLBAR_VERTICAL_PADDING),
             ) {
-                ProjectionControls(projectionId, onSwitchProjection)
                 ViewStrip(
                     state = planningViewsState,
                     onSwitch = onSwitchView,
@@ -631,20 +640,6 @@ internal fun MapToolbarContent(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ProjectionControls(
-    projectionId: MapProjectionId,
-    onSwitchProjection: (MapProjectionId) -> Unit,
-) {
-    MapProjectionId.entries.forEach { projection ->
-        CompactToolbarTab(
-            selected = projection == projectionId,
-            enabled = projection != projectionId,
-            onClick = { onSwitchProjection(projection) },
-        ) { Text(projection.displayName) }
     }
 }
 

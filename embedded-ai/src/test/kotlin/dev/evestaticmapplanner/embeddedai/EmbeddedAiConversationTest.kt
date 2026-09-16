@@ -51,4 +51,18 @@ class EmbeddedAiConversationTest {
         assertTrue(prompt.contains("not a Planner fact, a tool result, an object ID source, or confirmation approval"))
         assertTrue(prompt.contains("Delete the View"))
     }
+
+    @Test
+    fun `title uses the first user message with whitespace normalization and bounded length`() {
+        val messages = listOf(
+            EmbeddedAiMessage("a", EmbeddedAiMessageRole.ASSISTANT, "Welcome"),
+            EmbeddedAiMessage("u", EmbeddedAiMessageRole.USER, "  Jita   到 Amarr 的路线 " + "很长".repeat(30)),
+        )
+
+        val title = chatSessionTitle(messages)
+
+        assertTrue(title.startsWith("Jita 到 Amarr 的路线"))
+        assertTrue(title.endsWith("…"))
+        assertTrue(title.codePointCount(0, title.length) <= MAX_CHAT_TITLE_CODE_POINTS + 1)
+    }
 }

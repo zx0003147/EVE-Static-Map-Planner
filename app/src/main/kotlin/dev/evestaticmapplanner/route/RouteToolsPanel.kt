@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.route
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -16,9 +17,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -42,9 +46,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
+import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.capital.CapitalRouteUiState
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
@@ -110,6 +116,9 @@ internal data class ToolSidebarExpansionState(
 internal fun RouteToolsPanel(
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
+    projectionId: MapProjectionId,
+    onToggleProjection: () -> Unit,
+    onOpenEmbeddedAi: () -> Unit,
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
     capitalState: CapitalRouteUiState,
@@ -233,9 +242,12 @@ internal fun RouteToolsPanel(
                     }
                 }
                 EveDivider()
-                SidebarToggleButton(
+                SidebarControlCluster(
                     expanded = true,
-                    onClick = onToggleExpanded,
+                    projectionId = projectionId,
+                    onToggleProjection = onToggleProjection,
+                    onOpenEmbeddedAi = onOpenEmbeddedAi,
+                    onToggleSidebar = onToggleExpanded,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -255,10 +267,13 @@ internal fun RouteToolsPanel(
                         )
                     }
                 }
-                SidebarToggleButton(
+                SidebarControlCluster(
                     expanded = false,
-                    onClick = onToggleExpanded,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                    projectionId = projectionId,
+                    onToggleProjection = onToggleProjection,
+                    onOpenEmbeddedAi = onOpenEmbeddedAi,
+                    onToggleSidebar = onToggleExpanded,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 6.dp),
                 )
             }
         }
@@ -296,17 +311,75 @@ private fun SidebarRailActionButton(
 }
 
 @Composable
-private fun SidebarToggleButton(
+internal fun SidebarControlCluster(
     expanded: Boolean,
-    onClick: () -> Unit,
+    projectionId: MapProjectionId,
+    onToggleProjection: () -> Unit,
+    onOpenEmbeddedAi: () -> Unit,
+    onToggleSidebar: () -> Unit,
     modifier: Modifier = Modifier,
+) {
+    if (expanded) {
+        Row(
+            modifier = modifier.height(SIDEBAR_CONTROL_SIZE),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            SidebarUtilityButton(
+                description = "Toggle 2D/3D map mode",
+                testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
+                onClick = onToggleProjection,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            ) { Text(if (projectionId == MapProjectionId.OFFICIAL_2D) "2D" else "3D") }
+            SidebarUtilityButton(
+                description = "Open Embedded AI Assistant",
+                testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
+                onClick = onOpenEmbeddedAi,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            ) { AuraAvatar() }
+            SidebarUtilityButton(
+                description = "Collapse sidebar",
+                testTag = SIDEBAR_TOGGLE_TEST_TAG,
+                onClick = onToggleSidebar,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            ) { SidebarToggleIcon(expanded = true) }
+        }
+    } else {
+        Column(modifier = modifier.height(SIDEBAR_CONTROL_SIZE * 3)) {
+            SidebarUtilityButton(
+                description = "Toggle 2D/3D map mode",
+                testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
+                onClick = onToggleProjection,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) { Text(if (projectionId == MapProjectionId.OFFICIAL_2D) "2D" else "3D") }
+            SidebarUtilityButton(
+                description = "Open Embedded AI Assistant",
+                testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
+                onClick = onOpenEmbeddedAi,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) { AuraAvatar() }
+            SidebarUtilityButton(
+                description = "Expand sidebar",
+                testTag = SIDEBAR_TOGGLE_TEST_TAG,
+                onClick = onToggleSidebar,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) { SidebarToggleIcon(expanded = false) }
+        }
+    }
+}
+
+@Composable
+private fun SidebarUtilityButton(
+    description: String,
+    testTag: String,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
-    val description = if (expanded) "Collapse sidebar" else "Expand sidebar"
     Box(
         modifier = modifier
-            .size(40.dp)
+            .heightIn(min = SIDEBAR_CONTROL_SIZE)
             .background(if (hovered) EveColors.HoverSurface else EveColors.PrimarySurface)
             .hoverable(interactionSource)
             .clickable(
@@ -316,38 +389,38 @@ private fun SidebarToggleButton(
                 onClick = onClick,
             )
             .semantics { contentDescription = description }
-            .testTag("sidebar-toggle"),
+            .testTag(testTag),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(18.dp)) {
-            val color = if (hovered) EveColors.PrimaryAccent else EveColors.PrimaryText
-            val strokeWidth = 1.5.dp.toPx()
-            if (expanded) {
-                listOf(0.27f, 0.50f, 0.73f).forEach { y ->
-                    drawLine(
-                        color = color,
-                        start = Offset(size.width * 0.18f, size.height * y),
-                        end = Offset(size.width * 0.82f, size.height * y),
-                        strokeWidth = strokeWidth,
-                    )
-                }
-            } else {
-                drawLine(
-                    color = color,
-                    start = Offset(size.width * 0.38f, size.height * 0.22f),
-                    end = Offset(size.width * 0.68f, size.height * 0.50f),
-                    strokeWidth = strokeWidth,
-                )
-                drawLine(
-                    color = color,
-                    start = Offset(size.width * 0.68f, size.height * 0.50f),
-                    end = Offset(size.width * 0.38f, size.height * 0.78f),
-                    strokeWidth = strokeWidth,
-                )
-            }
-        }
+        content()
     }
 }
+
+@Composable
+private fun AuraAvatar() {
+    Image(
+        painter = painterResource("icons/aura-avatar.png"),
+        contentDescription = null,
+        modifier = Modifier.size(34.dp).clip(CircleShape),
+    )
+}
+
+@Composable
+private fun SidebarToggleIcon(expanded: Boolean) {
+    Canvas(Modifier.size(22.dp)) {
+        val color = EveColors.PrimaryText
+        val strokeWidth = 2.dp.toPx()
+        val left = if (expanded) 0.66f else 0.34f
+        val point = if (expanded) 0.36f else 0.64f
+        drawLine(color, Offset(size.width * left, size.height * 0.20f), Offset(size.width * point, size.height * 0.50f), strokeWidth)
+        drawLine(color, Offset(size.width * point, size.height * 0.50f), Offset(size.width * left, size.height * 0.80f), strokeWidth)
+    }
+}
+
+internal const val SIDEBAR_PROJECTION_TOGGLE_TEST_TAG = "sidebar-projection-toggle"
+internal const val SIDEBAR_AI_BUTTON_TEST_TAG = "sidebar-ai-assistant"
+internal const val SIDEBAR_TOGGLE_TEST_TAG = "sidebar-toggle"
+private val SIDEBAR_CONTROL_SIZE = 44.dp
 
 @Composable
 private fun CollapsibleToolSection(

@@ -16,7 +16,6 @@ class PlannerTopMenusTest {
                 characterTrackingAvailable = true,
                 miniMapEnabled = true,
                 staticDataOpen = false,
-                embeddedAiOpen = false,
             ),
             actions = PlannerTopMenuActions(
                 openMarkerManager = {},
@@ -27,14 +26,13 @@ class PlannerTopMenusTest {
                 openMiniMapSettings = { opened += "mini-map-settings" },
                 openPreferences = { opened += "general-preferences" },
                 openStaticData = {},
-                openEmbeddedAi = { opened += "embedded-ai" },
             ),
         )
 
         val markerItems = menus.single { it.label == "Marker" }.items
         val miniMapItems = menus.single { it.label == "Mini-map" }.items
         val allPreferencesItems = menus.single { it.label == "Preferences" }.items
-        val aiItems = menus.single { it.label == "AI" }.items
+        assertTrue(menus.none { it.label == "AI" })
 
         assertEquals(
             listOf(
@@ -52,9 +50,8 @@ class PlannerTopMenusTest {
         markerItems.last().onClick()
         miniMapItems.last().onClick()
         allPreferencesItems.single().onClick()
-        aiItems.single().onClick()
         assertEquals(
-            listOf("marker-settings", "mini-map-settings", "general-preferences", "embedded-ai"),
+            listOf("marker-settings", "mini-map-settings", "general-preferences"),
             opened,
         )
     }

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import dev.evestaticmapplanner.ai.AiProviderSettingsUiState
+import dev.evestaticmapplanner.control.AiControlStatus
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiConnectionTestResult
@@ -43,9 +44,51 @@ class FeatureSettingsWindowsTest {
     @Test
     fun `general Preferences contains only global categories`() {
         assertEquals(
-            listOf("Map Display", "AI Assistant", "AI Control", "Feature Packs", "Overlays", "Web Pack", "Shared Map"),
+            listOf("Map Display", "AI Features", "Feature Packs", "Overlays", "Web Pack", "Shared Map"),
             PreferencesCategory.entries.map { it.label },
         )
+    }
+
+    @Test
+    fun `AI Features accordion keeps at most one section open`() {
+        var state = AiFeaturesExpansionState()
+        state = state.toggle(AiFeaturesSection.EMBEDDED_ASSISTANT)
+        assertEquals(AiFeaturesSection.EMBEDDED_ASSISTANT, state.expanded)
+        state = state.toggle(AiFeaturesSection.MCP_INTEGRATION)
+        assertEquals(AiFeaturesSection.MCP_INTEGRATION, state.expanded)
+        state = state.toggle(AiFeaturesSection.MCP_INTEGRATION)
+        assertEquals(null, state.expanded)
+    }
+
+    @Test
+    fun `AI Features presents Embedded Assistant then MCP Integration as exclusive accordions`() = runComposeUiTest {
+        setContent {
+            EveTheme {
+                Column {
+                    AiFeaturesPreferencesContent(
+                        savedConfig = null,
+                        savedProviderConfigs = emptyMap(),
+                        state = AiProviderSettingsUiState(),
+                        onProviderViewed = {},
+                        onTest = { _, secret -> secret?.close() },
+                        onSave = { _, secret -> secret?.close() },
+                        onDeleteCredential = {},
+                        aiControlPreferences = AiControlPreferences.Defaults,
+                        aiControlStatus = AiControlStatus.Disabled,
+                        aiControlError = null,
+                        onAiControlChange = {},
+                        onAiSavedMarkerAccessChange = {},
+                        onResetAiControl = {},
+                    )
+                }
+            }
+        }
+
+        onNodeWithText("▸ Embedded Assistant").assertIsDisplayed().performClick()
+        onNodeWithText("AI Provider").assertIsDisplayed()
+        onNodeWithText("▸ MCP Integration").assertIsDisplayed().performClick()
+        onNodeWithText("AI Provider").assertDoesNotExist()
+        onNodeWithText("MCP Server & Permissions").assertIsDisplayed()
     }
 
     @Test

@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +53,6 @@ internal fun AssistantMarkdown(markdown: String, modifier: Modifier = Modifier) 
                     text = block.code,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier
-                        .fillMaxWidth()
                         .background(EveColors.InputSurface, RoundedCornerShape(5.dp))
                         .padding(8.dp),
                 )
@@ -67,7 +65,7 @@ internal fun AssistantMarkdown(markdown: String, modifier: Modifier = Modifier) 
 private fun MarkdownListItem(marker: String, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(marker, fontWeight = FontWeight.SemiBold)
-        Text(inlineMarkdown(text), modifier = Modifier.weight(1f))
+        Text(inlineMarkdown(text))
     }
 }
 

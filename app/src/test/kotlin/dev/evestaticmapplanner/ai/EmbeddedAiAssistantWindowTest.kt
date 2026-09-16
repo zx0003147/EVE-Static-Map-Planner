@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -67,7 +69,7 @@ class EmbeddedAiAssistantWindowTest {
             ),
         )
 
-        onNodeWithText("**literal user text**").assertIsDisplayed()
+        onAllNodesWithText("**literal user text**").assertCountEquals(2)
         onNodeWithText("Bold route and routeId").assertIsDisplayed()
         onAllNodesWithText("**Bold route** and `routeId`").assertCountEquals(0)
         onAllNodesWithText("•").assertCountEquals(2)
@@ -119,12 +121,88 @@ class EmbeddedAiAssistantWindowTest {
             }
         }
 
-        onNodeWithText("New Chat").performClick()
+        onNodeWithText("+ New Chat").performClick()
         waitForIdle()
 
         onAllNodesWithText("Old answer").assertCountEquals(0)
         onNodeWithText("DeepSeek · deepseek-flash · Secure storage").assertIsDisplayed()
         onNodeWithText("Start a conversation with the Planner.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `conversation sidebar switches sessions and can hide then show without deleting history`() = runComposeUiTest {
+        val first = EmbeddedAiChatSession(
+            "session-1",
+            Instant.EPOCH,
+            listOf(message("a1", EmbeddedAiMessageRole.ASSISTANT, "First chat")),
+            title = "First chat",
+        )
+        val second = EmbeddedAiChatSession(
+            "session-2",
+            Instant.EPOCH.plusSeconds(1),
+            listOf(message("a2", EmbeddedAiMessageRole.ASSISTANT, "Second chat")),
+            title = "Second chat",
+        )
+        var selected: String? = null
+        setContent {
+            MaterialTheme {
+                Box(Modifier.requiredSize(880.dp, 620.dp)) {
+                    EmbeddedAiAssistantContent(
+                        state = EmbeddedAiUiState(chatSession = first, sessions = listOf(second, first)),
+                        confirmation = null,
+                        providerStatus = READY_PROVIDER,
+                        onSend = {},
+                        onCancel = {},
+                        onNewChat = {},
+                        onSelectChat = { selected = it },
+                        onOpenSettings = {},
+                        onApprove = { true },
+                        onDeny = { true },
+                    )
+                }
+            }
+        }
+
+        onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertIsDisplayed()
+        onNodeWithText("Second chat").performClick()
+        assertEquals("session-2", selected)
+        onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).performClick()
+        onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertDoesNotExist()
+        onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed().performClick()
+        onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-1").assertIsDisplayed()
+        onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-2").assertIsDisplayed()
+    }
+
+    @Test
+    fun `chat Enter decision sends plain Enter preserves Shift newline and protects IME composition`() {
+        assertEquals(ChatEnterAction.SEND, chatEnterAction(TextFieldValue("send me"), false, true))
+        assertEquals(ChatEnterAction.NEW_LINE, chatEnterAction(TextFieldValue("line one"), true, true))
+        assertEquals(
+            ChatEnterAction.IME_COMPOSITION,
+            chatEnterAction(TextFieldValue("中文", composition = TextRange(0, 2)), false, true),
+        )
+        assertEquals(ChatEnterAction.IGNORE, chatEnterAction(TextFieldValue("   "), false, true))
+        assertEquals(ChatEnterAction.IGNORE, chatEnterAction(TextFieldValue("send me"), false, false))
+    }
+
+    @Test
+    fun `short bubbles wrap content while long bubbles stop at the maximum width`() = runComposeUiTest {
+        setAssistantContent(
+            chatState(
+                message("short", EmbeddedAiMessageRole.USER, "显示路线"),
+                message("long", EmbeddedAiMessageRole.USER, "long message ".repeat(20)),
+                message("assistant-short", EmbeddedAiMessageRole.ASSISTANT, "Done"),
+            ),
+        )
+
+        val root = onNodeWithTag(AI_CHAT_LIST_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val short = onNodeWithTag("$AI_CHAT_MESSAGE_TEST_TAG_PREFIX-short").fetchSemanticsNode().boundsInRoot
+        val long = onNodeWithTag("$AI_CHAT_MESSAGE_TEST_TAG_PREFIX-long").fetchSemanticsNode().boundsInRoot
+        val assistant = onNodeWithTag("$AI_CHAT_MESSAGE_TEST_TAG_PREFIX-assistant-short").fetchSemanticsNode().boundsInRoot
+
+        assertTrue(short.width < long.width)
+        assertTrue(assistant.width < long.width)
+        assertTrue(long.width <= root.width * 0.78f)
     }
 
     @Test
@@ -155,7 +233,7 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithText("Cancel").performClick()
 
         assertTrue(cancelled)
-        onNodeWithText("Keep this question").assertIsDisplayed()
+        onAllNodesWithText("Keep this question").assertCountEquals(2)
     }
 
     @Test

@@ -170,6 +170,8 @@ class EmbeddedAiControllerTest {
 
         assertTrue(controller.state.value.chatSession.messages.isEmpty())
         assertTrue(controller.state.value.chatSession.id != oldSession)
+        assertEquals(2, controller.state.value.sessions.size)
+        assertTrue(controller.state.value.sessions.any { it.id == oldSession && it.messages.size == 2 })
         assertEquals(AiProviderType.DEEPSEEK, controller.state.value.runtimeInfo?.providerType)
         assertEquals(1, closeCount)
         controller.send("second")

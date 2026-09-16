@@ -15,20 +15,45 @@ data class EmbeddedAiMessage(
     val role: EmbeddedAiMessageRole,
     val content: String,
     val status: EmbeddedAiMessageStatus = EmbeddedAiMessageStatus.COMPLETE,
+    val timestamp: Instant = Instant.now(),
 )
 
 data class EmbeddedAiChatSession(
     val id: String,
     val createdAt: Instant,
     val messages: List<EmbeddedAiMessage>,
+    val title: String = chatSessionTitle(messages),
+    val updatedAt: Instant = messages.lastOrNull()?.timestamp ?: createdAt,
 ) {
     companion object {
-        fun create(): EmbeddedAiChatSession = EmbeddedAiChatSession(
+        fun create(now: Instant = Instant.now()): EmbeddedAiChatSession = EmbeddedAiChatSession(
             id = UUID.randomUUID().toString(),
-            createdAt = Instant.now(),
+            createdAt = now,
             messages = emptyList(),
+            title = NEW_CHAT_TITLE,
+            updatedAt = now,
         )
     }
+}
+
+data class EmbeddedAiConversationArchive(
+    val sessions: List<EmbeddedAiChatSession> = emptyList(),
+    val activeSessionId: String? = null,
+)
+
+fun chatSessionTitle(messages: List<EmbeddedAiMessage>): String = messages
+    .firstOrNull { it.role == EmbeddedAiMessageRole.USER }
+    ?.content
+    ?.replace(Regex("\\s+"), " ")
+    ?.trim()
+    ?.takeIf(String::isNotEmpty)
+    ?.let(::truncateChatTitle)
+    ?: NEW_CHAT_TITLE
+
+private fun truncateChatTitle(value: String): String {
+    val codePoints = value.codePoints().toArray()
+    if (codePoints.size <= MAX_CHAT_TITLE_CODE_POINTS) return value
+    return String(codePoints, 0, MAX_CHAT_TITLE_CODE_POINTS).trimEnd() + "…"
 }
 
 internal data class AgentConversationMessage(
@@ -88,3 +113,5 @@ internal const val MAX_AGENT_HISTORY_MESSAGES = 24
 internal const val MAX_AGENT_HISTORY_CHARACTERS = 24_000
 internal const val MAX_CHAT_MESSAGES = 200
 internal const val MAX_ASSISTANT_MESSAGE_CHARACTERS = 32_000
+internal const val MAX_CHAT_TITLE_CODE_POINTS = 42
+const val NEW_CHAT_TITLE = "New Chat"

@@ -152,15 +152,7 @@ internal fun PreferencesWindow(
                                 onMapDisplayChange,
                                 onResetMapDisplay,
                             )
-                            PreferencesCategory.AI_CONTROL -> AiControlPreferencesContent(
-                                preferences.aiControl,
-                                aiControlStatus,
-                                aiControlError,
-                                onAiControlChange,
-                                onAiSavedMarkerAccessChange,
-                                onResetAiControl,
-                            )
-                            PreferencesCategory.AI_ASSISTANT -> AiProviderPreferencesContent(
+                            PreferencesCategory.AI_FEATURES -> AiFeaturesPreferencesContent(
                                 savedConfig = preferences.aiProvider,
                                 savedProviderConfigs = preferences.aiProviderProfiles,
                                 state = aiProviderSettingsState,
@@ -168,6 +160,12 @@ internal fun PreferencesWindow(
                                 onTest = onAiProviderTest,
                                 onSave = onAiProviderSave,
                                 onDeleteCredential = onAiCredentialDelete,
+                                aiControlPreferences = preferences.aiControl,
+                                aiControlStatus = aiControlStatus,
+                                aiControlError = aiControlError,
+                                onAiControlChange = onAiControlChange,
+                                onAiSavedMarkerAccessChange = onAiSavedMarkerAccessChange,
+                                onResetAiControl = onResetAiControl,
                             )
                             PreferencesCategory.FEATURE_PACKS -> FeaturePacksPreferencesContent(
                                 featurePackManagerViewModel,
@@ -217,12 +215,75 @@ internal fun PreferencesWindow(
 
 internal enum class PreferencesCategory(val label: String) {
     MAP_DISPLAY("Map Display"),
-    AI_ASSISTANT("AI Assistant"),
-    AI_CONTROL("AI Control"),
+    AI_FEATURES("AI Features"),
     FEATURE_PACKS("Feature Packs"),
     OVERLAYS("Overlays"),
     WEB_PACK("Web Pack"),
     SHARED_MAP("Shared Map"),
+}
+
+internal enum class AiFeaturesSection { EMBEDDED_ASSISTANT, MCP_INTEGRATION }
+
+internal data class AiFeaturesExpansionState(val expanded: AiFeaturesSection? = null) {
+    fun toggle(section: AiFeaturesSection) = copy(expanded = if (expanded == section) null else section)
+}
+
+@Composable
+internal fun AiFeaturesPreferencesContent(
+    savedConfig: AiProviderConfig?,
+    savedProviderConfigs: Map<AiProviderType, AiProviderConfig>,
+    state: AiProviderSettingsUiState,
+    onProviderViewed: (AiProviderType) -> Unit,
+    onTest: (AiProviderConfig, SecretValue?) -> Unit,
+    onSave: (AiProviderConfig, SecretValue?) -> Unit,
+    onDeleteCredential: (AiProviderType) -> Unit,
+    aiControlPreferences: AiControlPreferences,
+    aiControlStatus: AiControlStatus,
+    aiControlError: String?,
+    onAiControlChange: (Boolean) -> Unit,
+    onAiSavedMarkerAccessChange: (Boolean) -> Unit,
+    onResetAiControl: () -> Unit,
+) {
+    var expansion by remember { mutableStateOf(AiFeaturesExpansionState()) }
+    AiFeaturesAccordionHeader(
+        title = "Embedded Assistant",
+        expanded = expansion.expanded == AiFeaturesSection.EMBEDDED_ASSISTANT,
+        onClick = { expansion = expansion.toggle(AiFeaturesSection.EMBEDDED_ASSISTANT) },
+    )
+    if (expansion.expanded == AiFeaturesSection.EMBEDDED_ASSISTANT) {
+        AiProviderPreferencesContent(
+            savedConfig = savedConfig,
+            savedProviderConfigs = savedProviderConfigs,
+            state = state,
+            onProviderViewed = onProviderViewed,
+            onTest = onTest,
+            onSave = onSave,
+            onDeleteCredential = onDeleteCredential,
+        )
+    }
+    HorizontalDivider()
+    AiFeaturesAccordionHeader(
+        title = "MCP Integration",
+        expanded = expansion.expanded == AiFeaturesSection.MCP_INTEGRATION,
+        onClick = { expansion = expansion.toggle(AiFeaturesSection.MCP_INTEGRATION) },
+    )
+    if (expansion.expanded == AiFeaturesSection.MCP_INTEGRATION) {
+        AiControlPreferencesContent(
+            preferences = aiControlPreferences,
+            status = aiControlStatus,
+            preferenceError = aiControlError,
+            onChange = onAiControlChange,
+            onSavedMarkerAccessChange = onAiSavedMarkerAccessChange,
+            onReset = onResetAiControl,
+        )
+    }
+}
+
+@Composable
+private fun AiFeaturesAccordionHeader(title: String, expanded: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick, selected = expanded, modifier = Modifier.fillMaxWidth()) {
+        Text(if (expanded) "▾ $title" else "▸ $title", style = MaterialTheme.typography.titleMedium)
+    }
 }
 
 @Composable
@@ -1175,8 +1236,8 @@ private fun AiControlPreferencesContent(
     onSavedMarkerAccessChange: (Boolean) -> Unit,
     onReset: () -> Unit,
 ) {
-    Text("AI Map Control", style = MaterialTheme.typography.titleMedium)
-    PreferenceCheckbox("Enable AI Map Control", preferences.enabled, onCheckedChange = onChange)
+    Text("MCP Server & Permissions", style = MaterialTheme.typography.titleMedium)
+    PreferenceCheckbox("Enable MCP Integration", preferences.enabled, onCheckedChange = onChange)
     PreferenceCheckbox(
         "Allow AI to access saved markers",
         preferences.savedMarkerAccessEnabled,
@@ -1204,7 +1265,7 @@ private fun AiControlPreferencesContent(
         "When enabled, a new authenticated local-only control session starts after the map is ready.",
         color = EveColors.SecondaryText,
     )
-    TextButton(onClick = onReset) { Text("Reset AI Control") }
+    TextButton(onClick = onReset) { Text("Reset MCP Integration") }
 }
 
 @Composable

@@ -10,7 +10,6 @@ internal data class PlannerTopMenuState(
     val characterTrackingAvailable: Boolean,
     val miniMapEnabled: Boolean,
     val staticDataOpen: Boolean,
-    val embeddedAiOpen: Boolean = false,
 )
 
 internal data class PlannerTopMenuActions(
@@ -22,7 +21,6 @@ internal data class PlannerTopMenuActions(
     val openMiniMapSettings: () -> Unit,
     val openPreferences: () -> Unit,
     val openStaticData: () -> Unit,
-    val openEmbeddedAi: () -> Unit = {},
 )
 
 internal fun plannerTopMenus(
@@ -69,16 +67,6 @@ internal fun plannerTopMenus(
     EveMenuSpec(
         "Preferences",
         listOf(EveMenuItemSpec("Preferences…", onClick = actions.openPreferences)),
-    ),
-    EveMenuSpec(
-        "AI",
-        listOf(
-            EveMenuItemSpec(
-                "Embedded Assistant…",
-                enabled = !state.embeddedAiOpen,
-                onClick = actions.openEmbeddedAi,
-            ),
-        ),
     ),
     EveMenuSpec(
         "Static Data",

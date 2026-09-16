@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.embeddedai
 
+import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -20,11 +22,13 @@ import kotlinx.coroutines.withContext
 
 data class EmbeddedAiUiState(
     val chatSession: EmbeddedAiChatSession = EmbeddedAiChatSession.create(),
+    val sessions: List<EmbeddedAiChatSession> = listOf(chatSession),
     val response: String = "",
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
     val runtimeInfo: EmbeddedAiRuntimeInfo? = null,
     val scrollRequest: Long = 0,
+    val contextNotice: String? = null,
 )
 
 class EmbeddedAiController(
@@ -32,6 +36,8 @@ class EmbeddedAiController(
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val uiDispatcher: CoroutineDispatcher = dispatcher,
     confirmationService: AiActionConfirmationService? = null,
+    private val conversationStore: EmbeddedAiConversationStore = InMemoryOnlyEmbeddedAiConversationStore,
+    private val now: () -> Instant = Instant::now,
 ) {
     private val supervisor = SupervisorJob()
     private val scope = CoroutineScope(supervisor + dispatcher)
@@ -39,11 +45,17 @@ class EmbeddedAiController(
     private val generation = AtomicLong()
     private val configurationRevision = AtomicLong()
     private val historyRevision = AtomicLong()
-    private val messageSequence = AtomicLong()
     private val closed = AtomicBoolean()
     private val historyLock = Any()
     private val agentHistory = mutableListOf<AgentConversationMessage>()
-    private val mutableState = MutableStateFlow(EmbeddedAiUiState())
+    private val initialArchive = normalizedArchive(conversationStore.load(), now())
+    private val initialSession = initialArchive.sessions.first { it.id == initialArchive.activeSessionId }
+    private val mutableState = MutableStateFlow(
+        EmbeddedAiUiState(
+            chatSession = initialSession,
+            sessions = initialArchive.sessions,
+        ),
+    )
     private val actionConfirmationService = confirmationService
         ?: (agentFactory as? AiActionConfirmationOwner)?.actionConfirmationService
         ?: AiActionConfirmationService()
@@ -51,6 +63,11 @@ class EmbeddedAiController(
     private var agentRevision: Long = -1
     private var request: Job? = null
     private var activeTurn: ActiveTurn? = null
+
+    init {
+        replaceAgentHistory(initialSession)
+        persistConversations(mutableState.value)
+    }
 
     val state: StateFlow<EmbeddedAiUiState> = mutableState.asStateFlow()
     val confirmation: StateFlow<AiActionConfirmation?> = actionConfirmationService.pending
@@ -76,11 +93,14 @@ class EmbeddedAiController(
             status = EmbeddedAiMessageStatus.THINKING,
         )
         activeTurn = ActiveTurn(userMessage, assistantMessage.id, requestHistoryRevision)
-        mutableState.value = mutableState.value.withMessages(userMessage, assistantMessage).copy(
-            response = "",
-            errorMessage = null,
-            isLoading = true,
-            scrollRequest = mutableState.value.scrollRequest + 1,
+        publish(
+            mutableState.value.withMessages(userMessage, assistantMessage).copy(
+                response = "",
+                errorMessage = null,
+                isLoading = true,
+                scrollRequest = mutableState.value.scrollRequest + 1,
+                contextNotice = null,
+            ),
         )
         val contextualPrompt = buildAgentPrompt(historySnapshot(), normalized)
         request = scope.launch {
@@ -101,7 +121,7 @@ class EmbeddedAiController(
                 withContext(uiDispatcher) {
                     updateIfCurrent(requestGeneration) { current ->
                         recordHistoryIfCurrent(requestHistoryRevision, userMessage.content, response)
-                        current.completeAssistant(assistantMessage.id, response).copy(
+                        current.completeAssistant(assistantMessage.id, response, now = now()).copy(
                             response = response,
                             errorMessage = null,
                             isLoading = false,
@@ -120,6 +140,7 @@ class EmbeddedAiController(
                             assistantMessage.id,
                             safeMessage,
                             EmbeddedAiMessageStatus.ERROR,
+                            now(),
                         ).copy(
                             response = "",
                             errorMessage = safeMessage,
@@ -142,6 +163,9 @@ class EmbeddedAiController(
         historyRevision.incrementAndGet()
         clearAgentHistory()
         configurationRevision.incrementAndGet()
+        mutableState.value = mutableState.value.copy(
+            contextNotice = "Provider changed. New AI context started.",
+        )
         if (request?.isActive != true) scope.launch { closeStaleAgent() }
     }
 
@@ -156,20 +180,24 @@ class EmbeddedAiController(
         if (turn != null) {
             val cancelledMessage = "Request cancelled."
             recordHistoryIfCurrent(turn.historyRevision, turn.userMessage.content, cancelledMessage)
-            mutableState.value = mutableState.value.completeAssistant(
-                turn.assistantMessageId,
-                cancelledMessage,
-                EmbeddedAiMessageStatus.CANCELLED,
-            ).copy(
-                response = cancelledMessage,
-                errorMessage = null,
-                isLoading = false,
+            publish(
+                mutableState.value.completeAssistant(
+                    turn.assistantMessageId,
+                    cancelledMessage,
+                    EmbeddedAiMessageStatus.CANCELLED,
+                    now(),
+                ).copy(
+                    response = cancelledMessage,
+                    errorMessage = null,
+                    isLoading = false,
+                ),
             )
         }
     }
 
     fun newChat() {
         if (closed.get()) return
+        if (activeTurn != null) cancel()
         generation.incrementAndGet()
         historyRevision.incrementAndGet()
         clearAgentHistory()
@@ -179,15 +207,39 @@ class EmbeddedAiController(
         activeTurn = null
         activeRequest?.cancel()
         configurationRevision.incrementAndGet()
-        mutableState.value = EmbeddedAiUiState(
-            chatSession = EmbeddedAiChatSession.create(),
+        val session = EmbeddedAiChatSession.create(now())
+        publish(EmbeddedAiUiState(
+            chatSession = session,
+            sessions = (mutableState.value.sessions + session).sortedByDescending(EmbeddedAiChatSession::updatedAt),
             runtimeInfo = mutableState.value.runtimeInfo,
             scrollRequest = mutableState.value.scrollRequest + 1,
-        )
+        ))
         scope.launch {
             activeRequest?.join()
             closeStaleAgent()
         }
+    }
+
+    fun selectChat(sessionId: String) {
+        if (closed.get() || mutableState.value.chatSession.id == sessionId) return
+        val target = mutableState.value.sessions.firstOrNull { it.id == sessionId } ?: return
+        if (activeTurn != null) cancel()
+        generation.incrementAndGet()
+        historyRevision.incrementAndGet()
+        actionConfirmationService.invalidate("The action was cancelled because another chat was opened.")
+        configurationRevision.incrementAndGet()
+        replaceAgentHistory(target)
+        publish(
+            mutableState.value.copy(
+                chatSession = target,
+                response = "",
+                errorMessage = null,
+                isLoading = false,
+                scrollRequest = mutableState.value.scrollRequest + 1,
+                contextNotice = null,
+            ),
+        )
+        scope.launch { closeStaleAgent() }
     }
 
     suspend fun shutdown() {
@@ -195,6 +247,21 @@ class EmbeddedAiController(
         generation.incrementAndGet()
         actionConfirmationService.invalidate("The action was cancelled because the application is closing.")
         val activeRequest = request
+        activeTurn?.let { turn ->
+            val interrupted = "The request was interrupted because the Planner closed."
+            publish(
+                mutableState.value.completeAssistant(
+                    turn.assistantMessageId,
+                    interrupted,
+                    EmbeddedAiMessageStatus.CANCELLED,
+                    now(),
+                ).copy(
+                    response = interrupted,
+                    errorMessage = null,
+                    isLoading = false,
+                ),
+            )
+        }
         request = null
         activeTurn = null
         supervisor.cancel()
@@ -226,7 +293,7 @@ class EmbeddedAiController(
         update: (EmbeddedAiUiState) -> EmbeddedAiUiState,
     ) {
         if (!closed.get() && generation.get() == requestGeneration) {
-            mutableState.value = update(mutableState.value)
+            publish(update(mutableState.value))
             request = null
             activeTurn = null
         }
@@ -237,20 +304,23 @@ class EmbeddedAiController(
         content: String,
         status: EmbeddedAiMessageStatus = EmbeddedAiMessageStatus.COMPLETE,
     ) = EmbeddedAiMessage(
-        id = "chat-message-${messageSequence.incrementAndGet()}",
+        id = UUID.randomUUID().toString(),
         role = role,
         content = content,
         status = status,
+        timestamp = now(),
     )
 
     private fun appendImmediateError(prompt: String, error: String) {
         val user = message(EmbeddedAiMessageRole.USER, prompt)
         val assistant = message(EmbeddedAiMessageRole.ASSISTANT, error, EmbeddedAiMessageStatus.ERROR)
-        mutableState.value = mutableState.value.withMessages(user, assistant).copy(
-            response = "",
-            errorMessage = error,
-            isLoading = false,
-            scrollRequest = mutableState.value.scrollRequest + 1,
+        publish(
+            mutableState.value.withMessages(user, assistant).copy(
+                response = "",
+                errorMessage = error,
+                isLoading = false,
+                scrollRequest = mutableState.value.scrollRequest + 1,
+            ),
         )
     }
 
@@ -272,6 +342,31 @@ class EmbeddedAiController(
 
     private fun clearAgentHistory() = synchronized(historyLock) { agentHistory.clear() }
 
+    private fun replaceAgentHistory(session: EmbeddedAiChatSession) = synchronized(historyLock) {
+        agentHistory.clear()
+        agentHistory += boundedAgentHistory(
+            session.messages
+                .filter { it.status != EmbeddedAiMessageStatus.THINKING }
+                .map { AgentConversationMessage(it.role, it.content) },
+        )
+    }
+
+    private fun publish(state: EmbeddedAiUiState) {
+        mutableState.value = state
+        persistConversations(state)
+    }
+
+    private fun persistConversations(state: EmbeddedAiUiState) {
+        runCatching {
+            conversationStore.save(
+                EmbeddedAiConversationArchive(
+                    sessions = state.sessions,
+                    activeSessionId = state.chatSession.id,
+                ),
+            )
+        }
+    }
+
     private data class ActiveTurn(
         val userMessage: EmbeddedAiMessage,
         val assistantMessageId: String,
@@ -283,20 +378,45 @@ const val MAX_PROMPT_CODE_POINTS = 8_000
 
 private fun EmbeddedAiUiState.withMessages(vararg additions: EmbeddedAiMessage): EmbeddedAiUiState {
     val bounded = (chatSession.messages + additions).takeLast(MAX_CHAT_MESSAGES)
-    return copy(chatSession = chatSession.copy(messages = bounded))
+    val updated = chatSession.copy(
+        messages = bounded,
+        title = chatSessionTitle(bounded),
+        updatedAt = additions.lastOrNull()?.timestamp ?: chatSession.updatedAt,
+    )
+    return withActiveSession(updated)
 }
 
 private fun EmbeddedAiUiState.completeAssistant(
     messageId: String,
     content: String,
     status: EmbeddedAiMessageStatus = EmbeddedAiMessageStatus.COMPLETE,
-): EmbeddedAiUiState = copy(
-    chatSession = chatSession.copy(
+    now: Instant,
+): EmbeddedAiUiState = withActiveSession(
+    chatSession.copy(
         messages = chatSession.messages.map { message ->
-            if (message.id == messageId) message.copy(content = content, status = status) else message
+            if (message.id == messageId) message.copy(content = content, status = status, timestamp = now) else message
         },
+        updatedAt = now,
     ),
 )
+
+private fun EmbeddedAiUiState.withActiveSession(session: EmbeddedAiChatSession): EmbeddedAiUiState = copy(
+    chatSession = session,
+    sessions = (sessions.filterNot { it.id == session.id } + session)
+        .sortedByDescending(EmbeddedAiChatSession::updatedAt),
+)
+
+private fun normalizedArchive(
+    archive: EmbeddedAiConversationArchive,
+    now: Instant,
+): EmbeddedAiConversationArchive {
+    val sessions = archive.sessions
+        .distinctBy(EmbeddedAiChatSession::id)
+        .sortedByDescending(EmbeddedAiChatSession::updatedAt)
+        .ifEmpty { listOf(EmbeddedAiChatSession.create(now)) }
+    val activeId = archive.activeSessionId?.takeIf { id -> sessions.any { it.id == id } } ?: sessions.first().id
+    return EmbeddedAiConversationArchive(sessions, activeId)
+}
 
 private fun String.boundedAssistantMessage(): String =
     if (length <= MAX_ASSISTANT_MESSAGE_CHARACTERS) this else take(MAX_ASSISTANT_MESSAGE_CHARACTERS) + "\n\n[Response truncated]"
