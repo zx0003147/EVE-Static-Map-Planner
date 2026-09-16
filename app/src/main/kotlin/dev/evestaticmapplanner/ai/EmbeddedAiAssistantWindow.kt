@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -51,6 +50,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -169,24 +169,15 @@ internal fun EmbeddedAiAssistantContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.weight(1f).fillMaxSize(),
             ) {
-                Box(Modifier.fillMaxWidth()) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.padding(start = if (sidebarVisible) 4.dp else 32.dp),
-                    ) {
-                        Text(
-                            "Embedded AI Assistant",
-                            style = MaterialTheme.typography.titleLarge,
-                        )
-                        Text(providerStatus.description, color = EveColors.SecondaryText)
-                    }
-                    ChatSidebarChevronButton(
-                        expanded = sidebarVisible,
-                        onClick = { sidebarVisible = !sidebarVisible },
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .offset(x = if (sidebarVisible) (-24).dp else 0.dp),
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.testTag(AI_ASSISTANT_HEADER_TEST_TAG),
+                ) {
+                    Text(
+                        "Embedded AI Assistant",
+                        style = MaterialTheme.typography.titleLarge,
                     )
+                    Text(providerStatus.description, color = EveColors.SecondaryText)
                 }
                 state.contextNotice?.let { Text(it, color = EveColors.SecondaryText) }
                 if (!providerStatus.ready) {
@@ -255,10 +246,14 @@ internal fun EmbeddedAiAssistantContent(
                         .testTag(AI_CHAT_INPUT_TEST_TAG),
                 )
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.fillMaxWidth().testTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    ChatSidebarChevronButton(
+                        expanded = sidebarVisible,
+                        onClick = { sidebarVisible = !sidebarVisible },
+                    )
+                    Box(Modifier.weight(1f))
                     if (state.isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 10.dp))
                     Button(
                         onClick = ::submitPrompt,
@@ -295,7 +290,7 @@ private fun ConversationSidebar(
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
-            .width(210.dp)
+            .width(CHAT_SIDEBAR_WIDTH)
             .fillMaxSize()
             .background(EveColors.InputSurface, RoundedCornerShape(6.dp))
             .padding(10.dp)
@@ -446,10 +441,13 @@ private fun ChatSidebarChevronButton(
 ) {
     Box(
         modifier = modifier
-            .size(24.dp)
+            .size(CHAT_SIDEBAR_CHEVRON_SIZE)
             .background(EveColors.SecondarySurface, RoundedCornerShape(4.dp))
             .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = if (expanded) "Collapse chat sidebar" else "Expand chat sidebar" }
+            .semantics {
+                contentDescription = if (expanded) "Collapse chat sidebar" else "Expand chat sidebar"
+                stateDescription = if (expanded) "Left chevron" else "Right chevron"
+            }
             .testTag(if (expanded) AI_HIDE_SIDEBAR_TEST_TAG else AI_SHOW_SIDEBAR_TEST_TAG),
         contentAlignment = Alignment.Center,
     ) {
@@ -572,8 +570,10 @@ data class AiAssistantProviderStatus(
 }
 
 internal const val AI_ASSISTANT_ROOT_TEST_TAG = "embedded-ai-assistant-root"
+internal const val AI_ASSISTANT_HEADER_TEST_TAG = "embedded-ai-assistant-header"
 internal const val AI_CHAT_LIST_TEST_TAG = "embedded-ai-chat-list"
 internal const val AI_CHAT_INPUT_TEST_TAG = "embedded-ai-chat-input"
+internal const val AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG = "embedded-ai-chat-bottom-action-row"
 internal const val AI_CHAT_MESSAGE_TEST_TAG_PREFIX = "embedded-ai-chat-message"
 internal const val AI_SESSION_SIDEBAR_TEST_TAG = "embedded-ai-session-sidebar"
 internal const val AI_SESSION_ITEM_TEST_TAG_PREFIX = "embedded-ai-session-item"
@@ -583,3 +583,6 @@ internal const val AI_RENAME_SESSION_TEST_TAG_PREFIX = "embedded-ai-rename-sessi
 internal const val AI_RENAME_INPUT_TEST_TAG = "embedded-ai-rename-input"
 internal const val AI_CONFIRMATION_DIALOG_TEST_TAG = "embedded-ai-confirmation-dialog"
 internal const val AI_CONFIRMATION_CANCEL_TEST_TAG = "embedded-ai-confirmation-cancel"
+
+private val CHAT_SIDEBAR_WIDTH = 210.dp
+private val CHAT_SIDEBAR_CHEVRON_SIZE = 24.dp

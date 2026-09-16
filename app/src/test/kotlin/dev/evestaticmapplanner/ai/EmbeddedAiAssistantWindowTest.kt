@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
@@ -171,21 +172,24 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertIsDisplayed()
         onAllNodesWithText("Hide Sidebar").assertCountEquals(0)
         onAllNodesWithText("Show Sidebar").assertCountEquals(0)
-        val sidebarBounds = onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val headerBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val expandedMessageBounds = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val expandedActionRowBounds = onNodeWithTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val expandedHandleBounds = onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).fetchSemanticsNode().boundsInRoot
-        val expandedTitleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
-        val expandedStatusBounds = onNodeWithText(READY_PROVIDER.description).fetchSemanticsNode().boundsInRoot
         assertTrue(
-            expandedHandleBounds.center.x in sidebarBounds.right..(sidebarBounds.right + 12f),
-            "Expanded handle should remain centered on the sidebar's padded outer edge.",
+            abs(expandedHandleBounds.left - expandedMessageBounds.left) <= 1.1f,
+            "Expanded Chevron left edge must equal the Message input left border.",
         )
         assertTrue(
-            expandedHandleBounds.right < expandedTitleBounds.left,
-            "Expanded handle must not overlap the Assistant title.",
+            expandedHandleBounds.top >= expandedActionRowBounds.top &&
+                expandedHandleBounds.bottom <= expandedActionRowBounds.bottom,
+            "Expanded Chevron must remain inside the bottom action row.",
         )
-        assertTrue(
-            expandedHandleBounds.right < expandedStatusBounds.left,
-            "Expanded handle must not overlap provider status.",
+        assertTrue(expandedHandleBounds.top > headerBounds.bottom, "Header must not contain the Chevron.")
+        assertEquals(
+            "Left chevron",
+            onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG)
+                .fetchSemanticsNode().config[SemanticsProperties.StateDescription],
         )
         onNodeWithText("Second chat").performClick()
         assertEquals("session-2", selected)
@@ -195,21 +199,26 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
         val collapsedHandle = onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed()
         val collapsedHandleBounds = collapsedHandle.fetchSemanticsNode().boundsInRoot
-        val collapsedTitleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
-        val collapsedStatusBounds = onNodeWithText(READY_PROVIDER.description).fetchSemanticsNode().boundsInRoot
+        val collapsedMessageBounds = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val collapsedActionRowBounds = onNodeWithTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val collapsedHeaderBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
         assertTrue(
-            collapsedHandleBounds.right < collapsedTitleBounds.left,
-            "Collapsed handle must not overlap the Assistant title.",
+            abs(collapsedHandleBounds.left - collapsedMessageBounds.left) <= 1.1f,
+            "Collapsed Chevron left edge must equal the Message input left border.",
         )
         assertTrue(
-            collapsedHandleBounds.right < collapsedStatusBounds.left,
-            "Collapsed handle must not overlap provider status.",
+            collapsedHandleBounds.top >= collapsedActionRowBounds.top &&
+                collapsedHandleBounds.bottom <= collapsedActionRowBounds.bottom,
+            "Collapsed Chevron must remain inside the bottom action row.",
         )
-        assertTrue(
-            abs(collapsedHandleBounds.top - expandedHandleBounds.top) <= 1.1f,
-            "Chevron height should stay fixed when the sidebar changes state.",
+        assertTrue(collapsedHandleBounds.top > collapsedHeaderBounds.bottom, "Header must not contain the Chevron.")
+        assertEquals(
+            "Right chevron",
+            collapsedHandle.fetchSemanticsNode().config[SemanticsProperties.StateDescription],
         )
-        assertTrue(abs(collapsedHandleBounds.width - expandedHandleBounds.width) <= 1.1f)
+        assertTrue(collapsedMessageBounds.left < expandedMessageBounds.left)
+        assertTrue(collapsedHandleBounds.left < expandedHandleBounds.left)
+        assertTrue(abs(collapsedHandleBounds.top - expandedHandleBounds.top) <= 1.1f)
         collapsedHandle.performClick()
         onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-1").assertIsDisplayed()
         onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-2").assertIsDisplayed()

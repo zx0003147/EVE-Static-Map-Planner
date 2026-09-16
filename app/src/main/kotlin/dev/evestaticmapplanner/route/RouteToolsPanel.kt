@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -409,12 +410,38 @@ private fun ProjectionToggleGraphic(projectionId: MapProjectionId) {
     val is2D = projectionId == MapProjectionId.OFFICIAL_2D
     val currentColor = EveColors.PrimaryAccent
     val inactiveColor = EveColors.SecondaryText.copy(alpha = 0.62f)
-    Box(Modifier.size(width = 46.dp, height = 38.dp)) {
+    Box(Modifier.size(width = 46.dp, height = 38.dp).scale(0.81f)) {
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .testTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG),
+        ) {
+            val color = EveColors.PrimaryText
+            val strokeWidth = 1.7.dp.toPx()
+            val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            projectionToggleArrowGeometry(size.width, size.height).forEach { arrow ->
+                val path = Path().apply {
+                    moveTo(arrow.start.x, arrow.start.y)
+                    cubicTo(
+                        arrow.control1.x,
+                        arrow.control1.y,
+                        arrow.control2.x,
+                        arrow.control2.y,
+                        arrow.end.x,
+                        arrow.end.y,
+                    )
+                }
+                drawPath(path, color, style = stroke)
+                drawLine(color, arrow.end, arrow.headSideA, strokeWidth, StrokeCap.Round)
+                drawLine(color, arrow.end, arrow.headSideB, strokeWidth, StrokeCap.Round)
+            }
+        }
         Text(
             "2D",
             color = if (is2D) currentColor else inactiveColor,
             fontWeight = if (is2D) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
+            lineHeight = 11.sp,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 1.dp)
@@ -424,63 +451,71 @@ private fun ProjectionToggleGraphic(projectionId: MapProjectionId) {
             "3D",
             color = if (is2D) inactiveColor else currentColor,
             fontWeight = if (is2D) androidx.compose.ui.text.font.FontWeight.Normal else androidx.compose.ui.text.font.FontWeight.Bold,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
+            lineHeight = 11.sp,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(end = 1.dp)
                 .testTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG),
         )
-        Canvas(
-            Modifier
-                .size(width = 24.dp, height = 20.dp)
-                .align(Alignment.Center)
-                .testTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG),
-        ) {
-            val color = EveColors.PrimaryText
-            val strokeWidth = 1.7.dp.toPx()
-            val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-            fun arrowHead(tip: Offset, tangent: Offset) {
-                val length = tangent.getDistance().coerceAtLeast(1f)
-                val unit = tangent / length
-                val normal = Offset(-unit.y, unit.x)
-                val headLength = size.minDimension * 0.19f
-                val headWidth = size.minDimension * 0.11f
-                drawLine(color, tip, tip - unit * headLength + normal * headWidth, strokeWidth, StrokeCap.Round)
-                drawLine(color, tip, tip - unit * headLength - normal * headWidth, strokeWidth, StrokeCap.Round)
-            }
-
-            val risingTip = Offset(size.width * 0.67f, size.height * 0.20f)
-            val risingArrow = Path().apply {
-                moveTo(size.width * 0.25f, size.height * 0.70f)
-                cubicTo(
-                    size.width * 0.30f,
-                    size.height * 0.40f,
-                    size.width * 0.52f,
-                    size.height * 0.36f,
-                    risingTip.x,
-                    risingTip.y,
-                )
-            }
-            drawPath(risingArrow, color, style = stroke)
-            arrowHead(risingTip, Offset(size.width * 0.15f, -size.height * 0.16f))
-
-            val fallingTip = Offset(size.width * 0.33f, size.height * 0.80f)
-            val fallingArrow = Path().apply {
-                moveTo(size.width * 0.75f, size.height * 0.30f)
-                cubicTo(
-                    size.width * 0.70f,
-                    size.height * 0.60f,
-                    size.width * 0.48f,
-                    size.height * 0.64f,
-                    fallingTip.x,
-                    fallingTip.y,
-                )
-            }
-            drawPath(fallingArrow, color, style = stroke)
-            arrowHead(fallingTip, Offset(-size.width * 0.15f, size.height * 0.16f))
-        }
     }
 }
+
+internal data class ProjectionTogglePoint(val x: Float, val y: Float)
+
+internal data class ProjectionToggleArcSpec(
+    val start: ProjectionTogglePoint,
+    val control1: ProjectionTogglePoint,
+    val control2: ProjectionTogglePoint,
+    val end: ProjectionTogglePoint,
+)
+
+internal data class ProjectionToggleArrowGeometry(
+    val start: Offset,
+    val control1: Offset,
+    val control2: Offset,
+    val end: Offset,
+    val headSideA: Offset,
+    val headSideB: Offset,
+)
+
+internal val PROJECTION_TOGGLE_LEFT_ARC = ProjectionToggleArcSpec(
+    start = ProjectionTogglePoint(0.56f, 0.18f),
+    control1 = ProjectionTogglePoint(0.26f, 0.08f),
+    control2 = ProjectionTogglePoint(0.32f, 0.38f),
+    end = ProjectionTogglePoint(0.20f, 0.62f),
+)
+
+internal val PROJECTION_TOGGLE_RIGHT_ARC = ProjectionToggleArcSpec(
+    start = ProjectionTogglePoint(0.44f, 0.82f),
+    control1 = ProjectionTogglePoint(0.74f, 0.92f),
+    control2 = ProjectionTogglePoint(0.68f, 0.62f),
+    end = ProjectionTogglePoint(0.80f, 0.38f),
+)
+
+internal fun projectionToggleArrowGeometry(width: Float, height: Float): List<ProjectionToggleArrowGeometry> =
+    listOf(PROJECTION_TOGGLE_LEFT_ARC, PROJECTION_TOGGLE_RIGHT_ARC).map { spec ->
+        fun ProjectionTogglePoint.toOffset() = Offset(x * width, y * height)
+        val start = spec.start.toOffset()
+        val control1 = spec.control1.toOffset()
+        val control2 = spec.control2.toOffset()
+        val end = spec.end.toOffset()
+        val tangent = end - control2
+        val tangentLength = tangent.getDistance().coerceAtLeast(1f)
+        val unit = tangent / tangentLength
+        val normal = Offset(-unit.y, unit.x)
+        val headLength = minOf(width, height) * 0.14f
+        val headWidth = minOf(width, height) * 0.08f
+        val headBase = end - unit * headLength
+        ProjectionToggleArrowGeometry(
+            start = start,
+            control1 = control1,
+            control2 = control2,
+            end = end,
+            headSideA = headBase + normal * headWidth,
+            headSideB = headBase - normal * headWidth,
+        )
+    }
 
 private val MapProjectionId.projectionToggleStateDescription: String
     get() = if (this == MapProjectionId.OFFICIAL_2D) "Official 2D selected" else "Real 3D selected"
