@@ -57,7 +57,7 @@ import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
 import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
-import dev.evestaticmapplanner.embeddedai.OpenAiKoogAgentFactory
+import dev.evestaticmapplanner.embeddedai.OpenRouterKoogAgentFactory
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
@@ -448,7 +448,10 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val embeddedAiController = remember(mapControlCoordinator) {
         EmbeddedAiController(
-            OpenAiKoogAgentFactory(mapControlCoordinator),
+            OpenRouterKoogAgentFactory(
+                mapControlCoordinator,
+                diagnostics = AppDiagnostics::info,
+            ),
             uiDispatcher = Dispatchers.Main.immediate,
         )
     }

@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.embeddedai
 
+import ai.koog.prompt.llm.LLMProvider
 import dev.evestaticmapplanner.control.MapControlService
 import java.io.IOException
 import java.lang.reflect.Proxy
@@ -18,6 +19,12 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmbeddedAiControllerTest {
+    @Test
+    fun `production model is fixed to OpenRouter DeepSeek V4 Flash 0731`() {
+        assertEquals(LLMProvider.OpenRouter, OPENROUTER_MODEL.provider)
+        assertEquals("deepseek/deepseek-v4-flash-0731", OPENROUTER_MODEL.id)
+    }
+
     @Test
     fun `agent is lazy and send never blocks the caller`() = runTest {
         var createCount = 0
@@ -64,13 +71,16 @@ class EmbeddedAiControllerTest {
     }
 
     @Test
-    fun `missing API key has a safe actionable message`() = runTest {
+    fun `missing OpenRouter API key has a safe actionable message`() = runTest {
         var environmentReads = 0
         val controller = EmbeddedAiController(
-            OpenAiKoogAgentFactory(unusedMapControlService) {
-                environmentReads++
-                null
-            },
+            OpenRouterKoogAgentFactory(
+                unusedMapControlService,
+                environment = {
+                    environmentReads++
+                    null
+                },
+            ),
             StandardTestDispatcher(testScheduler),
         )
 
@@ -80,7 +90,7 @@ class EmbeddedAiControllerTest {
 
         assertEquals(1, environmentReads)
         assertEquals(
-            "OPENAI_API_KEY is not set. Set it before using the embedded assistant.",
+            "OPENROUTER_API_KEY is not set. Set it before using the embedded assistant.",
             controller.state.value.errorMessage,
         )
         controller.shutdown()

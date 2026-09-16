@@ -99,8 +99,8 @@ class EmbeddedAiController(
 }
 
 private fun Throwable.safeUiMessage(): String = when (this) {
-    is MissingOpenAiApiKeyException ->
-        "OPENAI_API_KEY is not set. Set it before using the embedded assistant."
+    is MissingOpenRouterApiKeyException ->
+        "OPENROUTER_API_KEY is not set. Set it before using the embedded assistant."
     is EmbeddedAiToolException -> "Planner tool failed: $message"
     else -> "AI request failed (${this::class.simpleName ?: "unknown error"}). Check network access and provider settings."
 }

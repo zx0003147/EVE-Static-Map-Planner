@@ -12,6 +12,7 @@ import kotlinx.serialization.json.put
 
 class GetSystemInfoTool(
     private val mapControlService: MapControlService,
+    private val diagnostics: (String) -> Unit = {},
 ) : SimpleTool<GetSystemInfoTool.Args>(
     argsType = typeToken<Args>(),
     name = NAME,
@@ -20,22 +21,36 @@ class GetSystemInfoTool(
     @Serializable
     data class Args(val systemId: Int)
 
-    override suspend fun execute(args: Args): String = when (
-        val result = mapControlService.getSystemInfo(
-            GetSystemInfoRequest(
-                requestId = "embedded-ai-${UUID.randomUUID()}",
-                systemId = args.systemId,
-            ),
-        )
-    ) {
-        is ControlResult.Success -> result.value.toToolJson()
-        is ControlResult.Failure -> throw EmbeddedAiToolException(
-            "${result.error.code}: ${result.error.message}",
-        )
+    override suspend fun execute(args: Args): String {
+        diagnostics(TOOL_CALL_DIAGNOSTIC)
+        val result = try {
+            mapControlService.getSystemInfo(
+                GetSystemInfoRequest(
+                    requestId = "embedded-ai-${UUID.randomUUID()}",
+                    systemId = args.systemId,
+                ),
+            )
+        } catch (failure: Throwable) {
+            diagnostics(TOOL_FAILURE_DIAGNOSTIC)
+            throw failure
+        }
+        return when (result) {
+            is ControlResult.Success -> {
+                diagnostics(TOOL_SUCCESS_DIAGNOSTIC)
+                result.value.toToolJson()
+            }
+            is ControlResult.Failure -> {
+                diagnostics(TOOL_FAILURE_DIAGNOSTIC)
+                throw EmbeddedAiToolException("${result.error.code}: ${result.error.message}")
+            }
+        }
     }
 
     companion object {
         const val NAME = "get_system_info"
+        const val TOOL_CALL_DIAGNOSTIC = "Tool call: $NAME"
+        const val TOOL_SUCCESS_DIAGNOSTIC = "Tool result: success"
+        const val TOOL_FAILURE_DIAGNOSTIC = "Tool result: failure"
     }
 }
 

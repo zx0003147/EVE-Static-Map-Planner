@@ -1,6 +1,8 @@
 package dev.evestaticmapplanner.embeddedai
 
 import ai.koog.agents.testing.tools.getMockExecutor
+import dev.evestaticmapplanner.control.ControlError
+import dev.evestaticmapplanner.control.ControlErrorCode
 import dev.evestaticmapplanner.control.ControlResult
 import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.MapControlService
@@ -16,7 +18,8 @@ class GetSystemInfoToolTest {
     @Test
     fun `tool calls MapControlService with the requested ID and returns Planner data`() = runBlocking {
         val requestedIds = mutableListOf<Int>()
-        val tool = GetSystemInfoTool(recordingService(requestedIds))
+        val diagnostics = mutableListOf<String>()
+        val tool = GetSystemInfoTool(recordingService(requestedIds), diagnostics::add)
 
         val result = tool.execute(GetSystemInfoTool.Args(30_000_142))
 
@@ -24,6 +27,23 @@ class GetSystemInfoToolTest {
         assertTrue(result.contains("\"systemId\":30000142"))
         assertTrue(result.contains("\"name\":\"Jita\""))
         assertTrue(result.contains("\"regionName\":\"The Forge\""))
+        assertEquals(
+            listOf(GetSystemInfoTool.TOOL_CALL_DIAGNOSTIC, GetSystemInfoTool.TOOL_SUCCESS_DIAGNOSTIC),
+            diagnostics,
+        )
+    }
+
+    @Test
+    fun `tool failure diagnostics contain no request or provider secrets`() = runBlocking {
+        val diagnostics = mutableListOf<String>()
+        val tool = GetSystemInfoTool(failingService(), diagnostics::add)
+
+        runCatching { tool.execute(GetSystemInfoTool.Args(30_000_142)) }
+
+        assertEquals(
+            listOf(GetSystemInfoTool.TOOL_CALL_DIAGNOSTIC, GetSystemInfoTool.TOOL_FAILURE_DIAGNOSTIC),
+            diagnostics,
+        )
     }
 
     @Test
@@ -58,6 +78,23 @@ private fun recordingService(requestedIds: MutableList<Int>): MapControlService 
             ControlResult.Success(request.requestId, JITA_INFO)
         }
         "toString" -> "RecordingMapControlService"
+        else -> error("Unexpected MapControlService call: ${method.name}")
+    }
+} as MapControlService
+
+private fun failingService(): MapControlService = Proxy.newProxyInstance(
+    MapControlService::class.java.classLoader,
+    arrayOf(MapControlService::class.java),
+) { _, method, arguments ->
+    when (method.name) {
+        "getSystemInfo" -> {
+            val request = arguments?.first() as GetSystemInfoRequest
+            ControlResult.Failure(
+                request.requestId,
+                ControlError(ControlErrorCode.NOT_FOUND, "Solar system was not found"),
+            )
+        }
+        "toString" -> "FailingMapControlService"
         else -> error("Unexpected MapControlService call: ${method.name}")
     }
 } as MapControlService

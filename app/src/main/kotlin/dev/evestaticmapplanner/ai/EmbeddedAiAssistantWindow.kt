@@ -80,7 +80,7 @@ fun EmbeddedAiAssistantWindow(
                     ) { Text("Cancel") }
                     if (state.isLoading) {
                         CircularProgressIndicator(modifier = Modifier.padding(start = 4.dp))
-                        Text("Waiting for OpenAI…", color = EveColors.SecondaryText)
+                        Text("Waiting for OpenRouter…", color = EveColors.SecondaryText)
                     }
                 }
                 Box(

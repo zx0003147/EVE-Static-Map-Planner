@@ -4,10 +4,15 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.singleRunStrategy
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.testing.tools.getMockExecutor
-import ai.koog.prompt.executor.clients.openai.OpenAIModels
+import ai.koog.prompt.llm.LLMCapability
+import ai.koog.prompt.llm.LLMProvider
+import ai.koog.prompt.llm.LLModel
+import dev.evestaticmapplanner.control.ControlResult
 import dev.evestaticmapplanner.control.DefaultMapControlService
+import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.JumpPlanningPort
 import dev.evestaticmapplanner.control.MissionRenderStatePort
+import dev.evestaticmapplanner.control.MapControlService
 import dev.evestaticmapplanner.control.RepositorySystemReadPort
 import dev.evestaticmapplanner.control.RoutePlanningPort
 import dev.evestaticmapplanner.control.ViewportControlPort
@@ -22,6 +27,7 @@ import dev.evestaticmapplanner.data.db.StaticDatabaseBuildSession
 import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.embeddedai.GetSystemInfoTool
+import dev.evestaticmapplanner.embeddedai.OpenRouterKoogAgentFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createTempDirectory
@@ -29,6 +35,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import kotlin.time.Duration.Companion.minutes
 
 class EmbeddedAiPlannerDataIntegrationTest {
     @Test
@@ -69,7 +80,11 @@ class EmbeddedAiPlannerDataIntegrationTest {
         try {
             val agent = AIAgent(
                 promptExecutor = executor,
-                llmModel = OpenAIModels.Chat.GPT4oMini,
+                llmModel = LLModel(
+                    provider = LLMProvider.OpenRouter,
+                    id = OpenRouterKoogAgentFactory.MODEL_ID,
+                    capabilities = listOf(LLMCapability.Completion, LLMCapability.Tools, LLMCapability.ToolChoice),
+                ),
                 toolRegistry = ToolRegistry { tool(tool) },
                 systemPrompt = "Use get_system_info for numeric system IDs and never invent map data.",
                 strategy = singleRunStrategy(),
@@ -80,6 +95,61 @@ class EmbeddedAiPlannerDataIntegrationTest {
         } finally {
             executor.close()
             service.close()
+        }
+    }
+
+    @Test
+    fun `live OpenRouter DeepSeek calls the native tool against the real SDE database`() = runTest(timeout = 3.minutes) {
+        assumeTrue(
+            System.getenv(OPENROUTER_SMOKE_ENABLED) == "true",
+            "Set $OPENROUTER_SMOKE_ENABLED=true to run the real OpenRouter smoke test",
+        )
+        val apiKey = requireNotNull(System.getenv(OpenRouterKoogAgentFactory.OPENROUTER_API_KEY)) {
+            "OPENROUTER_API_KEY is required when $OPENROUTER_SMOKE_ENABLED=true"
+        }
+        val database = Path.of(requireNotNull(System.getenv("EVE_STATIC_DB")))
+        val report = Path.of(requireNotNull(System.getenv(OPENROUTER_SMOKE_REPORT)))
+        val baseService = plannerService(database)
+        val requestedIds = mutableListOf<Int>()
+        val service = RecordingMapControlService(baseService, requestedIds)
+        val diagnostics = mutableListOf<String>()
+        val agent = OpenRouterKoogAgentFactory(
+            mapControlService = service,
+            environment = { name ->
+                if (name == OpenRouterKoogAgentFactory.OPENROUTER_API_KEY) apiKey else null
+            },
+            diagnostics = diagnostics::add,
+        ).create()
+        try {
+            val answer = agent.run("Tell me about system 30000142")
+
+            assertEquals(listOf(JITA_SYSTEM_ID), requestedIds)
+            assertTrue(answer.contains("Jita", ignoreCase = true))
+            assertTrue(diagnostics.contains(OpenRouterKoogAgentFactory.PROVIDER_DIAGNOSTIC))
+            assertTrue(diagnostics.contains(OpenRouterKoogAgentFactory.MODEL_DIAGNOSTIC))
+            assertTrue(diagnostics.contains(GetSystemInfoTool.TOOL_CALL_DIAGNOSTIC))
+            assertTrue(diagnostics.contains(GetSystemInfoTool.TOOL_SUCCESS_DIAGNOSTIC))
+            assertTrue(diagnostics.all(SAFE_DIAGNOSTICS::contains))
+
+            report.parent?.let(Files::createDirectories)
+            Files.writeString(
+                report,
+                buildJsonObject {
+                    put("provider", "OpenRouter")
+                    put("model", OpenRouterKoogAgentFactory.MODEL_ID)
+                    put("toolCall", GetSystemInfoTool.NAME)
+                    put("toolResult", "success")
+                    put("toolCallCount", requestedIds.size)
+                    put("systemId", requestedIds.single())
+                    put("finalAnswer", answer)
+                    put("actualProviderEndpoint", JsonNull)
+                    put("usage", JsonNull)
+                    put("costUsd", JsonNull)
+                }.toString(),
+            )
+        } finally {
+            agent.close()
+            baseService.close()
         }
     }
 
@@ -94,6 +164,16 @@ class EmbeddedAiPlannerDataIntegrationTest {
         missionRenderStatePort = MissionRenderStatePort { },
         scope = this,
     )
+}
+
+private class RecordingMapControlService(
+    private val delegate: MapControlService,
+    private val requestedIds: MutableList<Int>,
+) : MapControlService by delegate {
+    override suspend fun getSystemInfo(request: GetSystemInfoRequest): ControlResult<dev.evestaticmapplanner.control.SystemInfoDto> {
+        requestedIds += request.systemId
+        return delegate.getSystemInfo(request)
+    }
 }
 
 private fun createJitaFixture(database: java.nio.file.Path) {
@@ -153,3 +233,12 @@ private val unusedViewportControlPort = object : ViewportControlPort {
 private const val JITA_SYSTEM_ID = 30_000_142
 private const val THE_FORGE_REGION_ID = 10_000_002
 private const val KIMOTORO_CONSTELLATION_ID = 20_000_020
+private const val OPENROUTER_SMOKE_ENABLED = "OPENROUTER_SMOKE_TEST"
+private const val OPENROUTER_SMOKE_REPORT = "OPENROUTER_SMOKE_REPORT"
+private val SAFE_DIAGNOSTICS = setOf(
+    OpenRouterKoogAgentFactory.PROVIDER_DIAGNOSTIC,
+    OpenRouterKoogAgentFactory.MODEL_DIAGNOSTIC,
+    GetSystemInfoTool.TOOL_CALL_DIAGNOSTIC,
+    GetSystemInfoTool.TOOL_SUCCESS_DIAGNOSTIC,
+    GetSystemInfoTool.TOOL_FAILURE_DIAGNOSTIC,
+)
