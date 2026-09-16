@@ -33,10 +33,10 @@ class ToolSidebarLayoutTest {
     }
 
     @Test
-    fun `search defaults expanded and all sections can expand or collapse`() {
+    fun `fresh sidebar starts with Search collapsed and all sections can expand or collapse`() {
         var state = ToolSidebarExpansionState()
-        assertTrue(state.isExpanded(ToolSidebarSection.SEARCH))
-        TOOL_SIDEBAR_SECTION_ORDER.drop(1).forEach { section ->
+        assertFalse(state.isExpanded(ToolSidebarSection.SEARCH))
+        TOOL_SIDEBAR_SECTION_ORDER.forEach { section ->
             assertFalse(state.isExpanded(section))
             state = state.expand(section)
         }

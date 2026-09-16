@@ -44,10 +44,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.map.MapProjectionId
@@ -99,7 +101,7 @@ internal val TOOL_SIDEBAR_SECTION_ORDER = listOf(
 )
 
 internal data class ToolSidebarExpansionState(
-    val expandedSections: Set<ToolSidebarSection> = setOf(ToolSidebarSection.SEARCH),
+    val expandedSections: Set<ToolSidebarSection> = emptySet(),
 ) {
     fun isExpanded(section: ToolSidebarSection): Boolean = section in expandedSections
 
@@ -326,10 +328,11 @@ internal fun SidebarControlCluster(
         ) {
             SidebarUtilityButton(
                 description = "Toggle 2D/3D map mode",
+                stateDescription = projectionId.projectionToggleStateDescription,
                 testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
                 onClick = onToggleProjection,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-            ) { Text(if (projectionId == MapProjectionId.OFFICIAL_2D) "2D" else "3D") }
+            ) { ProjectionToggleGraphic(projectionId) }
             SidebarUtilityButton(
                 description = "Open Embedded AI Assistant",
                 testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
@@ -347,10 +350,11 @@ internal fun SidebarControlCluster(
         Column(modifier = modifier.height(SIDEBAR_CONTROL_SIZE * 3)) {
             SidebarUtilityButton(
                 description = "Toggle 2D/3D map mode",
+                stateDescription = projectionId.projectionToggleStateDescription,
                 testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
                 onClick = onToggleProjection,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-            ) { Text(if (projectionId == MapProjectionId.OFFICIAL_2D) "2D" else "3D") }
+            ) { ProjectionToggleGraphic(projectionId) }
             SidebarUtilityButton(
                 description = "Open Embedded AI Assistant",
                 testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
@@ -370,6 +374,7 @@ internal fun SidebarControlCluster(
 @Composable
 private fun SidebarUtilityButton(
     description: String,
+    stateDescription: String? = null,
     testTag: String,
     onClick: () -> Unit,
     modifier: Modifier,
@@ -388,13 +393,65 @@ private fun SidebarUtilityButton(
                 role = Role.Button,
                 onClick = onClick,
             )
-            .semantics { contentDescription = description }
+            .semantics {
+                contentDescription = description
+                stateDescription?.let { this.stateDescription = it }
+            }
             .testTag(testTag),
         contentAlignment = Alignment.Center,
     ) {
         content()
     }
 }
+
+@Composable
+private fun ProjectionToggleGraphic(projectionId: MapProjectionId) {
+    val is2D = projectionId == MapProjectionId.OFFICIAL_2D
+    val currentColor = EveColors.PrimaryAccent
+    val inactiveColor = EveColors.SecondaryText.copy(alpha = 0.62f)
+    Box(Modifier.size(width = 40.dp, height = 34.dp)) {
+        Text(
+            "2D",
+            color = if (is2D) currentColor else inactiveColor,
+            fontWeight = if (is2D) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+            fontSize = 12.sp,
+            modifier = Modifier.align(Alignment.BottomStart).testTag(SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG),
+        )
+        Text(
+            "3D",
+            color = if (is2D) inactiveColor else currentColor,
+            fontWeight = if (is2D) androidx.compose.ui.text.font.FontWeight.Normal else androidx.compose.ui.text.font.FontWeight.Bold,
+            fontSize = 12.sp,
+            modifier = Modifier.align(Alignment.TopEnd).testTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG),
+        )
+        Canvas(
+            Modifier
+                .size(20.dp)
+                .align(Alignment.Center)
+                .testTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG),
+        ) {
+            val color = EveColors.PrimaryText
+            val strokeWidth = 1.7.dp.toPx()
+            val cap = StrokeCap.Round
+            fun arrow(from: Offset, to: Offset) {
+                drawLine(color, from, to, strokeWidth, cap)
+                val direction = to - from
+                val length = direction.getDistance().coerceAtLeast(1f)
+                val unit = direction / length
+                val normal = Offset(-unit.y, unit.x)
+                val headLength = size.minDimension * 0.20f
+                val headWidth = size.minDimension * 0.12f
+                drawLine(color, to, to - unit * headLength + normal * headWidth, strokeWidth, cap)
+                drawLine(color, to, to - unit * headLength - normal * headWidth, strokeWidth, cap)
+            }
+            arrow(Offset(size.width * 0.18f, size.height * 0.62f), Offset(size.width * 0.62f, size.height * 0.18f))
+            arrow(Offset(size.width * 0.82f, size.height * 0.38f), Offset(size.width * 0.38f, size.height * 0.82f))
+        }
+    }
+}
+
+private val MapProjectionId.projectionToggleStateDescription: String
+    get() = if (this == MapProjectionId.OFFICIAL_2D) "Official 2D selected" else "Real 3D selected"
 
 @Composable
 private fun AuraAvatar() {
@@ -418,6 +475,9 @@ private fun SidebarToggleIcon(expanded: Boolean) {
 }
 
 internal const val SIDEBAR_PROJECTION_TOGGLE_TEST_TAG = "sidebar-projection-toggle"
+internal const val SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG = "sidebar-projection-2d-label"
+internal const val SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG = "sidebar-projection-3d-label"
+internal const val SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG = "sidebar-projection-switch-icon"
 internal const val SIDEBAR_AI_BUTTON_TEST_TAG = "sidebar-ai-assistant"
 internal const val SIDEBAR_TOGGLE_TEST_TAG = "sidebar-toggle"
 private val SIDEBAR_CONTROL_SIZE = 44.dp

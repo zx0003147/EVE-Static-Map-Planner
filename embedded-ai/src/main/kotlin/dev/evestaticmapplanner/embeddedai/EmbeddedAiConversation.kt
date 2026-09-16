@@ -24,6 +24,7 @@ data class EmbeddedAiChatSession(
     val messages: List<EmbeddedAiMessage>,
     val title: String = chatSessionTitle(messages),
     val updatedAt: Instant = messages.lastOrNull()?.timestamp ?: createdAt,
+    val isTitleCustomized: Boolean = false,
 ) {
     companion object {
         fun create(now: Instant = Instant.now()): EmbeddedAiChatSession = EmbeddedAiChatSession(
@@ -36,10 +37,15 @@ data class EmbeddedAiChatSession(
     }
 }
 
-data class EmbeddedAiConversationArchive(
-    val sessions: List<EmbeddedAiChatSession> = emptyList(),
-    val activeSessionId: String? = null,
-)
+val EmbeddedAiChatSession.isEstablished: Boolean
+    get() = messages.any { it.role == EmbeddedAiMessageRole.USER }
+
+fun normalizeCustomChatTitle(value: String): String? {
+    val normalized = value.trim()
+    return normalized.takeIf {
+        it.isNotEmpty() && it.codePointCount(0, it.length) <= MAX_CUSTOM_CHAT_TITLE_CODE_POINTS
+    }
+}
 
 fun chatSessionTitle(messages: List<EmbeddedAiMessage>): String = messages
     .firstOrNull { it.role == EmbeddedAiMessageRole.USER }
@@ -114,4 +120,5 @@ internal const val MAX_AGENT_HISTORY_CHARACTERS = 24_000
 internal const val MAX_CHAT_MESSAGES = 200
 internal const val MAX_ASSISTANT_MESSAGE_CHARACTERS = 32_000
 internal const val MAX_CHAT_TITLE_CODE_POINTS = 42
+const val MAX_CUSTOM_CHAT_TITLE_CODE_POINTS = 60
 const val NEW_CHAT_TITLE = "New Chat"

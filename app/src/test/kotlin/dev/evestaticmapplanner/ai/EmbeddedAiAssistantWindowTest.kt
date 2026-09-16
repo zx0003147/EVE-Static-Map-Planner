@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
@@ -20,6 +21,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.embeddedai.AiActionConfirmation
@@ -69,7 +73,7 @@ class EmbeddedAiAssistantWindowTest {
             ),
         )
 
-        onAllNodesWithText("**literal user text**").assertCountEquals(2)
+        onAllNodesWithText("**literal user text**").assertCountEquals(1)
         onNodeWithText("Bold route and routeId").assertIsDisplayed()
         onAllNodesWithText("**Bold route** and `routeId`").assertCountEquals(0)
         onAllNodesWithText("•").assertCountEquals(2)
@@ -134,13 +138,13 @@ class EmbeddedAiAssistantWindowTest {
         val first = EmbeddedAiChatSession(
             "session-1",
             Instant.EPOCH,
-            listOf(message("a1", EmbeddedAiMessageRole.ASSISTANT, "First chat")),
+            listOf(message("u1", EmbeddedAiMessageRole.USER, "First chat")),
             title = "First chat",
         )
         val second = EmbeddedAiChatSession(
             "session-2",
             Instant.EPOCH.plusSeconds(1),
-            listOf(message("a2", EmbeddedAiMessageRole.ASSISTANT, "Second chat")),
+            listOf(message("u2", EmbeddedAiMessageRole.USER, "Second chat")),
             title = "Second chat",
         )
         var selected: String? = null
@@ -164,13 +168,100 @@ class EmbeddedAiAssistantWindowTest {
         }
 
         onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertIsDisplayed()
+        onAllNodesWithText("Hide Sidebar").assertCountEquals(0)
+        onAllNodesWithText("Show Sidebar").assertCountEquals(0)
         onNodeWithText("Second chat").performClick()
         assertEquals("session-2", selected)
         onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).performClick()
         onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertDoesNotExist()
+        onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
         onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed().performClick()
         onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-1").assertIsDisplayed()
         onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-session-2").assertIsDisplayed()
+    }
+
+    @Test
+    fun `empty chat is hidden and only one New Chat control is shown`() = runComposeUiTest {
+        val empty = EmbeddedAiChatSession.create(Instant.EPOCH.plusSeconds(2))
+        val established = EmbeddedAiChatSession(
+            "session-established",
+            Instant.EPOCH,
+            listOf(message("user-established", EmbeddedAiMessageRole.USER, "Jita route")),
+            title = "Jita route",
+        )
+        setContent {
+            MaterialTheme {
+                Box(Modifier.requiredSize(880.dp, 620.dp)) {
+                    TestContent(
+                        state = EmbeddedAiUiState(
+                            chatSession = empty,
+                            sessions = listOf(empty, established),
+                        ),
+                    )
+                }
+            }
+        }
+
+        onAllNodesWithText("+ New Chat").assertCountEquals(1)
+        onAllNodesWithText("New Chat").assertCountEquals(0)
+        onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-${empty.id}").assertDoesNotExist()
+        onNodeWithTag("$AI_SESSION_ITEM_TEST_TAG_PREFIX-${established.id}").assertIsDisplayed()
+    }
+
+    @Test
+    fun `chat rename saves with Enter cancels with Escape and survives Assistant content reopen`() = runComposeUiTest {
+        val originalMessages = listOf(message("rename-user", EmbeddedAiMessageRole.USER, "把1dq1-a标注在地图上"))
+        val initial = EmbeddedAiChatSession(
+            "rename-session",
+            Instant.EPOCH,
+            originalMessages,
+            title = "把1dq1-a标注在地图上",
+        )
+        var state by mutableStateOf(EmbeddedAiUiState(chatSession = initial, sessions = listOf(initial)))
+        var visible by mutableStateOf(true)
+        setContent {
+            MaterialTheme {
+                Box(Modifier.requiredSize(880.dp, 620.dp)) {
+                    if (visible) {
+                        TestContent(
+                            state = state,
+                            onRenameChat = { id, title ->
+                                val normalized = title.trim()
+                                if (normalized.isBlank()) {
+                                    false
+                                } else {
+                                    val renamed = state.sessions.single { it.id == id }.copy(
+                                        title = normalized,
+                                        isTitleCustomized = true,
+                                    )
+                                    state = state.copy(chatSession = renamed, sessions = listOf(renamed))
+                                    true
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        onNodeWithTag("$AI_RENAME_SESSION_TEST_TAG_PREFIX-${initial.id}").performClick()
+        onNodeWithTag(AI_RENAME_INPUT_TEST_TAG).performTextReplacement("  1DQ Route Planning  ")
+        onNodeWithTag(AI_RENAME_INPUT_TEST_TAG).performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+        onNodeWithText("1DQ Route Planning").assertIsDisplayed()
+        assertEquals(originalMessages, state.chatSession.messages)
+
+        onNodeWithTag("$AI_RENAME_SESSION_TEST_TAG_PREFIX-${initial.id}").performClick()
+        onNodeWithTag(AI_RENAME_INPUT_TEST_TAG).performTextReplacement("Discarded title")
+        onNodeWithTag(AI_RENAME_INPUT_TEST_TAG).performKeyInput { pressKey(Key.Escape) }
+        waitForIdle()
+        onNodeWithText("1DQ Route Planning").assertIsDisplayed()
+
+        visible = false
+        waitForIdle()
+        visible = true
+        waitForIdle()
+        onNodeWithText("1DQ Route Planning").assertIsDisplayed()
     }
 
     @Test
@@ -233,7 +324,7 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithText("Cancel").performClick()
 
         assertTrue(cancelled)
-        onAllNodesWithText("Keep this question").assertCountEquals(2)
+        onAllNodesWithText("Keep this question").assertCountEquals(1)
     }
 
     @Test
@@ -277,6 +368,7 @@ private fun TestContent(
     state: EmbeddedAiUiState,
     confirmation: AiActionConfirmation? = null,
     onNewChat: () -> Unit = {},
+    onRenameChat: (String, String) -> Boolean = { _, _ -> false },
     onDeny: (String) -> Boolean = { true },
 ) {
     EmbeddedAiAssistantContent(
@@ -286,6 +378,7 @@ private fun TestContent(
         onSend = {},
         onCancel = {},
         onNewChat = onNewChat,
+        onRenameChat = onRenameChat,
         onOpenSettings = {},
         onApprove = { true },
         onDeny = onDeny,

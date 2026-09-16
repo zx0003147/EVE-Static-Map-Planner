@@ -170,13 +170,103 @@ class EmbeddedAiControllerTest {
 
         assertTrue(controller.state.value.chatSession.messages.isEmpty())
         assertTrue(controller.state.value.chatSession.id != oldSession)
-        assertEquals(2, controller.state.value.sessions.size)
+        assertEquals(1, controller.state.value.sessions.size)
         assertTrue(controller.state.value.sessions.any { it.id == oldSession && it.messages.size == 2 })
         assertEquals(AiProviderType.DEEPSEEK, controller.state.value.runtimeInfo?.providerType)
         assertEquals(1, closeCount)
         controller.send("second")
         advanceUntilIdle()
+        assertEquals(2, controller.state.value.sessions.size)
         assertEquals("second", prompts.last(), "New Chat must not reuse the previous conversation context")
+        controller.shutdown()
+    }
+
+    @Test
+    fun `empty chats stay out of the session list until their first user message`() = runTest {
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory { testAgent { "answer" } },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        assertTrue(controller.state.value.sessions.isEmpty())
+        controller.newChat()
+        controller.newChat()
+        advanceUntilIdle()
+        assertTrue(controller.state.value.sessions.isEmpty())
+
+        controller.send("Build a Jita route")
+        advanceUntilIdle()
+
+        assertEquals(1, controller.state.value.sessions.size)
+        assertEquals("Build a Jita route", controller.state.value.sessions.single().title)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `renamed chat remains renamed for the runtime but a new controller starts empty`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory { testAgent { "answer" } },
+            dispatcher = dispatcher,
+        )
+        controller.send("把1dq1-a标注在地图上")
+        advanceUntilIdle()
+        val sessionId = controller.state.value.chatSession.id
+        val originalMessages = controller.state.value.chatSession.messages
+
+        assertTrue(controller.renameChat(sessionId, "  1DQ Route Planning  "))
+        assertEquals("1DQ Route Planning", controller.state.value.chatSession.title)
+        assertEquals(originalMessages, controller.state.value.chatSession.messages)
+
+        controller.send("continue")
+        advanceUntilIdle()
+        assertEquals("1DQ Route Planning", controller.state.value.chatSession.title)
+        assertFalse(controller.renameChat(sessionId, "   "))
+        assertEquals("1DQ Route Planning", controller.state.value.chatSession.title)
+        controller.shutdown()
+
+        val restarted = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory { testAgent { "unused" } },
+            dispatcher = dispatcher,
+        )
+        assertTrue(restarted.state.value.sessions.isEmpty())
+        assertTrue(restarted.state.value.chatSession.messages.isEmpty())
+        restarted.shutdown()
+    }
+
+    @Test
+    fun `multiple chats restore only their own bounded runtime context`() = runTest {
+        val prompts = mutableListOf<String>()
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                testAgent { prompt -> prompts += prompt; "answer-${prompts.size}" }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("Jita to Amarr")
+        advanceUntilIdle()
+        val chatA = controller.state.value.chatSession.id
+        controller.newChat()
+        advanceUntilIdle()
+        controller.send("1DQ1-A jump range")
+        advanceUntilIdle()
+        val chatB = controller.state.value.chatSession.id
+
+        assertEquals("1DQ1-A jump range", prompts[1])
+        controller.selectChat(chatA)
+        advanceUntilIdle()
+        controller.send("show it")
+        advanceUntilIdle()
+        assertTrue(prompts[2].contains("Jita to Amarr"))
+        assertFalse(prompts[2].contains("1DQ1-A jump range"))
+
+        controller.selectChat(chatB)
+        advanceUntilIdle()
+        controller.send("show that range")
+        advanceUntilIdle()
+        assertTrue(prompts[3].contains("1DQ1-A jump range"))
+        assertFalse(prompts[3].contains("Jita to Amarr"))
         controller.shutdown()
     }
 
@@ -403,6 +493,47 @@ class EmbeddedAiControllerTest {
         assertFalse(executed)
         assertTrue(controller.state.value.chatSession.messages.isEmpty())
         assertFalse(controller.state.value.isLoading)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `switching chats invalidates the previous chat confirmation`() = runTest {
+        val confirmations = AiActionConfirmationService()
+        var executed = false
+        var confirmationTurn = false
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                testAgent {
+                    if (confirmationTurn) {
+                        confirmations.confirmAndExecute(testConfirmationRequest()) {
+                            executed = true
+                            "done"
+                        }
+                    } else {
+                        "first answer"
+                    }
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+            confirmationService = confirmations,
+        )
+
+        controller.send("create Chat A")
+        advanceUntilIdle()
+        val chatA = controller.state.value.chatSession.id
+        controller.newChat()
+        advanceUntilIdle()
+        confirmationTurn = true
+        controller.send("save this in Chat B")
+        runCurrent()
+        assertNotNull(controller.confirmation.value)
+
+        controller.selectChat(chatA)
+        advanceUntilIdle()
+
+        assertNull(controller.confirmation.value)
+        assertFalse(executed)
+        assertEquals(chatA, controller.state.value.chatSession.id)
         controller.shutdown()
     }
 

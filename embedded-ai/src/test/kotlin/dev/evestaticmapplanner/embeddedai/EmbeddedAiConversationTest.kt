@@ -65,4 +65,12 @@ class EmbeddedAiConversationTest {
         assertTrue(title.endsWith("…"))
         assertTrue(title.codePointCount(0, title.length) <= MAX_CHAT_TITLE_CODE_POINTS + 1)
     }
+
+    @Test
+    fun `custom title trims outer whitespace rejects blank and enforces unicode limit`() {
+        assertEquals("1DQ Route Planning", normalizeCustomChatTitle("  1DQ Route Planning  "))
+        assertEquals(null, normalizeCustomChatTitle("   "))
+        assertEquals(null, normalizeCustomChatTitle("航".repeat(MAX_CUSTOM_CHAT_TITLE_CODE_POINTS + 1)))
+        assertEquals("航".repeat(MAX_CUSTOM_CHAT_TITLE_CODE_POINTS), normalizeCustomChatTitle("航".repeat(MAX_CUSTOM_CHAT_TITLE_CODE_POINTS)))
+    }
 }

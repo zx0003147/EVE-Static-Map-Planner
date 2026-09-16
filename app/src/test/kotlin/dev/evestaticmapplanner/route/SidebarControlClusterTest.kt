@@ -4,7 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -21,13 +25,21 @@ class SidebarControlClusterTest {
     @Test
     fun `expanded controls are equal width in 2D Aura Collapse order`() = runComposeUiTest {
         val calls = mutableListOf<String>()
+        var projectionId by mutableStateOf(MapProjectionId.OFFICIAL_2D)
         setContent {
             MaterialTheme {
                 Box(Modifier.requiredSize(270.dp, 44.dp)) {
                     SidebarControlCluster(
                         expanded = true,
-                        projectionId = MapProjectionId.OFFICIAL_2D,
-                        onToggleProjection = { calls += "projection" },
+                        projectionId = projectionId,
+                        onToggleProjection = {
+                            calls += "projection"
+                            projectionId = if (projectionId == MapProjectionId.OFFICIAL_2D) {
+                                MapProjectionId.REAL_3D
+                            } else {
+                                MapProjectionId.OFFICIAL_2D
+                            }
+                        },
                         onOpenEmbeddedAi = { calls += "ai" },
                         onToggleSidebar = { calls += "collapse" },
                         modifier = Modifier.fillMaxWidth(),
@@ -42,11 +54,26 @@ class SidebarControlClusterTest {
         assertTrue(projection.left < ai.left && ai.left < collapse.left)
         assertTrue(abs(projection.width - ai.width) <= 1.1f)
         assertTrue(abs(ai.width - collapse.width) <= 1.1f)
+        onNodeWithTag(SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
+        onNodeWithTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
+        onNodeWithTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG, useUnmergedTree = true).assertExists()
+        assertEquals(
+            "Official 2D selected",
+            onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG)
+                .fetchSemanticsNode().config[SemanticsProperties.StateDescription],
+        )
 
+        onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG).performClick()
+        waitForIdle()
+        assertEquals(
+            "Real 3D selected",
+            onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG)
+                .fetchSemanticsNode().config[SemanticsProperties.StateDescription],
+        )
         onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG).performClick()
         onNodeWithTag(SIDEBAR_AI_BUTTON_TEST_TAG).performClick()
         onNodeWithTag(SIDEBAR_TOGGLE_TEST_TAG).performClick()
-        assertEquals(listOf("projection", "ai", "collapse"), calls)
+        assertEquals(listOf("projection", "projection", "ai", "collapse"), calls)
     }
 
     @Test
@@ -72,5 +99,8 @@ class SidebarControlClusterTest {
         assertTrue(projection.top < ai.top && ai.top < expand.top)
         assertTrue(abs(projection.height - ai.height) < 1f)
         assertTrue(abs(ai.height - expand.height) < 1f)
+        onNodeWithTag(SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
+        onNodeWithTag(SIDEBAR_PROJECTION_3D_LABEL_TEST_TAG, useUnmergedTree = true).assertExists()
+        onNodeWithTag(SIDEBAR_PROJECTION_SWITCH_ICON_TEST_TAG, useUnmergedTree = true).assertExists()
     }
 }

@@ -65,7 +65,6 @@ import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.ConfiguredKoogAgentFactory
 import dev.evestaticmapplanner.embeddedai.DefaultAiClientFactory
 import dev.evestaticmapplanner.embeddedai.InMemoryAiCredentialStore
-import dev.evestaticmapplanner.embeddedai.JsonFileEmbeddedAiConversationStore
 import dev.evestaticmapplanner.embeddedai.KoogAiConnectionTester
 import dev.evestaticmapplanner.embeddedai.SavedOrEnvironmentAiProviderConfigSource
 import dev.evestaticmapplanner.embeddedai.UnavailableAiCredentialStore
@@ -470,12 +469,6 @@ private fun FrameWindowScope.ReadyApplication(
         AiCredentialResolver(aiSecureCredentialStore, aiSessionCredentialStore)
     }
     val aiClientFactory = remember(configuration) { DefaultAiClientFactory() }
-    val aiConversationStore = remember(configuration) {
-        JsonFileEmbeddedAiConversationStore(
-            ApplicationDirectories.root().resolve("embedded-ai").resolve("conversations.json"),
-            warningSink = AppDiagnostics::warning,
-        )
-    }
     val aiConfigSource = remember(configuration, mapViewModel) {
         SavedOrEnvironmentAiProviderConfigSource(
             savedConfig = { mapViewModel.state.value.appPreferences.aiProvider },
@@ -491,7 +484,6 @@ private fun FrameWindowScope.ReadyApplication(
                 diagnostics = AppDiagnostics::info,
             ),
             uiDispatcher = Dispatchers.Main.immediate,
-            conversationStore = aiConversationStore,
         )
     }
     val aiProviderSettingsController = remember(

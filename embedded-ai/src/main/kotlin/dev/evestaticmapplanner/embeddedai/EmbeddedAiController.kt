@@ -22,7 +22,7 @@ import kotlinx.coroutines.withContext
 
 data class EmbeddedAiUiState(
     val chatSession: EmbeddedAiChatSession = EmbeddedAiChatSession.create(),
-    val sessions: List<EmbeddedAiChatSession> = listOf(chatSession),
+    val sessions: List<EmbeddedAiChatSession> = emptyList(),
     val response: String = "",
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
@@ -36,7 +36,6 @@ class EmbeddedAiController(
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val uiDispatcher: CoroutineDispatcher = dispatcher,
     confirmationService: AiActionConfirmationService? = null,
-    private val conversationStore: EmbeddedAiConversationStore = InMemoryOnlyEmbeddedAiConversationStore,
     private val now: () -> Instant = Instant::now,
 ) {
     private val supervisor = SupervisorJob()
@@ -48,12 +47,10 @@ class EmbeddedAiController(
     private val closed = AtomicBoolean()
     private val historyLock = Any()
     private val agentHistory = mutableListOf<AgentConversationMessage>()
-    private val initialArchive = normalizedArchive(conversationStore.load(), now())
-    private val initialSession = initialArchive.sessions.first { it.id == initialArchive.activeSessionId }
+    private val initialSession = EmbeddedAiChatSession.create(now())
     private val mutableState = MutableStateFlow(
         EmbeddedAiUiState(
             chatSession = initialSession,
-            sessions = initialArchive.sessions,
         ),
     )
     private val actionConfirmationService = confirmationService
@@ -63,11 +60,6 @@ class EmbeddedAiController(
     private var agentRevision: Long = -1
     private var request: Job? = null
     private var activeTurn: ActiveTurn? = null
-
-    init {
-        replaceAgentHistory(initialSession)
-        persistConversations(mutableState.value)
-    }
 
     val state: StateFlow<EmbeddedAiUiState> = mutableState.asStateFlow()
     val confirmation: StateFlow<AiActionConfirmation?> = actionConfirmationService.pending
@@ -210,7 +202,7 @@ class EmbeddedAiController(
         val session = EmbeddedAiChatSession.create(now())
         publish(EmbeddedAiUiState(
             chatSession = session,
-            sessions = (mutableState.value.sessions + session).sortedByDescending(EmbeddedAiChatSession::updatedAt),
+            sessions = mutableState.value.sessions.filter(EmbeddedAiChatSession::isEstablished),
             runtimeInfo = mutableState.value.runtimeInfo,
             scrollRequest = mutableState.value.scrollRequest + 1,
         ))
@@ -240,6 +232,21 @@ class EmbeddedAiController(
             ),
         )
         scope.launch { closeStaleAgent() }
+    }
+
+    fun renameChat(sessionId: String, title: String): Boolean {
+        if (closed.get()) return false
+        val normalizedTitle = normalizeCustomChatTitle(title) ?: return false
+        val current = mutableState.value
+        val target = current.sessions.firstOrNull { it.id == sessionId } ?: return false
+        val renamed = target.copy(title = normalizedTitle, isTitleCustomized = true)
+        publish(
+            current.copy(
+                chatSession = if (current.chatSession.id == sessionId) renamed else current.chatSession,
+                sessions = current.sessions.map { if (it.id == sessionId) renamed else it },
+            ),
+        )
+        return true
     }
 
     suspend fun shutdown() {
@@ -353,18 +360,6 @@ class EmbeddedAiController(
 
     private fun publish(state: EmbeddedAiUiState) {
         mutableState.value = state
-        persistConversations(state)
-    }
-
-    private fun persistConversations(state: EmbeddedAiUiState) {
-        runCatching {
-            conversationStore.save(
-                EmbeddedAiConversationArchive(
-                    sessions = state.sessions,
-                    activeSessionId = state.chatSession.id,
-                ),
-            )
-        }
     }
 
     private data class ActiveTurn(
@@ -380,7 +375,7 @@ private fun EmbeddedAiUiState.withMessages(vararg additions: EmbeddedAiMessage):
     val bounded = (chatSession.messages + additions).takeLast(MAX_CHAT_MESSAGES)
     val updated = chatSession.copy(
         messages = bounded,
-        title = chatSessionTitle(bounded),
+        title = if (chatSession.isTitleCustomized) chatSession.title else chatSessionTitle(bounded),
         updatedAt = additions.lastOrNull()?.timestamp ?: chatSession.updatedAt,
     )
     return withActiveSession(updated)
@@ -402,21 +397,9 @@ private fun EmbeddedAiUiState.completeAssistant(
 
 private fun EmbeddedAiUiState.withActiveSession(session: EmbeddedAiChatSession): EmbeddedAiUiState = copy(
     chatSession = session,
-    sessions = (sessions.filterNot { it.id == session.id } + session)
+    sessions = (sessions.filterNot { it.id == session.id } + listOfNotNull(session.takeIf { it.isEstablished }))
         .sortedByDescending(EmbeddedAiChatSession::updatedAt),
 )
-
-private fun normalizedArchive(
-    archive: EmbeddedAiConversationArchive,
-    now: Instant,
-): EmbeddedAiConversationArchive {
-    val sessions = archive.sessions
-        .distinctBy(EmbeddedAiChatSession::id)
-        .sortedByDescending(EmbeddedAiChatSession::updatedAt)
-        .ifEmpty { listOf(EmbeddedAiChatSession.create(now)) }
-    val activeId = archive.activeSessionId?.takeIf { id -> sessions.any { it.id == id } } ?: sessions.first().id
-    return EmbeddedAiConversationArchive(sessions, activeId)
-}
 
 private fun String.boundedAssistantMessage(): String =
     if (length <= MAX_ASSISTANT_MESSAGE_CHARACTERS) this else take(MAX_ASSISTANT_MESSAGE_CHARACTERS) + "\n\n[Response truncated]"
