@@ -44,6 +44,7 @@ class DefaultAiClientFactory(
             connectTimeoutMillis = minOf(timeoutMillis, CONNECT_TIMEOUT_MILLIS),
             socketTimeoutMillis = timeoutMillis,
         )
+        val jsonStringHttpClientFactory = JsonStringContentTypeKoogHttpClientFactory(httpClientFactory)
         val client = secret.useString { apiKey ->
             when (config.providerType) {
                 AiProviderType.OPENROUTER -> OpenRouterLLMClient(
@@ -64,7 +65,7 @@ class DefaultAiClientFactory(
                 AiProviderType.DEEPSEEK -> DeepSeekLLMClient(
                     apiKey = apiKey,
                     settings = DeepSeekClientSettings(timeoutConfig = timeouts),
-                    httpClientFactory = httpClientFactory,
+                    httpClientFactory = jsonStringHttpClientFactory,
                 )
                 AiProviderType.GOOGLE -> GoogleLLMClient(
                     apiKey = apiKey,
@@ -91,7 +92,7 @@ class DefaultAiClientFactory(
                             moderationsPath = endpoint.moderationsPath,
                             modelsPath = endpoint.modelsPath,
                         ),
-                        httpClientFactory = httpClientFactory,
+                        httpClientFactory = jsonStringHttpClientFactory,
                     )
                 }
             }

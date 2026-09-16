@@ -84,4 +84,8 @@ internal fun Throwable.toSafeProviderException(
     }
 }
 
+internal fun Throwable.receivedHttpResponse(): Boolean = generateSequence(this) { it.cause }
+    .filterIsInstance<KoogHttpClientException>()
+    .any { it.statusCode != null }
+
 private fun providerError(code: AiProviderErrorCode, message: String) = AiProviderException(code, message)

@@ -72,11 +72,14 @@ class KoogAiConnectionTester(
             }
         } catch (failure: Throwable) {
             val safe = failure.toSafeProviderException(customBaseUrl = config.providerType.requiresBaseUrl)
-            return when (safe.code) {
-                AiProviderErrorCode.MODEL_NOT_FOUND,
-                AiProviderErrorCode.MODEL_UNAVAILABLE,
-                AiProviderErrorCode.REGION_RESTRICTED,
-                -> AiConnectionTestResult(
+            return when {
+                failure.receivedHttpResponse() -> AiConnectionTestResult(
+                    connection = passed("API connection successful"),
+                    model = failed(safe.safeMessage),
+                    toolCalling = notRun("Tool Calling was not tested"),
+                    errorCode = safe.code,
+                )
+                safe.code in MODEL_STAGE_ERRORS -> AiConnectionTestResult(
                     connection = passed("API connection successful"),
                     model = failed(safe.safeMessage),
                     toolCalling = notRun("Tool Calling was not tested"),
@@ -133,6 +136,14 @@ class KoogAiConnectionTester(
         toolCalling = notRun("Tool Calling was not tested"),
         errorCode = error.code,
     )
+
+    private companion object {
+        val MODEL_STAGE_ERRORS = setOf(
+            AiProviderErrorCode.MODEL_NOT_FOUND,
+            AiProviderErrorCode.MODEL_UNAVAILABLE,
+            AiProviderErrorCode.REGION_RESTRICTED,
+        )
+    }
 }
 
 internal class ProviderCapabilityProbe(
