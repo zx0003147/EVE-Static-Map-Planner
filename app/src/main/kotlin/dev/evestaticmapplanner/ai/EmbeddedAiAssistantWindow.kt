@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +29,7 @@ import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveColors
@@ -43,6 +45,7 @@ fun EmbeddedAiAssistantWindow(
     onDismiss: () -> Unit,
 ) {
     val state by controller.state.collectAsState()
+    val confirmation by controller.confirmation.collectAsState()
     var prompt by remember { mutableStateOf("Tell me about system 30000142") }
 
     Window(
@@ -88,7 +91,10 @@ fun EmbeddedAiAssistantWindow(
                     ) { Text("Cancel") }
                     if (state.isLoading) {
                         CircularProgressIndicator(modifier = Modifier.padding(start = 4.dp))
-                        Text("Waiting for AI provider…", color = EveColors.SecondaryText)
+                        Text(
+                            if (confirmation == null) "Waiting for AI provider…" else "Waiting for your confirmation…",
+                            color = EveColors.SecondaryText,
+                        )
                     }
                 }
                 Box(
@@ -114,7 +120,38 @@ fun EmbeddedAiAssistantWindow(
                 }
             }
         }
+        confirmation?.let { action ->
+            AlertDialog(
+                onDismissRequest = { controller.denyAction(action.actionId) },
+                title = { Text("AI wants to perform an action") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Action: ${action.action}")
+                        Text("Target: ${action.target}")
+                        Text("Risk: ${action.risk.userFacingLabel()}")
+                        action.details.forEach { detail ->
+                            Text("${detail.label}: ${detail.value}")
+                        }
+                        Text("Effect: ${action.effect}", color = EveColors.SecondaryText)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { controller.denyAction(action.actionId) }) { Text("Deny") }
+                },
+                confirmButton = {
+                    Button(onClick = { controller.approveAction(action.actionId) }) { Text("Allow") }
+                },
+            )
+        }
     }
+}
+
+private fun PlannerToolRisk.userFacingLabel(): String = when (this) {
+    PlannerToolRisk.READ_ONLY -> "Read only"
+    PlannerToolRisk.TEMPORARY_UI -> "Temporary map change"
+    PlannerToolRisk.PERSISTENT_WRITE -> "Permanent write"
+    PlannerToolRisk.DESTRUCTIVE_WRITE -> "Destructive change"
+    PlannerToolRisk.EXTERNAL_ACTION -> "External action"
 }
 
 data class AiAssistantProviderStatus(

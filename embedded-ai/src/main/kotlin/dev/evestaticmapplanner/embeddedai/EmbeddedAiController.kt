@@ -29,6 +29,7 @@ class EmbeddedAiController(
     private val agentFactory: EmbeddedAiAgentFactory,
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val uiDispatcher: CoroutineDispatcher = dispatcher,
+    confirmationService: AiActionConfirmationService? = null,
 ) {
     private val supervisor = SupervisorJob()
     private val scope = CoroutineScope(supervisor + dispatcher)
@@ -37,19 +38,31 @@ class EmbeddedAiController(
     private val configurationRevision = AtomicLong()
     private val closed = AtomicBoolean()
     private val mutableState = MutableStateFlow(EmbeddedAiUiState())
+    private val actionConfirmationService = confirmationService
+        ?: (agentFactory as? AiActionConfirmationOwner)?.actionConfirmationService
+        ?: AiActionConfirmationService()
     private var agent: EmbeddedAiAgent? = null
     private var agentRevision: Long = -1
     private var request: Job? = null
 
     val state: StateFlow<EmbeddedAiUiState> = mutableState.asStateFlow()
+    val confirmation: StateFlow<AiActionConfirmation?> = actionConfirmationService.pending
 
     fun send(prompt: String) {
         val normalized = prompt.trim()
         if (normalized.isEmpty() || closed.get() || request?.isActive == true) return
+        if (normalized.codePointCount(0, normalized.length) > MAX_PROMPT_CODE_POINTS) {
+            mutableState.value = EmbeddedAiUiState(
+                errorMessage = "The request is too long. Keep it under $MAX_PROMPT_CODE_POINTS characters.",
+            )
+            return
+        }
 
         val requestGeneration = generation.incrementAndGet()
+        val confirmationRequestId = "embedded-ai-request-$requestGeneration"
         mutableState.value = EmbeddedAiUiState(isLoading = true)
         request = scope.launch {
+            actionConfirmationService.startRequest(confirmationRequestId)
             try {
                 val currentRevision = configurationRevision.get()
                 val currentAgent = agentMutation.withLock {
@@ -77,6 +90,7 @@ class EmbeddedAiController(
                     }
                 }
             } finally {
+                actionConfirmationService.finishRequest(confirmationRequestId)
                 closeStaleAgent()
             }
         }
@@ -85,6 +99,7 @@ class EmbeddedAiController(
     /** Current work finishes on its existing provider; the next request lazily creates a fresh runtime. */
     fun configurationChanged() {
         if (closed.get()) return
+        actionConfirmationService.invalidate("The action was cancelled because the AI provider configuration changed.")
         configurationRevision.incrementAndGet()
         if (request?.isActive != true) scope.launch { closeStaleAgent() }
     }
@@ -92,6 +107,7 @@ class EmbeddedAiController(
     fun cancel() {
         if (closed.get()) return
         generation.incrementAndGet()
+        actionConfirmationService.invalidate("The action was cancelled with the AI request.")
         request?.cancel()
         request = null
         mutableState.value = EmbeddedAiUiState(response = "Request cancelled.")
@@ -100,6 +116,7 @@ class EmbeddedAiController(
     suspend fun shutdown() {
         if (!closed.compareAndSet(false, true)) return
         generation.incrementAndGet()
+        actionConfirmationService.invalidate("The action was cancelled because the application is closing.")
         val activeRequest = request
         request = null
         supervisor.cancel()
@@ -110,6 +127,10 @@ class EmbeddedAiController(
             agentRevision = -1
         }
     }
+
+    fun approveAction(actionId: String): Boolean = actionConfirmationService.approve(actionId)
+
+    fun denyAction(actionId: String): Boolean = actionConfirmationService.deny(actionId)
 
     private suspend fun closeStaleAgent() {
         if (agentRevision == configurationRevision.get()) return
@@ -129,6 +150,8 @@ class EmbeddedAiController(
         }
     }
 }
+
+const val MAX_PROMPT_CODE_POINTS = 8_000
 
 private fun Throwable.safeUiMessage(): String = when (this) {
     is AiProviderException -> safeMessage

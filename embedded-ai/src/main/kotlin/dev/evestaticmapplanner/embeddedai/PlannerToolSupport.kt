@@ -30,13 +30,32 @@ internal suspend fun <T> executePlannerQuery(
     return when (result) {
         is ControlResult.Success -> {
             diagnostics(toolSuccessDiagnostic())
-            serialize(result.value)
+            serialize(result.value).boundedToolResult()
         }
         is ControlResult.Failure -> {
             diagnostics(toolFailureDiagnostic())
             throw EmbeddedAiToolException("${mapErrorCode(result.error)}: ${result.error.message}")
         }
     }
+}
+
+internal suspend fun <T> requirePlannerValue(
+    query: suspend () -> ControlResult<T>,
+    mapErrorCode: (ControlError) -> String = { it.code.name },
+): T = when (val result = query()) {
+    is ControlResult.Success -> result.value
+    is ControlResult.Failure -> throw EmbeddedAiToolException(
+        "${mapErrorCode(result.error)}: ${result.error.message}",
+    )
+}
+
+internal fun String.boundedToolResult(): String {
+    if (length > MAX_TOOL_RESULT_CHARS) {
+        throw EmbeddedAiToolException(
+            "RESULT_TOO_LARGE: Planner returned more data than the embedded assistant can safely process",
+        )
+    }
+    return this
 }
 
 enum class EmbeddedAiToolErrorCode {
@@ -47,6 +66,7 @@ enum class EmbeddedAiToolErrorCode {
     INVALID_MARKER_ROLE,
     MAP_OPERATION_FAILED,
     MISSION_OPERATION_FAILED,
+    RESULT_TOO_LARGE,
 }
 
 internal fun mapViewportToolError(error: ControlError): String = when (error.code) {
@@ -102,3 +122,5 @@ internal fun toolSuccessDiagnostic() = "Tool result: success"
 internal fun toolFailureDiagnostic() = "Tool result: failure"
 
 internal class EmbeddedAiToolException(message: String) : RuntimeException(message)
+
+internal const val MAX_TOOL_RESULT_CHARS = 65_536

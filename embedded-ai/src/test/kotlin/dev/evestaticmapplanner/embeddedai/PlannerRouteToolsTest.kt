@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 
 class PlannerRouteToolsTest {
     @Test
-    fun `registry contains Phase 2 read-only and Phase 4 temporary UI tools only`() {
+    fun `final registry exposes bounded Planner tools with explicit risk tiers`() {
         val tools = PlannerToolSet(recordingPlannerService(Calls()))
 
         assertEquals(
@@ -44,13 +44,31 @@ class PlannerRouteToolsTest {
                 "show_jump_range",
                 "add_mission_marker",
                 "fit_mission",
+                "list_views",
+                "get_current_view",
+                "create_view",
+                "rename_view",
+                "switch_view",
+                "delete_view",
+                "get_active_missions",
+                "clear_mission",
+                "list_wormholes",
+                "create_wormhole",
+                "create_saved_marker",
+                "list_eve_navigation_targets",
+                "send_mission_navigation_to_eve",
             ),
             tools.names,
         )
         assertFalse(tools.names.contains("get_normal_route_graph"))
-        assertTrue(tools.permissions.all { it.risk in PlannerToolPermissions.allowedRisks })
-        assertFalse(tools.permissions.any { it.risk == PlannerToolRisk.PERSISTENT_WRITE })
-        assertFalse(tools.permissions.any { it.risk == PlannerToolRisk.EXTERNAL_ACTION })
+        assertEquals(26, tools.names.size)
+        assertEquals(
+            setOf("create_saved_marker", "delete_view", "send_mission_navigation_to_eve"),
+            tools.permissions.filter { it.risk.requiresConfirmation }.mapTo(mutableSetOf()) { it.name },
+        )
+        assertEquals(PlannerToolRisk.PERSISTENT_WRITE, tools.permissions.single { it.name == "create_saved_marker" }.risk)
+        assertEquals(PlannerToolRisk.DESTRUCTIVE_WRITE, tools.permissions.single { it.name == "delete_view" }.risk)
+        assertEquals(PlannerToolRisk.EXTERNAL_ACTION, tools.permissions.single { it.name == "send_mission_navigation_to_eve" }.risk)
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Never calculate routes"))
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Use search_system first"))
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("only when the user explicitly asks"))

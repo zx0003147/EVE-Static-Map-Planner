@@ -52,6 +52,30 @@ class EmbeddedAiControllerTest {
     }
 
     @Test
+    fun `one controller session runs at most one main request concurrently`() = runTest {
+        val prompts = mutableListOf<String>()
+        val gate = CompletableDeferred<String>()
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                testAgent { prompt ->
+                    prompts += prompt
+                    gate.await()
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("first")
+        controller.send("second")
+        runCurrent()
+        assertEquals(listOf("first"), prompts)
+        gate.complete("done")
+        advanceUntilIdle()
+        assertEquals("done", controller.state.value.response)
+        controller.shutdown()
+    }
+
+    @Test
     fun `cancel stops an in-flight request and returns to idle`() = runTest {
         val gate = CompletableDeferred<String>()
         val controller = EmbeddedAiController(
@@ -177,7 +201,93 @@ class EmbeddedAiControllerTest {
         controller.shutdown()
         assertEquals(2, closeCount)
     }
+
+    @Test
+    fun `cancel invalidates a pending confirmation and prevents execution`() = runTest {
+        val confirmations = AiActionConfirmationService()
+        var executed = false
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                testAgent {
+                    confirmations.confirmAndExecute(testConfirmationRequest()) {
+                        executed = true
+                        "done"
+                    }
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+            confirmationService = confirmations,
+        )
+
+        controller.send("save this")
+        runCurrent()
+        assertNotNull(controller.confirmation.value)
+        controller.cancel()
+        advanceUntilIdle()
+
+        assertNull(controller.confirmation.value)
+        assertFalse(executed)
+        assertEquals("Request cancelled.", controller.state.value.response)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `provider change invalidates pending confirmation without executing it`() = runTest {
+        val confirmations = AiActionConfirmationService()
+        var executed = false
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                testAgent {
+                    confirmations.confirmAndExecute(testConfirmationRequest()) {
+                        executed = true
+                        "done"
+                    }
+                }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+            confirmationService = confirmations,
+        )
+
+        controller.send("save this")
+        runCurrent()
+        assertNotNull(controller.confirmation.value)
+        controller.configurationChanged()
+        advanceUntilIdle()
+
+        assertNull(controller.confirmation.value)
+        assertFalse(executed)
+        assertTrue(controller.state.value.response.contains("provider configuration changed"))
+        controller.shutdown()
+    }
+
+    @Test
+    fun `oversized prompt is rejected before lazy agent creation`() = runTest {
+        var createCount = 0
+        val controller = EmbeddedAiController(
+            agentFactory = EmbeddedAiAgentFactory {
+                createCount++
+                testAgent { "unexpected" }
+            },
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("x".repeat(MAX_PROMPT_CODE_POINTS + 1))
+        advanceUntilIdle()
+
+        assertEquals(0, createCount)
+        assertTrue(controller.state.value.errorMessage.orEmpty().contains("too long"))
+        controller.shutdown()
+    }
 }
+
+private fun testConfirmationRequest() = AiActionRequest(
+    toolName = "create_saved_marker",
+    risk = PlannerToolRisk.PERSISTENT_WRITE,
+    normalizedArguments = "{\"systemId\":30000142}",
+    action = "Create saved marker",
+    target = "Jita",
+    effect = "Writes user data.",
+)
 
 private fun testAgent(run: suspend (String) -> String) = object : EmbeddedAiAgent {
     override suspend fun run(prompt: String): String = run(prompt)
