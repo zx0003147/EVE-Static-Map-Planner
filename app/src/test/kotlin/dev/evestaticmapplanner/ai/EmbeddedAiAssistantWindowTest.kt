@@ -8,8 +8,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
@@ -18,6 +20,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
@@ -36,10 +39,13 @@ import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessage
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageRole
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiUiState
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
+import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.ui.EveTheme
 import java.time.Instant
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
@@ -84,13 +90,27 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithText("1.").assertIsDisplayed()
         onNodeWithText("Two").assertIsDisplayed()
 
-        val annotated = inlineMarkdown("**Bold** and `code`")
+        val annotated = inlineMarkdown(
+            text = "**Bold** and `code`",
+            linkColor = EveColors.PrimaryAccent,
+            inlineCodeForeground = EveColors.PrimaryText,
+            inlineCodeBackground = EveColors.HoverSurface,
+        )
         assertEquals("Bold and code", annotated.text)
         assertTrue(annotated.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
-        assertTrue(annotated.spanStyles.any { it.item.fontFamily == FontFamily.Monospace })
+        val inlineCode = annotated.spanStyles.single { it.item.fontFamily == FontFamily.Monospace }.item
+        assertEquals(EveColors.PrimaryText, inlineCode.color)
+        assertEquals(EveColors.HoverSurface, inlineCode.background)
+
+        val bodyStyle = assistantMarkdownTextStyle(TextStyle.Default, EveColors.PrimaryText)
+        assertEquals(EveColors.PrimaryText, bodyStyle.color)
+        assertFalse(bodyStyle.color == Color.Black)
 
         val links = inlineMarkdown(
-            "[Safe](https://example.com/news) [Bad](javascript:alert(1)) [File](file:///secret)",
+            text = "[Safe](https://example.com/news) [Bad](javascript:alert(1)) [File](file:///secret)",
+            linkColor = EveColors.PrimaryAccent,
+            inlineCodeForeground = EveColors.PrimaryText,
+            inlineCodeBackground = EveColors.HoverSurface,
         )
         assertEquals(
             listOf("https://example.com/news"),
@@ -98,6 +118,7 @@ class EmbeddedAiAssistantWindowTest {
         )
         assertTrue(links.text.contains("[Bad](javascript:alert(1))"))
         assertTrue(links.text.contains("[File](file:///secret)"))
+        assertTrue(links.spanStyles.any { it.item.color == EveColors.PrimaryAccent })
     }
 
     @Test
@@ -183,7 +204,7 @@ class EmbeddedAiAssistantWindowTest {
         onAllNodesWithText("Hide Sidebar").assertCountEquals(0)
         onAllNodesWithText("Show Sidebar").assertCountEquals(0)
         val headerBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
-        val expandedMessageBounds = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val expandedMessageBounds = onNodeWithTag(AI_CHAT_COMPOSER_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val expandedActionRowBounds = onNodeWithTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val expandedHandleBounds = onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).fetchSemanticsNode().boundsInRoot
         assertTrue(
@@ -209,7 +230,7 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
         val collapsedHandle = onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed()
         val collapsedHandleBounds = collapsedHandle.fetchSemanticsNode().boundsInRoot
-        val collapsedMessageBounds = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val collapsedMessageBounds = onNodeWithTag(AI_CHAT_COMPOSER_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val collapsedActionRowBounds = onNodeWithTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val collapsedHeaderBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
         assertTrue(
@@ -351,7 +372,7 @@ class EmbeddedAiAssistantWindowTest {
     }
 
     @Test
-    fun `Cancel keeps existing conversation visible`() = runComposeUiTest {
+    fun `composer Stop reuses Agent cancel and keeps existing conversation visible`() = runComposeUiTest {
         var cancelled = false
         val state = chatState(
             message("u1", EmbeddedAiMessageRole.USER, "Keep this question"),
@@ -375,10 +396,11 @@ class EmbeddedAiAssistantWindowTest {
             }
         }
 
-        onNodeWithText("Cancel").performClick()
+        onNodeWithContentDescription("Stop generating").performClick()
 
         assertTrue(cancelled)
         onAllNodesWithText("Keep this question").assertCountEquals(1)
+        onAllNodesWithText("Cancel").assertCountEquals(0)
     }
 
     @Test
@@ -435,17 +457,81 @@ class EmbeddedAiAssistantWindowTest {
             }
         }
 
-        onNodeWithTag(AI_MICROPHONE_BUTTON_TEST_TAG).assertTextContains("Stop recording").performClick()
+        onNodeWithContentDescription("Stop recording and transcribe").performClick()
         onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).assertTextContains("Jita 到 Amarr 几跳？")
-        onNodeWithTag(AI_CANCEL_VOICE_TEST_TAG).performClick()
+        onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).performKeyInput { pressKey(Key.Escape) }
         assertTrue(voiceCancelled)
         onNodeWithTag("$AI_SPEAK_MESSAGE_TEST_TAG_PREFIX-voice-answer").performClick()
         assertEquals("voice-answer" to "Route complete", spoken)
     }
 
+    @Test
+    fun `composer keeps mic left of send inside bounds and long text outside controls`() = runComposeUiTest {
+        setContent {
+            EveTheme {
+                Box(Modifier.requiredSize(680.dp, 640.dp)) { TestContent(EmbeddedAiUiState()) }
+            }
+        }
+
+        val composer = onNodeWithTag(AI_CHAT_COMPOSER_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val editable = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val mic = onNodeWithTag(AI_MICROPHONE_BUTTON_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val send = onNodeWithTag(AI_SEND_STOP_BUTTON_TEST_TAG).fetchSemanticsNode().boundsInRoot
+
+        assertTrue(mic.left < send.left)
+        assertTrue(mic.left >= composer.left && send.right <= composer.right)
+        assertTrue(mic.top >= composer.top && send.bottom <= composer.bottom)
+        assertTrue(editable.right <= mic.left, "Editable text width must stop before composer controls.")
+        assertTrue(editable.bottom <= mic.top, "Editable text height must stop above composer controls.")
+
+        onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).performTextReplacement("Long route request ".repeat(40))
+        waitForIdle()
+        val longEditable = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val longMic = onNodeWithTag(AI_MICROPHONE_BUTTON_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        assertTrue(longEditable.right <= longMic.left)
+        assertTrue(longEditable.bottom <= longMic.top)
+        onAllNodesWithText("Microphone").assertCountEquals(0)
+        onAllNodesWithText("Send").assertCountEquals(0)
+        onAllNodesWithText("Cancel").assertCountEquals(0)
+    }
+
+    @Test
+    fun `composer Send and Stop share the same position`() = runComposeUiTest {
+        var state by mutableStateOf(EmbeddedAiUiState())
+        var cancelled = false
+        setContent {
+            EveTheme {
+                Box(Modifier.requiredSize(680.dp, 640.dp)) {
+                    EmbeddedAiAssistantContent(
+                        state = state,
+                        confirmation = null,
+                        providerStatus = READY_PROVIDER,
+                        onSend = {},
+                        onCancel = { cancelled = true },
+                        onNewChat = {},
+                        onOpenSettings = {},
+                        onApprove = { true },
+                        onDeny = { true },
+                    )
+                }
+            }
+        }
+        onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).performTextReplacement("Send this")
+        val sendBounds = onNodeWithContentDescription("Send message").fetchSemanticsNode().boundsInRoot
+
+        state = state.copy(isLoading = true)
+        waitForIdle()
+        val stop = onNodeWithContentDescription("Stop generating")
+        val stopBounds = stop.fetchSemanticsNode().boundsInRoot
+        assertTrue(abs(sendBounds.left - stopBounds.left) <= 1.1f)
+        assertTrue(abs(sendBounds.top - stopBounds.top) <= 1.1f)
+        stop.performClick()
+        assertTrue(cancelled)
+    }
+
     private fun androidx.compose.ui.test.ComposeUiTest.setAssistantContent(state: EmbeddedAiUiState) {
         setContent {
-            MaterialTheme {
+            EveTheme {
                 Box(Modifier.requiredSize(680.dp, 640.dp)) { TestContent(state) }
             }
         }

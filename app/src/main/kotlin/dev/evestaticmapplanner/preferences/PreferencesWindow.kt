@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -261,6 +262,12 @@ internal data class AiFeaturesExpansionState(val expanded: AiFeaturesSection? = 
     fun toggle(section: AiFeaturesSection) = copy(expanded = if (expanded == section) null else section)
 }
 
+internal enum class EmbeddedAssistantSection { AI_MODEL, WEB_SEARCH, VOICE_IO }
+
+internal data class EmbeddedAssistantExpansionState(val expanded: EmbeddedAssistantSection? = null) {
+    fun toggle(section: EmbeddedAssistantSection) = copy(expanded = if (expanded == section) null else section)
+}
+
 @Composable
 internal fun AiFeaturesPreferencesContent(
     savedConfig: AiProviderConfig?,
@@ -291,38 +298,55 @@ internal fun AiFeaturesPreferencesContent(
     onSpeechPackRemove: () -> Unit = {},
 ) {
     var expansion by remember { mutableStateOf(AiFeaturesExpansionState()) }
-    var voiceExpanded by remember { mutableStateOf(false) }
+    var assistantExpansion by remember { mutableStateOf(EmbeddedAssistantExpansionState()) }
     AiFeaturesAccordionHeader(
         title = "Embedded Assistant",
         expanded = expansion.expanded == AiFeaturesSection.EMBEDDED_ASSISTANT,
-        onClick = { expansion = expansion.toggle(AiFeaturesSection.EMBEDDED_ASSISTANT) },
+        onClick = {
+            expansion = expansion.toggle(AiFeaturesSection.EMBEDDED_ASSISTANT)
+            assistantExpansion = EmbeddedAssistantExpansionState()
+        },
     )
     if (expansion.expanded == AiFeaturesSection.EMBEDDED_ASSISTANT) {
-        AiProviderPreferencesContent(
-            savedConfig = savedConfig,
-            savedProviderConfigs = savedProviderConfigs,
-            state = state,
-            onProviderViewed = onProviderViewed,
-            onTest = onTest,
-            onSave = onSave,
-            onDeleteCredential = onDeleteCredential,
+        AiFeaturesAccordionHeader(
+            title = "AI Model",
+            expanded = assistantExpansion.expanded == EmbeddedAssistantSection.AI_MODEL,
+            onClick = { assistantExpansion = assistantExpansion.toggle(EmbeddedAssistantSection.AI_MODEL) },
         )
+        if (assistantExpansion.expanded == EmbeddedAssistantSection.AI_MODEL) {
+            AiProviderPreferencesContent(
+                savedConfig = savedConfig,
+                savedProviderConfigs = savedProviderConfigs,
+                state = state,
+                onProviderViewed = onProviderViewed,
+                onTest = onTest,
+                onSave = onSave,
+                onDeleteCredential = onDeleteCredential,
+            )
+        }
         HorizontalDivider()
-        WebSearchPreferencesContent(
-            savedConfig = webSearchConfig,
-            state = webSearchState,
-            onViewed = onWebSearchViewed,
-            onTest = onWebSearchTest,
-            onSave = onWebSearchSave,
-            onDeleteCredential = onWebSearchCredentialDelete,
+        AiFeaturesAccordionHeader(
+            title = "Web Search",
+            expanded = assistantExpansion.expanded == EmbeddedAssistantSection.WEB_SEARCH,
+            onClick = { assistantExpansion = assistantExpansion.toggle(EmbeddedAssistantSection.WEB_SEARCH) },
         )
+        if (assistantExpansion.expanded == EmbeddedAssistantSection.WEB_SEARCH) {
+            WebSearchPreferencesContent(
+                savedConfig = webSearchConfig,
+                state = webSearchState,
+                onViewed = onWebSearchViewed,
+                onTest = onWebSearchTest,
+                onSave = onWebSearchSave,
+                onDeleteCredential = onWebSearchCredentialDelete,
+            )
+        }
         HorizontalDivider()
         AiFeaturesAccordionHeader(
             title = "Voice I/O",
-            expanded = voiceExpanded,
-            onClick = { voiceExpanded = !voiceExpanded },
+            expanded = assistantExpansion.expanded == EmbeddedAssistantSection.VOICE_IO,
+            onClick = { assistantExpansion = assistantExpansion.toggle(EmbeddedAssistantSection.VOICE_IO) },
         )
-        if (voiceExpanded) {
+        if (assistantExpansion.expanded == EmbeddedAssistantSection.VOICE_IO) {
             VoicePreferencesContent(
                 savedConfig = voiceConfig,
                 state = voiceState,
@@ -406,86 +430,65 @@ internal fun VoicePreferencesContent(
         return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
     }
 
-    Text("Voice I/O", style = MaterialTheme.typography.titleMedium)
-    Text("Voice Input", style = MaterialTheme.typography.titleSmall)
-    EnumDropdown(
-        label = "Input Provider",
-        value = inputProvider.displayName,
-        expanded = inputExpanded,
-        onExpandedChange = { inputExpanded = it },
-        enabled = !busy,
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth().testTag(VOICE_INPUT_SECTION_TEST_TAG),
     ) {
-        VoiceInputProvider.entries.forEach { provider ->
-            DropdownMenuItem(
-                text = { Text(provider.displayName) },
-                onClick = { inputProvider = provider; inputExpanded = false },
-            )
+        Text("Voice Input", style = MaterialTheme.typography.titleSmall)
+        EnumDropdown(
+            label = "Input Provider",
+            value = inputProvider.displayName,
+            expanded = inputExpanded,
+            onExpandedChange = { inputExpanded = it },
+            enabled = !busy,
+            modifier = Modifier.testTag(VOICE_INPUT_PROVIDER_TEST_TAG),
+        ) {
+            VoiceInputProvider.entries.forEach { provider ->
+                DropdownMenuItem(
+                    text = { Text(provider.displayName) },
+                    onClick = { inputProvider = provider; inputExpanded = false },
+                )
+            }
         }
-    }
-    Text(
-        if (inputProvider == VoiceInputProvider.LOCAL) {
-            "Local: Audio stays on this computer."
-        } else if (inputProvider == VoiceInputProvider.OPENAI) {
-            "Cloud OpenAI: Audio is sent to the configured speech provider."
-        } else {
-            "Microphone recording is disabled."
-        },
-        color = EveColors.SecondaryText,
-    )
-    PreferenceCheckbox("Auto-send after transcription", autoSend, enabled = !busy) { autoSend = it }
-
-    Text("Voice Output", style = MaterialTheme.typography.titleSmall)
-    EnumDropdown(
-        label = "Output Provider",
-        value = outputProvider.displayName,
-        expanded = outputExpanded,
-        onExpandedChange = { outputExpanded = it },
-        enabled = !busy,
-    ) {
-        VoiceOutputProvider.entries.forEach { provider ->
-            DropdownMenuItem(
-                text = { Text(provider.displayName) },
-                onClick = { outputProvider = provider; outputExpanded = false },
-            )
-        }
-    }
-    Text(
-        if (outputProvider == VoiceOutputProvider.LOCAL) {
-            "Local: Assistant text is read by the Windows speech engine."
-        } else if (outputProvider == VoiceOutputProvider.OPENAI) {
-            "Cloud OpenAI: Assistant text is sent to the configured speech provider."
-        } else {
-            "Speech playback is disabled."
-        },
-        color = EveColors.SecondaryText,
-    )
-    PreferenceCheckbox("Read assistant replies aloud", autoRead, enabled = !busy) { autoRead = it }
-
-    if (inputProvider == VoiceInputProvider.LOCAL) {
-        Text("Optional Speech Pack", style = MaterialTheme.typography.titleSmall)
         Text(
-            if (state.speechPack.installed) {
-                "Installed: ${state.speechPack.modelName} (${state.speechPack.modelBytes?.let(::formatBytes) ?: "unknown size"})"
+            if (inputProvider == VoiceInputProvider.LOCAL) {
+                "Local: Audio stays on this computer."
+            } else if (inputProvider == VoiceInputProvider.OPENAI) {
+                "Cloud OpenAI: Audio is sent to the configured speech provider."
             } else {
-                "Local speech model not installed."
+                "Microphone recording is disabled."
             },
             color = EveColors.SecondaryText,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (state.speechPack.installed) {
-                TextButton(onClick = onRemoveSpeechPack, enabled = !busy) { Text("Remove Speech Pack") }
-            } else {
-                TextButton(onClick = onInstallSpeechPack, enabled = !busy) {
-                    Text(if (state.isInstallingSpeechPack) "Downloading…" else "Download Speech Pack")
+        if (inputProvider == VoiceInputProvider.LOCAL) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth().testTag(VOICE_SPEECH_PACK_TEST_TAG),
+            ) {
+                Text("Local Speech Recognition", style = MaterialTheme.typography.titleSmall)
+                Text("Optional Speech Pack", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (state.speechPack.installed) {
+                        "Installed: ${state.speechPack.modelName} (${state.speechPack.modelBytes?.let(::formatBytes) ?: "unknown size"})"
+                    } else {
+                        "Local speech model not installed."
+                    },
+                    color = EveColors.SecondaryText,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (state.speechPack.installed) {
+                        TextButton(onClick = onRemoveSpeechPack, enabled = !busy) { Text("Remove Speech Pack") }
+                    } else {
+                        TextButton(onClick = onInstallSpeechPack, enabled = !busy) {
+                            Text(if (state.isInstallingSpeechPack) "Downloading…" else "Download Speech Pack")
+                        }
+                    }
+                    if (state.isInstallingSpeechPack) CircularProgressIndicator()
                 }
             }
-            if (state.isInstallingSpeechPack) CircularProgressIndicator()
         }
-    }
-
-    if (inputProvider == VoiceInputProvider.OPENAI || outputProvider == VoiceOutputProvider.OPENAI) {
-        Text("OpenAI Cloud Voice", style = MaterialTheme.typography.titleSmall)
         if (inputProvider == VoiceInputProvider.OPENAI) {
+            Text("OpenAI Speech Recognition", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(
                 value = sttModel,
                 onValueChange = { sttModel = it },
@@ -494,8 +497,75 @@ internal fun VoicePreferencesContent(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             )
+            OpenAiVoiceCredentialFields(
+                apiKeyDraft = apiKeyDraft,
+                onApiKeyDraftChange = { apiKeyDraft = it },
+                state = state,
+                busy = busy,
+            )
+        }
+        PreferenceCheckbox("Auto-send after transcription", autoSend, enabled = !busy) { autoSend = it }
+    }
+
+    HorizontalDivider()
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth().testTag(VOICE_OUTPUT_SECTION_TEST_TAG),
+    ) {
+        Text("Voice Output", style = MaterialTheme.typography.titleSmall)
+        EnumDropdown(
+            label = "Output Provider",
+            value = outputProvider.displayName,
+            expanded = outputExpanded,
+            onExpandedChange = { outputExpanded = it },
+            enabled = !busy,
+            modifier = Modifier.testTag(VOICE_OUTPUT_PROVIDER_TEST_TAG),
+        ) {
+            VoiceOutputProvider.entries.forEach { provider ->
+                DropdownMenuItem(
+                    text = { Text(provider.displayName) },
+                    onClick = { outputProvider = provider; outputExpanded = false },
+                )
+            }
+        }
+        Text(
+            if (outputProvider == VoiceOutputProvider.LOCAL) {
+                "Local: Assistant text is read by the Windows speech engine."
+            } else if (outputProvider == VoiceOutputProvider.OPENAI) {
+                "Cloud OpenAI: Assistant text is sent to the configured speech provider."
+            } else {
+                "Speech playback is disabled."
+            },
+            color = EveColors.SecondaryText,
+        )
+        if (outputProvider == VoiceOutputProvider.LOCAL) {
+            Text("Windows Speech", style = MaterialTheme.typography.titleSmall)
+            EnumDropdown(
+                label = "Windows Voice",
+                value = windowsVoice ?: "System default",
+                expanded = windowsVoiceExpanded,
+                onExpandedChange = { windowsVoiceExpanded = it },
+                enabled = !busy && state.windowsVoices.isNotEmpty(),
+            ) {
+                DropdownMenuItem(
+                    text = { Text("System default") },
+                    onClick = { windowsVoice = null; windowsVoiceExpanded = false },
+                )
+                state.windowsVoices.forEach { voice ->
+                    DropdownMenuItem(
+                        text = { Text(voice) },
+                        onClick = { windowsVoice = voice; windowsVoiceExpanded = false },
+                    )
+                }
+            }
+            Text("Rate: $rate")
+            Slider(value = rate.toFloat(), onValueChange = { rate = it.toInt() }, valueRange = -10f..10f, steps = 19)
+            Text("Volume: $volume")
+            Slider(value = volume.toFloat(), onValueChange = { volume = it.toInt() }, valueRange = 0f..100f, steps = 99)
         }
         if (outputProvider == VoiceOutputProvider.OPENAI) {
+            Text("OpenAI Speech Output", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(
                 value = ttsModel,
                 onValueChange = { ttsModel = it },
@@ -518,52 +588,16 @@ internal fun VoicePreferencesContent(
                     )
                 }
             }
-        }
-        OutlinedTextField(
-            value = apiKeyDraft,
-            onValueChange = { apiKeyDraft = it },
-            label = { Text(if (state.credentialSource == null) "OpenAI Voice API Key" else "Replace OpenAI Voice API Key") },
-            placeholder = { Text(if (state.credentialSource == null) "Enter OpenAI Voice API Key" else "Leave blank to keep current Key") },
-            singleLine = true,
-            enabled = !busy,
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            when (state.credentialSource) {
-                AiCredentialSource.SECURE_STORAGE -> "OpenAI Voice API Key: Saved securely"
-                AiCredentialSource.SESSION_ONLY -> "OpenAI Voice API Key: This session only"
-                AiCredentialSource.ENVIRONMENT -> "Credential: OPENAI_VOICE_API_KEY"
-                null -> "OpenAI Voice API Key: Not configured"
-            },
-            color = EveColors.SecondaryText,
-        )
-    }
-
-    if (outputProvider == VoiceOutputProvider.LOCAL) {
-        Text("Windows Speech", style = MaterialTheme.typography.titleSmall)
-        EnumDropdown(
-            label = "Windows Voice",
-            value = windowsVoice ?: "System default",
-            expanded = windowsVoiceExpanded,
-            onExpandedChange = { windowsVoiceExpanded = it },
-            enabled = !busy && state.windowsVoices.isNotEmpty(),
-        ) {
-            DropdownMenuItem(
-                text = { Text("System default") },
-                onClick = { windowsVoice = null; windowsVoiceExpanded = false },
-            )
-            state.windowsVoices.forEach { voice ->
-                DropdownMenuItem(
-                    text = { Text(voice) },
-                    onClick = { windowsVoice = voice; windowsVoiceExpanded = false },
+            if (inputProvider != VoiceInputProvider.OPENAI) {
+                OpenAiVoiceCredentialFields(
+                    apiKeyDraft = apiKeyDraft,
+                    onApiKeyDraftChange = { apiKeyDraft = it },
+                    state = state,
+                    busy = busy,
                 )
             }
         }
-        Text("Rate: $rate")
-        Slider(value = rate.toFloat(), onValueChange = { rate = it.toInt() }, valueRange = -10f..10f, steps = 19)
-        Text("Volume: $volume")
-        Slider(value = volume.toFloat(), onValueChange = { volume = it.toInt() }, valueRange = 0f..100f, steps = 99)
+        PreferenceCheckbox("Read assistant replies aloud", autoRead, enabled = !busy) { autoRead = it }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -585,15 +619,48 @@ internal fun VoicePreferencesContent(
 }
 
 @Composable
+private fun OpenAiVoiceCredentialFields(
+    apiKeyDraft: String,
+    onApiKeyDraftChange: (String) -> Unit,
+    state: VoiceSettingsUiState,
+    busy: Boolean,
+) {
+    OutlinedTextField(
+        value = apiKeyDraft,
+        onValueChange = onApiKeyDraftChange,
+        label = { Text(if (state.credentialSource == null) "OpenAI Voice API Key" else "Replace OpenAI Voice API Key") },
+        placeholder = { Text(if (state.credentialSource == null) "Enter OpenAI Voice API Key" else "Leave blank to keep current Key") },
+        singleLine = true,
+        enabled = !busy,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        when (state.credentialSource) {
+            AiCredentialSource.SECURE_STORAGE -> "OpenAI Voice API Key: Saved securely"
+            AiCredentialSource.SESSION_ONLY -> "OpenAI Voice API Key: This session only"
+            AiCredentialSource.ENVIRONMENT -> "Credential: OPENAI_VOICE_API_KEY"
+            null -> "OpenAI Voice API Key: Not configured"
+        },
+        color = EveColors.SecondaryText,
+    )
+}
+
+@Composable
 private fun EnumDropdown(
     label: String,
     value: String,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier,
+    ) {
         Text(label)
         Box {
             TextButton(onClick = { onExpandedChange(true) }, enabled = enabled) { Text("$value ▾") }
@@ -689,7 +756,6 @@ internal fun AiProviderPreferencesContent(
         return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
     }
 
-    Text("AI Model", style = MaterialTheme.typography.titleMedium)
     Text("AI Provider", style = MaterialTheme.typography.titleSmall)
     Text(
         "The provider is initialized only when you test the connection or send an AI message.",
@@ -829,7 +895,6 @@ internal fun WebSearchPreferencesContent(
         return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
     }
 
-    Text("Web Search", style = MaterialTheme.typography.titleMedium)
     PreferenceCheckbox("Enable Web Search", enabled, enabled = !busy) { enabled = it }
     Text("Provider: Brave Search", style = MaterialTheme.typography.titleSmall)
     Text(
@@ -927,6 +992,11 @@ private fun AiConnectionCheckRow(check: AiConnectionCheck) {
 }
 
 internal val PREFERENCES_CONTENT_START_GUTTER = 24.dp
+internal const val VOICE_INPUT_SECTION_TEST_TAG = "voice-input-section"
+internal const val VOICE_OUTPUT_SECTION_TEST_TAG = "voice-output-section"
+internal const val VOICE_INPUT_PROVIDER_TEST_TAG = "voice-input-provider"
+internal const val VOICE_OUTPUT_PROVIDER_TEST_TAG = "voice-output-provider"
+internal const val VOICE_SPEECH_PACK_TEST_TAG = "voice-speech-pack"
 
 @Composable
 internal fun WebPackPreferencesContent(

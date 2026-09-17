@@ -11,7 +11,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -22,7 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.embeddedai.safeWebUrl
 
 internal sealed interface AssistantMarkdownBlock {
@@ -56,8 +54,9 @@ internal fun AssistantMarkdown(markdown: String, modifier: Modifier = Modifier) 
                 is AssistantMarkdownBlock.CodeBlock -> Text(
                     text = block.code,
                     fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
-                        .background(EveColors.InputSurface, RoundedCornerShape(5.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(5.dp))
                         .padding(8.dp),
                 )
             }
@@ -68,18 +67,24 @@ internal fun AssistantMarkdown(markdown: String, modifier: Modifier = Modifier) 
 @Composable
 private fun MarkdownListItem(marker: String, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(marker, fontWeight = FontWeight.SemiBold)
+        Text(marker, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
         MarkdownInlineText(text)
     }
 }
 
 @Composable
 private fun MarkdownInlineText(text: String, style: TextStyle = MaterialTheme.typography.bodyLarge) {
-    val annotated = inlineMarkdown(text)
+    val colors = MaterialTheme.colorScheme
+    val annotated = inlineMarkdown(
+        text = text,
+        linkColor = colors.primary,
+        inlineCodeForeground = colors.onSurface,
+        inlineCodeBackground = colors.surfaceContainerHighest,
+    )
     val uriHandler = LocalUriHandler.current
     ClickableText(
         text = annotated,
-        style = style,
+        style = assistantMarkdownTextStyle(style, colors.onSurface),
         onClick = { offset ->
             annotated.getStringAnnotations(ASSISTANT_LINK_TAG, offset, offset)
                 .firstOrNull()
@@ -145,9 +150,24 @@ internal fun parseAssistantMarkdown(markdown: String): List<AssistantMarkdownBlo
     return blocks
 }
 
-internal fun inlineMarkdown(text: String): AnnotatedString = buildAnnotatedString { appendInlineMarkdown(text) }
+internal fun assistantMarkdownTextStyle(base: TextStyle, foreground: androidx.compose.ui.graphics.Color): TextStyle =
+    base.copy(color = foreground)
 
-private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
+internal fun inlineMarkdown(
+    text: String,
+    linkColor: androidx.compose.ui.graphics.Color,
+    inlineCodeForeground: androidx.compose.ui.graphics.Color,
+    inlineCodeBackground: androidx.compose.ui.graphics.Color,
+): AnnotatedString = buildAnnotatedString {
+    appendInlineMarkdown(text, linkColor, inlineCodeForeground, inlineCodeBackground)
+}
+
+private fun AnnotatedString.Builder.appendInlineMarkdown(
+    text: String,
+    linkColor: androidx.compose.ui.graphics.Color,
+    inlineCodeForeground: androidx.compose.ui.graphics.Color,
+    inlineCodeBackground: androidx.compose.ui.graphics.Color,
+) {
     var index = 0
     while (index < text.length) {
         when {
@@ -164,8 +184,8 @@ private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
                     val target = safeWebUrl(text.substring(targetStart + 1, targetEnd))
                     if (target != null) {
                         pushStringAnnotation(ASSISTANT_LINK_TAG, target)
-                        withStyle(SpanStyle(color = EveColors.PrimaryAccent, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)) {
-                            appendInlineMarkdown(label)
+                        withStyle(SpanStyle(color = linkColor, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)) {
+                            appendInlineMarkdown(label, linkColor, inlineCodeForeground, inlineCodeBackground)
                         }
                         pop()
                     } else {
@@ -180,7 +200,12 @@ private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
                 val end = text.indexOf("**", index + 2)
                 if (end >= 0) {
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                        appendInlineMarkdown(text.substring(index + 2, end))
+                        appendInlineMarkdown(
+                            text.substring(index + 2, end),
+                            linkColor,
+                            inlineCodeForeground,
+                            inlineCodeBackground,
+                        )
                     }
                     index = end + 2
                 } else {
@@ -190,7 +215,13 @@ private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
             text[index] == '`' -> {
                 val end = text.indexOf('`', index + 1)
                 if (end >= 0) {
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = INLINE_CODE_BACKGROUND)) {
+                    withStyle(
+                        SpanStyle(
+                            color = inlineCodeForeground,
+                            fontFamily = FontFamily.Monospace,
+                            background = inlineCodeBackground,
+                        ),
+                    ) {
                         append(text.substring(index + 1, end))
                     }
                     index = end + 1
@@ -202,7 +233,12 @@ private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
                 val end = text.indexOf('*', index + 1)
                 if (end >= 0) {
                     withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                        appendInlineMarkdown(text.substring(index + 1, end))
+                        appendInlineMarkdown(
+                            text.substring(index + 1, end),
+                            linkColor,
+                            inlineCodeForeground,
+                            inlineCodeBackground,
+                        )
                     }
                     index = end + 1
                 } else {
@@ -220,5 +256,4 @@ private fun startsBlock(line: String): Boolean =
 private val HEADING = Regex("^\\s*(#{1,3})\\s+(.+)$")
 private val BULLET = Regex("^\\s*[-+*]\\s+(.+)$")
 private val NUMBERED = Regex("^\\s*\\d+[.)]\\s+(.+)$")
-private val INLINE_CODE_BACKGROUND = Color(0x332FC7E5)
 internal const val ASSISTANT_LINK_TAG = "assistant-http-link"

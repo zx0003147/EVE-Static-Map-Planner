@@ -80,6 +80,7 @@ import dev.evestaticmapplanner.embeddedai.OpenAiVoiceClient
 import dev.evestaticmapplanner.embeddedai.SavedOrEnvironmentAiProviderConfigSource
 import dev.evestaticmapplanner.embeddedai.UnavailableAiCredentialStore
 import dev.evestaticmapplanner.embeddedai.WebSearchConfigSource
+import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
@@ -947,6 +948,7 @@ private fun FrameWindowScope.ReadyApplication(
         EmbeddedAiAssistantWindow(
             controller = embeddedAiController,
             voiceController = voiceController,
+            voiceInputEnabled = mapState.appPreferences.voice.inputProvider != VoiceInputProvider.OFF,
             providerStatus = AiAssistantProviderStatus(
                 providerType = effectiveAiConfig?.providerType,
                 modelId = effectiveAiConfig?.modelId,

@@ -1,20 +1,33 @@
 package dev.evestaticmapplanner.preferences
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.ai.AiProviderSettingsUiState
+import dev.evestaticmapplanner.ai.SpeechPackState
+import dev.evestaticmapplanner.ai.VoiceSettingsUiState
 import dev.evestaticmapplanner.control.AiControlStatus
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiConnectionTestResult
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.VoiceConfig
+import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
+import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.ui.EveTheme
 import kotlin.test.Test
@@ -58,6 +71,14 @@ class FeatureSettingsWindowsTest {
         assertEquals(AiFeaturesSection.MCP_INTEGRATION, state.expanded)
         state = state.toggle(AiFeaturesSection.MCP_INTEGRATION)
         assertEquals(null, state.expanded)
+
+        var assistant = EmbeddedAssistantExpansionState()
+        assistant = assistant.toggle(EmbeddedAssistantSection.AI_MODEL)
+        assertEquals(EmbeddedAssistantSection.AI_MODEL, assistant.expanded)
+        assistant = assistant.toggle(EmbeddedAssistantSection.WEB_SEARCH)
+        assertEquals(EmbeddedAssistantSection.WEB_SEARCH, assistant.expanded)
+        assistant = assistant.toggle(EmbeddedAssistantSection.WEB_SEARCH)
+        assertEquals(null, assistant.expanded)
     }
 
     @Test
@@ -85,11 +106,95 @@ class FeatureSettingsWindowsTest {
         }
 
         onNodeWithText("▸ Embedded Assistant").assertIsDisplayed().performClick()
-        onNodeWithText("AI Provider").assertIsDisplayed()
-        onNodeWithText("Web Search").assertIsDisplayed()
-        onNodeWithText("▸ MCP Integration").assertIsDisplayed().performClick()
+        onNodeWithText("▸ AI Model").assertIsDisplayed()
+        onNodeWithText("▸ Web Search").assertIsDisplayed()
+        onNodeWithText("▸ Voice I/O").assertIsDisplayed()
         onNodeWithText("AI Provider").assertDoesNotExist()
+
+        onNodeWithText("▸ AI Model").performClick()
+        onNodeWithText("AI Provider").assertIsDisplayed()
+        onNodeWithText("▸ Web Search").performClick()
+        onNodeWithText("AI Provider").assertDoesNotExist()
+        onNodeWithText("Enable Web Search").assertIsDisplayed()
+        onNodeWithText("▸ Voice I/O").performClick()
+        onNodeWithText("Enable Web Search").assertDoesNotExist()
+        onNodeWithText("Voice Input").assertIsDisplayed()
+
+        onNodeWithText("▸ MCP Integration").assertIsDisplayed().performClick()
+        onNodeWithText("Voice Input").assertDoesNotExist()
         onNodeWithText("MCP Server & Permissions").assertIsDisplayed()
+    }
+
+    @Test
+    fun `Embedded Assistant accordions reset after content reopens`() = runComposeUiTest {
+        var visible by mutableStateOf(true)
+        setContent {
+            EveTheme {
+                if (visible) {
+                    Column { TestAiFeaturesContent() }
+                }
+            }
+        }
+
+        onNodeWithText("▸ Embedded Assistant").performClick()
+        onNodeWithText("▸ AI Model").performClick()
+        onNodeWithText("AI Provider").assertIsDisplayed()
+
+        visible = false
+        waitForIdle()
+        visible = true
+        waitForIdle()
+
+        onNodeWithText("▸ Embedded Assistant").assertIsDisplayed().performClick()
+        onNodeWithText("▸ AI Model").assertIsDisplayed()
+        onNodeWithText("▸ Web Search").assertIsDisplayed()
+        onNodeWithText("▸ Voice I/O").assertIsDisplayed()
+        onNodeWithText("AI Provider").assertDoesNotExist()
+    }
+
+    @Test
+    fun `Speech Pack belongs only to Local Voice Input and stays above Voice Output`() = runComposeUiTest {
+        var config by mutableStateOf(
+            VoiceConfig(inputProvider = VoiceInputProvider.LOCAL, outputProvider = VoiceOutputProvider.LOCAL),
+        )
+        setContent {
+            EveTheme {
+                Column(Modifier.requiredSize(620.dp, 900.dp)) {
+                    VoicePreferencesContent(
+                        savedConfig = config,
+                        state = VoiceSettingsUiState(
+                            speechPack = SpeechPackState(
+                                installed = true,
+                                modelBytes = 148_000_000,
+                            ),
+                            windowsVoices = listOf("Fixture Voice"),
+                        ),
+                        onViewed = {},
+                        onSave = { _, secret -> secret?.close() },
+                        onDeleteCredential = {},
+                        onInstallSpeechPack = {},
+                        onRemoveSpeechPack = {},
+                    )
+                }
+            }
+        }
+
+        val input = onNodeWithTag(VOICE_INPUT_SECTION_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val pack = onNodeWithTag(VOICE_SPEECH_PACK_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val output = onNodeWithTag(VOICE_OUTPUT_SECTION_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        onNodeWithText("Optional Speech Pack").assertIsDisplayed()
+        assertTrue(pack.top >= input.top && pack.bottom <= input.bottom)
+        assertTrue(pack.bottom <= output.top, "Speech Pack must render before and outside Voice Output.")
+
+        config = VoiceConfig(inputProvider = VoiceInputProvider.OPENAI, outputProvider = VoiceOutputProvider.LOCAL)
+        waitForIdle()
+        onNodeWithTag(VOICE_SPEECH_PACK_TEST_TAG).assertDoesNotExist()
+        onNodeWithText("STT Model").assertIsDisplayed()
+
+        config = VoiceConfig(inputProvider = VoiceInputProvider.OFF, outputProvider = VoiceOutputProvider.LOCAL)
+        waitForIdle()
+        onNodeWithTag(VOICE_SPEECH_PACK_TEST_TAG).assertDoesNotExist()
+        onNodeWithText("Windows Speech").assertIsDisplayed()
     }
 
     @Test
@@ -157,6 +262,25 @@ class FeatureSettingsWindowsTest {
             observed,
         )
     }
+}
+
+@Composable
+private fun TestAiFeaturesContent() {
+    AiFeaturesPreferencesContent(
+        savedConfig = null,
+        savedProviderConfigs = emptyMap(),
+        state = AiProviderSettingsUiState(),
+        onProviderViewed = {},
+        onTest = { _, secret -> secret?.close() },
+        onSave = { _, secret -> secret?.close() },
+        onDeleteCredential = {},
+        aiControlPreferences = AiControlPreferences.Defaults,
+        aiControlStatus = AiControlStatus.Disabled,
+        aiControlError = null,
+        onAiControlChange = {},
+        onAiSavedMarkerAccessChange = {},
+        onResetAiControl = {},
+    )
 }
 
 private fun SecretValue?.readAndClose(): String {

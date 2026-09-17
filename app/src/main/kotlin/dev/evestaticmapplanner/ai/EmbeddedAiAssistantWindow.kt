@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.ai
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,7 +22,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -38,8 +42,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
@@ -79,6 +87,7 @@ import dev.evestaticmapplanner.ui.EveWindowSurface
 internal fun EmbeddedAiAssistantWindow(
     controller: EmbeddedAiController,
     voiceController: VoiceController,
+    voiceInputEnabled: Boolean,
     providerStatus: AiAssistantProviderStatus,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
@@ -108,6 +117,7 @@ internal fun EmbeddedAiAssistantWindow(
                 confirmation = confirmation,
                 providerStatus = providerStatus,
                 voiceState = voiceState,
+                voiceInputEnabled = voiceInputEnabled,
                 onSend = controller::send,
                 onCancel = controller::cancel,
                 onNewChat = {
@@ -134,6 +144,7 @@ internal fun EmbeddedAiAssistantContent(
     confirmation: AiActionConfirmation?,
     providerStatus: AiAssistantProviderStatus,
     voiceState: VoiceUiState = VoiceUiState(),
+    voiceInputEnabled: Boolean = true,
     onSend: (String) -> Unit,
     onCancel: () -> Unit,
     onNewChat: () -> Unit,
@@ -246,28 +257,28 @@ internal fun EmbeddedAiAssistantContent(
                     onSend(submitted)
                     inputFocusRequester.requestFocus()
                 }
-                OutlinedTextField(
-                    value = prompt,
-                    onValueChange = { prompt = it },
-                    label = { Text("Message") },
-                    enabled = inputEnabled,
-                    minLines = 2,
-                    maxLines = 6,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(inputFocusRequester)
-                        .onPreviewKeyEvent { event ->
-                            if (event.key != Key.Enter || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                            when (chatEnterAction(prompt, event.isShiftPressed, inputEnabled)) {
-                                ChatEnterAction.SEND -> {
-                                    submitPrompt()
-                                    true
-                                }
-                                ChatEnterAction.NEW_LINE, ChatEnterAction.IME_COMPOSITION -> false
-                                ChatEnterAction.IGNORE -> true
+                ChatComposer(
+                    prompt = prompt,
+                    onPromptChange = { prompt = it },
+                    inputEnabled = inputEnabled,
+                    agentRunning = state.isLoading,
+                    voiceInputEnabled = voiceInputEnabled,
+                    voiceState = voiceState,
+                    focusRequester = inputFocusRequester,
+                    onSubmit = ::submitPrompt,
+                    onStopAgent = onCancel,
+                    onMicrophone = {
+                        onMicrophone { transcript, autoSend ->
+                            if (autoSend && inputEnabled) {
+                                prompt = TextFieldValue()
+                                onSend(transcript)
+                            } else {
+                                prompt = TextFieldValue(transcript)
+                                inputFocusRequester.requestFocus()
                             }
                         }
-                        .testTag(AI_CHAT_INPUT_TEST_TAG),
+                    },
+                    onCancelVoice = onCancelVoice,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth().testTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG),
@@ -277,40 +288,7 @@ internal fun EmbeddedAiAssistantContent(
                         expanded = sidebarVisible,
                         onClick = { sidebarVisible = !sidebarVisible },
                     )
-                    TextButton(
-                        onClick = {
-                            onMicrophone { transcript, autoSend ->
-                                if (autoSend && inputEnabled) {
-                                    prompt = TextFieldValue()
-                                    onSend(transcript)
-                                } else {
-                                    prompt = TextFieldValue(transcript)
-                                    inputFocusRequester.requestFocus()
-                                }
-                            }
-                        },
-                        enabled = voiceState.activity in setOf(VoiceActivity.IDLE, VoiceActivity.RECORDING),
-                        modifier = Modifier.padding(start = 8.dp).testTag(AI_MICROPHONE_BUTTON_TEST_TAG),
-                    ) {
-                        Text(if (voiceState.recording) "Stop recording" else "Microphone")
-                    }
-                    if (voiceState.activity != VoiceActivity.IDLE) {
-                        TextButton(
-                            onClick = onCancelVoice,
-                            modifier = Modifier.padding(start = 8.dp).testTag(AI_CANCEL_VOICE_TEST_TAG),
-                        ) { Text("Cancel voice") }
-                    }
                     Box(Modifier.weight(1f))
-                    if (state.isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 10.dp))
-                    Button(
-                        onClick = ::submitPrompt,
-                        enabled = prompt.text.isNotBlank() && inputEnabled,
-                    ) { Text("Send") }
-                    Button(
-                        onClick = onCancel,
-                        enabled = state.isLoading,
-                        modifier = Modifier.padding(start = 8.dp),
-                    ) { Text("Cancel") }
                 }
                 voiceState.message?.let {
                     Text(
@@ -327,6 +305,232 @@ internal fun EmbeddedAiAssistantContent(
             confirmation = action,
             onCancel = { onDeny(action.actionId) },
             onAllow = { onApprove(action.actionId) },
+        )
+    }
+}
+
+@Composable
+private fun ChatComposer(
+    prompt: TextFieldValue,
+    onPromptChange: (TextFieldValue) -> Unit,
+    inputEnabled: Boolean,
+    agentRunning: Boolean,
+    voiceInputEnabled: Boolean,
+    voiceState: VoiceUiState,
+    focusRequester: FocusRequester,
+    onSubmit: () -> Unit,
+    onStopAgent: () -> Unit,
+    onMicrophone: () -> Unit,
+    onCancelVoice: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(10.dp)
+    val controlsWidth = if (voiceInputEnabled) 88.dp else 40.dp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 104.dp)
+            .background(colors.surfaceContainerLowest, shape)
+            .border(1.dp, if (focused) colors.primary else colors.outline, shape)
+            .testTag(AI_CHAT_COMPOSER_TEST_TAG),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = 12.dp,
+                    top = 12.dp,
+                    end = controlsWidth + 16.dp,
+                    bottom = 56.dp,
+                )
+                .testTag(AI_CHAT_EDITABLE_REGION_TEST_TAG),
+        ) {
+            BasicTextField(
+                value = prompt,
+                onValueChange = onPromptChange,
+                enabled = inputEnabled,
+                minLines = 2,
+                maxLines = 6,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = if (inputEnabled) colors.onSurface else colors.onSurface.copy(alpha = 0.45f),
+                ),
+                cursorBrush = SolidColor(colors.primary),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (prompt.text.isEmpty()) {
+                            Text(
+                                "Message…",
+                                color = colors.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focused = it.isFocused }
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (event.key == Key.Escape && voiceState.activity != VoiceActivity.IDLE) {
+                            onCancelVoice()
+                            return@onPreviewKeyEvent true
+                        }
+                        if (event.key != Key.Enter) return@onPreviewKeyEvent false
+                        when (chatEnterAction(prompt, event.isShiftPressed, inputEnabled)) {
+                            ChatEnterAction.SEND -> {
+                                onSubmit()
+                                true
+                            }
+                            ChatEnterAction.NEW_LINE, ChatEnterAction.IME_COMPOSITION -> false
+                            ChatEnterAction.IGNORE -> true
+                        }
+                    }
+                    .testTag(AI_CHAT_INPUT_TEST_TAG),
+            )
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 8.dp, bottom = 8.dp)
+                .testTag(AI_CHAT_COMPOSER_CONTROLS_TEST_TAG),
+        ) {
+            if (voiceInputEnabled) {
+                val microphoneEnabled = !agentRunning && voiceState.activity in setOf(
+                    VoiceActivity.IDLE,
+                    VoiceActivity.RECORDING,
+                    VoiceActivity.TRANSCRIBING,
+                )
+                val microphoneDescription = when (voiceState.activity) {
+                    VoiceActivity.RECORDING -> "Stop recording and transcribe"
+                    VoiceActivity.TRANSCRIBING -> "Cancel transcription"
+                    else -> "Start voice input"
+                }
+                ComposerActionButton(
+                    contentDescription = microphoneDescription,
+                    stateDescription = voiceState.activity.name.lowercase(),
+                    enabled = microphoneEnabled,
+                    active = voiceState.recording,
+                    modifier = Modifier.testTag(AI_MICROPHONE_BUTTON_TEST_TAG),
+                    onClick = {
+                        if (voiceState.transcribing) onCancelVoice() else onMicrophone()
+                    },
+                ) {
+                    if (voiceState.transcribing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = colors.onSurface,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        MicrophoneGlyph(active = voiceState.recording)
+                    }
+                }
+            }
+            val actionEnabled = agentRunning || prompt.text.isNotBlank() && inputEnabled
+            ComposerActionButton(
+                contentDescription = if (agentRunning) "Stop generating" else "Send message",
+                stateDescription = if (agentRunning) "stop" else "send",
+                enabled = actionEnabled,
+                filled = actionEnabled,
+                modifier = Modifier.testTag(AI_SEND_STOP_BUTTON_TEST_TAG),
+                onClick = if (agentRunning) onStopAgent else onSubmit,
+            ) {
+                if (agentRunning) StopGlyph() else SendGlyph(enabled = actionEnabled)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerActionButton(
+    contentDescription: String,
+    stateDescription: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+    filled: Boolean = false,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val container = when {
+        active -> colors.errorContainer
+        filled -> colors.primary
+        else -> colors.surfaceContainerHigh
+    }
+    val border = when {
+        active -> colors.error
+        filled -> colors.primary
+        else -> colors.outline
+    }
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(40.dp)
+            .background(container.copy(alpha = if (enabled) 1f else 0.46f), CircleShape)
+            .border(1.dp, border.copy(alpha = if (enabled) 1f else 0.46f), CircleShape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics {
+                this.contentDescription = contentDescription
+                this.stateDescription = stateDescription
+            },
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun MicrophoneGlyph(active: Boolean) {
+    val color = if (active) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    Canvas(Modifier.size(21.dp)) {
+        val stroke = 2.dp.toPx()
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.35f, size.height * 0.08f),
+            size = Size(size.width * 0.30f, size.height * 0.52f),
+            cornerRadius = CornerRadius(size.width * 0.16f),
+            style = Stroke(stroke),
+        )
+        drawArc(
+            color = color,
+            startAngle = 0f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(size.width * 0.20f, size.height * 0.30f),
+            size = Size(size.width * 0.60f, size.height * 0.42f),
+            style = Stroke(stroke, cap = StrokeCap.Round),
+        )
+        drawLine(color, Offset(size.width * 0.50f, size.height * 0.72f), Offset(size.width * 0.50f, size.height * 0.90f), stroke)
+        drawLine(color, Offset(size.width * 0.34f, size.height * 0.90f), Offset(size.width * 0.66f, size.height * 0.90f), stroke, StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun SendGlyph(enabled: Boolean) {
+    val color = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(Modifier.size(20.dp)) {
+        val stroke = 2.dp.toPx()
+        drawLine(color, Offset(size.width * 0.50f, size.height * 0.82f), Offset(size.width * 0.50f, size.height * 0.20f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(size.width * 0.50f, size.height * 0.20f), Offset(size.width * 0.24f, size.height * 0.46f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(size.width * 0.50f, size.height * 0.20f), Offset(size.width * 0.76f, size.height * 0.46f), stroke, StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun StopGlyph() {
+    val color = MaterialTheme.colorScheme.onPrimary
+    Canvas(Modifier.size(20.dp)) {
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.30f, size.height * 0.30f),
+            size = Size(size.width * 0.40f, size.height * 0.40f),
+            cornerRadius = CornerRadius(1.dp.toPx()),
         )
     }
 }
@@ -639,6 +843,9 @@ data class AiAssistantProviderStatus(
 internal const val AI_ASSISTANT_ROOT_TEST_TAG = "embedded-ai-assistant-root"
 internal const val AI_ASSISTANT_HEADER_TEST_TAG = "embedded-ai-assistant-header"
 internal const val AI_CHAT_LIST_TEST_TAG = "embedded-ai-chat-list"
+internal const val AI_CHAT_COMPOSER_TEST_TAG = "embedded-ai-chat-composer"
+internal const val AI_CHAT_EDITABLE_REGION_TEST_TAG = "embedded-ai-chat-editable-region"
+internal const val AI_CHAT_COMPOSER_CONTROLS_TEST_TAG = "embedded-ai-chat-composer-controls"
 internal const val AI_CHAT_INPUT_TEST_TAG = "embedded-ai-chat-input"
 internal const val AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG = "embedded-ai-chat-bottom-action-row"
 internal const val AI_CHAT_MESSAGE_TEST_TAG_PREFIX = "embedded-ai-chat-message"
@@ -651,7 +858,7 @@ internal const val AI_RENAME_INPUT_TEST_TAG = "embedded-ai-rename-input"
 internal const val AI_CONFIRMATION_DIALOG_TEST_TAG = "embedded-ai-confirmation-dialog"
 internal const val AI_CONFIRMATION_CANCEL_TEST_TAG = "embedded-ai-confirmation-cancel"
 internal const val AI_MICROPHONE_BUTTON_TEST_TAG = "embedded-ai-microphone"
-internal const val AI_CANCEL_VOICE_TEST_TAG = "embedded-ai-cancel-voice"
+internal const val AI_SEND_STOP_BUTTON_TEST_TAG = "embedded-ai-send-stop"
 internal const val AI_SPEAK_MESSAGE_TEST_TAG_PREFIX = "embedded-ai-speak-message"
 
 private val CHAT_SIDEBAR_WIDTH = 210.dp
