@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.capital
 
+import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.core.jump.CapitalJumpCandidateProvider
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.UniformGridSystemPositionIndex
@@ -15,6 +16,15 @@ import dev.evestaticmapplanner.core.route.NavigationIntent
 import dev.evestaticmapplanner.core.route.NavigationIntentValidation
 import dev.evestaticmapplanner.core.route.NavigationSegment
 import dev.evestaticmapplanner.core.route.NavigationStopRole
+import dev.evestaticmapplanner.localization.AdjacentNavigationStopsUiMessage
+import dev.evestaticmapplanner.localization.InvalidNavigationStopUiMessage
+import dev.evestaticmapplanner.localization.ManualMaximumLyMustBeNumberUiMessage
+import dev.evestaticmapplanner.localization.ManualMaximumLyMustBePositiveUiMessage
+import dev.evestaticmapplanner.localization.MissingTerminalStopUiMessage
+import dev.evestaticmapplanner.localization.NavigationSegmentFailureUiMessage
+import dev.evestaticmapplanner.localization.NavigationStopUiRole
+import dev.evestaticmapplanner.localization.UiMessage
+import dev.evestaticmapplanner.localization.UnableToLoadCapitalRouteDataUiMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +50,7 @@ data class CapitalRoutePlanningSnapshot(
     val calculatedWaypointSystemIds: List<Int> = emptyList(),
     val calculatedExplicitDestinationSystemId: Int? = null,
     val isRouteStale: Boolean = false,
-    val navigationMessage: String? = null,
+    val navigationMessage: UiMessage? = null,
 )
 
 interface CapitalRoutePlanningPort {
@@ -80,7 +90,8 @@ class CapitalRouteViewModel(
                     }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(isLoading = false, error = error.message ?: "Unable to load capital route data") }
+                    AppDiagnostics.warning("Capital route data load failed", error)
+                    mutableState.update { it.copy(isLoading = false, error = UnableToLoadCapitalRouteDataUiMessage) }
                 }
         }
     }
@@ -171,11 +182,11 @@ class CapitalRouteViewModel(
         val routeEngine = engine ?: return
         val range = current.manualRangeText.trim().toDoubleOrNull()
         if (range == null) {
-            mutableState.update { it.copy(error = "Manual maximum LY must be a number") }
+            mutableState.update { it.copy(error = ManualMaximumLyMustBeNumberUiMessage) }
             return
         }
-        val profile = runCatching { JumpProfile.manual(range, "capital-manual") }.getOrElse { error ->
-            mutableState.update { it.copy(error = error.message) }
+        val profile = runCatching { JumpProfile.manual(range, "capital-manual") }.getOrElse {
+            mutableState.update { it.copy(error = ManualMaximumLyMustBePositiveUiMessage) }
             return
         }
         val intent = NavigationIntent(from.id, current.waypoints.map(SolarSystem::id), current.selectedTo?.id)
@@ -339,18 +350,24 @@ class CapitalRouteViewModel(
         NavigationIntent(it.id, waypoints.map(SolarSystem::id), selectedTo?.id)
     }
 
-    private fun validationMessage(validation: NavigationIntentValidation): String = when (validation) {
-        NavigationIntentValidation.Valid -> ""
-        NavigationIntentValidation.MissingTerminalStop -> "Add a Waypoint or Destination before calculating."
-        NavigationIntentValidation.InvalidSystemId -> "A navigation stop is invalid."
+    private fun validationMessage(validation: NavigationIntentValidation): UiMessage = when (validation) {
+        NavigationIntentValidation.Valid -> InvalidNavigationStopUiMessage
+        NavigationIntentValidation.MissingTerminalStop -> MissingTerminalStopUiMessage
+        NavigationIntentValidation.InvalidSystemId -> InvalidNavigationStopUiMessage
         is NavigationIntentValidation.AdjacentDuplicate ->
-            "Adjacent navigation stops cannot both be ${systemsById[validation.systemId]?.name ?: validation.systemId}."
+            AdjacentNavigationStopsUiMessage(systemsById[validation.systemId]?.name ?: validation.systemId.toString())
     }
 
-    private fun segmentFailureMessage(segment: NavigationSegment): String =
-        "Unable to calculate segment: ${stopLabel(segment.fromRole, segment.fromSystemId)} → " +
-            stopLabel(segment.toRole, segment.toSystemId)
+    private fun segmentFailureMessage(segment: NavigationSegment): UiMessage = NavigationSegmentFailureUiMessage(
+        fromRole = segment.fromRole.toUiRole(),
+        fromSystemName = systemsById[segment.fromSystemId]?.name ?: segment.fromSystemId.toString(),
+        toRole = segment.toRole.toUiRole(),
+        toSystemName = systemsById[segment.toSystemId]?.name ?: segment.toSystemId.toString(),
+    )
+}
 
-    private fun stopLabel(role: NavigationStopRole, systemId: Int): String =
-        "${role.name.lowercase().replaceFirstChar(Char::uppercase)} ${systemsById[systemId]?.name ?: systemId}"
+private fun NavigationStopRole.toUiRole(): NavigationStopUiRole = when (this) {
+    NavigationStopRole.START -> NavigationStopUiRole.START
+    NavigationStopRole.WAYPOINT -> NavigationStopUiRole.WAYPOINT
+    NavigationStopRole.DESTINATION -> NavigationStopUiRole.DESTINATION
 }

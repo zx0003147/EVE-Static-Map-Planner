@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.route
 
+import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.model.SolarSystem
@@ -23,6 +24,14 @@ import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
+import dev.evestaticmapplanner.localization.AdjacentNavigationStopsUiMessage
+import dev.evestaticmapplanner.localization.AnsiblexDataUnavailableUiMessage
+import dev.evestaticmapplanner.localization.InvalidNavigationStopUiMessage
+import dev.evestaticmapplanner.localization.MissingTerminalStopUiMessage
+import dev.evestaticmapplanner.localization.NavigationSegmentFailureUiMessage
+import dev.evestaticmapplanner.localization.NavigationStopUiRole
+import dev.evestaticmapplanner.localization.UiMessage
+import dev.evestaticmapplanner.localization.UnableToLoadRouteGraphUiMessage
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +61,7 @@ data class NormalRoutePlanningSnapshot(
     val calculatedWaypointSystemIds: List<Int> = emptyList(),
     val calculatedExplicitDestinationSystemId: Int? = null,
     val isRouteStale: Boolean = false,
-    val navigationMessage: String? = null,
+    val navigationMessage: UiMessage? = null,
 )
 
 interface NormalRoutePlanningPort {
@@ -75,7 +84,7 @@ class RoutePlannerViewModel(
     private val navigationPlanner = NormalNavigationPlanner(routeEngine)
     private val mutableState = MutableStateFlow(
         RoutePlannerUiState(
-            userDatabaseError = userDatabaseError,
+            userDatabaseError = userDatabaseError?.let { AnsiblexDataUnavailableUiMessage },
             wormholeConnections = wormholeSessionStore.connections.value,
         ),
     )
@@ -421,12 +430,15 @@ class RoutePlannerViewModel(
                 } else {
                     combinedGraphResult
                 }
+                val ansiblexFailure = ansiblexResult.exceptionOrNull()
+                    ?: combinedGraphResult.exceptionOrNull()
+                    ?: graphResult.exceptionOrNull()
+                ansiblexFailure?.let { AppDiagnostics.warning("Ansiblex route data unavailable", it) }
                 mutableState.update {
                     it.copy(
                         isLoading = false,
-                        userDatabaseError = it.userDatabaseError ?: ansiblexResult.exceptionOrNull()?.message
-                            ?: combinedGraphResult.exceptionOrNull()?.message
-                            ?: graphResult.exceptionOrNull()?.message,
+                        userDatabaseError = it.userDatabaseError
+                            ?: ansiblexFailure?.let { AnsiblexDataUnavailableUiMessage },
                         ansiblexConnections = if (
                             ansiblexResult.isSuccess && combinedGraphResult.isSuccess && graphResult.isSuccess
                         ) {
@@ -443,7 +455,8 @@ class RoutePlannerViewModel(
                     applyPlanningSnapshot(it)
                 }
             }.onFailure { error ->
-                mutableState.update { it.copy(isLoading = false, error = error.message ?: "Unable to load route graph") }
+                AppDiagnostics.warning("Normal route graph load failed", error)
+                mutableState.update { it.copy(isLoading = false, error = UnableToLoadRouteGraphUiMessage) }
             }
         }
     }
@@ -494,20 +507,20 @@ class RoutePlannerViewModel(
         NavigationIntent(it.id, waypoints.map(SolarSystem::id), selectedTo?.id)
     }
 
-    private fun validationMessage(validation: NavigationIntentValidation): String = when (validation) {
-        NavigationIntentValidation.Valid -> ""
-        NavigationIntentValidation.MissingTerminalStop -> "Add a Waypoint or Destination before calculating."
-        NavigationIntentValidation.InvalidSystemId -> "A navigation stop is invalid."
+    private fun validationMessage(validation: NavigationIntentValidation): UiMessage = when (validation) {
+        NavigationIntentValidation.Valid -> InvalidNavigationStopUiMessage
+        NavigationIntentValidation.MissingTerminalStop -> MissingTerminalStopUiMessage
+        NavigationIntentValidation.InvalidSystemId -> InvalidNavigationStopUiMessage
         is NavigationIntentValidation.AdjacentDuplicate ->
-            "Adjacent navigation stops cannot both be ${systemsById[validation.systemId]?.name ?: validation.systemId}."
+            AdjacentNavigationStopsUiMessage(systemsById[validation.systemId]?.name ?: validation.systemId.toString())
     }
 
-    private fun segmentFailureMessage(segment: NavigationSegment): String =
-        "Unable to calculate segment: ${stopLabel(segment.fromRole, segment.fromSystemId)} → " +
-            stopLabel(segment.toRole, segment.toSystemId)
-
-    private fun stopLabel(role: NavigationStopRole, systemId: Int): String =
-        "${role.name.lowercase().replaceFirstChar(Char::uppercase)} ${systemsById[systemId]?.name ?: systemId}"
+    private fun segmentFailureMessage(segment: NavigationSegment): UiMessage = NavigationSegmentFailureUiMessage(
+        fromRole = segment.fromRole.toUiRole(),
+        fromSystemName = systemsById[segment.fromSystemId]?.name ?: segment.fromSystemId.toString(),
+        toRole = segment.toRole.toUiRole(),
+        toSystemName = systemsById[segment.toSystemId]?.name ?: segment.toSystemId.toString(),
+    )
 
     private fun scheduleSearch(query: String, publish: (List<SolarSystem>) -> Unit): Job = scope.launch {
         if (query.isBlank()) {
@@ -562,24 +575,26 @@ class RoutePlannerViewModel(
                             )
                         }
                     } else {
-                        handleAnsiblexUnavailable(
-                            graphResult.exceptionOrNull()?.message ?: "Unable to rebuild Ansiblex route graph",
-                        )
+                        graphResult.exceptionOrNull()?.let {
+                            AppDiagnostics.warning("Ansiblex route graph rebuild failed", it)
+                        }
+                        handleAnsiblexUnavailable()
                     }
                 },
                 onFailure = { error ->
-                    handleAnsiblexUnavailable(error.message ?: "Unable to refresh Ansiblex data")
+                    AppDiagnostics.warning("Ansiblex data refresh failed", error)
+                    handleAnsiblexUnavailable()
                 },
             )
         }
     }
 
-    private fun handleAnsiblexUnavailable(message: String) {
+    private fun handleAnsiblexUnavailable() {
         currentAnsiblexConnections = emptyList()
         rebuildGraph()
         mutableState.update {
             it.copy(
-                userDatabaseError = message,
+                userDatabaseError = AnsiblexDataUnavailableUiMessage,
                 ansiblexConnections = emptyList(),
                 useAnsiblex = false,
                 isImportBusy = false,
@@ -628,4 +643,10 @@ class RoutePlannerViewModel(
             buildDesktopRouteGraph(data, currentAnsiblexConnections, currentWormholeConnections)
         }.onSuccess { graph = it }
     }
+}
+
+private fun NavigationStopRole.toUiRole(): NavigationStopUiRole = when (this) {
+    NavigationStopRole.START -> NavigationStopUiRole.START
+    NavigationStopRole.WAYPOINT -> NavigationStopUiRole.WAYPOINT
+    NavigationStopRole.DESTINATION -> NavigationStopUiRole.DESTINATION
 }

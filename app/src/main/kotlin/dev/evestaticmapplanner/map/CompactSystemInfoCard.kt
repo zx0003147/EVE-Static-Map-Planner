@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.route.RoutePlannerUiState
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
@@ -34,6 +35,10 @@ import dev.evestaticmapplanner.marker.markerColor
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.SystemInfoStrings
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EvePanel
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
@@ -88,6 +93,7 @@ object CompactSystemInfoPresentationBuilder {
         systemInfoState: SystemInfoState = SystemInfoState(null, emptyList()),
         sharedMarkerState: SharedMarkerPresentationState = SharedMarkerPresentationState.Empty,
         localTimeZone: ZoneId = ZoneId.systemDefault(),
+        strings: SystemInfoStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).systemInfo,
     ): CompactSystemInfoPresentation? {
         val selectedSystemId = state.selectedSystemId ?: return null
         val sharedMarker = sharedMarkerState
@@ -98,7 +104,7 @@ object CompactSystemInfoPresentationBuilder {
         val extensionSections = systemInfoState.sections.takeIf { systemInfoState.systemId == selectedSystemId }
             ?: emptyList()
         val fallbackName = state.scene?.nodesById?.get(selectedSystemId)?.system?.name
-            ?: "System $selectedSystemId"
+            ?: strings.fallbackSystem(selectedSystemId)
         val details = state.selectedSystemDetails?.takeIf { it.system.id == selectedSystemId }
             ?: return CompactSystemInfoPresentation(
                 selectedSystemId = selectedSystemId,
@@ -109,7 +115,7 @@ object CompactSystemInfoPresentationBuilder {
                 ansiblexConnections = emptyList(),
                 jumpOverlayLabels = emptyList(),
                 isInJumpIntersection = false,
-                marker = marker?.toCompactPresentation(),
+                marker = marker?.toCompactPresentation(strings),
                 sharedMarker = sharedMarker,
                 extensionSections = extensionSections,
             )
@@ -121,14 +127,14 @@ object CompactSystemInfoPresentationBuilder {
         return CompactSystemInfoPresentation(
             selectedSystemId = selectedSystemId,
             title = details.system.name,
-            subtitle = "${details.region.name} · ${details.constellation.name}",
+            subtitle = "${strings.regionValue(details.region.name)} · ${strings.constellationValue(details.constellation.name)}",
             isLoading = false,
             fields = listOf(
-                CompactInfoField("System ID", details.system.id.toString()),
-                CompactInfoField("Security", String.format(Locale.ROOT, "%.6f", details.system.securityStatus)),
-                CompactInfoField("Stargates", details.stargateCount.toString()),
-                CompactInfoField("Ansiblex", ansiblex.size.toString()),
-                CompactInfoField("Jump Coverage", coveringOverlays.size.toString()),
+                CompactInfoField(strings.systemId, details.system.id.toString()),
+                CompactInfoField(strings.securityStatus, String.format(Locale.ROOT, "%.6f", details.system.securityStatus)),
+                CompactInfoField(strings.stargates, details.stargateCount.toString()),
+                CompactInfoField(strings.ansiblex, ansiblex.size.toString()),
+                CompactInfoField(strings.jumpCoverage, coveringOverlays.size.toString()),
             ),
             ansiblexConnections = ansiblex.take(MAX_ANSIBLEX_DETAILS).map { connection ->
                 val other = if (connection.firstSystemId == selectedSystemId) {
@@ -136,11 +142,17 @@ object CompactSystemInfoPresentationBuilder {
                 } else {
                     connection.firstSystemId
                 }
-                "→ $other · ${connection.direction.name}"
+                val direction = when {
+                    connection.direction == AnsiblexDirection.BIDIRECTIONAL ->
+                        strings.bidirectional
+                    connection.logicalFromSystemId() == selectedSystemId -> strings.outbound
+                    else -> strings.inbound
+                }
+                "→ $other · $direction"
             },
             jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },
             isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,
-            marker = marker?.toCompactPresentation(),
+            marker = marker?.toCompactPresentation(strings),
             sharedMarker = sharedMarker,
             extensionSections = extensionSections,
         )
@@ -163,6 +175,7 @@ fun CompactSystemInfoCard(
     onEditSharedMarker: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current.systemInfo
     EvePanel(
         secondary = true,
         modifier = modifier
@@ -197,7 +210,7 @@ fun CompactSystemInfoCard(
                 )
             }
             if (presentation.isLoading) {
-                Text("Loading system details…", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
+                Text(strings.loadingSystemDetails, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
             } else {
                 presentation.fields.forEach { field -> CompactInfoRow(field) }
             }
@@ -205,7 +218,7 @@ fun CompactSystemInfoCard(
             presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker, onEditSharedMarker) }
             if (presentation.isLoading) return@Column
             if (presentation.ansiblexConnections.isNotEmpty()) {
-                Text("Ansiblex Connections", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+                Text(strings.ansiblexConnections, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
                 presentation.ansiblexConnections.forEach {
                     Text(
                         it,
@@ -217,7 +230,7 @@ fun CompactSystemInfoCard(
                 }
             }
             if (presentation.jumpOverlayLabels.isNotEmpty()) {
-                Text("Jump Overlays", style = MaterialTheme.typography.labelMedium, color = EveColors.Important)
+                Text(strings.jumpOverlays, style = MaterialTheme.typography.labelMedium, color = EveColors.Important)
                 presentation.jumpOverlayLabels.forEach {
                     Text(
                         it,
@@ -231,7 +244,7 @@ fun CompactSystemInfoCard(
             }
             if (presentation.isInJumpIntersection) {
                 Text(
-                    "In selected overlay intersection",
+                    strings.inSelectedOverlayIntersection,
                     style = MaterialTheme.typography.bodySmall,
                     color = EveColors.Important,
                 )
@@ -255,7 +268,8 @@ fun CompactSystemInfoCard(
 
 @Composable
 private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation, onEdit: (() -> Unit)?) {
-    Text("Shared Marker", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+    val strings = LocalAppStrings.current.systemInfo
+    Text(strings.sharedMarker, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         SharedMarkerOwnershipBadge(marker.color)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -265,17 +279,17 @@ private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation, 
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            CompactInfoRow(CompactInfoField("Color", marker.color.name))
+            CompactInfoRow(CompactInfoField(strings.color, marker.color.name))
             if (marker.tags.isNotEmpty()) {
-                Text("Tags", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
+                Text(strings.tags, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
                 Text(marker.tags.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
             }
             marker.notes?.let { notes ->
-                Text("Notes", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
+                Text(strings.notes, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
                 Text(notes, style = MaterialTheme.typography.bodySmall)
             }
             Text(
-                "Updated by ${marker.updatedByDisplayName}",
+                strings.updatedBy(marker.updatedByDisplayName),
                 style = MaterialTheme.typography.bodySmall,
                 color = EveColors.SecondaryText,
                 maxLines = 2,
@@ -284,13 +298,13 @@ private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation, 
             Text(marker.updatedAtLabel, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
             if (marker.isStale) {
                 Text(
-                    "Shared Map data may be stale",
+                    strings.sharedMapDataMayBeStale,
                     style = MaterialTheme.typography.bodySmall,
                     color = EveColors.Warning,
                 )
             }
             if (onEdit != null) {
-                TextButton(onClick = onEdit) { Text("Edit Shared Marker") }
+                TextButton(onClick = onEdit) { Text(strings.editSharedMarker) }
             }
         }
     }
@@ -319,7 +333,7 @@ private fun SharedMarkerOwnershipBadge(color: SharedMarkerColor) {
 
 @Composable
 private fun CompactMarkerSection(marker: CompactMarkerPresentation) {
-    Text("Marker", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+    Text(LocalAppStrings.current.systemInfo.marker, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         Text(marker.glyph, color = markerColor(marker.color), style = MaterialTheme.typography.titleMedium)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -384,9 +398,9 @@ private fun CompactInfoRow(field: CompactInfoField) {
 private const val MAX_ANSIBLEX_DETAILS = 5
 internal const val COMPACT_SYSTEM_INFO_CARD_TEST_TAG = "compact-system-info-card"
 
-private fun Marker.toCompactPresentation() = CompactMarkerPresentation(
+private fun Marker.toCompactPresentation(strings: SystemInfoStrings) = CompactMarkerPresentation(
     glyph = if (persistence == MarkerPersistence.SAVED) "◆" else "◇",
-    persistenceLabel = if (persistence == MarkerPersistence.SAVED) "Saved" else "Temporary",
+    persistenceLabel = if (persistence == MarkerPersistence.SAVED) strings.saved else strings.temporary,
     name = name,
     notes = notes,
     color = color,

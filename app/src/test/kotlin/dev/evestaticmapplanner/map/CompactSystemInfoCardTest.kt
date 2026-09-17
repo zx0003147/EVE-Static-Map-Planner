@@ -35,6 +35,8 @@ import dev.evestaticmapplanner.feature.api.SystemInfoField
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoState
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
@@ -50,6 +52,35 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class CompactSystemInfoCardTest {
+    @Test
+    fun `labels switch locale while canonical system hierarchy values remain unchanged`() {
+        val state = selectedState(system(2, "1DQ1-A"))
+        val english = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state,
+                RoutePlannerUiState(),
+                JumpOverlayUiState(),
+                strings = AppStringsCatalog.forLocale(AppLocale.EN_US).systemInfo,
+            ),
+        )
+        val chinese = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state,
+                RoutePlannerUiState(),
+                JumpOverlayUiState(),
+                strings = AppStringsCatalog.forLocale(AppLocale.ZH_CN).systemInfo,
+            ),
+        )
+
+        assertEquals("1DQ1-A", english.title)
+        assertEquals(english.title, chinese.title)
+        assertEquals("Region: Delve · Constellation: 1-A81R", english.subtitle)
+        assertEquals("星域：Delve · 星座：1-A81R", chinese.subtitle)
+        assertEquals(listOf("System ID", "Security Status", "Stargates", "Ansiblex", "Jump Coverage"), english.fields.map { it.label })
+        assertEquals(listOf("星系 ID", "安全等级", "星门", "Ansiblex", "跳跃覆盖"), chinese.fields.map { it.label })
+        assertEquals(english.fields.map { it.value }, chinese.fields.map { it.value })
+    }
+
     @Test
     fun `no selection hides compact card`() {
         val presentation = CompactSystemInfoPresentationBuilder.build(
@@ -81,11 +112,11 @@ class CompactSystemInfoCardTest {
         )
 
         assertEquals("1DQ1-A", presentation.title)
-        assertEquals("Delve · 1-A81R", presentation.subtitle)
+        assertEquals("Region: Delve · Constellation: 1-A81R", presentation.subtitle)
         assertEquals(
             mapOf(
                 "System ID" to "2",
-                "Security" to "-0.390000",
+                "Security Status" to "-0.390000",
                 "Stargates" to "0",
                 "Ansiblex" to "6",
                 "Jump Coverage" to "2",

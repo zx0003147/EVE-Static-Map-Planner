@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner
 
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.feature.api.CharacterTrackingProvider
 import dev.evestaticmapplanner.feature.api.CharacterTrackingSnapshot
 import dev.evestaticmapplanner.feature.api.PackId
@@ -131,6 +133,7 @@ class MiniMapCapabilityGatingTest {
             openPreferences = {},
             openStaticData = {},
         ),
+        strings = AppStringsCatalog.forLocale(AppLocale.EN_US).mainShell,
     ).any { it.label == "Mini-map" }
 
     private class Provider(

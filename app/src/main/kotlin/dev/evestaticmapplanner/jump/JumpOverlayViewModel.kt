@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.jump
 
+import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.core.jump.CapitalJumpCandidateProvider
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlayCollection
@@ -7,6 +8,10 @@ import dev.evestaticmapplanner.core.jump.UniformGridSystemPositionIndex
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
+import dev.evestaticmapplanner.localization.JumpOverlayCalculationFailedUiMessage
+import dev.evestaticmapplanner.localization.ManualMaximumLyMustBeNumberUiMessage
+import dev.evestaticmapplanner.localization.ManualMaximumLyMustBePositiveUiMessage
+import dev.evestaticmapplanner.localization.UnableToLoadJumpOverlayDataUiMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +52,8 @@ class JumpOverlayViewModel(
                 )
                 mutableState.update { it.copy(isLoading = false) }
             }.onFailure { error ->
-                mutableState.update { it.copy(isLoading = false, error = error.message ?: "Unable to load jump overlay data") }
+                AppDiagnostics.warning("Jump overlay data load failed", error)
+                mutableState.update { it.copy(isLoading = false, error = UnableToLoadJumpOverlayDataUiMessage) }
             }
         }
     }
@@ -118,7 +124,15 @@ class JumpOverlayViewModel(
             runCatching { withContext(calculationDispatcher) { overlays.block() } }
                 .onSuccess { publish(isCalculating = false) }
                 .onFailure { error ->
-                    mutableState.update { it.copy(isCalculating = false, error = error.message ?: "Jump overlay calculation failed") }
+                    val message = when (error) {
+                        is InvalidManualRangeNumberException -> ManualMaximumLyMustBeNumberUiMessage
+                        is InvalidManualRangeValueException -> ManualMaximumLyMustBePositiveUiMessage
+                        else -> {
+                            AppDiagnostics.warning("Jump overlay calculation failed", error)
+                            JumpOverlayCalculationFailedUiMessage
+                        }
+                    }
+                    mutableState.update { it.copy(isCalculating = false, error = message) }
                 }
         }
     }
@@ -145,7 +159,8 @@ class JumpOverlayViewModel(
 
     private fun currentProfile(id: String): JumpProfile {
         val value = mutableState.value.manualRangeText.trim().toDoubleOrNull()
-            ?: error("Manual maximum LY must be a number")
+            ?: throw InvalidManualRangeNumberException()
+        if (!value.isFinite() || value <= 0.0) throw InvalidManualRangeValueException()
         return JumpProfile.manual(value, id)
     }
 
@@ -156,3 +171,6 @@ class JumpOverlayViewModel(
         mutableState.update { it.copy(originResults = results) }
     }
 }
+
+private class InvalidManualRangeNumberException : IllegalArgumentException()
+private class InvalidManualRangeValueException : IllegalArgumentException()

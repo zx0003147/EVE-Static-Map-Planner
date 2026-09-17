@@ -95,6 +95,7 @@ import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EveTab
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import java.nio.file.Path
 
 @Composable
@@ -135,6 +136,7 @@ internal fun StaticMapScreen(
     onFirstMapDisplayed: () -> Unit,
     suppressMarkerOperationErrorDialog: Boolean = false,
 ) {
+    val strings = LocalAppStrings.current
     var showAnsiblexManager by remember { mutableStateOf(false) }
     var showWormholeManager by remember { mutableStateOf(false) }
     var wormholeConnectionsSystemId by remember { mutableStateOf<Int?>(null) }
@@ -221,8 +223,10 @@ internal fun StaticMapScreen(
             )
             MapCanvasViewport(Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    state.isLoading -> CenterMessage("Loading static universe…")
-                    state.error != null -> CenterMessage("Unable to load map\n${state.error}\n\nDatabase: $databasePath")
+                    state.isLoading -> CenterMessage(strings.map.loadingStaticUniverse)
+                    state.error != null -> CenterMessage(
+                        "${state.error.resolve(strings)}\n\n${strings.map.database}: $databasePath",
+                    )
                     state.scene != null && state.viewport != null -> StaticMapCanvas(
                         state = state,
                         activeRoute = rendererNormalRoute,
@@ -248,6 +252,7 @@ internal fun StaticMapScreen(
                             state.selectedSystemId?.let(markerState.markersBySystemId::get),
                             systemInfoState,
                             sharedMarkerState,
+                            strings = strings.systemInfo,
                         ),
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
                         onZoom = viewModel::zoomAt,
@@ -287,7 +292,7 @@ internal fun StaticMapScreen(
                             viewModel.dismissContextMenu()
                         },
                         onContextMarkerAction = { systemId, action ->
-                            val systemName = state.scene.nodesById[systemId]?.system?.name ?: "System $systemId"
+                            val systemName = state.scene.nodesById[systemId]?.system?.name ?: strings.map.fallbackSystem(systemId)
                             val marker = markerState.markersBySystemId[systemId]
                             when (action) {
                                 MarkerContextAction.ADD_TEMPORARY -> markerViewModel.addTemporary(systemId)
@@ -321,7 +326,7 @@ internal fun StaticMapScreen(
                         },
                         onContextSharedMarkerAction = { systemId, action ->
                             val workspaceId = sharedMapState.selectedWorkspaceId
-                            val systemName = state.scene.nodesById[systemId]?.system?.name ?: "System $systemId"
+                            val systemName = state.scene.nodesById[systemId]?.system?.name ?: strings.map.fallbackSystem(systemId)
                             val marker = sharedMapState.snapshot?.markers?.values?.singleOrNull {
                                 it.systemId == systemId
                             }
@@ -372,8 +377,8 @@ internal fun StaticMapScreen(
                 val routeOverlay = rendererNormalRoute
                     ?.let { ProjectedRouteOverlayBuilder.build(it, scene) }
                 val routeWarning = routeOverlay?.takeIf { it.omittedSystemIds.isNotEmpty() }?.let {
-                    " · route: ${it.omittedSystemIds.size} systems / ${it.omittedLegCount} legs unavailable; use Real 3D"
-                }.orEmpty()
+                    strings.map.routeUnavailable(it.omittedSystemIds.size, it.omittedLegCount)
+                }
                 val jumpOmitted = jumpState.overlays.sumOf {
                     ProjectedJumpRangeOverlayBuilder.build(it, scene).omittedSystemIds.size
                 }
@@ -385,14 +390,25 @@ internal fun StaticMapScreen(
                         .build(routeState.wormholeConnections, scene)
                         .omittedConnectionCount
                 }
+                val statusParts = buildList {
+                    add(
+                        strings.map.mapSummary(
+                            strings.map.projectionLabel(scene.projectionId),
+                            scene.nodes.size,
+                            scene.edges.size,
+                        ),
+                    )
+                    if (scene.omittedSystemIds.isNotEmpty()) {
+                        add(strings.map.unavailableSystems(scene.omittedSystemIds.size))
+                    }
+                    routeWarning?.let(::add)
+                    if (jumpOmitted > 0) add(strings.map.jumpOverlayUnavailable(jumpOmitted))
+                    if (capitalOmitted > 0) add(strings.map.capitalRouteUnavailable(capitalOmitted))
+                    if (wormholeOmitted > 0) add(strings.map.wormholesUnavailable(wormholeOmitted))
+                    state.focusNotice?.resolve(strings)?.let(::add)
+                }
                 Text(
-                    text = "${scene.projectionId.displayName}: ${scene.nodes.size} systems · ${scene.edges.size} stargate connections" +
-                        (if (scene.omittedSystemIds.isNotEmpty()) " · ${scene.omittedSystemIds.size} unavailable" else "") +
-                        routeWarning +
-                        (if (jumpOmitted > 0) " · jump overlay: $jumpOmitted unavailable" else "") +
-                        (if (capitalOmitted > 0) " · capital route: $capitalOmitted legs unavailable" else "") +
-                        (if (wormholeOmitted > 0) " · wormholes: $wormholeOmitted unavailable" else "") +
-                        state.focusNotice?.let { " · $it" }.orEmpty(),
+                    text = statusParts.joinToString(" · "),
                     style = MaterialTheme.typography.labelSmall,
                     color = EveColors.SecondaryText,
                     modifier = Modifier.fillMaxWidth().background(EveColors.SecondarySurface)
@@ -425,7 +441,7 @@ internal fun StaticMapScreen(
         )
     }
     wormholeConnectionsSystemId?.let { systemId ->
-        val systemName = state.scene?.nodesById?.get(systemId)?.system?.name ?: "System $systemId"
+        val systemName = state.scene?.nodesById?.get(systemId)?.system?.name ?: strings.map.fallbackSystem(systemId)
         WormholeConnectionsDialog(
             systemId = systemId,
             systemName = systemName,
@@ -483,7 +499,7 @@ internal fun StaticMapScreen(
         )
     }
     markerPendingRemoval?.let { systemId ->
-        val name = state.scene?.nodesById?.get(systemId)?.system?.name ?: "System $systemId"
+        val name = state.scene?.nodesById?.get(systemId)?.system?.name ?: strings.map.fallbackSystem(systemId)
         AlertDialog(
             onDismissRequest = {
                 if (!savedRemovalStarted) {
@@ -577,17 +593,18 @@ internal fun ViewRenameDialog(
     onRename: (PlanningViewId, String) -> Boolean,
     onDismiss: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     var renameText by remember(view.id) { mutableStateOf(view.label) }
     var renameError by remember(view.id) { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename View") },
+        title = { Text(strings.map.renameView) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = renameText,
                     onValueChange = { renameText = it; renameError = null },
-                    label = { Text("View name") },
+                    label = { Text(strings.map.viewName) },
                     singleLine = true,
                 )
                 renameError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -596,10 +613,10 @@ internal fun ViewRenameDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (onRename(view.id, renameText)) onDismiss()
-                else renameError = "View names must be non-empty and unique."
-            }) { Text("Rename") }
+                else renameError = strings.map.viewNameValidation
+            }) { Text(strings.common.rename) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(strings.common.cancel) } },
     )
 }
 
@@ -617,6 +634,7 @@ internal fun MapToolbarContent(
     viewScrollState: ScrollState? = null,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides MAP_TOOLBAR_BUTTON_HEIGHT) {
         Surface(modifier = modifier, color = EveColors.SecondarySurface, contentColor = EveColors.PrimaryText) {
             Row(
@@ -634,9 +652,9 @@ internal fun MapToolbarContent(
                     scrollState = viewScrollState,
                     modifier = Modifier.weight(1f),
                 )
-                CompactToolbarTextButton(onClick = onFitMap, enabled = fitEnabled) { Text("Fit Map") }
+                CompactToolbarTextButton(onClick = onFitMap, enabled = fitEnabled) { Text(strings.map.fitMap) }
                 if (projectionId == MapProjectionId.REAL_3D) {
-                    CompactToolbarTextButton(onClick = onResetView, enabled = fitEnabled) { Text("Reset View") }
+                    CompactToolbarTextButton(onClick = onResetView, enabled = fitEnabled) { Text(strings.map.resetView) }
                 }
             }
         }
@@ -654,6 +672,7 @@ internal fun ViewStrip(
     scrollState: ScrollState? = null,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current
     val scroll = scrollState ?: rememberScrollState()
     var contextMenuViewId by remember { mutableStateOf<PlanningViewId?>(null) }
     Row(
@@ -683,14 +702,14 @@ internal fun ViewStrip(
                     onDismissRequest = { contextMenuViewId = null },
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Rename") },
+                        text = { Text(strings.common.rename) },
                         onClick = {
                             contextMenuViewId = null
                             onRename(view)
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Delete") },
+                        text = { Text(strings.common.delete) },
                         enabled = state.views.size > 1,
                         onClick = {
                             contextMenuViewId = null

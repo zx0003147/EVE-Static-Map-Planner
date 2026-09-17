@@ -2,9 +2,9 @@ package dev.evestaticmapplanner.core.map
 
 import dev.evestaticmapplanner.core.model.SolarSystem
 
-enum class MapProjectionId(val displayName: String) {
-    OFFICIAL_2D("Official 2D"),
-    REAL_3D("Real 3D"),
+enum class MapProjectionId {
+    OFFICIAL_2D,
+    REAL_3D,
     ;
 
     companion object {

@@ -1,0 +1,35 @@
+package dev.evestaticmapplanner.localization.zhcn
+
+import dev.evestaticmapplanner.localization.SystemInfoStrings
+
+internal object SimplifiedChineseSystemInfoStrings : SystemInfoStrings {
+    override val selectedSystem = "已选星系"
+    override val noSystemSelected = "未选择星系"
+    override val loadingSystemDetails = "正在加载星系详情…"
+    override val systemId = "星系 ID"
+    override val region = "星域"
+    override val constellation = "星座"
+    override val securityStatus = "安全等级"
+    override val stargates = "星门"
+    override val ansiblex = "Ansiblex"
+    override val jumpCoverage = "跳跃覆盖"
+    override val ansiblexConnections = "Ansiblex 连接"
+    override val jumpOverlays = "跳跃范围覆盖"
+    override val inSelectedOverlayIntersection = "位于已选覆盖交集中"
+    override val marker = "标记"
+    override val sharedMarker = "共享标记"
+    override val color = "颜色"
+    override val tags = "标签"
+    override val notes = "备注"
+    override val sharedMapDataMayBeStale = "共享地图数据可能已过期"
+    override val editSharedMarker = "编辑共享标记"
+    override val saved = "已保存"
+    override val temporary = "临时"
+    override val bidirectional = "双向"
+    override val outbound = "出站"
+    override val inbound = "入站"
+    override fun regionValue(value: String) = "星域：$value"
+    override fun constellationValue(value: String) = "星座：$value"
+    override fun updatedBy(displayName: String) = "更新者：$displayName"
+    override fun fallbackSystem(systemId: Int) = "星系 $systemId"
+}

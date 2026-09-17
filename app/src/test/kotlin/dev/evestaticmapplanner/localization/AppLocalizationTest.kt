@@ -36,6 +36,21 @@ class AppLocalizationTest {
         val message = RouteFoundUiMessage(4)
         assertEquals("Route found: 4 jumps", message.resolve(AppStringsCatalog.forLocale(AppLocale.EN_US)))
         assertEquals("已找到路线：4 跳", message.resolve(AppStringsCatalog.forLocale(AppLocale.ZH_CN)))
+
+        val segment = NavigationSegmentFailureUiMessage(
+            NavigationStopUiRole.START,
+            "Jita",
+            NavigationStopUiRole.DESTINATION,
+            "Amarr",
+        )
+        assertEquals(
+            "Unable to calculate segment: Start Jita → Destination Amarr",
+            segment.resolve(AppStringsCatalog.forLocale(AppLocale.EN_US)),
+        )
+        assertEquals(
+            "无法计算路段：起点 Jita → 终点 Amarr",
+            segment.resolve(AppStringsCatalog.forLocale(AppLocale.ZH_CN)),
+        )
     }
 
     @Test
@@ -71,13 +86,56 @@ class AppLocalizationTest {
 
     private fun staticStrings(strings: AppStrings): List<String> = listOf(
         strings.appTitle,
-        strings.common.ok,
-        strings.common.cancel,
-        strings.common.close,
-        strings.common.apply,
-        strings.preferences.title,
-        strings.preferences.language,
-        strings.preferences.english,
-        strings.preferences.simplifiedChinese,
+        strings.common.run {
+            listOf(ok, cancel, close, apply, add, clear, remove, update, rename, delete, select, unavailable, on, off)
+        },
+        strings.preferences.run { listOf(title, language, english, simplifiedChinese) },
+        strings.mainShell.run {
+            listOf(
+                marker, markerManager, sharedMarkerManager, clearAllTemporaryMarkers, markerSettings,
+                miniMap, showMiniMap, hideMiniMap, miniMapSettings, preferences, openPreferences,
+                staticData, openStaticData, keepWindowOnTop, disableAlwaysOnTop,
+            )
+        },
+        strings.map.run {
+            listOf(
+                loadingStaticUniverse, unableToLoadMap, database, fitMap, resetView, renameView, viewName,
+                viewNameValidation, toggleProjection, openEmbeddedAiAssistant, collapseSidebar, expandSidebar,
+                official2DSelected, real3DSelected, addTemporaryMarker, addSavedMarker, editMarker,
+                savePermanently, removeMarker, markersUnavailable, addSharedMarker, openSharedMarker,
+                viewSharedMarker, addJumpRangeOverlay, setNormalStart, addNormalWaypoint, setNormalDestination,
+                setCapitalStart, addCapitalWaypoint, setCapitalDestination, createWormholeConnection,
+                wormholeConnections, viewerAccess, authenticationRequired, readOnly, notConnected, connecting,
+                temporarilyReadOnly, offline, accessRemoved, incompatibleServer,
+            )
+        },
+        strings.search.run { listOf(title, systemSearch, searchSystemPlaceholder) },
+        strings.systemInfo.run {
+            listOf(
+                selectedSystem, noSystemSelected, loadingSystemDetails, systemId, region, constellation,
+                securityStatus, stargates, ansiblex, jumpCoverage, ansiblexConnections, jumpOverlays,
+                inSelectedOverlayIntersection, marker, sharedMarker, color, tags, notes,
+                sharedMapDataMayBeStale, editSharedMarker, saved, temporary,
+                bidirectional, outbound, inbound,
+            )
+        },
+        strings.route.run {
+            listOf(
+                jumpRangeOverlays, normalRoute, capitalRoute, overlayOrigin, effectiveMaximumLy, intersect,
+                start, destinationOptional, capitalStart, capitalDestinationOptional, calculate, calculating,
+                needsRecalculation, useAnsiblex, useWormholes, showAnsiblexLayer, waypoints, waypointHint,
+                routeActionsUnavailableForWormholes, stargateOnlyRoutingAvailable, validatesStaticCapitalRules,
+                capitalLiveStateDisclaimer, phaseLabel, sameNormalSystem, normalRouteUnreachable,
+                invalidNormalEndpoints, sameCapitalSystem, capitalRouteUnreachable, invalidCapitalEndpoints,
+                draftOnly, succeeded, rejected, failed, unavailableSuffix, disconnectedUnavailable,
+                selectTarget, publishNormalRoute, publishCapitalRoute, calculateBeforePublishing,
+                connectSharedMapBeforePublishing, routeHandoffsUnsupported, publishPermissionRequired,
+                publishingRoute, unableToLoadRouteGraph, unableToLoadCapitalRouteData,
+                unableToLoadJumpOverlayData, jumpOverlayCalculationFailed, manualMaximumLyMustBeNumber,
+                manualMaximumLyMustBePositive, addWaypointOrDestination, invalidNavigationStop,
+                ansiblexDataUnavailable,
+            )
+        },
     )
+        .flatMap { value -> if (value is List<*>) value.filterIsInstance<String>() else listOf(value as String) }
 }

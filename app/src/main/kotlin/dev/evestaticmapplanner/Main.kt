@@ -291,6 +291,7 @@ private fun FrameWindowScope.ReadyApplication(
     isAlwaysOnTop: Boolean,
     onToggleAlwaysOnTop: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     configuration.notice?.let { AppDiagnostics.warning("Static data startup notice: $it") }
     val staticRepository = remember(configuration) {
         CachingStaticMapRepository(SqliteStaticMapRepository(configuration.database.path))
@@ -948,6 +949,7 @@ private fun FrameWindowScope.ReadyApplication(
                     },
                     openStaticData = { showStaticData = true },
                 ),
+                strings = strings.mainShell,
             ),
             trailingContent = {
                 EveAlwaysOnTopButton(

@@ -8,11 +8,12 @@ import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportPreview
+import dev.evestaticmapplanner.localization.UiMessage
 
 data class RoutePlannerUiState(
     val isLoading: Boolean = true,
-    val error: String? = null,
-    val userDatabaseError: String? = null,
+    val error: UiMessage? = null,
+    val userDatabaseError: UiMessage? = null,
     val systemQuery: String = "",
     val systemResults: List<SolarSystem> = emptyList(),
     val fromQuery: String = "",
@@ -31,7 +32,7 @@ data class RoutePlannerUiState(
     val calculatedWaypointSystemIds: List<Int> = emptyList(),
     val calculatedExplicitDestinationSystemId: Int? = null,
     val isRouteStale: Boolean = false,
-    val navigationMessage: String? = null,
+    val navigationMessage: UiMessage? = null,
     val ansiblexConnections: List<AnsiblexConnection> = emptyList(),
     val wormholeConnections: List<WormholeConnection> = emptyList(),
     val importMode: AnsiblexImportMode = AnsiblexImportMode.MERGE,

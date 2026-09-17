@@ -76,6 +76,7 @@ import dev.evestaticmapplanner.marker.MarkerContextAction
 import dev.evestaticmapplanner.marker.MarkerUiState
 import dev.evestaticmapplanner.marker.SystemContextAction
 import dev.evestaticmapplanner.marker.SystemContextMenuPresentationBuilder
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.shared.SharedMarkerContextAction
 import dev.evestaticmapplanner.shared.SharedMarkerContextPresentationBuilder
 import dev.evestaticmapplanner.shared.model.SharedMapState
@@ -702,6 +703,7 @@ private fun Real3DSystemContextMenu(
     onContextManageWormholes: (Int) -> Unit,
     onContextDismiss: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     var menuSizePx by remember(menu.systemId, menu.screenPosition) { mutableStateOf(IntSize.Zero) }
     Spacer(Modifier.fillMaxSize().zIndex(CONTEXT_DISMISS_Z_INDEX).onClick(onClick = onContextDismiss))
     Surface(
@@ -726,10 +728,12 @@ private fun Real3DSystemContextMenu(
                 SharedMarkerContextPresentationBuilder.build(
                     sharedMapState.snapshot?.markers?.values?.singleOrNull { it.systemId == menu.systemId },
                     sharedMapState,
+                    strings.map,
                 ),
                 wormholeConnections.count {
                     it.firstSystemId == menu.systemId || it.secondSystemId == menu.systemId
                 },
+                strings.map,
             ).forEach { item ->
                 if (item.startsNewSection) {
                     HorizontalDivider(color = Color(0xFF314252), modifier = Modifier.padding(vertical = 4.dp))

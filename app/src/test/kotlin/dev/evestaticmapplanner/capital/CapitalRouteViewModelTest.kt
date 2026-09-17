@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.capital
 
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.core.jump.UniverseDistanceCalculator
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
@@ -81,7 +83,7 @@ class CapitalRouteViewModelTest {
         viewModel.selectFrom(systems[0])
         viewModel.addRouteWaypoint(systems[0].id)
         assertTrue(viewModel.state.value.waypoints.isEmpty())
-        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Adjacent"))
+        assertTrue(viewModel.state.value.navigationMessage?.resolve(ENGLISH).orEmpty().contains("Adjacent"))
         viewModel.addRouteWaypoint(systems[1].id)
         viewModel.updateManualRange("5")
         viewModel.calculate()
@@ -101,7 +103,7 @@ class CapitalRouteViewModelTest {
         assertEquals(calculatedRoute, viewModel.state.value.activeRoute)
         assertEquals(listOf(systems[1].id), viewModel.state.value.calculatedWaypointSystemIds)
         assertTrue(viewModel.state.value.isRouteStale)
-        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Waypoint D"))
+        assertTrue(viewModel.state.value.navigationMessage?.resolve(ENGLISH).orEmpty().contains("Waypoint D"))
     }
 
     @Test
@@ -183,9 +185,11 @@ class CapitalRouteViewModelTest {
             viewModel.state.value.calculatedWaypointSystemIds,
         )
         assertFalse(viewModel.state.value.isRouteStale)
-        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Adjacent"))
+        assertTrue(viewModel.state.value.navigationMessage?.resolve(ENGLISH).orEmpty().contains("Adjacent"))
     }
 }
+
+private val ENGLISH = AppStringsCatalog.forLocale(AppLocale.EN_US)
 
 private fun capitalSystem(id: Int, name: String, xLy: Double) = SolarSystem(
     id,

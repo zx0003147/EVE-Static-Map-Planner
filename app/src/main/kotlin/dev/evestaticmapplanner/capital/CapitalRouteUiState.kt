@@ -3,11 +3,12 @@ package dev.evestaticmapplanner.capital
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
+import dev.evestaticmapplanner.localization.UiMessage
 
 data class CapitalRouteUiState(
     val isLoading: Boolean = true,
     val isCalculating: Boolean = false,
-    val error: String? = null,
+    val error: UiMessage? = null,
     val fromQuery: String = "",
     val toQuery: String = "",
     val fromResults: List<SolarSystem> = emptyList(),
@@ -22,5 +23,5 @@ data class CapitalRouteUiState(
     val calculatedWaypointSystemIds: List<Int> = emptyList(),
     val calculatedExplicitDestinationSystemId: Int? = null,
     val isRouteStale: Boolean = false,
-    val navigationMessage: String? = null,
+    val navigationMessage: UiMessage? = null,
 )

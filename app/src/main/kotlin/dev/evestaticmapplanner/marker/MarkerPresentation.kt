@@ -6,14 +6,17 @@ import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.shared.PresentedSharedMarkerContextAction
 import dev.evestaticmapplanner.shared.SharedMarkerContextAction
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.MapStrings
 
-enum class MarkerContextAction(val label: String) {
-    ADD_TEMPORARY("Add Temporary Marker"),
-    ADD_SAVED("Add Saved Marker…"),
-    EDIT("Edit Marker…"),
-    SAVE_PERMANENTLY("Save Permanently…"),
-    REMOVE("Remove Marker"),
-    UNAVAILABLE("Markers unavailable"),
+enum class MarkerContextAction {
+    ADD_TEMPORARY,
+    ADD_SAVED,
+    EDIT,
+    SAVE_PERMANENTLY,
+    REMOVE,
+    UNAVAILABLE,
 }
 
 data class PresentedMarkerContextAction(
@@ -21,30 +24,30 @@ data class PresentedMarkerContextAction(
     val enabled: Boolean,
 )
 
-enum class SystemContextAction(val label: String) {
-    ADD_TEMPORARY_MARKER("Add Temporary Marker"),
-    ADD_SAVED_MARKER("Add Saved Marker…"),
-    EDIT_MARKER("Edit Marker…"),
-    SAVE_MARKER_PERMANENTLY("Save Permanently…"),
-    REMOVE_MARKER("Remove Marker"),
-    MARKERS_UNAVAILABLE("Markers unavailable"),
-    ADD_SHARED_MARKER("Add Shared Marker…"),
-    OPEN_SHARED_MARKER("Shared Marker…"),
-    ADD_JUMP_RANGE_OVERLAY("Add Jump Range Overlay"),
-    SET_ROUTE_START("Set as Normal Start"),
-    ADD_ROUTE_WAYPOINT("Add as Normal Waypoint"),
-    SET_ROUTE_DESTINATION("Set as Normal Destination"),
-    SET_CAPITAL_START("Set as Capital Start"),
-    ADD_CAPITAL_WAYPOINT("Add as Capital Waypoint"),
-    SET_CAPITAL_DESTINATION("Set as Capital Destination"),
-    CREATE_WORMHOLE("Create Wormhole Connection…"),
-    MANAGE_WORMHOLE_CONNECTIONS("Wormhole Connections…"),
+enum class SystemContextAction {
+    ADD_TEMPORARY_MARKER,
+    ADD_SAVED_MARKER,
+    EDIT_MARKER,
+    SAVE_MARKER_PERMANENTLY,
+    REMOVE_MARKER,
+    MARKERS_UNAVAILABLE,
+    ADD_SHARED_MARKER,
+    OPEN_SHARED_MARKER,
+    ADD_JUMP_RANGE_OVERLAY,
+    SET_ROUTE_START,
+    ADD_ROUTE_WAYPOINT,
+    SET_ROUTE_DESTINATION,
+    SET_CAPITAL_START,
+    ADD_CAPITAL_WAYPOINT,
+    SET_CAPITAL_DESTINATION,
+    CREATE_WORMHOLE,
+    MANAGE_WORMHOLE_CONNECTIONS,
 }
 
 data class PresentedSystemContextAction(
     val action: SystemContextAction,
     val enabled: Boolean = true,
-    val label: String = action.label,
+    val label: String,
     val startsNewSection: Boolean = false,
 )
 
@@ -54,6 +57,7 @@ object SystemContextMenuPresentationBuilder {
         state: MarkerUiState,
         sharedActions: List<PresentedSharedMarkerContextAction> = emptyList(),
         wormholeConnectionCount: Int = 0,
+        strings: MapStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).map,
     ): List<PresentedSystemContextAction> =
         MarkerContextPresentationBuilder.build(marker, state).map { item ->
             PresentedSystemContextAction(
@@ -66,6 +70,16 @@ object SystemContextMenuPresentationBuilder {
                     MarkerContextAction.UNAVAILABLE -> SystemContextAction.MARKERS_UNAVAILABLE
                 },
                 enabled = item.enabled,
+                label = strings.contextActionLabel(
+                    when (item.action) {
+                        MarkerContextAction.ADD_TEMPORARY -> SystemContextAction.ADD_TEMPORARY_MARKER
+                        MarkerContextAction.ADD_SAVED -> SystemContextAction.ADD_SAVED_MARKER
+                        MarkerContextAction.EDIT -> SystemContextAction.EDIT_MARKER
+                        MarkerContextAction.SAVE_PERMANENTLY -> SystemContextAction.SAVE_MARKER_PERMANENTLY
+                        MarkerContextAction.REMOVE -> SystemContextAction.REMOVE_MARKER
+                        MarkerContextAction.UNAVAILABLE -> SystemContextAction.MARKERS_UNAVAILABLE
+                    },
+                ),
             )
         } + sharedActions.map { item ->
             PresentedSystemContextAction(
@@ -79,35 +93,59 @@ object SystemContextMenuPresentationBuilder {
         } + listOf(
             PresentedSystemContextAction(
                 action = SystemContextAction.ADD_JUMP_RANGE_OVERLAY,
+                label = strings.addJumpRangeOverlay,
                 startsNewSection = true,
             ),
             PresentedSystemContextAction(
                 action = SystemContextAction.SET_ROUTE_START,
+                label = strings.setNormalStart,
                 startsNewSection = true,
             ),
-            PresentedSystemContextAction(SystemContextAction.ADD_ROUTE_WAYPOINT),
-            PresentedSystemContextAction(SystemContextAction.SET_ROUTE_DESTINATION),
+            PresentedSystemContextAction(SystemContextAction.ADD_ROUTE_WAYPOINT, label = strings.addNormalWaypoint),
+            PresentedSystemContextAction(SystemContextAction.SET_ROUTE_DESTINATION, label = strings.setNormalDestination),
             PresentedSystemContextAction(
                 action = SystemContextAction.SET_CAPITAL_START,
+                label = strings.setCapitalStart,
                 startsNewSection = true,
             ),
-            PresentedSystemContextAction(SystemContextAction.ADD_CAPITAL_WAYPOINT),
-            PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_DESTINATION),
+            PresentedSystemContextAction(SystemContextAction.ADD_CAPITAL_WAYPOINT, label = strings.addCapitalWaypoint),
+            PresentedSystemContextAction(SystemContextAction.SET_CAPITAL_DESTINATION, label = strings.setCapitalDestination),
         ) + listOf(
             PresentedSystemContextAction(
                 action = SystemContextAction.CREATE_WORMHOLE,
+                label = strings.createWormholeConnection,
                 startsNewSection = true,
             ),
         ) + if (wormholeConnectionCount > 0) {
             listOf(
                 PresentedSystemContextAction(
                     action = SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS,
-                    label = "Wormhole Connections… ($wormholeConnectionCount)",
+                    label = strings.wormholeConnections(wormholeConnectionCount),
                 ),
             )
         } else {
             emptyList()
         }
+}
+
+private fun MapStrings.contextActionLabel(action: SystemContextAction): String = when (action) {
+    SystemContextAction.ADD_TEMPORARY_MARKER -> addTemporaryMarker
+    SystemContextAction.ADD_SAVED_MARKER -> addSavedMarker
+    SystemContextAction.EDIT_MARKER -> editMarker
+    SystemContextAction.SAVE_MARKER_PERMANENTLY -> savePermanently
+    SystemContextAction.REMOVE_MARKER -> removeMarker
+    SystemContextAction.MARKERS_UNAVAILABLE -> markersUnavailable
+    SystemContextAction.ADD_SHARED_MARKER -> addSharedMarker
+    SystemContextAction.OPEN_SHARED_MARKER -> openSharedMarker
+    SystemContextAction.ADD_JUMP_RANGE_OVERLAY -> addJumpRangeOverlay
+    SystemContextAction.SET_ROUTE_START -> setNormalStart
+    SystemContextAction.ADD_ROUTE_WAYPOINT -> addNormalWaypoint
+    SystemContextAction.SET_ROUTE_DESTINATION -> setNormalDestination
+    SystemContextAction.SET_CAPITAL_START -> setCapitalStart
+    SystemContextAction.ADD_CAPITAL_WAYPOINT -> addCapitalWaypoint
+    SystemContextAction.SET_CAPITAL_DESTINATION -> setCapitalDestination
+    SystemContextAction.CREATE_WORMHOLE -> createWormholeConnection
+    SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS -> wormholeConnections
 }
 
 object MarkerContextPresentationBuilder {

@@ -2,11 +2,12 @@ package dev.evestaticmapplanner.jump
 
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.model.SolarSystem
+import dev.evestaticmapplanner.localization.UiMessage
 
 data class JumpOverlayUiState(
     val isLoading: Boolean = true,
     val isCalculating: Boolean = false,
-    val error: String? = null,
+    val error: UiMessage? = null,
     val originQuery: String = "",
     val originResults: List<SolarSystem> = emptyList(),
     val selectedOrigin: SolarSystem? = null,

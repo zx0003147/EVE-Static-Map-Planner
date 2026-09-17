@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.route
 
+import dev.evestaticmapplanner.localization.AnsiblexDataUnavailableUiMessage
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -33,7 +34,7 @@ class NormalRouteWormholeUiTest {
                         NormalRouteConnectionOptions(
                             state = RoutePlannerUiState(
                                 isLoading = false,
-                                userDatabaseError = "user db unavailable",
+                                userDatabaseError = AnsiblexDataUnavailableUiMessage,
                                 useWormholes = true,
                             ),
                             onUseAnsiblexChanged = {},
@@ -76,7 +77,7 @@ class NormalRouteWormholeUiTest {
                     RouteManagerButtons(
                         state = RoutePlannerUiState(
                             isLoading = false,
-                            userDatabaseError = "user db unavailable",
+                            userDatabaseError = AnsiblexDataUnavailableUiMessage,
                             useWormholes = false,
                         ),
                         onOpenAnsiblexManager = {},

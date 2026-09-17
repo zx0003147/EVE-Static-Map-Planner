@@ -66,6 +66,7 @@ import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
 import dev.evestaticmapplanner.core.model.SolarSystem
+import dev.evestaticmapplanner.core.jump.EligibilityVerdict
 import dev.evestaticmapplanner.search.CompactOutlinedTextField
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
@@ -78,6 +79,11 @@ import dev.evestaticmapplanner.shared.RouteHandoffPublishUiState
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.localization.AppStrings
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.RouteStrings
 import kotlin.math.abs
 
 internal enum class SidebarToolIcon {
@@ -87,11 +93,11 @@ internal enum class SidebarToolIcon {
     CAPITAL_ROUTE,
 }
 
-internal enum class ToolSidebarSection(val label: String, val icon: SidebarToolIcon) {
-    SEARCH("Search", SidebarToolIcon.SEARCH),
-    JUMP_RANGE("Jump Range Overlays", SidebarToolIcon.JUMP_RANGE),
-    NORMAL_ROUTE("Normal Route", SidebarToolIcon.NORMAL_ROUTE),
-    CAPITAL_ROUTE("Capital Route", SidebarToolIcon.CAPITAL_ROUTE),
+internal enum class ToolSidebarSection(val icon: SidebarToolIcon) {
+    SEARCH(SidebarToolIcon.SEARCH),
+    JUMP_RANGE(SidebarToolIcon.JUMP_RANGE),
+    NORMAL_ROUTE(SidebarToolIcon.NORMAL_ROUTE),
+    CAPITAL_ROUTE(SidebarToolIcon.CAPITAL_ROUTE),
 }
 
 internal val TOOL_SIDEBAR_SECTION_ORDER = listOf(
@@ -100,6 +106,13 @@ internal val TOOL_SIDEBAR_SECTION_ORDER = listOf(
     ToolSidebarSection.NORMAL_ROUTE,
     ToolSidebarSection.CAPITAL_ROUTE,
 )
+
+internal fun sidebarSectionLabel(section: ToolSidebarSection, strings: AppStrings): String = when (section) {
+    ToolSidebarSection.SEARCH -> strings.search.title
+    ToolSidebarSection.JUMP_RANGE -> strings.route.jumpRangeOverlays
+    ToolSidebarSection.NORMAL_ROUTE -> strings.route.normalRoute
+    ToolSidebarSection.CAPITAL_ROUTE -> strings.route.capitalRoute
+}
 
 internal data class ToolSidebarExpansionState(
     val expandedSections: Set<ToolSidebarSection> = emptySet(),
@@ -144,6 +157,7 @@ internal fun RouteToolsPanel(
     onPublishNormalRoute: () -> Unit,
     onPublishCapitalRoute: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
     EvePanel(
         modifier = Modifier
@@ -162,9 +176,10 @@ internal fun RouteToolsPanel(
                     TOOL_SIDEBAR_SECTION_ORDER.forEachIndexed { index, section ->
                         if (index > 0) EveDivider()
                         val sectionExpanded = expansionState.isExpanded(section)
+                        val sectionTitle = sidebarSectionLabel(section, strings)
                         when (section) {
                             ToolSidebarSection.SEARCH -> CollapsibleToolSection(
-                                title = section.label,
+                                title = sectionTitle,
                                 icon = section.icon,
                                 summary = null,
                                 expanded = sectionExpanded,
@@ -172,7 +187,7 @@ internal fun RouteToolsPanel(
                             ) {
                                 SystemSearchField(
                                     value = state.systemQuery,
-                                    label = SIDEBAR_SEARCH_LABEL,
+                                    label = strings.search.searchSystemPlaceholder,
                                     results = state.systemResults,
                                     onValueChange = viewModel::updateSystemQuery,
                                     onSelect = { system ->
@@ -187,7 +202,7 @@ internal fun RouteToolsPanel(
                                 )
                             }
                             ToolSidebarSection.JUMP_RANGE -> CollapsibleToolSection(
-                                title = section.label,
+                                title = sectionTitle,
                                 icon = section.icon,
                                 summary = jumpState.overlays.takeIf(List<*>::isNotEmpty)?.let {
                                     "${jumpState.overlays.count { overlay -> overlay.enabled }}/${jumpState.overlays.size}"
@@ -198,9 +213,9 @@ internal fun RouteToolsPanel(
                                 JumpRangeSectionContent(jumpState, jumpViewModel)
                             }
                             ToolSidebarSection.NORMAL_ROUTE -> CollapsibleToolSection(
-                                title = section.label,
+                                title = sectionTitle,
                                 icon = section.icon,
-                                summary = state.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
+                                summary = state.activeRoute?.let { strings.route.jumpCount(it.totalJumps) },
                                 expanded = sectionExpanded,
                                 onToggle = { expansionState = expansionState.toggle(section) },
                             ) {
@@ -222,9 +237,9 @@ internal fun RouteToolsPanel(
                                 )
                             }
                             ToolSidebarSection.CAPITAL_ROUTE -> CollapsibleToolSection(
-                                title = section.label,
+                                title = sectionTitle,
                                 icon = section.icon,
-                                summary = capitalState.activeRoute?.let { countedNoun(it.totalJumps, "jump") },
+                                summary = capitalState.activeRoute?.let { strings.route.jumpCount(it.totalJumps) },
                                 expanded = sectionExpanded,
                                 onToggle = { expansionState = expansionState.toggle(section) },
                             ) {
@@ -288,6 +303,7 @@ private fun SidebarRailActionButton(
     section: ToolSidebarSection,
     onClick: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
     Box(
@@ -301,7 +317,7 @@ private fun SidebarRailActionButton(
                 role = Role.Button,
                 onClick = onClick,
             )
-            .semantics { contentDescription = section.label }
+            .semantics { contentDescription = sidebarSectionLabel(section, strings) }
             .testTag("sidebar-rail-${section.name.lowercase()}"),
         contentAlignment = Alignment.Center,
     ) {
@@ -322,6 +338,7 @@ internal fun SidebarControlCluster(
     onToggleSidebar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current
     if (expanded) {
         Row(
             modifier = modifier.height(SIDEBAR_CONTROL_SIZE),
@@ -331,8 +348,8 @@ internal fun SidebarControlCluster(
                 contentAlignment = Alignment.Center,
             ) {
                 SidebarUtilityButton(
-                    description = "Toggle 2D/3D map mode",
-                    stateDescription = projectionId.projectionToggleStateDescription,
+                    description = strings.map.toggleProjection,
+                    stateDescription = projectionToggleStateDescription(projectionId, strings),
                     testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
                     onClick = onToggleProjection,
                     modifier = Modifier.width(TOOL_SIDEBAR_COLLAPSED_WIDTH).fillMaxHeight(),
@@ -343,7 +360,7 @@ internal fun SidebarControlCluster(
                 contentAlignment = Alignment.Center,
             ) {
                 SidebarUtilityButton(
-                    description = "Open Embedded AI Assistant",
+                    description = strings.map.openEmbeddedAiAssistant,
                     testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
                     onClick = onOpenEmbeddedAi,
                     modifier = Modifier.width(TOOL_SIDEBAR_COLLAPSED_WIDTH).fillMaxHeight(),
@@ -354,7 +371,7 @@ internal fun SidebarControlCluster(
                 contentAlignment = Alignment.Center,
             ) {
                 SidebarUtilityButton(
-                    description = "Collapse sidebar",
+                    description = strings.map.collapseSidebar,
                     testTag = SIDEBAR_TOGGLE_TEST_TAG,
                     onClick = onToggleSidebar,
                     modifier = Modifier.width(TOOL_SIDEBAR_COLLAPSED_WIDTH).fillMaxHeight(),
@@ -364,20 +381,20 @@ internal fun SidebarControlCluster(
     } else {
         Column(modifier = modifier.height(SIDEBAR_CONTROL_SIZE * 3)) {
             SidebarUtilityButton(
-                description = "Toggle 2D/3D map mode",
-                stateDescription = projectionId.projectionToggleStateDescription,
+                description = strings.map.toggleProjection,
+                stateDescription = projectionToggleStateDescription(projectionId, strings),
                 testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
                 onClick = onToggleProjection,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) { ProjectionToggleGraphic(projectionId) }
             SidebarUtilityButton(
-                description = "Open Embedded AI Assistant",
+                description = strings.map.openEmbeddedAiAssistant,
                 testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
                 onClick = onOpenEmbeddedAi,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) { AuraAvatar() }
             SidebarUtilityButton(
-                description = "Expand sidebar",
+                description = strings.map.expandSidebar,
                 testTag = SIDEBAR_TOGGLE_TEST_TAG,
                 onClick = onToggleSidebar,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -531,8 +548,8 @@ internal fun projectionToggleArrowGeometry(width: Float, height: Float): List<Pr
         )
     }
 
-private val MapProjectionId.projectionToggleStateDescription: String
-    get() = if (this == MapProjectionId.OFFICIAL_2D) "Official 2D selected" else "Real 3D selected"
+private fun projectionToggleStateDescription(projectionId: MapProjectionId, strings: AppStrings): String =
+    if (projectionId == MapProjectionId.OFFICIAL_2D) strings.map.official2DSelected else strings.map.real3DSelected
 
 @Composable
 private fun AuraAvatar() {
@@ -704,10 +721,11 @@ private fun JumpRangeSectionContent(
     state: JumpOverlayUiState,
     viewModel: JumpOverlayViewModel,
 ) {
+    val strings = LocalAppStrings.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SystemSearchField(
             value = state.originQuery,
-            label = "Overlay origin",
+            label = strings.route.overlayOrigin,
             results = state.originResults,
             onValueChange = viewModel::updateOriginQuery,
             onSelect = viewModel::selectOrigin,
@@ -716,15 +734,15 @@ private fun JumpRangeSectionContent(
         CompactOutlinedTextField(
             value = state.manualRangeText,
             onValueChange = viewModel::updateManualRange,
-            label = "Effective maximum LY",
+            label = strings.route.effectiveMaximumLy,
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
                 onClick = viewModel::addSelectedOrigin,
                 enabled = state.selectedOrigin != null && !state.isLoading && !state.isCalculating,
-            ) { Text("Add") }
-            TextButton(onClick = viewModel::clear, enabled = state.overlays.isNotEmpty()) { Text("Clear") }
+            ) { Text(strings.common.add) }
+            TextButton(onClick = viewModel::clear, enabled = state.overlays.isNotEmpty()) { Text(strings.common.clear) }
         }
         state.overlays.forEach { overlay ->
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -741,20 +759,20 @@ private fun JumpRangeSectionContent(
                         onCheckedChange = { viewModel.toggleIntersectionSelection(overlay.id, it) },
                         enabled = overlay.enabled,
                     )
-                    Text("Intersect", style = MaterialTheme.typography.labelSmall)
-                    TextButton(onClick = { viewModel.updateWithCurrentRange(overlay.id) }) { Text("Update") }
-                    TextButton(onClick = { viewModel.remove(overlay.id) }) { Text("Remove") }
+                    Text(strings.route.intersect, style = MaterialTheme.typography.labelSmall)
+                    TextButton(onClick = { viewModel.updateWithCurrentRange(overlay.id) }) { Text(strings.common.update) }
+                    TextButton(onClick = { viewModel.remove(overlay.id) }) { Text(strings.common.remove) }
                 }
             }
         }
         if (state.intersectionOverlayIds.isNotEmpty()) {
             Text(
-                "Intersection (${state.intersectionOverlayIds.size} overlays): ${state.intersectionSystemIds.size} systems",
+                strings.route.overlayIntersection(state.intersectionOverlayIds.size, state.intersectionSystemIds.size),
                 color = EveColors.Important,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        state.error?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
+        state.error?.let { Text(it.resolve(strings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
     }
 }
 
@@ -775,10 +793,11 @@ private fun NormalRouteSectionContent(
     routeHandoffPublishState: RouteHandoffPublishUiState,
     onPublishRoute: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
         SystemSearchField(
             value = state.fromQuery,
-            label = "Start",
+            label = strings.route.start,
             results = state.fromResults,
             onValueChange = viewModel::updateFromQuery,
             onSelect = viewModel::selectFrom,
@@ -791,7 +810,7 @@ private fun NormalRouteSectionContent(
         )
         SystemSearchField(
             value = state.toQuery,
-            label = "Destination (optional)",
+            label = strings.route.destinationOptional,
             results = state.toResults,
             onValueChange = viewModel::updateToQuery,
             onSelect = viewModel::selectTo,
@@ -808,23 +827,23 @@ private fun NormalRouteSectionContent(
                 onClick = viewModel::calculateRoute,
                 enabled = state.selectedFrom != null &&
                     (state.selectedTo != null || state.waypoints.isNotEmpty()) && !state.isLoading,
-            ) { Text("Calculate") }
+            ) { Text(strings.route.calculate) }
             TextButton(onClick = viewModel::clearRoute, enabled = state.routeOutcome != null || state.activeRoute != null) {
-                Text("Clear")
+                Text(strings.common.clear)
             }
         }
         if (state.isRouteStale) {
-            Text("Needs recalculation", color = EveColors.Important, style = MaterialTheme.typography.labelSmall)
+            Text(strings.route.needsRecalculation, color = EveColors.Important, style = MaterialTheme.typography.labelSmall)
         }
         state.navigationMessage?.let {
-            Text(it, color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
+            Text(it.resolve(strings), color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         RouteSummary(state)
         RouteHandoffPublishControl(
             hasRoute = state.activeRoute != null,
             sharedMapState = sharedMapState,
             publishState = routeHandoffPublishState,
-            label = "Publish Normal Route to Web",
+            label = strings.route.publishNormalRoute,
             onPublish = onPublishRoute,
         )
         if (
@@ -832,7 +851,7 @@ private fun NormalRouteSectionContent(
             routeActions.any { !it.supportsNavigationIntent }
         ) {
             Text(
-                "Route actions unavailable for routes containing Wormholes.",
+                strings.route.routeActionsUnavailableForWormholes,
                 color = EveColors.Important,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -848,9 +867,9 @@ private fun NormalRouteSectionContent(
         )
         RouteManagerButtons(state, onOpenAnsiblexManager, onOpenWormholeManager)
         state.userDatabaseError?.let {
-            Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
+            Text(it.resolve(strings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
             Text(
-                "Static map and Stargate-only routing remain available.",
+                strings.route.stargateOnlyRoutingAvailable,
                 color = EveColors.SecondaryText,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -864,11 +883,12 @@ internal fun RouteManagerButtons(
     onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     TextButton(onClick = onOpenAnsiblexManager, enabled = state.isAnsiblexAvailable) {
-        Text("Ansiblex Manager (${state.enabledAnsiblexCount}/${state.ansiblexConnections.size})")
+        Text(strings.route.ansiblexManager(state.enabledAnsiblexCount, state.ansiblexConnections.size))
     }
     TextButton(onClick = onOpenWormholeManager) {
-        Text("Wormhole Manager (${state.wormholeConnections.size})")
+        Text(strings.route.wormholeManager(state.wormholeConnections.size))
     }
 }
 
@@ -879,6 +899,7 @@ internal fun NormalRouteConnectionOptions(
     onUseWormholesChanged: (Boolean) -> Unit,
     onShowAnsiblexLayerChanged: (Boolean) -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(
             checked = state.useAnsiblex,
@@ -886,7 +907,7 @@ internal fun NormalRouteConnectionOptions(
             enabled = state.isAnsiblexAvailable,
             modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE),
         )
-        Text("Use Ansiblex")
+        Text(strings.route.useAnsiblex)
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(
@@ -894,7 +915,7 @@ internal fun NormalRouteConnectionOptions(
             onCheckedChange = onUseWormholesChanged,
             modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE).testTag(USE_WORMHOLES_CHECKBOX_TAG),
         )
-        Text("Use Wormholes")
+        Text(strings.route.useWormholes)
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(
@@ -903,7 +924,7 @@ internal fun NormalRouteConnectionOptions(
             enabled = state.isAnsiblexAvailable,
             modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE),
         )
-        Text("Show Ansiblex layer")
+        Text(strings.route.showAnsiblexLayer)
     }
 }
 
@@ -920,10 +941,11 @@ private fun CapitalRouteSectionContent(
     routeHandoffPublishState: RouteHandoffPublishUiState,
     onPublishRoute: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
         SystemSearchField(
             value = state.fromQuery,
-            label = "Capital Start",
+            label = strings.route.capitalStart,
             results = state.fromResults,
             onValueChange = viewModel::updateFromQuery,
             onSelect = viewModel::selectFrom,
@@ -936,7 +958,7 @@ private fun CapitalRouteSectionContent(
         )
         SystemSearchField(
             value = state.toQuery,
-            label = "Capital Destination (optional)",
+            label = strings.route.capitalDestinationOptional,
             results = state.toResults,
             onValueChange = viewModel::updateToQuery,
             onSelect = viewModel::selectTo,
@@ -945,7 +967,7 @@ private fun CapitalRouteSectionContent(
         CompactOutlinedTextField(
             value = state.manualRangeText,
             onValueChange = viewModel::updateManualRange,
-            label = "Effective maximum LY",
+            label = strings.route.effectiveMaximumLy,
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -953,21 +975,21 @@ private fun CapitalRouteSectionContent(
                 onClick = viewModel::calculate,
                 enabled = state.selectedFrom != null && (state.selectedTo != null || state.waypoints.isNotEmpty()) &&
                     !state.isLoading && !state.isCalculating,
-            ) { Text(if (state.isCalculating) "Calculating…" else "Calculate") }
-            TextButton(onClick = viewModel::clear, enabled = state.outcome != null) { Text("Clear") }
+            ) { Text(if (state.isCalculating) strings.route.calculating else strings.route.calculate) }
+            TextButton(onClick = viewModel::clear, enabled = state.outcome != null) { Text(strings.common.clear) }
         }
         if (state.isRouteStale) {
-            Text("Needs recalculation", color = EveColors.Important, style = MaterialTheme.typography.labelSmall)
+            Text(strings.route.needsRecalculation, color = EveColors.Important, style = MaterialTheme.typography.labelSmall)
         }
         state.navigationMessage?.let {
-            Text(it, color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
+            Text(it.resolve(strings), color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         CapitalRouteSummary(state)
         RouteHandoffPublishControl(
             hasRoute = state.activeRoute != null,
             sharedMapState = sharedMapState,
             publishState = routeHandoffPublishState,
-            label = "Publish Capital Route to Web",
+            label = strings.route.publishCapitalRoute,
             onPublish = onPublishRoute,
         )
         RouteActionButtons(
@@ -977,19 +999,19 @@ private fun CapitalRouteSectionContent(
             onSelectRouteActionTarget,
             onInvokeRouteAction,
         )
-        state.error?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
+        state.error?.let { Text(it.resolve(strings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
         Text(
-            "Validates real XYZ geometry, manual max range, and implemented static eligibility only.",
+            strings.route.validatesStaticCapitalRules,
             color = EveColors.SecondaryText,
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
-            "Does not verify live cyno/type, jammer, ACL, fuel, capacitor, fatigue, scram, or server state.",
+            strings.route.capitalLiveStateDisclaimer,
             color = EveColors.Warning,
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
-            "Phase 5 · Jump Range Overlays + Capital Route V1",
+            strings.route.phaseLabel,
             style = MaterialTheme.typography.labelSmall,
             color = EveColors.SecondaryText,
         )
@@ -1000,24 +1022,24 @@ internal val TOOL_SIDEBAR_WIDTH = 270.dp
 internal val TOOL_SIDEBAR_COLLAPSED_WIDTH = 48.dp
 internal val ROUTE_CONTROL_VERTICAL_SPACING = 5.dp
 internal val ROUTE_OPTION_CONTROL_SIZE = 28.dp
-internal const val SIDEBAR_SEARCH_LABEL = "Search system..."
 internal const val USE_WORMHOLES_CHECKBOX_TAG = "normal-route-use-wormholes"
 
 @Composable
 private fun RouteSummary(state: RoutePlannerUiState) {
+    val strings = LocalAppStrings.current
     when (val outcome = state.routeOutcome) {
         null -> Unit
         is RouteCalculationOutcome.Found -> {
             val route = outcome.route
             Text(
-                normalRouteSummaryText(route),
+                normalRouteSummaryText(route, strings.route),
                 color = EveColors.Important,
             )
             Text(state.routeSystemNames.joinToString(" → "), style = MaterialTheme.typography.bodySmall)
         }
-        is RouteCalculationOutcome.SameSystem -> Text("Start and destination are the same system · 0 jumps")
-        is RouteCalculationOutcome.Unreachable -> Text("No route is reachable with the selected connection types.", color = EveColors.Warning)
-        is RouteCalculationOutcome.InvalidEndpoint -> Text("One or both route endpoints are invalid.", color = EveColors.Error)
+        is RouteCalculationOutcome.SameSystem -> Text(strings.route.sameNormalSystem)
+        is RouteCalculationOutcome.Unreachable -> Text(strings.route.normalRouteUnreachable, color = EveColors.Warning)
+        is RouteCalculationOutcome.InvalidEndpoint -> Text(strings.route.invalidNormalEndpoints, color = EveColors.Error)
     }
 }
 
@@ -1027,9 +1049,10 @@ internal fun WaypointList(
     onMove: (Int, Int) -> Unit,
     onRemove: (Int) -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     if (waypoints.isEmpty()) {
         Text(
-            "Waypoints · add from a system's right-click menu",
+            strings.route.waypointHint,
             color = EveColors.SecondaryText,
             style = MaterialTheme.typography.labelSmall,
         )
@@ -1039,7 +1062,7 @@ internal fun WaypointList(
     var draggedIndex by remember(waypoints) { mutableStateOf<Int?>(null) }
     var accumulatedDragY by remember(waypoints) { mutableStateOf(0f) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(WAYPOINT_ROW_SPACING)) {
-        Text("Waypoints", color = EveColors.SecondaryText, style = MaterialTheme.typography.labelSmall)
+        Text(strings.route.waypoints, color = EveColors.SecondaryText, style = MaterialTheme.typography.labelSmall)
         waypoints.forEachIndexed { index, waypoint ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1119,13 +1142,14 @@ private fun RouteHandoffPublishControl(
     label: String,
     onPublish: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     val role = sharedMapState.identity?.workspace?.role
     val reason = when {
-        !hasRoute -> "Calculate a route before publishing."
-        sharedMapState.connectionState != SharedConnectionState.ONLINE -> "Connect to Shared Map before publishing."
-        sharedMapState.meta?.supportsRouteHandoffs != true -> "This Shared Map server does not support Route Handoffs."
-        role == SharedWorkspaceRole.VIEWER -> "EDITOR or ADMIN permission is required to publish."
-        publishState.busy -> "Publishing route…"
+        !hasRoute -> strings.route.calculateBeforePublishing
+        sharedMapState.connectionState != SharedConnectionState.ONLINE -> strings.route.connectSharedMapBeforePublishing
+        sharedMapState.meta?.supportsRouteHandoffs != true -> strings.route.routeHandoffsUnsupported
+        role == SharedWorkspaceRole.VIEWER -> strings.route.publishPermissionRequired
+        publishState.busy -> strings.route.publishingRoute
         else -> null
     }
     Button(onClick = onPublish, enabled = reason == null) { Text(label) }
@@ -1143,42 +1167,49 @@ internal const val WAYPOINT_ROW_TEST_TAG_PREFIX = "route-waypoint-row"
 internal const val WAYPOINT_DRAG_HANDLE_TEST_TAG_PREFIX = "route-waypoint-drag-handle"
 internal const val WAYPOINT_REMOVE_TEST_TAG_PREFIX = "route-waypoint-remove"
 
-internal fun normalRouteSummaryText(route: dev.evestaticmapplanner.core.route.RouteResult): String = buildString {
-    append(countedNoun(route.totalJumps, "jump"))
-    append(" · ${countedNoun(route.stargateJumps, "Stargate")}")
-    append(" · ${countedNoun(route.ansiblexJumps, "Ansiblex", "Ansiblex")}")
-    if (route.wormholeJumps > 0) append(" · ${countedNoun(route.wormholeJumps, "Wormhole")}")
+internal fun normalRouteSummaryText(
+    route: dev.evestaticmapplanner.core.route.RouteResult,
+    strings: RouteStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).route,
+): String = buildString {
+    append(strings.jumpCount(route.totalJumps))
+    append(" · ${strings.stargateCount(route.stargateJumps)}")
+    append(" · ${strings.ansiblexCount(route.ansiblexJumps)}")
+    if (route.wormholeJumps > 0) append(" · ${strings.wormholeCount(route.wormholeJumps)}")
 }
-
-internal fun countedNoun(count: Int, singular: String, plural: String = "${singular}s"): String =
-    "$count ${if (count == 1) singular else plural}"
 
 @Composable
 private fun CapitalRouteSummary(state: CapitalRouteUiState) {
+    val strings = LocalAppStrings.current
     when (val outcome = state.outcome) {
         null -> Unit
         is CapitalRouteOutcome.Found -> {
             Text(
-                "${countedNoun(outcome.route.totalJumps, "capital jump")} · " +
-                    String.format(java.util.Locale.ROOT, "%.3f LY total", outcome.route.totalDistanceLy),
+                "${strings.route.capitalJumpCount(outcome.route.totalJumps)} · " +
+                    strings.route.totalDistanceLy(outcome.route.totalDistanceLy),
                 color = EveColors.Important,
             )
             Text(state.routeSystemNames.joinToString(" → "), style = MaterialTheme.typography.bodySmall)
             outcome.route.legs.forEach { leg ->
                 Text(
                     "${leg.fromSystemId} → ${leg.toSystemId} · " +
-                        String.format(java.util.Locale.ROOT, "%.3f LY", leg.distanceLy),
+                        strings.route.jumpDistanceLy(leg.distanceLy),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
         }
-        is CapitalRouteOutcome.SameSystem -> Text("Start and destination are the same · 0 jumps")
-        is CapitalRouteOutcome.Unreachable -> Text("No statically eligible route within the manual range.", color = EveColors.Warning)
-        is CapitalRouteOutcome.InvalidEndpoint -> Text("One or both capital endpoints are invalid.", color = EveColors.Error)
+        is CapitalRouteOutcome.SameSystem -> Text(strings.route.sameCapitalSystem)
+        is CapitalRouteOutcome.Unreachable -> Text(strings.route.capitalRouteUnreachable, color = EveColors.Warning)
+        is CapitalRouteOutcome.InvalidEndpoint -> Text(strings.route.invalidCapitalEndpoints, color = EveColors.Error)
         is CapitalRouteOutcome.IneligibleEndpoint -> Text(
-            "${outcome.endpoint}: ${outcome.verdict}",
+            strings.route.capitalEndpointVerdict(outcome.endpoint.name, outcome.verdict.userFacingReason()),
             color = EveColors.Warning,
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+private fun EligibilityVerdict.userFacingReason(): String = when (this) {
+    EligibilityVerdict.Eligible -> error("Eligible endpoint must not produce an ineligible route outcome")
+    is EligibilityVerdict.Ineligible -> reason
+    is EligibilityVerdict.Unknown -> reason
 }

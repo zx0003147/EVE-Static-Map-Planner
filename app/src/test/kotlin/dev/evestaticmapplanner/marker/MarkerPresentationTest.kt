@@ -3,6 +3,8 @@ package dev.evestaticmapplanner.marker
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.MarkerColor
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,6 +12,27 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class MarkerPresentationTest {
+    @Test
+    fun `system context labels follow locale while action identifiers and order stay stable`() {
+        val english = SystemContextMenuPresentationBuilder.build(
+            null,
+            readyState(),
+            strings = AppStringsCatalog.forLocale(AppLocale.EN_US).map,
+        )
+        val chinese = SystemContextMenuPresentationBuilder.build(
+            null,
+            readyState(),
+            strings = AppStringsCatalog.forLocale(AppLocale.ZH_CN).map,
+        )
+
+        assertEquals(english.map { it.action }, chinese.map { it.action })
+        assertEquals(english.map { it.enabled }, chinese.map { it.enabled })
+        assertEquals("Set as Normal Start", english.first { it.action == SystemContextAction.SET_ROUTE_START }.label)
+        assertEquals("设为普通路线起点", chinese.first { it.action == SystemContextAction.SET_ROUTE_START }.label)
+        assertEquals("Add Jump Range Overlay", english.first { it.action == SystemContextAction.ADD_JUMP_RANGE_OVERLAY }.label)
+        assertEquals("添加跳跃范围覆盖", chinese.first { it.action == SystemContextAction.ADD_JUMP_RANGE_OVERLAY }.label)
+    }
+
     @Test
     fun `empty system offers both add actions`() {
         val actions = MarkerContextPresentationBuilder.build(null, readyState())
@@ -41,7 +64,7 @@ class MarkerPresentationTest {
             ),
             actions,
         )
-        assertTrue(actions.none { it.label == "Marker ›" || it.label == "System Info" })
+        assertTrue(presented.none { it.label == "Marker ›" || it.label == "System Info" })
         assertEquals(
             listOf(
                 SystemContextAction.ADD_JUMP_RANGE_OVERLAY,

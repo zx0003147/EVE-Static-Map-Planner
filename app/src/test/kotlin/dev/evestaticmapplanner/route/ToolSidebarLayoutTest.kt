@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.route
 
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.capital.CapitalRouteUiState
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
@@ -126,7 +128,7 @@ class ToolSidebarLayoutTest {
 
     @Test
     fun `global search is permanently identified at the top of the sidebar`() {
-        assertEquals("Search system...", SIDEBAR_SEARCH_LABEL)
+        assertEquals("Search system...", AppStringsCatalog.forLocale(AppLocale.EN_US).search.searchSystemPlaceholder)
         assertEquals(270, TOOL_SIDEBAR_WIDTH.value.toInt())
         assertEquals(48, TOOL_SIDEBAR_COLLAPSED_WIDTH.value.toInt())
         assertEquals(2, MAP_TOOLBAR_VERTICAL_PADDING.value.toInt())

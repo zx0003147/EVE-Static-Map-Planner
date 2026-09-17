@@ -7,6 +7,10 @@ interface AppStrings {
     val locale: AppLocale
     val appTitle: String
     val common: CommonStrings
+    val mainShell: MainShellStrings
+    val map: MapStrings
+    val search: SearchStrings
+    val systemInfo: SystemInfoStrings
     val preferences: PreferencesStrings
     val route: RouteStrings
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import dev.evestaticmapplanner.localization.LocalAppStrings
 
 @Composable
 fun EveAlwaysOnTopButton(
@@ -33,7 +34,8 @@ fun EveAlwaysOnTopButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
-    val description = if (isAlwaysOnTop) "Disable always on top" else "Keep window on top"
+    val strings = LocalAppStrings.current
+    val description = if (isAlwaysOnTop) strings.mainShell.disableAlwaysOnTop else strings.mainShell.keepWindowOnTop
     val iconColor = if (isAlwaysOnTop) EveColors.PrimaryAccent else EveColors.PrimaryText
     Box(
         modifier = modifier
@@ -56,7 +58,7 @@ fun EveAlwaysOnTopButton(
             .semantics {
                 role = Role.Switch
                 contentDescription = description
-                stateDescription = if (isAlwaysOnTop) "On" else "Off"
+                stateDescription = if (isAlwaysOnTop) strings.common.on else strings.common.off
             },
         contentAlignment = Alignment.Center,
     ) {

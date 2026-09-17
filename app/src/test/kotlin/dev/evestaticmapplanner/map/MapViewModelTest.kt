@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.map
 
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.MapSize
@@ -28,7 +30,6 @@ import dev.evestaticmapplanner.preferences.OverlayLayerKey
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
-import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -628,7 +629,7 @@ class MapViewModelTest {
         assertEquals(expectedPosition, state.real3DCamera?.target)
         assertNotEquals(MapPoint3.Zero, state.real3DCamera?.target)
         assertEquals(realCameraBefore.distance, state.real3DCamera?.distance)
-        assertTrue(state.focusNotice?.contains("switched to Real 3D") == true)
+        assertTrue(state.focusNotice?.resolve(AppStringsCatalog.forLocale(AppLocale.EN_US))?.contains("switched to Real 3D") == true)
         assertSame(realScene, state.scene)
         assertEquals(builds, state.performance.sceneBuildCount)
     }

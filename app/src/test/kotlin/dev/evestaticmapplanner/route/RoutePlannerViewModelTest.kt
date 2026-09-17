@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.route
 
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
@@ -183,7 +185,7 @@ class RoutePlannerViewModelTest {
         assertEquals(calculatedRoute, viewModel.state.value.activeRoute)
         assertEquals(listOf(2), viewModel.state.value.calculatedWaypointSystemIds)
         assertTrue(viewModel.state.value.isRouteStale)
-        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Waypoint Echo"))
+        assertTrue(viewModel.state.value.navigationMessage?.resolve(ENGLISH).orEmpty().contains("Waypoint Echo"))
     }
 
     @Test
@@ -231,7 +233,7 @@ class RoutePlannerViewModelTest {
         assertEquals(calculatedRoute, viewModel.state.value.activeRoute)
         assertEquals(listOf(2, 3, 2), viewModel.state.value.calculatedWaypointSystemIds)
         assertFalse(viewModel.state.value.isRouteStale)
-        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Adjacent"))
+        assertTrue(viewModel.state.value.navigationMessage?.resolve(ENGLISH).orEmpty().contains("Adjacent"))
     }
 
     @Test
@@ -243,7 +245,7 @@ class RoutePlannerViewModelTest {
 
         viewModel.addRouteWaypoint(1)
         assertTrue(viewModel.state.value.waypoints.isEmpty())
-        assertTrue(viewModel.state.value.navigationMessage.orEmpty().contains("Adjacent"))
+        assertTrue(viewModel.state.value.navigationMessage?.resolve(ENGLISH).orEmpty().contains("Adjacent"))
 
         viewModel.addRouteWaypoint(2)
         viewModel.addRouteWaypoint(1)
@@ -511,6 +513,8 @@ class RoutePlannerViewModelTest {
         assertNull(routeViewModel.state.value.activeRoute)
     }
 }
+
+private val ENGLISH = AppStringsCatalog.forLocale(AppLocale.EN_US)
 
 private class Fixture(
     withShortcut: Boolean = false,

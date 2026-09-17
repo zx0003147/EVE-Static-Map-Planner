@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner
 
+import dev.evestaticmapplanner.localization.MainShellStrings
 import dev.evestaticmapplanner.ui.EveMenuItemSpec
 import dev.evestaticmapplanner.ui.EveMenuSpec
 
@@ -26,53 +27,57 @@ internal data class PlannerTopMenuActions(
 internal fun plannerTopMenus(
     state: PlannerTopMenuState,
     actions: PlannerTopMenuActions,
+    strings: MainShellStrings,
 ): List<EveMenuSpec> = listOfNotNull(
     EveMenuSpec(
-        "Marker",
+        strings.marker,
         listOf(
             EveMenuItemSpec(
-                "Marker Manager…",
+                strings.markerManager,
                 enabled = !state.markerManagerOpen,
                 onClick = actions.openMarkerManager,
             ),
             EveMenuItemSpec(
-                "Shared Marker Manager…",
+                strings.sharedMarkerManager,
                 enabled = !state.sharedMarkerManagerOpen,
                 onClick = actions.openSharedMarkerManager,
             ),
             EveMenuItemSpec(
-                "Clear All Temporary Markers…",
+                strings.clearAllTemporaryMarkers,
                 enabled = state.temporaryMarkerCount > 0,
                 separatorBefore = true,
                 onClick = actions.clearTemporaryMarkers,
             ),
             EveMenuItemSpec(
-                "Marker Settings…",
+                strings.markerSettings,
                 separatorBefore = true,
                 onClick = actions.openMarkerSettings,
             ),
         ),
     ),
     EveMenuSpec(
-        "Mini-map",
+        strings.miniMap,
         listOf(
-            EveMenuItemSpec(if (state.miniMapEnabled) "Hide Mini-map" else "Show Mini-map", onClick = actions.toggleMiniMap),
             EveMenuItemSpec(
-                "Mini-map Settings…",
+                if (state.miniMapEnabled) strings.hideMiniMap else strings.showMiniMap,
+                onClick = actions.toggleMiniMap,
+            ),
+            EveMenuItemSpec(
+                strings.miniMapSettings,
                 separatorBefore = true,
                 onClick = actions.openMiniMapSettings,
             ),
         ),
     ).takeIf { state.characterTrackingAvailable },
     EveMenuSpec(
-        "Preferences",
-        listOf(EveMenuItemSpec("Preferences…", onClick = actions.openPreferences)),
+        strings.preferences,
+        listOf(EveMenuItemSpec(strings.openPreferences, onClick = actions.openPreferences)),
     ),
     EveMenuSpec(
-        "Static Data",
+        strings.staticData,
         listOf(
             EveMenuItemSpec(
-                "Static Data…",
+                strings.openStaticData,
                 enabled = !state.staticDataOpen,
                 onClick = actions.openStaticData,
             ),

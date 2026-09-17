@@ -1,5 +1,6 @@
 package dev.evestaticmapplanner.map
 
+import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapBounds
 import dev.evestaticmapplanner.core.map.MapProjectionId
@@ -29,6 +30,9 @@ import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SharedMapPreferences
 import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.FocusSwitchedToReal3DUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
+import dev.evestaticmapplanner.localization.UnableToLoadMapUiMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,8 +115,9 @@ class MapViewModel(
                 println("MAP_COUNTS systems=${scene.nodes.size} edges=${scene.edges.size}")
                 if (focusId != null) loadDetails(focusId)
             } catch (error: Throwable) {
+                AppDiagnostics.warning("Static map load failed", error)
                 mutableState.update {
-                    it.copy(isLoading = false, error = error.message ?: error::class.simpleName ?: "Unknown error")
+                    it.copy(isLoading = false, error = UnableToLoadMapUiMessage)
                 }
             }
         }
@@ -163,7 +168,7 @@ class MapViewModel(
     private fun switchProjection(
         projectionId: MapProjectionId,
         focusSystemId: Int?,
-        focusNotice: String?,
+        focusNotice: UiMessage?,
     ) {
         val current = mutableState.value
         if (projectionId == current.projectionId || sceneBuildJob?.isActive == true) return
@@ -229,7 +234,8 @@ class MapViewModel(
                     animateReal3DFocusTo(focusSystemId)
                 }
             } catch (error: Throwable) {
-                mutableState.update { it.copy(error = error.message ?: "Unable to build map scene") }
+                AppDiagnostics.warning("Map scene build failed for projection=$projectionId", error)
+                mutableState.update { it.copy(error = UnableToLoadMapUiMessage) }
             }
         }
     }
@@ -591,7 +597,7 @@ class MapViewModel(
             switchProjection(
                 projectionId = MapProjectionId.REAL_3D,
                 focusSystemId = systemId,
-                focusNotice = "$systemName is unavailable in Official 2D; switched to Real 3D.",
+                focusNotice = FocusSwitchedToReal3DUiMessage(systemName),
             )
         }
     }

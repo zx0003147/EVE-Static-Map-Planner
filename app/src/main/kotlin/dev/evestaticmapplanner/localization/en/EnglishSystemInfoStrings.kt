@@ -1,0 +1,35 @@
+package dev.evestaticmapplanner.localization.en
+
+import dev.evestaticmapplanner.localization.SystemInfoStrings
+
+internal object EnglishSystemInfoStrings : SystemInfoStrings {
+    override val selectedSystem = "Selected System"
+    override val noSystemSelected = "No system selected"
+    override val loadingSystemDetails = "Loading system details…"
+    override val systemId = "System ID"
+    override val region = "Region"
+    override val constellation = "Constellation"
+    override val securityStatus = "Security Status"
+    override val stargates = "Stargates"
+    override val ansiblex = "Ansiblex"
+    override val jumpCoverage = "Jump Coverage"
+    override val ansiblexConnections = "Ansiblex Connections"
+    override val jumpOverlays = "Jump Overlays"
+    override val inSelectedOverlayIntersection = "In selected overlay intersection"
+    override val marker = "Marker"
+    override val sharedMarker = "Shared Marker"
+    override val color = "Color"
+    override val tags = "Tags"
+    override val notes = "Notes"
+    override val sharedMapDataMayBeStale = "Shared Map data may be stale"
+    override val editSharedMarker = "Edit Shared Marker"
+    override val saved = "Saved"
+    override val temporary = "Temporary"
+    override val bidirectional = "Bidirectional"
+    override val outbound = "Outbound"
+    override val inbound = "Inbound"
+    override fun regionValue(value: String) = "Region: $value"
+    override fun constellationValue(value: String) = "Constellation: $value"
+    override fun updatedBy(displayName: String) = "Updated by $displayName"
+    override fun fallbackSystem(systemId: Int) = "System $systemId"
+}

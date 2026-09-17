@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.Real3DCamera
 import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.preferences.AppPreferences
+import dev.evestaticmapplanner.localization.UiMessage
 
 data class MapContextMenuState(
     val systemId: Int,
@@ -23,7 +24,7 @@ data class MapPerformanceState(
 
 data class MapUiState(
     val isLoading: Boolean = true,
-    val error: String? = null,
+    val error: UiMessage? = null,
     val projectionId: MapProjectionId = MapProjectionId.OFFICIAL_2D,
     val scene: ProjectedMapScene? = null,
     val canvasSize: MapSize = MapSize(0.0, 0.0),
@@ -36,7 +37,7 @@ data class MapUiState(
     val selectedSystemId: Int? = null,
     val selectedSystemDetails: SolarSystemDetails? = null,
     val contextMenu: MapContextMenuState? = null,
-    val focusNotice: String? = null,
+    val focusNotice: UiMessage? = null,
     val performance: MapPerformanceState = MapPerformanceState(),
 ) {
     val viewport: MapViewport? get() = viewports[projectionId]

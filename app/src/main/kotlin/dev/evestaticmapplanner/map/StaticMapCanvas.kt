@@ -60,6 +60,7 @@ import dev.evestaticmapplanner.shared.SharedMarkerContextAction
 import dev.evestaticmapplanner.shared.SharedMarkerContextPresentationBuilder
 import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import kotlin.math.hypot
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -106,6 +107,7 @@ fun StaticMapCanvas(
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     val scene = state.scene ?: return
     val viewport = state.viewport ?: return
     if (state.canvasSize.isEmpty) return
@@ -886,10 +888,12 @@ fun StaticMapCanvas(
                         SharedMarkerContextPresentationBuilder.build(
                             sharedMapState.snapshot?.markers?.values?.singleOrNull { it.systemId == menu.systemId },
                             sharedMapState,
+                            strings.map,
                         ),
                         wormholeConnections.count {
                             it.firstSystemId == menu.systemId || it.secondSystemId == menu.systemId
                         },
+                        strings.map,
                     ).forEach { item ->
                         if (item.startsNewSection) {
                             HorizontalDivider(

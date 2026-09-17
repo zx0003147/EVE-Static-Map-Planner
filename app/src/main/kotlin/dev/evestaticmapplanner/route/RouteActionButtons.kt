@@ -24,6 +24,7 @@ import dev.evestaticmapplanner.feature.api.RouteActionTargetSnapshot
 import dev.evestaticmapplanner.feature.api.RouteSnapshot
 import dev.evestaticmapplanner.featurepack.RouteActionKey
 import dev.evestaticmapplanner.featurepack.RouteActionUiState
+import dev.evestaticmapplanner.localization.LocalAppStrings
 
 @Composable
 internal fun RouteActionButtons(
@@ -52,13 +53,14 @@ internal fun NavigationRouteActionButtons(
     onInvoke: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onInvokeNavigation: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     val routeKind = navigationSnapshot?.kind ?: snapshot?.kind ?: return
     val visible = actions.filter { routeKind in it.supportedRouteKinds }
     if (visible.isEmpty()) return
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            "Draft only — EVE changes only after you press a button below.",
+            strings.route.draftOnly,
             style = MaterialTheme.typography.bodySmall,
             color = EveColors.SecondaryText,
         )
@@ -100,9 +102,9 @@ internal fun NavigationRouteActionButtons(
                 buildString {
                     append(
                         when (status) {
-                            RouteActionStatus.SUCCEEDED -> "Succeeded"
-                            RouteActionStatus.REJECTED -> "Rejected"
-                            RouteActionStatus.FAILED -> "Failed"
+                            RouteActionStatus.SUCCEEDED -> strings.route.succeeded
+                            RouteActionStatus.REJECTED -> strings.route.rejected
+                            RouteActionStatus.FAILED -> strings.route.failed
                         },
                     )
                     action.lastMessage?.let { append(": ").append(it) }
@@ -129,6 +131,7 @@ private fun RouteActionTargetSelector(
     selectedTargetId: String?,
     onSelect: (String?) -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     var expanded by remember(selector.selectorId) { mutableStateOf(false) }
     val selected = selector.options.firstOrNull { it.id.value == selectedTargetId }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -142,16 +145,22 @@ private fun RouteActionTargetSelector(
                 Text(
                     when {
                         selected != null && selected.available -> selected.label
-                        selected != null -> "${selected.label} (unavailable)"
-                        selectedTargetId != null -> "$selectedTargetId (disconnected / unavailable)"
-                        else -> "Select…"
+                        selected != null -> "${selected.label} (${strings.route.unavailableSuffix})"
+                        selectedTargetId != null -> "$selectedTargetId (${strings.route.disconnectedUnavailable})"
+                        else -> strings.route.selectTarget
                     },
                 )
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 selector.options.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text(if (option.available) option.label else "${option.label} (unavailable)") },
+                        text = {
+                            Text(
+                                if (option.available) option.label else {
+                                    "${option.label} (${strings.route.unavailableSuffix})"
+                                },
+                            )
+                        },
                         enabled = option.available,
                         onClick = {
                             expanded = false
