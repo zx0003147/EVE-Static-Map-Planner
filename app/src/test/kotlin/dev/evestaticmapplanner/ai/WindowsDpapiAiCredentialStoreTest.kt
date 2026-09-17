@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.ai
 
 import com.sun.jna.Platform
+import dev.evestaticmapplanner.embeddedai.ALIBABA_SPEECH_CREDENTIAL_REF
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
 import dev.evestaticmapplanner.embeddedai.OPENAI_VOICE_CREDENTIAL_REF
@@ -76,6 +77,25 @@ class WindowsDpapiAiCredentialStoreTest {
                 String(Files.readAllBytes(store.pathForTesting(OPENAI_VOICE_CREDENTIAL_REF)), Charsets.UTF_8)
                     .contains("fixture-voice-key"),
             )
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `Alibaba Speech and OpenAI Voice use separate DPAPI namespaces`() {
+        assumeTrue(Platform.isWindows())
+        val root = createTempDirectory("speech-dpapi-")
+        val store = WindowsDpapiAiCredentialStore(root)
+        try {
+            SecretValue.from("fixture-openai-key").use { store.save(OPENAI_VOICE_CREDENTIAL_REF, it) }
+            SecretValue.from("fixture-alibaba-key").use { store.save(ALIBABA_SPEECH_CREDENTIAL_REF, it) }
+
+            assertTrue(store.pathForTesting(OPENAI_VOICE_CREDENTIAL_REF).fileName.toString() == "openai-voice.dpapi")
+            assertTrue(store.pathForTesting(ALIBABA_SPEECH_CREDENTIAL_REF).fileName.toString() == "alibaba-speech.dpapi")
+            assertTrue(store.pathForTesting(OPENAI_VOICE_CREDENTIAL_REF) != store.pathForTesting(ALIBABA_SPEECH_CREDENTIAL_REF))
+            assertSecretEquals("fixture-openai-key", store.load(OPENAI_VOICE_CREDENTIAL_REF))
+            assertSecretEquals("fixture-alibaba-key", store.load(ALIBABA_SPEECH_CREDENTIAL_REF))
         } finally {
             root.toFile().deleteRecursively()
         }

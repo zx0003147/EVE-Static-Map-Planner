@@ -77,11 +77,11 @@ class OpenAiVoiceClientTest {
             }
         }
 
-        assertEquals(VoiceErrorCode.NO_VOICE_CREDENTIAL, failure().code)
+        assertEquals(VoiceErrorCode.INVALID_VOICE_CREDENTIAL, failure().code)
         status = 429
         assertEquals(VoiceErrorCode.VOICE_RATE_LIMITED, failure().code)
         status = 404
-        assertEquals(VoiceErrorCode.VOICE_MODEL_UNAVAILABLE, failure().code)
+        assertEquals(VoiceErrorCode.VOICE_MODEL_NOT_FOUND, failure().code)
         assertFalse(failure().toString().contains("voice-secret"))
     }
 

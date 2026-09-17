@@ -5,6 +5,12 @@ import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
 import dev.evestaticmapplanner.embeddedai.OPENAI_VOICE_CREDENTIAL_REF
+import dev.evestaticmapplanner.embeddedai.ALIBABA_SPEECH_CREDENTIAL_REF
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechProfile
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechRegion
+import dev.evestaticmapplanner.embeddedai.LocalSpeechProfile
+import dev.evestaticmapplanner.embeddedai.OpenAiSpeechProfile
+import dev.evestaticmapplanner.embeddedai.SpeechProviderProfiles
 import dev.evestaticmapplanner.embeddedai.VoiceConfig
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
@@ -394,13 +400,23 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_VOICE_OUTPUT_PROVIDER, voice.outputProvider.name)
                 setProperty(KEY_VOICE_AUTO_SEND, voice.autoSendAfterTranscription.toString())
                 setProperty(KEY_VOICE_AUTO_READ, voice.readAssistantRepliesAloud.toString())
-                setProperty(KEY_VOICE_STT_MODEL, voice.openAiSttModel)
-                setProperty(KEY_VOICE_TTS_MODEL, voice.openAiTtsModel)
-                setProperty(KEY_VOICE_OPENAI_VOICE, voice.openAiVoice)
-                setProperty(KEY_VOICE_CREDENTIAL_REF, voice.credentialRef.value)
-                voice.windowsVoice?.let { setProperty(KEY_VOICE_WINDOWS_VOICE, it) }
-                setProperty(KEY_VOICE_LOCAL_TTS_RATE, voice.localTtsRate.toString())
-                setProperty(KEY_VOICE_LOCAL_TTS_VOLUME, voice.localTtsVolume.toString())
+                setProperty(KEY_VOICE_STT_MODEL, voice.profiles.openAi.sttModel)
+                setProperty(KEY_VOICE_TTS_MODEL, voice.profiles.openAi.ttsModel)
+                setProperty(KEY_VOICE_OPENAI_VOICE, voice.profiles.openAi.voice)
+                setProperty(KEY_VOICE_CREDENTIAL_REF, voice.profiles.openAi.credentialRef.value)
+                setProperty(KEY_VOICE_OPENAI_TIMEOUT, voice.profiles.openAi.timeoutSeconds.toString())
+                voice.profiles.local.windowsVoice?.let { setProperty(KEY_VOICE_WINDOWS_VOICE, it) }
+                setProperty(KEY_VOICE_LOCAL_TTS_RATE, voice.profiles.local.ttsRate.toString())
+                setProperty(KEY_VOICE_LOCAL_TTS_VOLUME, voice.profiles.local.ttsVolume.toString())
+                setProperty(KEY_VOICE_ALIBABA_STT_MODEL, voice.profiles.alibaba.sttModel)
+                setProperty(KEY_VOICE_ALIBABA_TTS_MODEL, voice.profiles.alibaba.ttsModel)
+                setProperty(KEY_VOICE_ALIBABA_VOICE, voice.profiles.alibaba.voice)
+                setProperty(KEY_VOICE_ALIBABA_STT_REGION, voice.profiles.alibaba.sttRegion.name)
+                setProperty(KEY_VOICE_ALIBABA_TTS_REGION, voice.profiles.alibaba.ttsRegion.name)
+                voice.profiles.alibaba.workspaceId?.let { setProperty(KEY_VOICE_ALIBABA_WORKSPACE_ID, it) }
+                setProperty(KEY_VOICE_ALIBABA_STT_TIMEOUT, voice.profiles.alibaba.sttTimeoutSeconds.toString())
+                setProperty(KEY_VOICE_ALIBABA_TTS_TIMEOUT, voice.profiles.alibaba.ttsTimeoutSeconds.toString())
+                setProperty(KEY_VOICE_ALIBABA_CREDENTIAL_REF, voice.profiles.alibaba.credentialRef.value)
                 setProperty(
                     KEY_OVERLAY_DISABLED_LAYERS,
                     overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
@@ -543,19 +559,44 @@ private fun Properties.voiceConfig(warningSink: (String) -> Unit): VoiceConfig =
             ?: defaults.outputProvider,
         autoSendAfterTranscription = validBoolean(KEY_VOICE_AUTO_SEND, defaults.autoSendAfterTranscription),
         readAssistantRepliesAloud = validBoolean(KEY_VOICE_AUTO_READ, defaults.readAssistantRepliesAloud),
-        openAiSttModel = getProperty(KEY_VOICE_STT_MODEL)?.trim()?.takeIf(String::isNotEmpty)
-            ?: defaults.openAiSttModel,
-        openAiTtsModel = getProperty(KEY_VOICE_TTS_MODEL)?.trim()?.takeIf(String::isNotEmpty)
-            ?: defaults.openAiTtsModel,
-        openAiVoice = getProperty(KEY_VOICE_OPENAI_VOICE)?.trim()?.takeIf(String::isNotEmpty)
-            ?: defaults.openAiVoice,
-        credentialRef = getProperty(KEY_VOICE_CREDENTIAL_REF)?.trim()?.takeIf(String::isNotEmpty)
-            ?.let(::AiCredentialRef) ?: OPENAI_VOICE_CREDENTIAL_REF,
-        windowsVoice = getProperty(KEY_VOICE_WINDOWS_VOICE)?.trim()?.takeIf(String::isNotEmpty),
-        localTtsRate = getProperty(KEY_VOICE_LOCAL_TTS_RATE)?.toIntOrNull()?.takeIf { it in -10..10 }
-            ?: defaults.localTtsRate,
-        localTtsVolume = getProperty(KEY_VOICE_LOCAL_TTS_VOLUME)?.toIntOrNull()?.takeIf { it in 0..100 }
-            ?: defaults.localTtsVolume,
+        profiles = SpeechProviderProfiles(
+            local = LocalSpeechProfile(
+                windowsVoice = getProperty(KEY_VOICE_WINDOWS_VOICE)?.trim()?.takeIf(String::isNotEmpty),
+                ttsRate = getProperty(KEY_VOICE_LOCAL_TTS_RATE)?.toIntOrNull()?.takeIf { it in -10..10 }
+                    ?: defaults.profiles.local.ttsRate,
+                ttsVolume = getProperty(KEY_VOICE_LOCAL_TTS_VOLUME)?.toIntOrNull()?.takeIf { it in 0..100 }
+                    ?: defaults.profiles.local.ttsVolume,
+            ),
+            openAi = OpenAiSpeechProfile(
+                sttModel = getProperty(KEY_VOICE_STT_MODEL)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: defaults.profiles.openAi.sttModel,
+                ttsModel = getProperty(KEY_VOICE_TTS_MODEL)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: defaults.profiles.openAi.ttsModel,
+                voice = getProperty(KEY_VOICE_OPENAI_VOICE)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: defaults.profiles.openAi.voice,
+                timeoutSeconds = getProperty(KEY_VOICE_OPENAI_TIMEOUT)?.toLongOrNull()
+                    ?: defaults.profiles.openAi.timeoutSeconds,
+                credentialRef = OPENAI_VOICE_CREDENTIAL_REF,
+            ),
+            alibaba = AlibabaSpeechProfile(
+                sttModel = getProperty(KEY_VOICE_ALIBABA_STT_MODEL)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: defaults.profiles.alibaba.sttModel,
+                ttsModel = getProperty(KEY_VOICE_ALIBABA_TTS_MODEL)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: defaults.profiles.alibaba.ttsModel,
+                voice = getProperty(KEY_VOICE_ALIBABA_VOICE)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: defaults.profiles.alibaba.voice,
+                sttRegion = getProperty(KEY_VOICE_ALIBABA_STT_REGION)?.let(AlibabaSpeechRegion::valueOf)
+                    ?: defaults.profiles.alibaba.sttRegion,
+                ttsRegion = getProperty(KEY_VOICE_ALIBABA_TTS_REGION)?.let(AlibabaSpeechRegion::valueOf)
+                    ?: defaults.profiles.alibaba.ttsRegion,
+                workspaceId = getProperty(KEY_VOICE_ALIBABA_WORKSPACE_ID)?.trim()?.takeIf(String::isNotEmpty),
+                sttTimeoutSeconds = getProperty(KEY_VOICE_ALIBABA_STT_TIMEOUT)?.toLongOrNull()
+                    ?: defaults.profiles.alibaba.sttTimeoutSeconds,
+                ttsTimeoutSeconds = getProperty(KEY_VOICE_ALIBABA_TTS_TIMEOUT)?.toLongOrNull()
+                    ?: defaults.profiles.alibaba.ttsTimeoutSeconds,
+                credentialRef = ALIBABA_SPEECH_CREDENTIAL_REF,
+            ),
+        ),
     )
 }.getOrElse {
     warningSink("Voice I/O settings are invalid and were disabled")
@@ -577,8 +618,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "5"
-private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", SETTINGS_VERSION)
+const val SETTINGS_VERSION = "6"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -643,9 +684,19 @@ private const val KEY_VOICE_STT_MODEL = "voice.openAiSttModel"
 private const val KEY_VOICE_TTS_MODEL = "voice.openAiTtsModel"
 private const val KEY_VOICE_OPENAI_VOICE = "voice.openAiVoice"
 private const val KEY_VOICE_CREDENTIAL_REF = "voice.credentialRef"
+private const val KEY_VOICE_OPENAI_TIMEOUT = "voice.openAi.timeoutSeconds"
 private const val KEY_VOICE_WINDOWS_VOICE = "voice.windowsVoice"
 private const val KEY_VOICE_LOCAL_TTS_RATE = "voice.localTtsRate"
 private const val KEY_VOICE_LOCAL_TTS_VOLUME = "voice.localTtsVolume"
+private const val KEY_VOICE_ALIBABA_STT_MODEL = "voice.alibaba.sttModel"
+private const val KEY_VOICE_ALIBABA_TTS_MODEL = "voice.alibaba.ttsModel"
+private const val KEY_VOICE_ALIBABA_VOICE = "voice.alibaba.voice"
+private const val KEY_VOICE_ALIBABA_STT_REGION = "voice.alibaba.sttRegion"
+private const val KEY_VOICE_ALIBABA_TTS_REGION = "voice.alibaba.ttsRegion"
+private const val KEY_VOICE_ALIBABA_WORKSPACE_ID = "voice.alibaba.workspaceId"
+private const val KEY_VOICE_ALIBABA_STT_TIMEOUT = "voice.alibaba.sttTimeoutSeconds"
+private const val KEY_VOICE_ALIBABA_TTS_TIMEOUT = "voice.alibaba.ttsTimeoutSeconds"
+private const val KEY_VOICE_ALIBABA_CREDENTIAL_REF = "voice.alibaba.credentialRef"
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"

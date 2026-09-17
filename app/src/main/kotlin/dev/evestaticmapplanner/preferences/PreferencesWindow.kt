@@ -38,6 +38,7 @@ import dev.evestaticmapplanner.control.AiControlStatus
 import dev.evestaticmapplanner.ai.AiProviderSettingsUiState
 import dev.evestaticmapplanner.ai.WebSearchSettingsUiState
 import dev.evestaticmapplanner.ai.VoiceSettingsUiState
+import dev.evestaticmapplanner.ai.VoiceCredentialProvider
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
@@ -48,6 +49,11 @@ import dev.evestaticmapplanner.embeddedai.SearchTestCheck
 import dev.evestaticmapplanner.embeddedai.SearchTestCheckStatus
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import dev.evestaticmapplanner.embeddedai.OPENAI_BUILT_IN_VOICES
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechRegion
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechProfile
+import dev.evestaticmapplanner.embeddedai.LocalSpeechProfile
+import dev.evestaticmapplanner.embeddedai.OpenAiSpeechProfile
+import dev.evestaticmapplanner.embeddedai.SpeechProviderProfiles
 import dev.evestaticmapplanner.embeddedai.VoiceConfig
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
@@ -102,8 +108,13 @@ internal fun PreferencesWindow(
     onWebSearchSave: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
     onWebSearchCredentialDelete: (WebSearchConfig) -> Unit = {},
     onVoiceViewed: (VoiceConfig) -> Unit = {},
-    onVoiceSave: (VoiceConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
-    onVoiceCredentialDelete: (VoiceConfig) -> Unit = {},
+    onVoiceSave: (VoiceConfig, SecretValue?, SecretValue?) -> Unit = { _, openAi, alibaba ->
+        openAi?.close()
+        alibaba?.close()
+    },
+    onVoiceCredentialDelete: (VoiceCredentialProvider) -> Unit = {},
+    onVoiceTestRecognition: (VoiceConfig) -> Unit = {},
+    onVoiceTestVoice: (VoiceConfig) -> Unit = {},
     onSpeechPackInstall: () -> Unit = {},
     onSpeechPackRemove: () -> Unit = {},
     aiControlStatus: AiControlStatus,
@@ -192,6 +203,8 @@ internal fun PreferencesWindow(
                                 onVoiceViewed = onVoiceViewed,
                                 onVoiceSave = onVoiceSave,
                                 onVoiceCredentialDelete = onVoiceCredentialDelete,
+                                onVoiceTestRecognition = onVoiceTestRecognition,
+                                onVoiceTestVoice = onVoiceTestVoice,
                                 onSpeechPackInstall = onSpeechPackInstall,
                                 onSpeechPackRemove = onSpeechPackRemove,
                                 aiControlPreferences = preferences.aiControl,
@@ -292,8 +305,13 @@ internal fun AiFeaturesPreferencesContent(
     voiceConfig: VoiceConfig = VoiceConfig.Defaults,
     voiceState: VoiceSettingsUiState = VoiceSettingsUiState(),
     onVoiceViewed: (VoiceConfig) -> Unit = {},
-    onVoiceSave: (VoiceConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
-    onVoiceCredentialDelete: (VoiceConfig) -> Unit = {},
+    onVoiceSave: (VoiceConfig, SecretValue?, SecretValue?) -> Unit = { _, openAi, alibaba ->
+        openAi?.close()
+        alibaba?.close()
+    },
+    onVoiceCredentialDelete: (VoiceCredentialProvider) -> Unit = {},
+    onVoiceTestRecognition: (VoiceConfig) -> Unit = {},
+    onVoiceTestVoice: (VoiceConfig) -> Unit = {},
     onSpeechPackInstall: () -> Unit = {},
     onSpeechPackRemove: () -> Unit = {},
 ) {
@@ -353,6 +371,8 @@ internal fun AiFeaturesPreferencesContent(
                 onViewed = onVoiceViewed,
                 onSave = onVoiceSave,
                 onDeleteCredential = onVoiceCredentialDelete,
+                onTestRecognition = onVoiceTestRecognition,
+                onTestVoice = onVoiceTestVoice,
                 onInstallSpeechPack = onSpeechPackInstall,
                 onRemoveSpeechPack = onSpeechPackRemove,
             )
@@ -381,8 +401,10 @@ internal fun VoicePreferencesContent(
     savedConfig: VoiceConfig,
     state: VoiceSettingsUiState,
     onViewed: (VoiceConfig) -> Unit,
-    onSave: (VoiceConfig, SecretValue?) -> Unit,
-    onDeleteCredential: (VoiceConfig) -> Unit,
+    onSave: (VoiceConfig, SecretValue?, SecretValue?) -> Unit,
+    onDeleteCredential: (VoiceCredentialProvider) -> Unit,
+    onTestRecognition: (VoiceConfig) -> Unit,
+    onTestVoice: (VoiceConfig) -> Unit,
     onInstallSpeechPack: () -> Unit,
     onRemoveSpeechPack: () -> Unit,
 ) {
@@ -390,21 +412,33 @@ internal fun VoicePreferencesContent(
     var outputProvider by remember(savedConfig) { mutableStateOf(savedConfig.outputProvider) }
     var autoSend by remember(savedConfig) { mutableStateOf(savedConfig.autoSendAfterTranscription) }
     var autoRead by remember(savedConfig) { mutableStateOf(savedConfig.readAssistantRepliesAloud) }
-    var sttModel by remember(savedConfig) { mutableStateOf(savedConfig.openAiSttModel) }
-    var ttsModel by remember(savedConfig) { mutableStateOf(savedConfig.openAiTtsModel) }
-    var openAiVoice by remember(savedConfig) { mutableStateOf(savedConfig.openAiVoice) }
-    var windowsVoice by remember(savedConfig) { mutableStateOf(savedConfig.windowsVoice) }
-    var rate by remember(savedConfig) { mutableStateOf(savedConfig.localTtsRate) }
-    var volume by remember(savedConfig) { mutableStateOf(savedConfig.localTtsVolume) }
-    var apiKeyDraft by remember(savedConfig) { mutableStateOf("") }
+    var openAiSttModel by remember(savedConfig) { mutableStateOf(savedConfig.profiles.openAi.sttModel) }
+    var openAiTtsModel by remember(savedConfig) { mutableStateOf(savedConfig.profiles.openAi.ttsModel) }
+    var openAiVoice by remember(savedConfig) { mutableStateOf(savedConfig.profiles.openAi.voice) }
+    var alibabaSttModel by remember(savedConfig) { mutableStateOf(savedConfig.profiles.alibaba.sttModel) }
+    var alibabaTtsModel by remember(savedConfig) { mutableStateOf(savedConfig.profiles.alibaba.ttsModel) }
+    var alibabaVoice by remember(savedConfig) { mutableStateOf(savedConfig.profiles.alibaba.voice) }
+    var alibabaSttRegion by remember(savedConfig) { mutableStateOf(savedConfig.profiles.alibaba.sttRegion) }
+    var alibabaTtsRegion by remember(savedConfig) { mutableStateOf(savedConfig.profiles.alibaba.ttsRegion) }
+    var workspaceId by remember(savedConfig) { mutableStateOf(savedConfig.profiles.alibaba.workspaceId.orEmpty()) }
+    var windowsVoice by remember(savedConfig) { mutableStateOf(savedConfig.profiles.local.windowsVoice) }
+    var rate by remember(savedConfig) { mutableStateOf(savedConfig.profiles.local.ttsRate) }
+    var volume by remember(savedConfig) { mutableStateOf(savedConfig.profiles.local.ttsVolume) }
+    var openAiKeyDraft by remember(savedConfig) { mutableStateOf("") }
+    var alibabaKeyDraft by remember(savedConfig) { mutableStateOf("") }
     var inputExpanded by remember { mutableStateOf(false) }
     var outputExpanded by remember { mutableStateOf(false) }
     var openAiVoiceExpanded by remember { mutableStateOf(false) }
     var windowsVoiceExpanded by remember { mutableStateOf(false) }
-    val busy = state.isSaving || state.isInstallingSpeechPack
+    var alibabaSttRegionExpanded by remember { mutableStateOf(false) }
+    var alibabaTtsRegionExpanded by remember { mutableStateOf(false) }
+    val busy = state.busy
+    val workspaceRequired = alibabaTtsModel.startsWith("qwen-audio-", true) ||
+        alibabaTtsModel.startsWith("cosyvoice-", true)
     val config = remember(
-        inputProvider, outputProvider, autoSend, autoRead, sttModel, ttsModel,
-        openAiVoice, windowsVoice, rate, volume, savedConfig.credentialRef,
+        inputProvider, outputProvider, autoSend, autoRead, openAiSttModel, openAiTtsModel, openAiVoice,
+        alibabaSttModel, alibabaTtsModel, alibabaVoice, alibabaSttRegion, alibabaTtsRegion, workspaceId,
+        windowsVoice, rate, volume, workspaceRequired, savedConfig,
     ) {
         runCatching {
             VoiceConfig(
@@ -412,21 +446,38 @@ internal fun VoicePreferencesContent(
                 outputProvider = outputProvider,
                 autoSendAfterTranscription = autoSend,
                 readAssistantRepliesAloud = autoRead,
-                openAiSttModel = sttModel.trim(),
-                openAiTtsModel = ttsModel.trim(),
-                openAiVoice = openAiVoice,
-                credentialRef = savedConfig.credentialRef,
-                windowsVoice = windowsVoice,
-                localTtsRate = rate,
-                localTtsVolume = volume,
+                profiles = SpeechProviderProfiles(
+                    local = LocalSpeechProfile(windowsVoice, rate, volume),
+                    openAi = OpenAiSpeechProfile(
+                        sttModel = openAiSttModel.trim(),
+                        ttsModel = openAiTtsModel.trim(),
+                        voice = openAiVoice,
+                        timeoutSeconds = savedConfig.profiles.openAi.timeoutSeconds,
+                        credentialRef = savedConfig.profiles.openAi.credentialRef,
+                    ),
+                    alibaba = AlibabaSpeechProfile(
+                        sttModel = alibabaSttModel.trim(),
+                        ttsModel = alibabaTtsModel.trim(),
+                        voice = alibabaVoice.trim(),
+                        sttRegion = alibabaSttRegion,
+                        ttsRegion = alibabaTtsRegion,
+                        workspaceId = workspaceId.trim().takeIf(String::isNotEmpty),
+                        sttTimeoutSeconds = savedConfig.profiles.alibaba.sttTimeoutSeconds,
+                        ttsTimeoutSeconds = savedConfig.profiles.alibaba.ttsTimeoutSeconds,
+                        credentialRef = savedConfig.profiles.alibaba.credentialRef,
+                    ),
+                ),
             )
-        }.getOrNull()
+        }.getOrNull()?.takeUnless {
+            workspaceRequired && outputProvider == VoiceOutputProvider.ALIBABA &&
+                it.profiles.alibaba.workspaceId == null
+        }
     }
     LaunchedEffect(savedConfig) { onViewed(savedConfig) }
 
-    fun draftSecret(): SecretValue? {
-        val normalized = apiKeyDraft.trim()
-        apiKeyDraft = ""
+    fun draft(value: String, clear: () -> Unit): SecretValue? {
+        val normalized = value.trim()
+        clear()
         return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
     }
 
@@ -435,76 +486,62 @@ internal fun VoicePreferencesContent(
         modifier = Modifier.fillMaxWidth().testTag(VOICE_INPUT_SECTION_TEST_TAG),
     ) {
         Text("Voice Input", style = MaterialTheme.typography.titleSmall)
-        EnumDropdown(
-            label = "Input Provider",
-            value = inputProvider.displayName,
-            expanded = inputExpanded,
-            onExpandedChange = { inputExpanded = it },
-            enabled = !busy,
-            modifier = Modifier.testTag(VOICE_INPUT_PROVIDER_TEST_TAG),
-        ) {
+        EnumDropdown("Input Provider", inputProvider.displayName, inputExpanded, { inputExpanded = it }, !busy,
+            Modifier.testTag(VOICE_INPUT_PROVIDER_TEST_TAG)) {
             VoiceInputProvider.entries.forEach { provider ->
-                DropdownMenuItem(
-                    text = { Text(provider.displayName) },
-                    onClick = { inputProvider = provider; inputExpanded = false },
-                )
+                DropdownMenuItem({ Text(provider.displayName) }, { inputProvider = provider; inputExpanded = false })
             }
         }
         Text(
-            if (inputProvider == VoiceInputProvider.LOCAL) {
-                "Local: Audio stays on this computer."
-            } else if (inputProvider == VoiceInputProvider.OPENAI) {
-                "Cloud OpenAI: Audio is sent to the configured speech provider."
-            } else {
-                "Microphone recording is disabled."
+            when (inputProvider) {
+                VoiceInputProvider.LOCAL -> "Local: Audio stays on this computer."
+                VoiceInputProvider.OPENAI -> "Audio is sent to OpenAI for transcription."
+                VoiceInputProvider.ALIBABA -> "Audio is sent to Alibaba Cloud for transcription."
+                VoiceInputProvider.OFF -> "Microphone recording is disabled."
             },
             color = EveColors.SecondaryText,
         )
-        if (inputProvider == VoiceInputProvider.LOCAL) {
-            Column(
+        when (inputProvider) {
+            VoiceInputProvider.LOCAL -> Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth().testTag(VOICE_SPEECH_PACK_TEST_TAG),
             ) {
-                Text("Local Speech Recognition", style = MaterialTheme.typography.titleSmall)
                 Text("Optional Speech Pack", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    if (state.speechPack.installed) {
-                        "Installed: ${state.speechPack.modelName} (${state.speechPack.modelBytes?.let(::formatBytes) ?: "unknown size"})"
-                    } else {
-                        "Local speech model not installed."
-                    },
+                    if (state.speechPack.installed) "Installed: ${state.speechPack.modelName}"
+                    else "Local speech model not installed.",
                     color = EveColors.SecondaryText,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (state.speechPack.installed) {
-                        TextButton(onClick = onRemoveSpeechPack, enabled = !busy) { Text("Remove Speech Pack") }
-                    } else {
-                        TextButton(onClick = onInstallSpeechPack, enabled = !busy) {
-                            Text(if (state.isInstallingSpeechPack) "Downloading…" else "Download Speech Pack")
-                        }
-                    }
-                    if (state.isInstallingSpeechPack) CircularProgressIndicator()
-                }
+                TextButton(
+                    onClick = if (state.speechPack.installed) onRemoveSpeechPack else onInstallSpeechPack,
+                    enabled = !busy,
+                ) { Text(if (state.speechPack.installed) "Remove Speech Pack" else "Download Speech Pack") }
             }
+            VoiceInputProvider.OPENAI -> {
+                SpeechTextField("STT Model", openAiSttModel, { openAiSttModel = it }, busy)
+                VoiceCredentialFields(
+                    "OpenAI Voice", "OPENAI_VOICE_API_KEY", openAiKeyDraft,
+                    { openAiKeyDraft = it }, state.openAiCredentialSource, busy,
+                )
+            }
+            VoiceInputProvider.ALIBABA -> {
+                VoiceCredentialFields(
+                    "Alibaba Speech", "DASHSCOPE_API_KEY", alibabaKeyDraft,
+                    { alibabaKeyDraft = it }, state.alibabaCredentialSource, busy,
+                )
+                SpeechTextField("STT Model", alibabaSttModel, { alibabaSttModel = it }, busy)
+                AlibabaRegionDropdown(
+                    alibabaSttRegion, alibabaSttRegionExpanded, { alibabaSttRegionExpanded = it },
+                    { alibabaSttRegion = it; alibabaSttRegionExpanded = false }, busy,
+                )
+                TextButton(
+                    onClick = { config?.let(onTestRecognition) },
+                    enabled = !busy && config != null && state.alibabaCredentialSource != null,
+                ) { Text(if (state.isTestingRecognition) "Testing Recognition…" else "Test Recognition") }
+            }
+            VoiceInputProvider.OFF -> Unit
         }
-        if (inputProvider == VoiceInputProvider.OPENAI) {
-            Text("OpenAI Speech Recognition", style = MaterialTheme.typography.titleSmall)
-            OutlinedTextField(
-                value = sttModel,
-                onValueChange = { sttModel = it },
-                label = { Text("STT Model") },
-                singleLine = true,
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OpenAiVoiceCredentialFields(
-                apiKeyDraft = apiKeyDraft,
-                onApiKeyDraftChange = { apiKeyDraft = it },
-                state = state,
-                busy = busy,
-            )
-        }
-        PreferenceCheckbox("Auto-send after transcription", autoSend, enabled = !busy) { autoSend = it }
+        PreferenceCheckbox("Auto-send after transcription", autoSend, !busy) { autoSend = it }
     }
 
     HorizontalDivider()
@@ -514,136 +551,171 @@ internal fun VoicePreferencesContent(
         modifier = Modifier.fillMaxWidth().testTag(VOICE_OUTPUT_SECTION_TEST_TAG),
     ) {
         Text("Voice Output", style = MaterialTheme.typography.titleSmall)
-        EnumDropdown(
-            label = "Output Provider",
-            value = outputProvider.displayName,
-            expanded = outputExpanded,
-            onExpandedChange = { outputExpanded = it },
-            enabled = !busy,
-            modifier = Modifier.testTag(VOICE_OUTPUT_PROVIDER_TEST_TAG),
-        ) {
+        EnumDropdown("Output Provider", outputProvider.displayName, outputExpanded, { outputExpanded = it }, !busy,
+            Modifier.testTag(VOICE_OUTPUT_PROVIDER_TEST_TAG)) {
             VoiceOutputProvider.entries.forEach { provider ->
-                DropdownMenuItem(
-                    text = { Text(provider.displayName) },
-                    onClick = { outputProvider = provider; outputExpanded = false },
-                )
+                DropdownMenuItem({ Text(provider.displayName) }, { outputProvider = provider; outputExpanded = false })
             }
         }
         Text(
-            if (outputProvider == VoiceOutputProvider.LOCAL) {
-                "Local: Assistant text is read by the Windows speech engine."
-            } else if (outputProvider == VoiceOutputProvider.OPENAI) {
-                "Cloud OpenAI: Assistant text is sent to the configured speech provider."
-            } else {
-                "Speech playback is disabled."
+            when (outputProvider) {
+                VoiceOutputProvider.LOCAL -> "Local: Assistant text is read by the Windows speech engine."
+                VoiceOutputProvider.OPENAI -> "Assistant text is sent to OpenAI for speech synthesis."
+                VoiceOutputProvider.ALIBABA -> "Text is sent to Alibaba Cloud for speech synthesis."
+                VoiceOutputProvider.OFF -> "Speech playback is disabled."
             },
             color = EveColors.SecondaryText,
         )
-        if (outputProvider == VoiceOutputProvider.LOCAL) {
-            Text("Windows Speech", style = MaterialTheme.typography.titleSmall)
-            EnumDropdown(
-                label = "Windows Voice",
-                value = windowsVoice ?: "System default",
-                expanded = windowsVoiceExpanded,
-                onExpandedChange = { windowsVoiceExpanded = it },
-                enabled = !busy && state.windowsVoices.isNotEmpty(),
-            ) {
-                DropdownMenuItem(
-                    text = { Text("System default") },
-                    onClick = { windowsVoice = null; windowsVoiceExpanded = false },
-                )
-                state.windowsVoices.forEach { voice ->
-                    DropdownMenuItem(
-                        text = { Text(voice) },
-                        onClick = { windowsVoice = voice; windowsVoiceExpanded = false },
+        when (outputProvider) {
+            VoiceOutputProvider.LOCAL -> {
+                Text("Windows Speech", style = MaterialTheme.typography.titleSmall)
+                EnumDropdown("Windows Voice", windowsVoice ?: "System default", windowsVoiceExpanded,
+                    { windowsVoiceExpanded = it }, !busy && state.windowsVoices.isNotEmpty()) {
+                    DropdownMenuItem({ Text("System default") }, { windowsVoice = null; windowsVoiceExpanded = false })
+                    state.windowsVoices.forEach { voice ->
+                        DropdownMenuItem({ Text(voice) }, { windowsVoice = voice; windowsVoiceExpanded = false })
+                    }
+                }
+                Text("Rate: $rate")
+                Slider(rate.toFloat(), { rate = it.toInt() }, valueRange = -10f..10f, steps = 19)
+                Text("Volume: $volume")
+                Slider(volume.toFloat(), { volume = it.toInt() }, valueRange = 0f..100f, steps = 99)
+            }
+            VoiceOutputProvider.OPENAI -> {
+                SpeechTextField("TTS Model", openAiTtsModel, { openAiTtsModel = it }, busy)
+                EnumDropdown("OpenAI Voice", openAiVoice, openAiVoiceExpanded, { openAiVoiceExpanded = it }, !busy) {
+                    OPENAI_BUILT_IN_VOICES.forEach { voice ->
+                        DropdownMenuItem({ Text(voice) }, { openAiVoice = voice; openAiVoiceExpanded = false })
+                    }
+                }
+                if (inputProvider != VoiceInputProvider.OPENAI) {
+                    VoiceCredentialFields(
+                        "OpenAI Voice", "OPENAI_VOICE_API_KEY", openAiKeyDraft,
+                        { openAiKeyDraft = it }, state.openAiCredentialSource, busy,
                     )
                 }
             }
-            Text("Rate: $rate")
-            Slider(value = rate.toFloat(), onValueChange = { rate = it.toInt() }, valueRange = -10f..10f, steps = 19)
-            Text("Volume: $volume")
-            Slider(value = volume.toFloat(), onValueChange = { volume = it.toInt() }, valueRange = 0f..100f, steps = 99)
-        }
-        if (outputProvider == VoiceOutputProvider.OPENAI) {
-            Text("OpenAI Speech Output", style = MaterialTheme.typography.titleSmall)
-            OutlinedTextField(
-                value = ttsModel,
-                onValueChange = { ttsModel = it },
-                label = { Text("TTS Model") },
-                singleLine = true,
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            EnumDropdown(
-                label = "OpenAI Voice",
-                value = openAiVoice,
-                expanded = openAiVoiceExpanded,
-                onExpandedChange = { openAiVoiceExpanded = it },
-                enabled = !busy,
-            ) {
-                OPENAI_BUILT_IN_VOICES.forEach { voice ->
-                    DropdownMenuItem(
-                        text = { Text(voice) },
-                        onClick = { openAiVoice = voice; openAiVoiceExpanded = false },
+            VoiceOutputProvider.ALIBABA -> {
+                if (inputProvider == VoiceInputProvider.ALIBABA) {
+                    VoiceCredentialStatus("Alibaba Speech", "DASHSCOPE_API_KEY", state.alibabaCredentialSource)
+                } else {
+                    VoiceCredentialFields(
+                        "Alibaba Speech", "DASHSCOPE_API_KEY", alibabaKeyDraft,
+                        { alibabaKeyDraft = it }, state.alibabaCredentialSource, busy,
                     )
                 }
-            }
-            if (inputProvider != VoiceInputProvider.OPENAI) {
-                OpenAiVoiceCredentialFields(
-                    apiKeyDraft = apiKeyDraft,
-                    onApiKeyDraftChange = { apiKeyDraft = it },
-                    state = state,
-                    busy = busy,
+                SpeechTextField("TTS Model", alibabaTtsModel, { alibabaTtsModel = it }, busy)
+                SpeechTextField("Voice", alibabaVoice, { alibabaVoice = it }, busy)
+                AlibabaRegionDropdown(
+                    alibabaTtsRegion, alibabaTtsRegionExpanded, { alibabaTtsRegionExpanded = it },
+                    { alibabaTtsRegion = it; alibabaTtsRegionExpanded = false }, busy,
                 )
+                if (workspaceRequired) {
+                    SpeechTextField("Workspace ID", workspaceId, { workspaceId = it }, busy)
+                }
+                TextButton(
+                    onClick = { config?.let(onTestVoice) },
+                    enabled = !busy && config != null && state.alibabaCredentialSource != null,
+                ) { Text(if (state.isTestingVoice) "Testing Voice…" else "Test Voice") }
             }
+            VoiceOutputProvider.OFF -> Unit
         }
-        PreferenceCheckbox("Read assistant replies aloud", autoRead, enabled = !busy) { autoRead = it }
+        PreferenceCheckbox("Read assistant replies aloud", autoRead, !busy) { autoRead = it }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         TextButton(
-            onClick = { config?.let { onSave(it, draftSecret()) } },
+            onClick = {
+                config?.let {
+                    onSave(
+                        it,
+                        draft(openAiKeyDraft) { openAiKeyDraft = "" },
+                        draft(alibabaKeyDraft) { alibabaKeyDraft = "" },
+                    )
+                }
+            },
             enabled = !busy && config != null,
         ) { Text("Save Voice Settings") }
-        TextButton(
-            onClick = { config?.let(onDeleteCredential) },
-            enabled = !busy && state.credentialSource in setOf(
-                AiCredentialSource.SECURE_STORAGE,
-                AiCredentialSource.SESSION_ONLY,
-            ),
-        ) { Text("Delete Voice API Key") }
         if (state.isSaving) CircularProgressIndicator()
+    }
+    if (state.openAiCredentialSource in setOf(AiCredentialSource.SECURE_STORAGE, AiCredentialSource.SESSION_ONLY) &&
+        (inputProvider == VoiceInputProvider.OPENAI || outputProvider == VoiceOutputProvider.OPENAI)
+    ) {
+        TextButton(onClick = { onDeleteCredential(VoiceCredentialProvider.OPENAI) }, enabled = !busy) {
+            Text("Delete OpenAI Voice Key")
+        }
+    }
+    if (state.alibabaCredentialSource in setOf(AiCredentialSource.SECURE_STORAGE, AiCredentialSource.SESSION_ONLY) &&
+        (inputProvider == VoiceInputProvider.ALIBABA || outputProvider == VoiceOutputProvider.ALIBABA)
+    ) {
+        TextButton(onClick = { onDeleteCredential(VoiceCredentialProvider.ALIBABA) }, enabled = !busy) {
+            Text("Delete Alibaba Speech Key")
+        }
     }
     state.message?.let { Text(it, color = EveColors.SecondaryText) }
     state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 }
 
 @Composable
-private fun OpenAiVoiceCredentialFields(
-    apiKeyDraft: String,
-    onApiKeyDraftChange: (String) -> Unit,
-    state: VoiceSettingsUiState,
+private fun SpeechTextField(label: String, value: String, onValueChange: (String) -> Unit, busy: Boolean) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun VoiceCredentialFields(
+    providerName: String,
+    environmentName: String,
+    draft: String,
+    onDraftChange: (String) -> Unit,
+    source: AiCredentialSource?,
     busy: Boolean,
 ) {
     OutlinedTextField(
-        value = apiKeyDraft,
-        onValueChange = onApiKeyDraftChange,
-        label = { Text(if (state.credentialSource == null) "OpenAI Voice API Key" else "Replace OpenAI Voice API Key") },
-        placeholder = { Text(if (state.credentialSource == null) "Enter OpenAI Voice API Key" else "Leave blank to keep current Key") },
+        value = draft,
+        onValueChange = onDraftChange,
+        label = { Text(if (source == null) "$providerName API Key" else "Replace $providerName API Key") },
+        placeholder = { Text(if (source == null) "Enter API Key" else "Leave blank to keep current Key") },
         singleLine = true,
         enabled = !busy,
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
     )
+    VoiceCredentialStatus(providerName, environmentName, source)
+}
+
+@Composable
+private fun VoiceCredentialStatus(providerName: String, environmentName: String, source: AiCredentialSource?) {
     Text(
-        when (state.credentialSource) {
-            AiCredentialSource.SECURE_STORAGE -> "OpenAI Voice API Key: Saved securely"
-            AiCredentialSource.SESSION_ONLY -> "OpenAI Voice API Key: This session only"
-            AiCredentialSource.ENVIRONMENT -> "Credential: OPENAI_VOICE_API_KEY"
-            null -> "OpenAI Voice API Key: Not configured"
+        when (source) {
+            AiCredentialSource.SECURE_STORAGE -> "$providerName API Key: Saved securely"
+            AiCredentialSource.SESSION_ONLY -> "$providerName API Key: This session only"
+            AiCredentialSource.ENVIRONMENT -> "Credential: $environmentName"
+            null -> "$providerName API Key: Not configured"
         },
         color = EveColors.SecondaryText,
     )
+}
+
+@Composable
+private fun AlibabaRegionDropdown(
+    value: AlibabaSpeechRegion,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSelect: (AlibabaSpeechRegion) -> Unit,
+    busy: Boolean,
+) {
+    EnumDropdown("Region", value.displayName, expanded, onExpandedChange, !busy) {
+        AlibabaSpeechRegion.entries.forEach { region ->
+            DropdownMenuItem({ Text(region.displayName) }, { onSelect(region) })
+        }
+    }
 }
 
 @Composable

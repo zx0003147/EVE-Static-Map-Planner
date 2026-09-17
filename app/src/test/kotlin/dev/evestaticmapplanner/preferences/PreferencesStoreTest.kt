@@ -6,6 +6,11 @@ import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import dev.evestaticmapplanner.embeddedai.VoiceConfig
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechProfile
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechRegion
+import dev.evestaticmapplanner.embeddedai.LocalSpeechProfile
+import dev.evestaticmapplanner.embeddedai.OpenAiSpeechProfile
+import dev.evestaticmapplanner.embeddedai.SpeechProviderProfiles
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import java.nio.file.Files
@@ -87,7 +92,7 @@ class PreferencesStoreTest {
 
             store.save(migrated)
             val reloaded = store.load()
-            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=5" })
+            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=6" })
             assertEquals(AiCredentialRef("openrouter"), reloaded.aiProvider?.credentialRef)
             assertEquals(active, reloaded.aiProviderProfiles[AiProviderType.OPENROUTER])
         }
@@ -258,7 +263,7 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=5" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=6" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
@@ -318,10 +323,20 @@ class PreferencesStoreTest {
                 outputProvider = VoiceOutputProvider.OPENAI,
                 autoSendAfterTranscription = true,
                 readAssistantRepliesAloud = true,
-                openAiVoice = "coral",
-                windowsVoice = "Fixture Voice",
-                localTtsRate = 2,
-                localTtsVolume = 80,
+                profiles = SpeechProviderProfiles(
+                    local = LocalSpeechProfile("Fixture Voice", 2, 80),
+                    openAi = OpenAiSpeechProfile(voice = "coral"),
+                    alibaba = AlibabaSpeechProfile(
+                        sttModel = "qwen3-asr-flash-2026-02-10",
+                        ttsModel = "qwen-audio-3.0-tts-flash",
+                        voice = "longanhuan_v3.6",
+                        sttRegion = AlibabaSpeechRegion.SINGAPORE,
+                        ttsRegion = AlibabaSpeechRegion.CHINA_BEIJING,
+                        workspaceId = "fixture-workspace",
+                        sttTimeoutSeconds = 45,
+                        ttsTimeoutSeconds = 75,
+                    ),
+                ),
             )
 
             PropertiesPreferencesStore(path).save(AppPreferences(voice = expected))
@@ -330,7 +345,11 @@ class PreferencesStoreTest {
             assertTrue(text.contains("voice.inputProvider=LOCAL"))
             assertTrue(text.contains("voice.outputProvider=OPENAI"))
             assertTrue(text.contains("voice.credentialRef=openai-voice"))
+            assertTrue(text.contains("voice.alibaba.credentialRef=alibaba-speech"))
+            assertTrue(text.contains("voice.alibaba.sttModel=qwen3-asr-flash-2026-02-10"))
+            assertTrue(text.contains("voice.alibaba.workspaceId=fixture-workspace"))
             assertFalse(text.contains("OPENAI_VOICE_API_KEY"))
+            assertFalse(text.contains("DASHSCOPE_API_KEY"))
             assertEquals(expected, PropertiesPreferencesStore(path).load().voice)
         }
 

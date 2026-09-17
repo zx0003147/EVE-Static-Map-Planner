@@ -8,11 +8,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -25,6 +27,8 @@ import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiConnectionTestResult
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechProfile
+import dev.evestaticmapplanner.embeddedai.SpeechProviderProfiles
 import dev.evestaticmapplanner.embeddedai.VoiceConfig
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
@@ -170,8 +174,10 @@ class FeatureSettingsWindowsTest {
                             windowsVoices = listOf("Fixture Voice"),
                         ),
                         onViewed = {},
-                        onSave = { _, secret -> secret?.close() },
+                        onSave = { _, openAi, alibaba -> openAi?.close(); alibaba?.close() },
                         onDeleteCredential = {},
+                        onTestRecognition = {},
+                        onTestVoice = {},
                         onInstallSpeechPack = {},
                         onRemoveSpeechPack = {},
                     )
@@ -195,6 +201,56 @@ class FeatureSettingsWindowsTest {
         waitForIdle()
         onNodeWithTag(VOICE_SPEECH_PACK_TEST_TAG).assertDoesNotExist()
         onNodeWithText("Windows Speech").assertIsDisplayed()
+    }
+
+    @Test
+    fun `Alibaba voice settings show cloud privacy and a single shared credential editor`() = runComposeUiTest {
+        var config by mutableStateOf(
+            VoiceConfig(
+                inputProvider = VoiceInputProvider.ALIBABA,
+                outputProvider = VoiceOutputProvider.ALIBABA,
+            ),
+        )
+        setContent {
+            EveTheme {
+                Column(Modifier.requiredSize(680.dp, 1_200.dp)) {
+                    VoicePreferencesContent(
+                        savedConfig = config,
+                        state = VoiceSettingsUiState(
+                            alibabaCredentialSource = AiCredentialSource.SECURE_STORAGE,
+                        ),
+                        onViewed = {},
+                        onSave = { _, openAi, alibaba -> openAi?.close(); alibaba?.close() },
+                        onDeleteCredential = {},
+                        onTestRecognition = {},
+                        onTestVoice = {},
+                        onInstallSpeechPack = {},
+                        onRemoveSpeechPack = {},
+                    )
+                }
+            }
+        }
+
+        onNodeWithText("Audio is sent to Alibaba Cloud for transcription.").assertExists()
+        onNodeWithText("Text is sent to Alibaba Cloud for speech synthesis.").assertExists()
+        onNodeWithText("Test Recognition").assertExists()
+        onNodeWithText("Test Voice").assertExists()
+        onAllNodesWithText("Replace Alibaba Speech API Key").assertCountEquals(1)
+        onNodeWithText("OpenAI Voice API Key").assertDoesNotExist()
+        onNodeWithText("Optional Speech Pack").assertDoesNotExist()
+        onNodeWithText("Workspace ID").assertDoesNotExist()
+
+        config = config.copy(
+            profiles = SpeechProviderProfiles(
+                alibaba = AlibabaSpeechProfile(
+                    ttsModel = "qwen-audio-3.0-tts-flash",
+                    voice = "longanhuan_v3.6",
+                    workspaceId = "fixture-workspace",
+                ),
+            ),
+        )
+        waitForIdle()
+        onNodeWithText("Workspace ID").assertExists()
     }
 
     @Test

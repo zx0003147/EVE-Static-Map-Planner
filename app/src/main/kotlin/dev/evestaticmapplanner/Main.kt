@@ -77,10 +77,17 @@ import dev.evestaticmapplanner.embeddedai.DefaultAiClientFactory
 import dev.evestaticmapplanner.embeddedai.InMemoryAiCredentialStore
 import dev.evestaticmapplanner.embeddedai.KoogAiConnectionTester
 import dev.evestaticmapplanner.embeddedai.OpenAiVoiceClient
+import dev.evestaticmapplanner.embeddedai.OpenAiSpeechToTextProvider
+import dev.evestaticmapplanner.embeddedai.OpenAiTextToSpeechProvider
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechClient
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechToTextProvider
+import dev.evestaticmapplanner.embeddedai.AlibabaTextToSpeechProvider
+import dev.evestaticmapplanner.embeddedai.MapSpeechProviderFactory
 import dev.evestaticmapplanner.embeddedai.SavedOrEnvironmentAiProviderConfigSource
 import dev.evestaticmapplanner.embeddedai.UnavailableAiCredentialStore
 import dev.evestaticmapplanner.embeddedai.WebSearchConfigSource
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
+import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
@@ -543,16 +550,39 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val speechPackManager = remember(configuration) { SpeechPackManager() }
     val windowsSpeechSynthesizer = remember(configuration) { WindowsSpeechSynthesizer() }
+    val localSpeechTranscriber = remember(configuration, speechPackManager) {
+        WhisperCppTranscriber(speechPackManager)
+    }
     val openAiVoiceClient = remember(configuration) { OpenAiVoiceClient() }
-    val voiceController = remember(configuration, mapViewModel, aiCredentialResolver, openAiVoiceClient) {
+    val alibabaSpeechClient = remember(configuration) { AlibabaSpeechClient() }
+    val voiceAudioPlayer = remember(configuration) { JavaSoundVoiceAudioPlayer() }
+    val speechProviderFactory = remember(
+        configuration,
+        aiCredentialResolver,
+        localSpeechTranscriber,
+        windowsSpeechSynthesizer,
+        openAiVoiceClient,
+        alibabaSpeechClient,
+    ) {
+        MapSpeechProviderFactory(
+            speechToTextProviders = mapOf(
+                VoiceInputProvider.LOCAL to localSpeechTranscriber,
+                VoiceInputProvider.OPENAI to OpenAiSpeechToTextProvider(aiCredentialResolver, openAiVoiceClient),
+                VoiceInputProvider.ALIBABA to AlibabaSpeechToTextProvider(aiCredentialResolver, alibabaSpeechClient),
+            ),
+            textToSpeechProviders = mapOf(
+                VoiceOutputProvider.LOCAL to windowsSpeechSynthesizer,
+                VoiceOutputProvider.OPENAI to OpenAiTextToSpeechProvider(aiCredentialResolver, openAiVoiceClient),
+                VoiceOutputProvider.ALIBABA to AlibabaTextToSpeechProvider(aiCredentialResolver, alibabaSpeechClient),
+            ),
+        )
+    }
+    val voiceController = remember(configuration, mapViewModel, speechProviderFactory, voiceAudioPlayer) {
         VoiceController(
             configSource = { mapViewModel.state.value.appPreferences.voice },
-            credentialResolver = aiCredentialResolver,
-            cloudVoiceClient = openAiVoiceClient,
+            providerFactory = speechProviderFactory,
             recorder = MicrophoneWavRecorder(),
-            localTranscriber = WhisperCppTranscriber(speechPackManager),
-            localSynthesizer = windowsSpeechSynthesizer,
-            audioPlayer = JavaSoundVoiceAudioPlayer(),
+            audioPlayer = voiceAudioPlayer,
         )
     }
     val voiceSettingsController = remember(
@@ -562,7 +592,10 @@ private fun FrameWindowScope.ReadyApplication(
         aiCredentialResolver,
         speechPackManager,
         windowsSpeechSynthesizer,
+        speechProviderFactory,
+        voiceAudioPlayer,
         mapViewModel,
+        voiceController,
     ) {
         VoiceSettingsController(
             secureStore = aiSecureCredentialStore,
@@ -570,7 +603,10 @@ private fun FrameWindowScope.ReadyApplication(
             credentialResolver = aiCredentialResolver,
             speechPackManager = speechPackManager,
             localSynthesizer = windowsSpeechSynthesizer,
+            providerFactory = speechProviderFactory,
+            audioPlayer = voiceAudioPlayer,
             persistConfig = mapViewModel::updateVoiceConfig,
+            onConfigSaved = voiceController::providerConfigurationChanged,
         )
     }
     val controlLifecycle = remember(configuration, mapControlCoordinator) {
@@ -653,8 +689,8 @@ private fun FrameWindowScope.ReadyApplication(
                 staticDataViewModel::close,
                 aiProviderSettingsController::close,
                 webSearchSettingsController::close,
-                voiceController::close,
                 voiceSettingsController::close,
+                voiceController::close,
                 aiSessionCredentialStore::close,
             ),
             closeDiagnostics = AppDiagnostics::close,
@@ -984,6 +1020,8 @@ private fun FrameWindowScope.ReadyApplication(
             onVoiceViewed = voiceSettingsController::refresh,
             onVoiceSave = voiceSettingsController::save,
             onVoiceCredentialDelete = voiceSettingsController::deleteCredential,
+            onVoiceTestRecognition = voiceSettingsController::testRecognition,
+            onVoiceTestVoice = voiceSettingsController::testVoice,
             onSpeechPackInstall = voiceSettingsController::installSpeechPack,
             onSpeechPackRemove = voiceSettingsController::removeSpeechPack,
             aiControlStatus = aiControlStatus,

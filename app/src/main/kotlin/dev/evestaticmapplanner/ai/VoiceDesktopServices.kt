@@ -2,6 +2,14 @@ package dev.evestaticmapplanner.ai
 
 import dev.evestaticmapplanner.embeddedai.VoiceErrorCode
 import dev.evestaticmapplanner.embeddedai.VoiceException
+import dev.evestaticmapplanner.embeddedai.RecordedAudio
+import dev.evestaticmapplanner.embeddedai.SpeechProviderCapability
+import dev.evestaticmapplanner.embeddedai.SpeechRecognitionConfig
+import dev.evestaticmapplanner.embeddedai.SpeechSynthesisConfig
+import dev.evestaticmapplanner.embeddedai.SpeechToTextProvider
+import dev.evestaticmapplanner.embeddedai.SpeechTranscript
+import dev.evestaticmapplanner.embeddedai.SynthesizedAudio
+import dev.evestaticmapplanner.embeddedai.TextToSpeechProvider
 import java.io.BufferedInputStream
 import java.net.URI
 import java.net.http.HttpClient
@@ -288,7 +296,27 @@ internal fun interface LocalTranscriber {
 internal class WhisperCppTranscriber(
     private val speechPack: SpeechPackManager,
     private val timeout: Duration = Duration.ofSeconds(90),
-) : LocalTranscriber {
+) : LocalTranscriber, SpeechToTextProvider {
+    override val capability = SpeechProviderCapability(
+        supportsStt = true,
+        supportsTts = false,
+        requiresApiKey = false,
+        supportsVoiceSelection = false,
+        supportsModelSelection = false,
+    )
+
+    override suspend fun transcribe(audio: RecordedAudio, config: SpeechRecognitionConfig): SpeechTranscript {
+        val temporary = audio.sourcePath == null
+        val path = audio.sourcePath ?: Files.createTempFile("eve-planner-local-stt-", ".wav").also {
+            Files.write(it, audio.wav)
+        }
+        return try {
+            SpeechTranscript(transcribe(path))
+        } finally {
+            if (temporary) runCatching { Files.deleteIfExists(path) }
+        }
+    }
+
     override suspend fun transcribe(wav: Path): String = withContext(Dispatchers.IO) {
         speechPack.requireInstalled()
         val process = ProcessBuilder(
@@ -344,7 +372,19 @@ internal interface SpeechSynthesizer {
     suspend fun voices(): List<String>
 }
 
-internal class WindowsSpeechSynthesizer : SpeechSynthesizer {
+internal class WindowsSpeechSynthesizer : SpeechSynthesizer, TextToSpeechProvider {
+    override val capability = SpeechProviderCapability(
+        supportsStt = false,
+        supportsTts = true,
+        requiresApiKey = false,
+        supportsVoiceSelection = true,
+        supportsModelSelection = false,
+    )
+
+    override suspend fun synthesize(text: String, config: SpeechSynthesisConfig): SynthesizedAudio = SynthesizedAudio(
+        synthesize(text, config.voice, config.rate, config.volume),
+    )
+
     override suspend fun synthesize(text: String, voice: String?, rate: Int, volume: Int): ByteArray =
         withContext(Dispatchers.IO) {
             val textFile = Files.createTempFile("eve-planner-tts-", ".txt")
@@ -360,7 +400,7 @@ internal class WindowsSpeechSynthesizer : SpeechSynthesizer {
                 )
                 runPowerShell(SYNTHESIZE_SCRIPT, environment)
                 Files.readAllBytes(outputFile).takeIf { it.size > 44 }
-                    ?: throw voiceFailure(VoiceErrorCode.TTS_FAILED, "Windows speech synthesis returned no audio.")
+                    ?: throw voiceFailure(VoiceErrorCode.SYNTHESIS_FAILED, "Windows speech synthesis returned no audio.")
             } finally {
                 Files.deleteIfExists(textFile)
                 Files.deleteIfExists(outputFile)
@@ -387,13 +427,13 @@ internal class WindowsSpeechSynthesizer : SpeechSynthesizer {
             process.inputStream.bufferedReader().use { it.readText() }
         } catch (_: TimeoutCancellationException) {
             process.destroyForcibly()
-            throw voiceFailure(VoiceErrorCode.TTS_FAILED, "Windows speech synthesis timed out.")
+            throw voiceFailure(VoiceErrorCode.VOICE_TIMEOUT, "Windows speech synthesis timed out.")
         } catch (cancelled: CancellationException) {
             process.destroyForcibly()
             throw cancelled
         }
         if (process.exitValue() != 0) {
-            throw voiceFailure(VoiceErrorCode.TTS_FAILED, "Windows speech synthesis is unavailable.")
+            throw voiceFailure(VoiceErrorCode.SYNTHESIS_FAILED, "Windows speech synthesis is unavailable.")
         }
     }
 

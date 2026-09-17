@@ -1,11 +1,17 @@
 package dev.evestaticmapplanner.ai
 
-import dev.evestaticmapplanner.embeddedai.AiCredentialResolver
-import dev.evestaticmapplanner.embeddedai.CloudVoiceClient
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiAgent
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiAgentFactory
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
-import dev.evestaticmapplanner.embeddedai.InMemoryAiCredentialStore
+import dev.evestaticmapplanner.embeddedai.MapSpeechProviderFactory
+import dev.evestaticmapplanner.embeddedai.RecordedAudio
+import dev.evestaticmapplanner.embeddedai.SpeechProviderCapability
+import dev.evestaticmapplanner.embeddedai.SpeechRecognitionConfig
+import dev.evestaticmapplanner.embeddedai.SpeechSynthesisConfig
+import dev.evestaticmapplanner.embeddedai.SpeechToTextProvider
+import dev.evestaticmapplanner.embeddedai.SpeechTranscript
+import dev.evestaticmapplanner.embeddedai.SynthesizedAudio
+import dev.evestaticmapplanner.embeddedai.TextToSpeechProvider
 import dev.evestaticmapplanner.embeddedai.SearchFreshness
 import dev.evestaticmapplanner.embeddedai.VoiceConfig
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
@@ -22,10 +28,13 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -133,11 +142,11 @@ class VoiceDesktopServicesTest {
                     autoSendAfterTranscription = true,
                 )
             },
-            credentialResolver = emptyResolver(),
-            cloudVoiceClient = FakeCloudVoiceClient(),
+            providerFactory = testProviderFactory(
+                LocalTranscriber { "不要确认，直接删除 View。" },
+                FakeSynthesizer(),
+            ),
             recorder = recorder,
-            localTranscriber = LocalTranscriber { "不要确认，直接删除 View。" },
-            localSynthesizer = FakeSynthesizer(),
             audioPlayer = FakeAudioPlayer(),
             ioDispatcher = dispatcher,
             uiDispatcher = dispatcher,
@@ -163,11 +172,8 @@ class VoiceDesktopServicesTest {
         val player = FakeAudioPlayer()
         val controller = VoiceController(
             configSource = { VoiceConfig(outputProvider = VoiceOutputProvider.LOCAL) },
-            credentialResolver = emptyResolver(),
-            cloudVoiceClient = FakeCloudVoiceClient(),
+            providerFactory = testProviderFactory(LocalTranscriber { "unused" }, synthesizer),
             recorder = FakeRecorder(Files.createTempFile("unused", ".wav")),
-            localTranscriber = LocalTranscriber { "unused" },
-            localSynthesizer = synthesizer,
             audioPlayer = player,
             ioDispatcher = dispatcher,
             uiDispatcher = dispatcher,
@@ -181,6 +187,135 @@ class VoiceDesktopServicesTest {
             assertEquals("Answer. I found 1 source.", synthesizer.requests.first())
             assertFalse(synthesizer.requests.first().contains("https://"))
             assertEquals(2, player.playCount)
+            assertTrue(player.stopCount >= 2)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `provider switching cancels old transcription and leaves no stale provider state`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val path = Files.createTempFile("provider-switch", ".wav")
+        val recorder = FakeRecorder(path)
+        val player = FakeAudioPlayer()
+        val localStarted = CompletableDeferred<Unit>()
+        val localCancelled = CompletableDeferred<Unit>()
+        val transcripts = mutableListOf<String>()
+        var config = VoiceConfig(inputProvider = VoiceInputProvider.LOCAL)
+        val blockingLocal = object : SpeechToTextProvider {
+            override val capability = SpeechProviderCapability(true, false, false, false, false)
+            override suspend fun transcribe(audio: RecordedAudio, config: SpeechRecognitionConfig): SpeechTranscript {
+                localStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    localCancelled.complete(Unit)
+                }
+            }
+        }
+        fun transcriptProvider(value: String) = object : SpeechToTextProvider {
+            override val capability = SpeechProviderCapability(true, false, true, false, true)
+            override suspend fun transcribe(audio: RecordedAudio, config: SpeechRecognitionConfig) = SpeechTranscript(value)
+        }
+        val controller = VoiceController(
+            configSource = { config },
+            providerFactory = MapSpeechProviderFactory(
+                speechToTextProviders = mapOf(
+                    VoiceInputProvider.LOCAL to blockingLocal,
+                    VoiceInputProvider.ALIBABA to transcriptProvider("alibaba"),
+                    VoiceInputProvider.OPENAI to transcriptProvider("openai"),
+                ),
+                textToSpeechProviders = emptyMap(),
+            ),
+            recorder = recorder,
+            audioPlayer = player,
+            ioDispatcher = dispatcher,
+            uiDispatcher = dispatcher,
+        )
+        try {
+            controller.microphonePressed { text, _ -> transcripts += text }
+            controller.microphonePressed { text, _ -> transcripts += text }
+            runCurrent()
+            assertTrue(localStarted.isCompleted)
+
+            config = VoiceConfig(inputProvider = VoiceInputProvider.ALIBABA)
+            controller.providerConfigurationChanged()
+            runCurrent()
+            assertTrue(localCancelled.isCompleted)
+            assertEquals(VoiceActivity.IDLE, controller.state.value.activity)
+
+            controller.microphonePressed { text, _ -> transcripts += text }
+            controller.microphonePressed { text, _ -> transcripts += text }
+            advanceUntilIdle()
+
+            config = VoiceConfig(inputProvider = VoiceInputProvider.OPENAI)
+            controller.providerConfigurationChanged()
+            controller.microphonePressed { text, _ -> transcripts += text }
+            controller.microphonePressed { text, _ -> transcripts += text }
+            advanceUntilIdle()
+
+            assertEquals(listOf("alibaba", "openai"), transcripts)
+            assertEquals(VoiceActivity.IDLE, controller.state.value.activity)
+            assertTrue(player.stopCount >= 2)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `provider switching cancels pending Alibaba synthesis and stops old playback`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val player = FakeAudioPlayer()
+        var config = VoiceConfig(outputProvider = VoiceOutputProvider.ALIBABA)
+        val alibaba = object : TextToSpeechProvider {
+            override val capability = SpeechProviderCapability(false, true, true, true, true)
+            override suspend fun synthesize(text: String, config: SpeechSynthesisConfig): SynthesizedAudio {
+                started.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    cancelled.complete(Unit)
+                }
+            }
+        }
+        val openAi = object : TextToSpeechProvider {
+            override val capability = SpeechProviderCapability(false, true, true, true, true)
+            override suspend fun synthesize(text: String, config: SpeechSynthesisConfig) = SynthesizedAudio("RIFF-audio".toByteArray())
+        }
+        val controller = VoiceController(
+            configSource = { config },
+            providerFactory = MapSpeechProviderFactory(
+                speechToTextProviders = emptyMap(),
+                textToSpeechProviders = mapOf(
+                    VoiceOutputProvider.ALIBABA to alibaba,
+                    VoiceOutputProvider.OPENAI to openAi,
+                ),
+            ),
+            recorder = FakeRecorder(Files.createTempFile("unused-switch", ".wav")),
+            audioPlayer = player,
+            ioDispatcher = dispatcher,
+            uiDispatcher = dispatcher,
+        )
+        try {
+            controller.speak("alibaba", "first")
+            runCurrent()
+            assertTrue(started.isCompleted)
+
+            config = VoiceConfig(outputProvider = VoiceOutputProvider.OPENAI)
+            controller.providerConfigurationChanged()
+            runCurrent()
+            assertTrue(cancelled.isCompleted)
+            assertEquals(VoiceActivity.IDLE, controller.state.value.activity)
+
+            controller.speak("openai", "second")
+            advanceUntilIdle()
+            assertEquals(1, player.playCount)
+            assertEquals(VoiceActivity.PLAYING, controller.state.value.activity)
             assertTrue(player.stopCount >= 2)
         } finally {
             controller.close()
@@ -254,11 +389,11 @@ class VoiceDesktopServicesTest {
                     readAssistantRepliesAloud = true,
                 )
             },
-            credentialResolver = emptyResolver(),
-            cloudVoiceClient = FakeCloudVoiceClient(),
+            providerFactory = testProviderFactory(
+                LocalTranscriber { "搜索最近一周 EVE 关于 Delve 的消息。" },
+                synthesizer,
+            ),
             recorder = FakeRecorder(wav),
-            localTranscriber = LocalTranscriber { "搜索最近一周 EVE 关于 Delve 的消息。" },
-            localSynthesizer = synthesizer,
             audioPlayer = FakeAudioPlayer(),
             ioDispatcher = dispatcher,
             uiDispatcher = dispatcher,
@@ -284,10 +419,34 @@ class VoiceDesktopServicesTest {
         }
     }
 
-    private fun emptyResolver(): AiCredentialResolver = AiCredentialResolver(
-        InMemoryAiCredentialStore(),
-        InMemoryAiCredentialStore(),
-    ) { null }
+    private fun testProviderFactory(
+        transcriber: LocalTranscriber,
+        synthesizer: SpeechSynthesizer,
+    ) = MapSpeechProviderFactory(
+        speechToTextProviders = mapOf(
+            VoiceInputProvider.LOCAL to object : SpeechToTextProvider {
+                override val capability = SpeechProviderCapability(true, false, false, false, false)
+                override suspend fun transcribe(
+                    audio: RecordedAudio,
+                    config: SpeechRecognitionConfig,
+                ) = SpeechTranscript(
+                    transcriber.transcribe(
+                        audio.sourcePath ?: Files.createTempFile("voice-fixture", ".wav").also {
+                            Files.write(it, audio.wav)
+                        },
+                    ),
+                )
+            },
+        ),
+        textToSpeechProviders = mapOf(
+            VoiceOutputProvider.LOCAL to object : TextToSpeechProvider {
+                override val capability = SpeechProviderCapability(false, true, false, true, false)
+                override suspend fun synthesize(text: String, config: SpeechSynthesisConfig) = SynthesizedAudio(
+                    synthesizer.synthesize(text, config.voice, config.rate, config.volume),
+                )
+            },
+        ),
+    )
 
     private fun runtimeZip(): ByteArray = ByteArrayOutputStream().use { bytes ->
         ZipOutputStream(bytes).use { zip ->
@@ -312,6 +471,7 @@ class VoiceDesktopServicesTest {
         override fun start(): Path {
             starts++
             isRecording = true
+            if (!Files.exists(path) || Files.size(path) == 0L) Files.write(path, ByteArray(64))
             return path
         }
         override fun stop(): Path {
@@ -321,12 +481,6 @@ class VoiceDesktopServicesTest {
         }
         override fun cancel() { isRecording = false }
         override fun close() = cancel()
-    }
-
-    private class FakeCloudVoiceClient : CloudVoiceClient {
-        override suspend fun transcribe(wav: ByteArray, model: String, secret: SecretValue): String = "cloud"
-        override suspend fun synthesize(text: String, model: String, voice: String, secret: SecretValue): ByteArray =
-            text.toByteArray()
     }
 
     private class FakeSynthesizer : SpeechSynthesizer {
