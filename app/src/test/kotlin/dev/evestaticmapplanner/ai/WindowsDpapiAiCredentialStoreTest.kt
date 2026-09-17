@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.ai
 import com.sun.jna.Platform
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
+import dev.evestaticmapplanner.embeddedai.OPENAI_VOICE_CREDENTIAL_REF
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import java.nio.file.Files
 import java.nio.file.Path
@@ -54,6 +55,26 @@ class WindowsDpapiAiCredentialStoreTest {
             assertFalse(
                 String(Files.readAllBytes(store.pathForTesting(BRAVE_SEARCH_CREDENTIAL_REF)), Charsets.UTF_8)
                     .contains("fixture-brave-key"),
+            )
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `OpenAI Voice credential uses its independent DPAPI namespace`() {
+        assumeTrue(Platform.isWindows())
+        val root = createTempDirectory("voice-dpapi-")
+        val store = WindowsDpapiAiCredentialStore(root)
+        try {
+            SecretValue.from("fixture-voice-key").use { store.save(OPENAI_VOICE_CREDENTIAL_REF, it) }
+
+            assertTrue(store.contains(OPENAI_VOICE_CREDENTIAL_REF))
+            assertTrue(store.pathForTesting(OPENAI_VOICE_CREDENTIAL_REF).fileName.toString() == "openai-voice.dpapi")
+            assertSecretEquals("fixture-voice-key", store.load(OPENAI_VOICE_CREDENTIAL_REF))
+            assertFalse(
+                String(Files.readAllBytes(store.pathForTesting(OPENAI_VOICE_CREDENTIAL_REF)), Charsets.UTF_8)
+                    .contains("fixture-voice-key"),
             )
         } finally {
             root.toFile().deleteRecursively()

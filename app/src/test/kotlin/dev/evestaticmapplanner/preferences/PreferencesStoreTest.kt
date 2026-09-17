@@ -5,6 +5,9 @@ import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
+import dev.evestaticmapplanner.embeddedai.VoiceConfig
+import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
+import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.name
@@ -84,7 +87,7 @@ class PreferencesStoreTest {
 
             store.save(migrated)
             val reloaded = store.load()
-            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=4" })
+            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=5" })
             assertEquals(AiCredentialRef("openrouter"), reloaded.aiProvider?.credentialRef)
             assertEquals(active, reloaded.aiProviderProfiles[AiProviderType.OPENROUTER])
         }
@@ -255,7 +258,7 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=4" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=5" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
@@ -304,6 +307,31 @@ class PreferencesStoreTest {
             assertFalse(text.contains(marker))
             assertFalse(text.contains("BRAVE_SEARCH_API_KEY"))
             assertEquals(expected, PropertiesPreferencesStore(path).load().webSearch)
+        }
+
+    @Test
+    fun `Voice settings round trip only the DPAPI reference and never a Key`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            val expected = VoiceConfig(
+                inputProvider = VoiceInputProvider.LOCAL,
+                outputProvider = VoiceOutputProvider.OPENAI,
+                autoSendAfterTranscription = true,
+                readAssistantRepliesAloud = true,
+                openAiVoice = "coral",
+                windowsVoice = "Fixture Voice",
+                localTtsRate = 2,
+                localTtsVolume = 80,
+            )
+
+            PropertiesPreferencesStore(path).save(AppPreferences(voice = expected))
+
+            val text = Files.readString(path)
+            assertTrue(text.contains("voice.inputProvider=LOCAL"))
+            assertTrue(text.contains("voice.outputProvider=OPENAI"))
+            assertTrue(text.contains("voice.credentialRef=openai-voice"))
+            assertFalse(text.contains("OPENAI_VOICE_API_KEY"))
+            assertEquals(expected, PropertiesPreferencesStore(path).load().voice)
         }
 
     @Test

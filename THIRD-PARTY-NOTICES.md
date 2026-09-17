@@ -68,6 +68,14 @@ The application is unofficial and is not affiliated with or endorsed by CCP hf. 
 
 The Desktop Embedded Assistant can call the Brave Search LLM Context API when the user enables Web Search and supplies a Brave Search API credential. Brave Search is an external service, not bundled software or content. Use remains subject to Brave's current Search API terms and privacy policy. The integration uses only JDK networking and the existing kotlinx serialization runtime; it adds no Brave-distributed library to the application.
 
+## Optional voice services and Speech Pack
+
+The Desktop Embedded Assistant can call the OpenAI Audio transcription and speech APIs when the user separately configures an OpenAI Voice credential. OpenAI is an external service; no OpenAI client library, voice model, or service content is bundled. Use remains subject to OpenAI's current service terms and privacy policy.
+
+Local speech-to-text is an optional, user-initiated download stored outside the application under the user's LocalAppData directory. The Speech Pack downloads the pinned official whisper.cpp Windows x64 CPU runtime `v1.7.6` and the multilingual `ggml-base.bin` model from the official `ggml-org/whisper.cpp` GitHub release and `ggerganov/whisper.cpp` Hugging Face repository. Both downloads are verified against pinned SHA-256 values before atomic installation. whisper.cpp, its Java bindings, and the published model repository are MIT-licensed; the complete whisper.cpp license is at `legal/whispercpp/LICENSE.txt`. The main Portable archive contains neither the native helper nor the model.
+
+Local text-to-speech uses the Windows `System.Speech` engine already present on the host. It adds no redistributed TTS engine, voice, or model.
+
 ## Build-only components
 
 Gradle 9.2.1 and its wrapper, Kotlin/Compose build plugins, WiX Toolset 4.0.6, and test frameworks are build/test tools and are not bundled as application runtime libraries. Their source and binary distributions remain under their own licenses.

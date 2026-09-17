@@ -1,0 +1,559 @@
+package dev.evestaticmapplanner.ai
+
+import dev.evestaticmapplanner.embeddedai.VoiceErrorCode
+import dev.evestaticmapplanner.embeddedai.VoiceException
+import java.io.BufferedInputStream
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.time.Duration
+import java.util.Comparator
+import java.util.Properties
+import java.util.UUID
+import java.util.concurrent.CompletionException
+import java.util.concurrent.CompletableFuture
+import java.util.zip.ZipInputStream
+import javax.sound.sampled.AudioFileFormat
+import javax.sound.sampled.AudioFormat
+import javax.sound.sampled.AudioInputStream
+import javax.sound.sampled.AudioSystem
+import javax.sound.sampled.Clip
+import javax.sound.sampled.DataLine
+import javax.sound.sampled.LineEvent
+import javax.sound.sampled.TargetDataLine
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+internal interface VoiceRecorder : AutoCloseable {
+    fun start(): Path
+    fun stop(): Path
+    fun cancel()
+    val isRecording: Boolean
+}
+
+internal class MicrophoneWavRecorder(
+    private val temporaryDirectory: Path? = null,
+) : VoiceRecorder {
+    private var line: TargetDataLine? = null
+    private var recordingThread: Thread? = null
+    private var output: Path? = null
+    private var writeFailure: Throwable? = null
+
+    override val isRecording: Boolean
+        @Synchronized get() = line != null
+
+    @Synchronized
+    override fun start(): Path {
+        check(line == null) { "A recording is already active" }
+        val info = DataLine.Info(TargetDataLine::class.java, RECORDING_FORMAT)
+        if (!AudioSystem.isLineSupported(info)) {
+            throw voiceFailure(VoiceErrorCode.MICROPHONE_UNAVAILABLE, "No compatible microphone is available.")
+        }
+        val target = try {
+            (AudioSystem.getLine(info) as TargetDataLine).also {
+                it.open(RECORDING_FORMAT)
+                it.start()
+            }
+        } catch (_: Exception) {
+            throw voiceFailure(VoiceErrorCode.MICROPHONE_UNAVAILABLE, "The default microphone could not be opened.")
+        }
+        val path = if (temporaryDirectory == null) {
+            Files.createTempFile("eve-planner-voice-", ".wav")
+        } else {
+            Files.createDirectories(temporaryDirectory)
+            Files.createTempFile(temporaryDirectory, "eve-planner-voice-", ".wav")
+        }
+        writeFailure = null
+        output = path
+        line = target
+        recordingThread = Thread({
+            try {
+                AudioInputStream(target).use { stream ->
+                    AudioSystem.write(stream, AudioFileFormat.Type.WAVE, path.toFile())
+                }
+            } catch (failure: Throwable) {
+                if (line != null) writeFailure = failure
+            }
+        }, "voice-recorder").apply {
+            isDaemon = true
+            start()
+        }
+        return path
+    }
+
+    @Synchronized
+    override fun stop(): Path {
+        val path = output ?: throw voiceFailure(VoiceErrorCode.RECORDING_FAILED, "No recording is active.")
+        val target = line ?: throw voiceFailure(VoiceErrorCode.RECORDING_FAILED, "No recording is active.")
+        line = null
+        target.stop()
+        target.close()
+        recordingThread?.join(RECORDING_JOIN_TIMEOUT_MILLIS)
+        recordingThread = null
+        output = null
+        writeFailure?.let {
+            Files.deleteIfExists(path)
+            writeFailure = null
+            throw voiceFailure(VoiceErrorCode.RECORDING_FAILED, "The recording could not be saved.")
+        }
+        if (!Files.isRegularFile(path) || Files.size(path) <= WAV_HEADER_BYTES) {
+            Files.deleteIfExists(path)
+            throw voiceFailure(VoiceErrorCode.RECORDING_FAILED, "The recording contains no audio.")
+        }
+        return path
+    }
+
+    @Synchronized
+    override fun cancel() {
+        val path = output
+        val target = line
+        line = null
+        output = null
+        runCatching { target?.stop() }
+        runCatching { target?.close() }
+        recordingThread?.join(RECORDING_JOIN_TIMEOUT_MILLIS)
+        recordingThread = null
+        path?.let { runCatching { Files.deleteIfExists(it) } }
+    }
+
+    override fun close() = cancel()
+
+    companion object {
+        private val RECORDING_FORMAT = AudioFormat(16_000f, 16, 1, true, false)
+        private const val RECORDING_JOIN_TIMEOUT_MILLIS = 3_000L
+        private const val WAV_HEADER_BYTES = 44L
+    }
+}
+
+internal data class SpeechPackState(
+    val installed: Boolean,
+    val modelName: String = SPEECH_PACK_MODEL_NAME,
+    val modelBytes: Long? = null,
+    val helperBytes: Long? = null,
+)
+
+internal data class SpeechPackDescriptor(
+    val modelName: String = SPEECH_PACK_MODEL_NAME,
+    val modelFile: String = SPEECH_PACK_MODEL_FILE,
+    val modelUri: URI = SPEECH_PACK_MODEL_URI,
+    val modelSha256: String = SPEECH_PACK_MODEL_SHA256,
+    val runtimeRelease: String = SPEECH_PACK_RUNTIME_RELEASE,
+    val runtimeUri: URI = SPEECH_PACK_RUNTIME_URI,
+    val runtimeSha256: String = SPEECH_PACK_RUNTIME_SHA256,
+)
+
+internal fun interface SpeechPackTransport {
+    fun download(uri: URI, destination: Path)
+}
+
+internal class JavaSpeechPackTransport(
+    private val client: HttpClient = HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .connectTimeout(Duration.ofSeconds(30))
+        .build(),
+) : SpeechPackTransport {
+    override fun download(uri: URI, destination: Path) {
+        val request = HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(10)).GET().build()
+        val response = client.send(request, HttpResponse.BodyHandlers.ofFile(destination))
+        if (response.statusCode() !in 200..299) {
+            throw IllegalStateException("Speech Pack download failed with HTTP ${response.statusCode()}")
+        }
+    }
+}
+
+internal class SpeechPackManager(
+    private val speechRoot: Path = defaultSpeechRoot(),
+    private val transport: SpeechPackTransport = JavaSpeechPackTransport(),
+    private val descriptor: SpeechPackDescriptor = SpeechPackDescriptor(),
+) {
+    val packDirectory: Path get() = speechRoot.resolve("pack")
+    val modelPath: Path get() = packDirectory.resolve(descriptor.modelFile)
+    val helperPath: Path get() = packDirectory.resolve("runtime").resolve("whisper-cli.exe")
+
+    fun state(): SpeechPackState {
+        val installed = Files.isRegularFile(modelPath) && Files.isRegularFile(helperPath) &&
+            Files.isRegularFile(packDirectory.resolve(SPEECH_PACK_MANIFEST))
+        return SpeechPackState(
+            installed = installed,
+            modelName = descriptor.modelName,
+            modelBytes = modelPath.takeIf(Files::isRegularFile)?.let(Files::size),
+            helperBytes = packDirectory.resolve("runtime").takeIf(Files::isDirectory)?.let(::directoryBytes),
+        )
+    }
+
+    fun install() {
+        Files.createDirectories(speechRoot)
+        val work = speechRoot.resolve("install-${UUID.randomUUID()}")
+        val runtimeArchive = work.resolve("runtime.zip")
+        val modelDownload = work.resolve("${descriptor.modelFile}.download")
+        val stagedPack = work.resolve("pack")
+        try {
+            Files.createDirectories(work)
+            transport.download(descriptor.runtimeUri, runtimeArchive)
+            verifySha256(runtimeArchive, descriptor.runtimeSha256)
+            transport.download(descriptor.modelUri, modelDownload)
+            verifySha256(modelDownload, descriptor.modelSha256)
+            Files.createDirectories(stagedPack.resolve("runtime"))
+            extractRuntime(runtimeArchive, stagedPack.resolve("runtime"))
+            moveAtomically(modelDownload, stagedPack.resolve(descriptor.modelFile))
+            writeManifest(stagedPack)
+            verifyInstalledPack(stagedPack)
+            replacePack(stagedPack)
+        } finally {
+            deleteTree(work)
+        }
+    }
+
+    fun remove() = deleteTree(packDirectory)
+
+    fun requireInstalled() {
+        if (!state().installed) throw voiceFailure(
+            VoiceErrorCode.VOICE_MODEL_UNAVAILABLE,
+            "Local speech model is not installed.",
+        )
+    }
+
+    private fun extractRuntime(archive: Path, destination: Path) {
+        val requiredFiles = mutableSetOf(
+            "whisper-cli.exe",
+            "whisper.dll",
+            "ggml.dll",
+            "ggml-base.dll",
+            "ggml-cpu.dll",
+        )
+        ZipInputStream(BufferedInputStream(Files.newInputStream(archive))).use { zip ->
+            generateSequence { zip.nextEntry }.forEach { entry ->
+                val name = Path.of(entry.name.replace('\\', '/')).fileName?.toString().orEmpty()
+                val keep = !entry.isDirectory && name in requiredFiles
+                if (keep) {
+                    val target = destination.resolve(name).normalize()
+                    require(target.parent == destination.normalize()) { "Invalid Speech Pack archive entry" }
+                    Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING)
+                    requiredFiles.remove(name)
+                }
+                zip.closeEntry()
+            }
+        }
+        check(requiredFiles.isEmpty()) { "Speech Pack runtime is incomplete: ${requiredFiles.sorted()}" }
+    }
+
+    private fun writeManifest(stagedPack: Path) {
+        val properties = Properties().apply {
+            setProperty("formatVersion", "1")
+            setProperty("runtime", descriptor.runtimeRelease)
+            setProperty("runtimeSha256", descriptor.runtimeSha256)
+            setProperty("model", descriptor.modelName)
+            setProperty("modelSha256", descriptor.modelSha256)
+        }
+        Files.newOutputStream(stagedPack.resolve(SPEECH_PACK_MANIFEST)).use { properties.store(it, null) }
+    }
+
+    private fun verifyInstalledPack(stagedPack: Path) {
+        check(Files.isRegularFile(stagedPack.resolve("runtime/whisper-cli.exe")))
+        verifySha256(stagedPack.resolve(descriptor.modelFile), descriptor.modelSha256)
+    }
+
+    private fun replacePack(stagedPack: Path) {
+        val backup = speechRoot.resolve("pack.backup-${UUID.randomUUID()}")
+        if (Files.exists(packDirectory)) moveAtomically(packDirectory, backup)
+        try {
+            moveAtomically(stagedPack, packDirectory)
+        } catch (failure: Throwable) {
+            if (!Files.exists(packDirectory) && Files.exists(backup)) moveAtomically(backup, packDirectory)
+            throw failure
+        }
+        runCatching { deleteTree(backup) }
+    }
+}
+
+internal fun interface LocalTranscriber {
+    suspend fun transcribe(wav: Path): String
+}
+
+internal class WhisperCppTranscriber(
+    private val speechPack: SpeechPackManager,
+    private val timeout: Duration = Duration.ofSeconds(90),
+) : LocalTranscriber {
+    override suspend fun transcribe(wav: Path): String = withContext(Dispatchers.IO) {
+        speechPack.requireInstalled()
+        val process = ProcessBuilder(
+            speechPack.helperPath.toString(),
+            "-m", speechPack.modelPath.toString(),
+            "-f", wav.toString(),
+            "-l", "auto",
+            "-nt",
+            "-np",
+            "-ng",
+        )
+            .directory(speechPack.helperPath.parent.toFile())
+            .redirectErrorStream(true)
+            .start()
+        try {
+            val output = coroutineScope {
+                val reader = async(Dispatchers.IO) {
+                    process.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }.trim()
+                }
+                try {
+                    withTimeout(timeout.toMillis()) { process.onExit().awaitCancellable() }
+                    reader.await()
+                } catch (_: TimeoutCancellationException) {
+                    process.destroyForcibly()
+                    reader.cancel()
+                    throw voiceFailure(VoiceErrorCode.TRANSCRIPTION_FAILED, "Local transcription timed out.")
+                } catch (cancelled: CancellationException) {
+                    process.destroyForcibly()
+                    reader.cancel()
+                    throw cancelled
+                }
+            }
+            if (process.exitValue() != 0 || output.isBlank()) {
+                throw voiceFailure(VoiceErrorCode.TRANSCRIPTION_FAILED, "Local transcription failed.")
+            }
+            output.lineSequence()
+                .filterNot { it.startsWith("whisper_") || it.startsWith("ggml_") || it.startsWith("system_info:") }
+                .joinToString(" ")
+                .trim()
+                .takeIf(String::isNotBlank)
+                ?: throw voiceFailure(VoiceErrorCode.TRANSCRIPTION_FAILED, "Local transcription returned no text.")
+        } catch (cancelled: CancellationException) {
+            process.destroyForcibly()
+            throw cancelled
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+        }
+    }
+}
+
+internal interface SpeechSynthesizer {
+    suspend fun synthesize(text: String, voice: String?, rate: Int, volume: Int): ByteArray
+    suspend fun voices(): List<String>
+}
+
+internal class WindowsSpeechSynthesizer : SpeechSynthesizer {
+    override suspend fun synthesize(text: String, voice: String?, rate: Int, volume: Int): ByteArray =
+        withContext(Dispatchers.IO) {
+            val textFile = Files.createTempFile("eve-planner-tts-", ".txt")
+            val outputFile = Files.createTempFile("eve-planner-tts-", ".wav")
+            try {
+                Files.writeString(textFile, text, StandardCharsets.UTF_8)
+                val environment = mapOf(
+                    "EVE_TTS_TEXT" to textFile.toString(),
+                    "EVE_TTS_OUTPUT" to outputFile.toString(),
+                    "EVE_TTS_VOICE" to voice.orEmpty(),
+                    "EVE_TTS_RATE" to rate.coerceIn(-10, 10).toString(),
+                    "EVE_TTS_VOLUME" to volume.coerceIn(0, 100).toString(),
+                )
+                runPowerShell(SYNTHESIZE_SCRIPT, environment)
+                Files.readAllBytes(outputFile).takeIf { it.size > 44 }
+                    ?: throw voiceFailure(VoiceErrorCode.TTS_FAILED, "Windows speech synthesis returned no audio.")
+            } finally {
+                Files.deleteIfExists(textFile)
+                Files.deleteIfExists(outputFile)
+            }
+        }
+
+    override suspend fun voices(): List<String> = withContext(Dispatchers.IO) {
+        val output = Files.createTempFile("eve-planner-voices-", ".txt")
+        try {
+            runPowerShell(LIST_VOICES_SCRIPT, mapOf("EVE_TTS_OUTPUT" to output.toString()))
+            Files.readAllLines(output, StandardCharsets.UTF_8).map(String::trim).filter(String::isNotBlank)
+        } finally {
+            Files.deleteIfExists(output)
+        }
+    }
+
+    private suspend fun runPowerShell(script: String, environment: Map<String, String>) {
+        val process = ProcessBuilder(
+            "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-Command", script,
+        ).redirectErrorStream(true).apply { environment().putAll(environment) }.start()
+        try {
+            withTimeout(30_000) { process.onExit().awaitCancellable() }
+            process.inputStream.bufferedReader().use { it.readText() }
+        } catch (_: TimeoutCancellationException) {
+            process.destroyForcibly()
+            throw voiceFailure(VoiceErrorCode.TTS_FAILED, "Windows speech synthesis timed out.")
+        } catch (cancelled: CancellationException) {
+            process.destroyForcibly()
+            throw cancelled
+        }
+        if (process.exitValue() != 0) {
+            throw voiceFailure(VoiceErrorCode.TTS_FAILED, "Windows speech synthesis is unavailable.")
+        }
+    }
+
+    companion object {
+        private const val SYNTHESIZE_SCRIPT = """
+            Add-Type -AssemblyName System.Speech
+            ${'$'}s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+            try {
+              ${'$'}voice = ${'$'}env:EVE_TTS_VOICE
+              if (${'$'}voice) { ${'$'}s.SelectVoice(${'$'}voice) }
+              ${'$'}s.Rate = [int]${'$'}env:EVE_TTS_RATE
+              ${'$'}s.Volume = [int]${'$'}env:EVE_TTS_VOLUME
+              ${'$'}s.SetOutputToWaveFile(${'$'}env:EVE_TTS_OUTPUT)
+              ${'$'}text = [IO.File]::ReadAllText(${'$'}env:EVE_TTS_TEXT, [Text.Encoding]::UTF8)
+              ${'$'}s.Speak(${'$'}text)
+            } finally { ${'$'}s.Dispose() }
+        """
+        private const val LIST_VOICES_SCRIPT = """
+            Add-Type -AssemblyName System.Speech
+            ${'$'}s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+            try {
+              ${'$'}names = @(${'$'}s.GetInstalledVoices() | ForEach-Object { ${'$'}_.VoiceInfo.Name })
+              [IO.File]::WriteAllLines(${'$'}env:EVE_TTS_OUTPUT, ${'$'}names, [Text.UTF8Encoding]::new(${'$'}false))
+            } finally { ${'$'}s.Dispose() }
+        """
+    }
+}
+
+internal interface VoiceAudioPlayer : AutoCloseable {
+    fun play(wav: ByteArray, onFinished: () -> Unit = {})
+    fun stop()
+}
+
+internal class JavaSoundVoiceAudioPlayer : VoiceAudioPlayer {
+    private var clip: Clip? = null
+
+    @Synchronized
+    override fun play(wav: ByteArray, onFinished: () -> Unit) {
+        stop()
+        try {
+            val stream = AudioSystem.getAudioInputStream(wav.inputStream().buffered())
+            val next = AudioSystem.getClip()
+            next.addLineListener { event ->
+                if (event.type == LineEvent.Type.STOP && next.framePosition >= next.frameLength) {
+                    runCatching { next.close() }
+                    synchronized(this) { if (clip === next) clip = null }
+                    onFinished()
+                }
+            }
+            next.open(stream)
+            stream.close()
+            clip = next
+            next.start()
+        } catch (_: Exception) {
+            throw voiceFailure(VoiceErrorCode.AUDIO_PLAYBACK_FAILED, "Audio playback failed.")
+        }
+    }
+
+    @Synchronized
+    override fun stop() {
+        clip?.let { current ->
+            runCatching { current.stop() }
+            runCatching { current.close() }
+        }
+        clip = null
+    }
+
+    override fun close() = stop()
+}
+
+internal fun assistantMarkdownToSpeech(markdown: String): String {
+    val sourcesHeading = Regex("""(?im)^Sources:\s*$""").find(markdown)
+    val sourcesText = sourcesHeading?.let { markdown.substring(it.range.last + 1) }.orEmpty()
+    val sourceCount = Regex("""(?m)^\s*-\s+\[[^]]+]\(https?://[^)]+\)\s*$""")
+        .findAll(sourcesText)
+        .count()
+    val withoutSources = sourcesHeading?.let { markdown.substring(0, it.range.first) } ?: markdown
+    val plain = withoutSources
+        .replace(Regex("(?s)```.*?```"), " ")
+        .replace(Regex("`([^`]+)`"), "$1")
+        .replace(Regex("""!?\[([^]]+)]\(https?://[^)]+\)"""), "$1")
+        .replace(Regex("""https?://\S+"""), " ")
+        .replace(Regex("""(?m)^\s{0,3}#{1,6}\s*"""), "")
+        .replace(Regex("[*_~>]"), "")
+        .replace(Regex("""(?m)^\s*[-+]\s+"""), "")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+    if (sourceCount == 0) return plain
+    val sourceNotice = if (plain.any { it.code in 0x4E00..0x9FFF }) {
+        "我找到了${sourceCount}个来源。"
+    } else {
+        "I found $sourceCount ${if (sourceCount == 1) "source" else "sources"}."
+    }
+    return listOf(plain, sourceNotice).filter(String::isNotBlank).joinToString(" ")
+}
+
+internal fun defaultSpeechRoot(environment: (String) -> String? = System::getenv): Path {
+    val localAppData = environment("LOCALAPPDATA")?.trim()?.takeIf(String::isNotBlank)
+    return if (localAppData != null) {
+        Path.of(localAppData, "EVE Static Map Planner", "speech")
+    } else {
+        Path.of(System.getProperty("user.home"), "AppData", "Local", "EVE Static Map Planner", "speech")
+    }
+}
+
+private fun verifySha256(path: Path, expected: String) {
+    val digest = MessageDigest.getInstance("SHA-256")
+    Files.newInputStream(path).use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        generateSequence { input.read(buffer).takeIf { it >= 0 } }.forEach { count ->
+            if (count > 0) digest.update(buffer, 0, count)
+        }
+    }
+    val actual = digest.digest().joinToString("") { "%02x".format(it) }
+    check(actual.equals(expected, ignoreCase = true)) { "Speech Pack checksum verification failed" }
+}
+
+private fun moveAtomically(source: Path, destination: Path) {
+    Files.createDirectories(destination.parent)
+    try {
+        Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+    } catch (_: AtomicMoveNotSupportedException) {
+        Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING)
+    }
+}
+
+private fun directoryBytes(path: Path): Long = Files.walk(path).use { paths ->
+    paths.filter(Files::isRegularFile).mapToLong(Files::size).sum()
+}
+
+private fun deleteTree(path: Path) {
+    if (!Files.exists(path)) return
+    Files.walk(path).use { paths ->
+        paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+    }
+}
+
+private fun voiceFailure(code: VoiceErrorCode, message: String) = VoiceException(code, message)
+
+private suspend fun <T> CompletableFuture<T>.awaitCancellable(): T = suspendCancellableCoroutine { continuation ->
+    continuation.invokeOnCancellation { cancel(true) }
+    whenComplete { value, failure ->
+        when {
+            failure == null -> continuation.resume(value)
+            failure is CompletionException && failure.cause != null -> continuation.resumeWithException(failure.cause!!)
+            else -> continuation.resumeWithException(failure)
+        }
+    }
+}
+
+internal const val SPEECH_PACK_MODEL_NAME = "whisper.cpp multilingual base"
+internal const val SPEECH_PACK_MODEL_FILE = "ggml-base.bin"
+internal const val SPEECH_PACK_RUNTIME_RELEASE = "v1.7.6"
+internal const val SPEECH_PACK_RUNTIME_SHA256 = "0d2eca299c248f965bd0341bcb219db4b433c7f0c0ce2200d4df85765e8156a9"
+internal const val SPEECH_PACK_MODEL_SHA256 = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
+internal val SPEECH_PACK_RUNTIME_URI: URI = URI.create(
+    "https://github.com/ggml-org/whisper.cpp/releases/download/$SPEECH_PACK_RUNTIME_RELEASE/whisper-bin-x64.zip",
+)
+internal val SPEECH_PACK_MODEL_URI: URI = URI.create(
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$SPEECH_PACK_MODEL_FILE",
+)
+private const val SPEECH_PACK_MANIFEST = "speech-pack.properties"
+internal const val MAX_RECORDING_SECONDS = 60L

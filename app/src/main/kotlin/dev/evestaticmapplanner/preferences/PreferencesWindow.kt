@@ -36,6 +36,7 @@ import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.control.AiControlStatus
 import dev.evestaticmapplanner.ai.AiProviderSettingsUiState
 import dev.evestaticmapplanner.ai.WebSearchSettingsUiState
+import dev.evestaticmapplanner.ai.VoiceSettingsUiState
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
@@ -45,6 +46,10 @@ import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.embeddedai.SearchTestCheck
 import dev.evestaticmapplanner.embeddedai.SearchTestCheckStatus
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
+import dev.evestaticmapplanner.embeddedai.OPENAI_BUILT_IN_VOICES
+import dev.evestaticmapplanner.embeddedai.VoiceConfig
+import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
+import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.featurepack.FeaturePackInstallationState
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerItem
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
@@ -85,6 +90,7 @@ internal fun PreferencesWindow(
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     aiProviderSettingsState: AiProviderSettingsUiState = AiProviderSettingsUiState(),
     webSearchSettingsState: WebSearchSettingsUiState = WebSearchSettingsUiState(),
+    voiceSettingsState: VoiceSettingsUiState = VoiceSettingsUiState(),
     initialCategory: PreferencesCategory = PreferencesCategory.MAP_DISPLAY,
     onAiProviderViewed: (AiProviderType) -> Unit = {},
     onAiProviderTest: (AiProviderConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
@@ -94,6 +100,11 @@ internal fun PreferencesWindow(
     onWebSearchTest: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
     onWebSearchSave: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
     onWebSearchCredentialDelete: (WebSearchConfig) -> Unit = {},
+    onVoiceViewed: (VoiceConfig) -> Unit = {},
+    onVoiceSave: (VoiceConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onVoiceCredentialDelete: (VoiceConfig) -> Unit = {},
+    onSpeechPackInstall: () -> Unit = {},
+    onSpeechPackRemove: () -> Unit = {},
     aiControlStatus: AiControlStatus,
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
@@ -175,6 +186,13 @@ internal fun PreferencesWindow(
                                 onWebSearchTest = onWebSearchTest,
                                 onWebSearchSave = onWebSearchSave,
                                 onWebSearchCredentialDelete = onWebSearchCredentialDelete,
+                                voiceConfig = preferences.voice,
+                                voiceState = voiceSettingsState,
+                                onVoiceViewed = onVoiceViewed,
+                                onVoiceSave = onVoiceSave,
+                                onVoiceCredentialDelete = onVoiceCredentialDelete,
+                                onSpeechPackInstall = onSpeechPackInstall,
+                                onSpeechPackRemove = onSpeechPackRemove,
                                 aiControlPreferences = preferences.aiControl,
                                 aiControlStatus = aiControlStatus,
                                 aiControlError = aiControlError,
@@ -264,8 +282,16 @@ internal fun AiFeaturesPreferencesContent(
     onWebSearchTest: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
     onWebSearchSave: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
     onWebSearchCredentialDelete: (WebSearchConfig) -> Unit = {},
+    voiceConfig: VoiceConfig = VoiceConfig.Defaults,
+    voiceState: VoiceSettingsUiState = VoiceSettingsUiState(),
+    onVoiceViewed: (VoiceConfig) -> Unit = {},
+    onVoiceSave: (VoiceConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onVoiceCredentialDelete: (VoiceConfig) -> Unit = {},
+    onSpeechPackInstall: () -> Unit = {},
+    onSpeechPackRemove: () -> Unit = {},
 ) {
     var expansion by remember { mutableStateOf(AiFeaturesExpansionState()) }
+    var voiceExpanded by remember { mutableStateOf(false) }
     AiFeaturesAccordionHeader(
         title = "Embedded Assistant",
         expanded = expansion.expanded == AiFeaturesSection.EMBEDDED_ASSISTANT,
@@ -290,6 +316,23 @@ internal fun AiFeaturesPreferencesContent(
             onSave = onWebSearchSave,
             onDeleteCredential = onWebSearchCredentialDelete,
         )
+        HorizontalDivider()
+        AiFeaturesAccordionHeader(
+            title = "Voice I/O",
+            expanded = voiceExpanded,
+            onClick = { voiceExpanded = !voiceExpanded },
+        )
+        if (voiceExpanded) {
+            VoicePreferencesContent(
+                savedConfig = voiceConfig,
+                state = voiceState,
+                onViewed = onVoiceViewed,
+                onSave = onVoiceSave,
+                onDeleteCredential = onVoiceCredentialDelete,
+                onInstallSpeechPack = onSpeechPackInstall,
+                onRemoveSpeechPack = onSpeechPackRemove,
+            )
+        }
     }
     HorizontalDivider()
     AiFeaturesAccordionHeader(
@@ -307,6 +350,262 @@ internal fun AiFeaturesPreferencesContent(
             onReset = onResetAiControl,
         )
     }
+}
+
+@Composable
+internal fun VoicePreferencesContent(
+    savedConfig: VoiceConfig,
+    state: VoiceSettingsUiState,
+    onViewed: (VoiceConfig) -> Unit,
+    onSave: (VoiceConfig, SecretValue?) -> Unit,
+    onDeleteCredential: (VoiceConfig) -> Unit,
+    onInstallSpeechPack: () -> Unit,
+    onRemoveSpeechPack: () -> Unit,
+) {
+    var inputProvider by remember(savedConfig) { mutableStateOf(savedConfig.inputProvider) }
+    var outputProvider by remember(savedConfig) { mutableStateOf(savedConfig.outputProvider) }
+    var autoSend by remember(savedConfig) { mutableStateOf(savedConfig.autoSendAfterTranscription) }
+    var autoRead by remember(savedConfig) { mutableStateOf(savedConfig.readAssistantRepliesAloud) }
+    var sttModel by remember(savedConfig) { mutableStateOf(savedConfig.openAiSttModel) }
+    var ttsModel by remember(savedConfig) { mutableStateOf(savedConfig.openAiTtsModel) }
+    var openAiVoice by remember(savedConfig) { mutableStateOf(savedConfig.openAiVoice) }
+    var windowsVoice by remember(savedConfig) { mutableStateOf(savedConfig.windowsVoice) }
+    var rate by remember(savedConfig) { mutableStateOf(savedConfig.localTtsRate) }
+    var volume by remember(savedConfig) { mutableStateOf(savedConfig.localTtsVolume) }
+    var apiKeyDraft by remember(savedConfig) { mutableStateOf("") }
+    var inputExpanded by remember { mutableStateOf(false) }
+    var outputExpanded by remember { mutableStateOf(false) }
+    var openAiVoiceExpanded by remember { mutableStateOf(false) }
+    var windowsVoiceExpanded by remember { mutableStateOf(false) }
+    val busy = state.isSaving || state.isInstallingSpeechPack
+    val config = remember(
+        inputProvider, outputProvider, autoSend, autoRead, sttModel, ttsModel,
+        openAiVoice, windowsVoice, rate, volume, savedConfig.credentialRef,
+    ) {
+        runCatching {
+            VoiceConfig(
+                inputProvider = inputProvider,
+                outputProvider = outputProvider,
+                autoSendAfterTranscription = autoSend,
+                readAssistantRepliesAloud = autoRead,
+                openAiSttModel = sttModel.trim(),
+                openAiTtsModel = ttsModel.trim(),
+                openAiVoice = openAiVoice,
+                credentialRef = savedConfig.credentialRef,
+                windowsVoice = windowsVoice,
+                localTtsRate = rate,
+                localTtsVolume = volume,
+            )
+        }.getOrNull()
+    }
+    LaunchedEffect(savedConfig) { onViewed(savedConfig) }
+
+    fun draftSecret(): SecretValue? {
+        val normalized = apiKeyDraft.trim()
+        apiKeyDraft = ""
+        return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
+    }
+
+    Text("Voice I/O", style = MaterialTheme.typography.titleMedium)
+    Text("Voice Input", style = MaterialTheme.typography.titleSmall)
+    EnumDropdown(
+        label = "Input Provider",
+        value = inputProvider.displayName,
+        expanded = inputExpanded,
+        onExpandedChange = { inputExpanded = it },
+        enabled = !busy,
+    ) {
+        VoiceInputProvider.entries.forEach { provider ->
+            DropdownMenuItem(
+                text = { Text(provider.displayName) },
+                onClick = { inputProvider = provider; inputExpanded = false },
+            )
+        }
+    }
+    Text(
+        if (inputProvider == VoiceInputProvider.LOCAL) {
+            "Local: Audio stays on this computer."
+        } else if (inputProvider == VoiceInputProvider.OPENAI) {
+            "Cloud OpenAI: Audio is sent to the configured speech provider."
+        } else {
+            "Microphone recording is disabled."
+        },
+        color = EveColors.SecondaryText,
+    )
+    PreferenceCheckbox("Auto-send after transcription", autoSend, enabled = !busy) { autoSend = it }
+
+    Text("Voice Output", style = MaterialTheme.typography.titleSmall)
+    EnumDropdown(
+        label = "Output Provider",
+        value = outputProvider.displayName,
+        expanded = outputExpanded,
+        onExpandedChange = { outputExpanded = it },
+        enabled = !busy,
+    ) {
+        VoiceOutputProvider.entries.forEach { provider ->
+            DropdownMenuItem(
+                text = { Text(provider.displayName) },
+                onClick = { outputProvider = provider; outputExpanded = false },
+            )
+        }
+    }
+    Text(
+        if (outputProvider == VoiceOutputProvider.LOCAL) {
+            "Local: Assistant text is read by the Windows speech engine."
+        } else if (outputProvider == VoiceOutputProvider.OPENAI) {
+            "Cloud OpenAI: Assistant text is sent to the configured speech provider."
+        } else {
+            "Speech playback is disabled."
+        },
+        color = EveColors.SecondaryText,
+    )
+    PreferenceCheckbox("Read assistant replies aloud", autoRead, enabled = !busy) { autoRead = it }
+
+    if (inputProvider == VoiceInputProvider.LOCAL) {
+        Text("Optional Speech Pack", style = MaterialTheme.typography.titleSmall)
+        Text(
+            if (state.speechPack.installed) {
+                "Installed: ${state.speechPack.modelName} (${state.speechPack.modelBytes?.let(::formatBytes) ?: "unknown size"})"
+            } else {
+                "Local speech model not installed."
+            },
+            color = EveColors.SecondaryText,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (state.speechPack.installed) {
+                TextButton(onClick = onRemoveSpeechPack, enabled = !busy) { Text("Remove Speech Pack") }
+            } else {
+                TextButton(onClick = onInstallSpeechPack, enabled = !busy) {
+                    Text(if (state.isInstallingSpeechPack) "Downloading…" else "Download Speech Pack")
+                }
+            }
+            if (state.isInstallingSpeechPack) CircularProgressIndicator()
+        }
+    }
+
+    if (inputProvider == VoiceInputProvider.OPENAI || outputProvider == VoiceOutputProvider.OPENAI) {
+        Text("OpenAI Cloud Voice", style = MaterialTheme.typography.titleSmall)
+        if (inputProvider == VoiceInputProvider.OPENAI) {
+            OutlinedTextField(
+                value = sttModel,
+                onValueChange = { sttModel = it },
+                label = { Text("STT Model") },
+                singleLine = true,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (outputProvider == VoiceOutputProvider.OPENAI) {
+            OutlinedTextField(
+                value = ttsModel,
+                onValueChange = { ttsModel = it },
+                label = { Text("TTS Model") },
+                singleLine = true,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            EnumDropdown(
+                label = "OpenAI Voice",
+                value = openAiVoice,
+                expanded = openAiVoiceExpanded,
+                onExpandedChange = { openAiVoiceExpanded = it },
+                enabled = !busy,
+            ) {
+                OPENAI_BUILT_IN_VOICES.forEach { voice ->
+                    DropdownMenuItem(
+                        text = { Text(voice) },
+                        onClick = { openAiVoice = voice; openAiVoiceExpanded = false },
+                    )
+                }
+            }
+        }
+        OutlinedTextField(
+            value = apiKeyDraft,
+            onValueChange = { apiKeyDraft = it },
+            label = { Text(if (state.credentialSource == null) "OpenAI Voice API Key" else "Replace OpenAI Voice API Key") },
+            placeholder = { Text(if (state.credentialSource == null) "Enter OpenAI Voice API Key" else "Leave blank to keep current Key") },
+            singleLine = true,
+            enabled = !busy,
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            when (state.credentialSource) {
+                AiCredentialSource.SECURE_STORAGE -> "OpenAI Voice API Key: Saved securely"
+                AiCredentialSource.SESSION_ONLY -> "OpenAI Voice API Key: This session only"
+                AiCredentialSource.ENVIRONMENT -> "Credential: OPENAI_VOICE_API_KEY"
+                null -> "OpenAI Voice API Key: Not configured"
+            },
+            color = EveColors.SecondaryText,
+        )
+    }
+
+    if (outputProvider == VoiceOutputProvider.LOCAL) {
+        Text("Windows Speech", style = MaterialTheme.typography.titleSmall)
+        EnumDropdown(
+            label = "Windows Voice",
+            value = windowsVoice ?: "System default",
+            expanded = windowsVoiceExpanded,
+            onExpandedChange = { windowsVoiceExpanded = it },
+            enabled = !busy && state.windowsVoices.isNotEmpty(),
+        ) {
+            DropdownMenuItem(
+                text = { Text("System default") },
+                onClick = { windowsVoice = null; windowsVoiceExpanded = false },
+            )
+            state.windowsVoices.forEach { voice ->
+                DropdownMenuItem(
+                    text = { Text(voice) },
+                    onClick = { windowsVoice = voice; windowsVoiceExpanded = false },
+                )
+            }
+        }
+        Text("Rate: $rate")
+        Slider(value = rate.toFloat(), onValueChange = { rate = it.toInt() }, valueRange = -10f..10f, steps = 19)
+        Text("Volume: $volume")
+        Slider(value = volume.toFloat(), onValueChange = { volume = it.toInt() }, valueRange = 0f..100f, steps = 99)
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(
+            onClick = { config?.let { onSave(it, draftSecret()) } },
+            enabled = !busy && config != null,
+        ) { Text("Save Voice Settings") }
+        TextButton(
+            onClick = { config?.let(onDeleteCredential) },
+            enabled = !busy && state.credentialSource in setOf(
+                AiCredentialSource.SECURE_STORAGE,
+                AiCredentialSource.SESSION_ONLY,
+            ),
+        ) { Text("Delete Voice API Key") }
+        if (state.isSaving) CircularProgressIndicator()
+    }
+    state.message?.let { Text(it, color = EveColors.SecondaryText) }
+    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+}
+
+@Composable
+private fun EnumDropdown(
+    label: String,
+    value: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    enabled: Boolean,
+    content: @Composable () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label)
+        Box {
+            TextButton(onClick = { onExpandedChange(true) }, enabled = enabled) { Text("$value ▾") }
+            DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) { content() }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> "%.1f MiB".format(Locale.ROOT, bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> "%.1f KiB".format(Locale.ROOT, bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 @Composable

@@ -76,14 +76,22 @@ import dev.evestaticmapplanner.ui.EveWindowChrome
 import dev.evestaticmapplanner.ui.EveWindowSurface
 
 @Composable
-fun EmbeddedAiAssistantWindow(
+internal fun EmbeddedAiAssistantWindow(
     controller: EmbeddedAiController,
+    voiceController: VoiceController,
     providerStatus: AiAssistantProviderStatus,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val state by controller.state.collectAsState()
     val confirmation by controller.confirmation.collectAsState()
+    val voiceState by voiceController.state.collectAsState()
+    val completedAssistantMessage = state.chatSession.messages.lastOrNull {
+        it.role == EmbeddedAiMessageRole.ASSISTANT && it.status == EmbeddedAiMessageStatus.COMPLETE
+    }
+    LaunchedEffect(completedAssistantMessage?.id) {
+        completedAssistantMessage?.let { voiceController.assistantMessageCompleted(it.id, it.content) }
+    }
 
     Window(
         onCloseRequest = {
@@ -99,14 +107,22 @@ fun EmbeddedAiAssistantWindow(
                 state = state,
                 confirmation = confirmation,
                 providerStatus = providerStatus,
+                voiceState = voiceState,
                 onSend = controller::send,
                 onCancel = controller::cancel,
-                onNewChat = controller::newChat,
+                onNewChat = {
+                    voiceController.onNewChat()
+                    controller.newChat()
+                },
                 onSelectChat = controller::selectChat,
                 onRenameChat = controller::renameChat,
                 onOpenSettings = onOpenSettings,
                 onApprove = controller::approveAction,
                 onDeny = controller::denyAction,
+                onMicrophone = voiceController::microphonePressed,
+                onCancelVoice = voiceController::cancelVoiceActivity,
+                onSpeak = voiceController::speak,
+                onStopSpeaking = voiceController::stopPlayback,
             )
         }
     }
@@ -117,6 +133,7 @@ internal fun EmbeddedAiAssistantContent(
     state: EmbeddedAiUiState,
     confirmation: AiActionConfirmation?,
     providerStatus: AiAssistantProviderStatus,
+    voiceState: VoiceUiState = VoiceUiState(),
     onSend: (String) -> Unit,
     onCancel: () -> Unit,
     onNewChat: () -> Unit,
@@ -125,6 +142,10 @@ internal fun EmbeddedAiAssistantContent(
     onOpenSettings: () -> Unit,
     onApprove: (String) -> Boolean,
     onDeny: (String) -> Boolean,
+    onMicrophone: (((String, Boolean) -> Unit) -> Unit) = {},
+    onCancelVoice: () -> Unit = {},
+    onSpeak: (String, String) -> Unit = { _, _ -> },
+    onStopSpeaking: () -> Unit = {},
 ) {
     var prompt by remember { mutableStateOf(TextFieldValue()) }
     var sidebarVisible by remember { mutableStateOf(true) }
@@ -208,6 +229,9 @@ internal fun EmbeddedAiAssistantContent(
                                     message = message,
                                     waitingForConfirmation = confirmation != null &&
                                         message.status == EmbeddedAiMessageStatus.THINKING,
+                                    voiceState = voiceState,
+                                    onSpeak = onSpeak,
+                                    onStopSpeaking = onStopSpeaking,
                                 )
                             }
                         }
@@ -253,6 +277,29 @@ internal fun EmbeddedAiAssistantContent(
                         expanded = sidebarVisible,
                         onClick = { sidebarVisible = !sidebarVisible },
                     )
+                    TextButton(
+                        onClick = {
+                            onMicrophone { transcript, autoSend ->
+                                if (autoSend && inputEnabled) {
+                                    prompt = TextFieldValue()
+                                    onSend(transcript)
+                                } else {
+                                    prompt = TextFieldValue(transcript)
+                                    inputFocusRequester.requestFocus()
+                                }
+                            }
+                        },
+                        enabled = voiceState.activity in setOf(VoiceActivity.IDLE, VoiceActivity.RECORDING),
+                        modifier = Modifier.padding(start = 8.dp).testTag(AI_MICROPHONE_BUTTON_TEST_TAG),
+                    ) {
+                        Text(if (voiceState.recording) "Stop recording" else "Microphone")
+                    }
+                    if (voiceState.activity != VoiceActivity.IDLE) {
+                        TextButton(
+                            onClick = onCancelVoice,
+                            modifier = Modifier.padding(start = 8.dp).testTag(AI_CANCEL_VOICE_TEST_TAG),
+                        ) { Text("Cancel voice") }
+                    }
                     Box(Modifier.weight(1f))
                     if (state.isLoading) CircularProgressIndicator(modifier = Modifier.padding(end = 10.dp))
                     Button(
@@ -264,6 +311,12 @@ internal fun EmbeddedAiAssistantContent(
                         enabled = state.isLoading,
                         modifier = Modifier.padding(start = 8.dp),
                     ) { Text("Cancel") }
+                }
+                voiceState.message?.let {
+                    Text(
+                        it,
+                        color = if (voiceState.errorCode == null) EveColors.SecondaryText else MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }
@@ -463,7 +516,13 @@ private fun ChatSidebarChevronButton(
 }
 
 @Composable
-private fun ChatMessageBubble(message: EmbeddedAiMessage, waitingForConfirmation: Boolean) {
+private fun ChatMessageBubble(
+    message: EmbeddedAiMessage,
+    waitingForConfirmation: Boolean,
+    voiceState: VoiceUiState,
+    onSpeak: (String, String) -> Unit,
+    onStopSpeaking: () -> Unit,
+) {
     val user = message.role == EmbeddedAiMessageRole.USER
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val bubbleMaxWidth = maxWidth * 0.76f
@@ -497,6 +556,14 @@ private fun ChatMessageBubble(message: EmbeddedAiMessage, waitingForConfirmation
                         else -> "Thinking…"
                     }
                     AssistantMarkdown(display)
+                    if (message.status == EmbeddedAiMessageStatus.COMPLETE && message.content.isNotBlank()) {
+                        val isThisPlaying = voiceState.playingMessageId == message.id &&
+                            voiceState.activity in setOf(VoiceActivity.SYNTHESIZING, VoiceActivity.PLAYING)
+                        TextButton(
+                            onClick = { if (isThisPlaying) onStopSpeaking() else onSpeak(message.id, message.content) },
+                            modifier = Modifier.testTag("$AI_SPEAK_MESSAGE_TEST_TAG_PREFIX-${message.id}"),
+                        ) { Text(if (isThisPlaying) "Stop" else "Read aloud") }
+                    }
                 }
             }
         }
@@ -583,6 +650,9 @@ internal const val AI_RENAME_SESSION_TEST_TAG_PREFIX = "embedded-ai-rename-sessi
 internal const val AI_RENAME_INPUT_TEST_TAG = "embedded-ai-rename-input"
 internal const val AI_CONFIRMATION_DIALOG_TEST_TAG = "embedded-ai-confirmation-dialog"
 internal const val AI_CONFIRMATION_CANCEL_TEST_TAG = "embedded-ai-confirmation-cancel"
+internal const val AI_MICROPHONE_BUTTON_TEST_TAG = "embedded-ai-microphone"
+internal const val AI_CANCEL_VOICE_TEST_TAG = "embedded-ai-cancel-voice"
+internal const val AI_SPEAK_MESSAGE_TEST_TAG_PREFIX = "embedded-ai-speak-message"
 
 private val CHAT_SIDEBAR_WIDTH = 210.dp
 private val CHAT_SIDEBAR_CHEVRON_SIZE = 24.dp

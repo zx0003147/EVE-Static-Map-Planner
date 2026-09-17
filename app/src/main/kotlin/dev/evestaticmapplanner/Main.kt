@@ -30,6 +30,13 @@ import dev.evestaticmapplanner.ai.EmbeddedAiAssistantWindow
 import dev.evestaticmapplanner.ai.AiAssistantProviderStatus
 import dev.evestaticmapplanner.ai.AiProviderSettingsController
 import dev.evestaticmapplanner.ai.WebSearchSettingsController
+import dev.evestaticmapplanner.ai.JavaSoundVoiceAudioPlayer
+import dev.evestaticmapplanner.ai.MicrophoneWavRecorder
+import dev.evestaticmapplanner.ai.SpeechPackManager
+import dev.evestaticmapplanner.ai.VoiceController
+import dev.evestaticmapplanner.ai.VoiceSettingsController
+import dev.evestaticmapplanner.ai.WhisperCppTranscriber
+import dev.evestaticmapplanner.ai.WindowsSpeechSynthesizer
 import dev.evestaticmapplanner.ai.WindowsDpapiAiCredentialStore
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
@@ -69,6 +76,7 @@ import dev.evestaticmapplanner.embeddedai.BraveWebSearchClient
 import dev.evestaticmapplanner.embeddedai.DefaultAiClientFactory
 import dev.evestaticmapplanner.embeddedai.InMemoryAiCredentialStore
 import dev.evestaticmapplanner.embeddedai.KoogAiConnectionTester
+import dev.evestaticmapplanner.embeddedai.OpenAiVoiceClient
 import dev.evestaticmapplanner.embeddedai.SavedOrEnvironmentAiProviderConfigSource
 import dev.evestaticmapplanner.embeddedai.UnavailableAiCredentialStore
 import dev.evestaticmapplanner.embeddedai.WebSearchConfigSource
@@ -532,6 +540,38 @@ private fun FrameWindowScope.ReadyApplication(
             diagnostics = AppDiagnostics::info,
         )
     }
+    val speechPackManager = remember(configuration) { SpeechPackManager() }
+    val windowsSpeechSynthesizer = remember(configuration) { WindowsSpeechSynthesizer() }
+    val openAiVoiceClient = remember(configuration) { OpenAiVoiceClient() }
+    val voiceController = remember(configuration, mapViewModel, aiCredentialResolver, openAiVoiceClient) {
+        VoiceController(
+            configSource = { mapViewModel.state.value.appPreferences.voice },
+            credentialResolver = aiCredentialResolver,
+            cloudVoiceClient = openAiVoiceClient,
+            recorder = MicrophoneWavRecorder(),
+            localTranscriber = WhisperCppTranscriber(speechPackManager),
+            localSynthesizer = windowsSpeechSynthesizer,
+            audioPlayer = JavaSoundVoiceAudioPlayer(),
+        )
+    }
+    val voiceSettingsController = remember(
+        configuration,
+        aiSecureCredentialStore,
+        aiSessionCredentialStore,
+        aiCredentialResolver,
+        speechPackManager,
+        windowsSpeechSynthesizer,
+        mapViewModel,
+    ) {
+        VoiceSettingsController(
+            secureStore = aiSecureCredentialStore,
+            sessionStore = aiSessionCredentialStore,
+            credentialResolver = aiCredentialResolver,
+            speechPackManager = speechPackManager,
+            localSynthesizer = windowsSpeechSynthesizer,
+            persistConfig = mapViewModel::updateVoiceConfig,
+        )
+    }
     val controlLifecycle = remember(configuration, mapControlCoordinator) {
         AiMapControlLifecycleController(
             discoveryRoot = ApplicationDirectories.root().resolve("control"),
@@ -586,6 +626,8 @@ private fun FrameWindowScope.ReadyApplication(
         embeddedAiController,
         aiProviderSettingsController,
         webSearchSettingsController,
+        voiceController,
+        voiceSettingsController,
         aiSessionCredentialStore,
         mapControlCoordinator,
         controlServiceScope,
@@ -610,6 +652,8 @@ private fun FrameWindowScope.ReadyApplication(
                 staticDataViewModel::close,
                 aiProviderSettingsController::close,
                 webSearchSettingsController::close,
+                voiceController::close,
+                voiceSettingsController::close,
                 aiSessionCredentialStore::close,
             ),
             closeDiagnostics = AppDiagnostics::close,
@@ -631,6 +675,7 @@ private fun FrameWindowScope.ReadyApplication(
     val mapState by mapViewModel.state.collectAsState()
     val aiProviderSettingsState by aiProviderSettingsController.state.collectAsState()
     val webSearchSettingsState by webSearchSettingsController.state.collectAsState()
+    val voiceSettingsState by voiceSettingsController.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
     val miniMapHudState by miniMapHudController.state.collectAsState()
@@ -901,6 +946,7 @@ private fun FrameWindowScope.ReadyApplication(
         val effectiveAiConfig = mapState.appPreferences.aiProvider ?: aiConfigSource.current()
         EmbeddedAiAssistantWindow(
             controller = embeddedAiController,
+            voiceController = voiceController,
             providerStatus = AiAssistantProviderStatus(
                 providerType = effectiveAiConfig?.providerType,
                 modelId = effectiveAiConfig?.modelId,
@@ -910,7 +956,10 @@ private fun FrameWindowScope.ReadyApplication(
                 preferencesInitialCategory = PreferencesCategory.AI_FEATURES
                 showPreferences = true
             },
-            onDismiss = { showEmbeddedAi = false },
+            onDismiss = {
+                voiceController.onAssistantWindowClosed()
+                showEmbeddedAi = false
+            },
         )
     }
     if (showPreferences) {
@@ -920,6 +969,7 @@ private fun FrameWindowScope.ReadyApplication(
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
             aiProviderSettingsState = aiProviderSettingsState,
             webSearchSettingsState = webSearchSettingsState,
+            voiceSettingsState = voiceSettingsState,
             initialCategory = preferencesInitialCategory,
             onAiProviderViewed = aiProviderSettingsController::refresh,
             onAiProviderTest = aiProviderSettingsController::test,
@@ -929,6 +979,11 @@ private fun FrameWindowScope.ReadyApplication(
             onWebSearchTest = webSearchSettingsController::test,
             onWebSearchSave = webSearchSettingsController::save,
             onWebSearchCredentialDelete = webSearchSettingsController::deleteCredential,
+            onVoiceViewed = voiceSettingsController::refresh,
+            onVoiceSave = voiceSettingsController::save,
+            onVoiceCredentialDelete = voiceSettingsController::deleteCredential,
+            onSpeechPackInstall = voiceSettingsController::installSpeechPack,
+            onSpeechPackRemove = voiceSettingsController::removeSpeechPack,
             aiControlStatus = aiControlStatus,
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,

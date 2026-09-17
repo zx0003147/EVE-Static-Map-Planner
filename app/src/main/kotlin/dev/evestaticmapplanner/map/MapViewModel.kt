@@ -409,6 +409,22 @@ class MapViewModel(
         }
     }
 
+    suspend fun updateVoiceConfig(
+        config: dev.evestaticmapplanner.embeddedai.VoiceConfig,
+    ): Result<Unit> = withContext(NonCancellable) {
+        preferencesMutation.withLock {
+            settingsSaveJob?.cancel()
+            val next = mutableState.value.appPreferences.copy(voice = config)
+            val saved = withContext(ioDispatcher) { runCatching { preferencesStore.save(next) } }
+            if (saved.isSuccess) {
+                mutableState.update { current ->
+                    current.copy(appPreferences = current.appPreferences.copy(voice = config))
+                }
+            }
+            saved
+        }
+    }
+
     suspend fun updateSharedMapPreferences(preferences: SharedMapPreferences): Result<Unit> = withContext(NonCancellable) {
         preferencesMutation.withLock {
             settingsSaveJob?.cancel()

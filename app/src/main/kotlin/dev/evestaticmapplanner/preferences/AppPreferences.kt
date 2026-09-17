@@ -4,6 +4,10 @@ import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
+import dev.evestaticmapplanner.embeddedai.OPENAI_VOICE_CREDENTIAL_REF
+import dev.evestaticmapplanner.embeddedai.VoiceConfig
+import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
+import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -21,6 +25,7 @@ data class AppPreferences(
         ?.let { mapOf(it.providerType to it) }
         .orEmpty(),
     val webSearch: WebSearchConfig = WebSearchConfig.Defaults,
+    val voice: VoiceConfig = VoiceConfig.Defaults,
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
@@ -266,6 +271,7 @@ class PropertiesPreferencesStore(
             aiProvider = legacyAiProvider,
             aiProviderProfiles = aiProviderProfiles,
             webSearch = properties.webSearchConfig(warningSink),
+            voice = properties.voiceConfig(warningSink),
             overlayVisibility = properties.overlayVisibilityPreferences(),
             sharedMap = SharedMapPreferences(
                 serverUrl = properties.getProperty(KEY_SHARED_MAP_SERVER_URL)
@@ -334,6 +340,7 @@ class PropertiesPreferencesStore(
                 aiProvider?.let { put(it.providerType, it) }
             }
             val webSearch = preferences.webSearch
+            val voice = preferences.voice
             val overlayVisibility = preferences.overlayVisibility
             val sharedMap = preferences.sharedMap
             val miniMap = preferences.miniMap
@@ -383,6 +390,17 @@ class PropertiesPreferencesStore(
                 }
                 setProperty(KEY_WEB_SEARCH_ENABLED, webSearch.enabled.toString())
                 setProperty(KEY_WEB_SEARCH_CREDENTIAL_REF, webSearch.credentialRef.value)
+                setProperty(KEY_VOICE_INPUT_PROVIDER, voice.inputProvider.name)
+                setProperty(KEY_VOICE_OUTPUT_PROVIDER, voice.outputProvider.name)
+                setProperty(KEY_VOICE_AUTO_SEND, voice.autoSendAfterTranscription.toString())
+                setProperty(KEY_VOICE_AUTO_READ, voice.readAssistantRepliesAloud.toString())
+                setProperty(KEY_VOICE_STT_MODEL, voice.openAiSttModel)
+                setProperty(KEY_VOICE_TTS_MODEL, voice.openAiTtsModel)
+                setProperty(KEY_VOICE_OPENAI_VOICE, voice.openAiVoice)
+                setProperty(KEY_VOICE_CREDENTIAL_REF, voice.credentialRef.value)
+                voice.windowsVoice?.let { setProperty(KEY_VOICE_WINDOWS_VOICE, it) }
+                setProperty(KEY_VOICE_LOCAL_TTS_RATE, voice.localTtsRate.toString())
+                setProperty(KEY_VOICE_LOCAL_TTS_VOLUME, voice.localTtsVolume.toString())
                 setProperty(
                     KEY_OVERLAY_DISABLED_LAYERS,
                     overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
@@ -516,6 +534,34 @@ private fun Properties.webSearchConfig(warningSink: (String) -> Unit): WebSearch
     WebSearchConfig.Defaults
 }
 
+private fun Properties.voiceConfig(warningSink: (String) -> Unit): VoiceConfig = runCatching {
+    val defaults = VoiceConfig.Defaults
+    VoiceConfig(
+        inputProvider = getProperty(KEY_VOICE_INPUT_PROVIDER)?.let(VoiceInputProvider::valueOf)
+            ?: defaults.inputProvider,
+        outputProvider = getProperty(KEY_VOICE_OUTPUT_PROVIDER)?.let(VoiceOutputProvider::valueOf)
+            ?: defaults.outputProvider,
+        autoSendAfterTranscription = validBoolean(KEY_VOICE_AUTO_SEND, defaults.autoSendAfterTranscription),
+        readAssistantRepliesAloud = validBoolean(KEY_VOICE_AUTO_READ, defaults.readAssistantRepliesAloud),
+        openAiSttModel = getProperty(KEY_VOICE_STT_MODEL)?.trim()?.takeIf(String::isNotEmpty)
+            ?: defaults.openAiSttModel,
+        openAiTtsModel = getProperty(KEY_VOICE_TTS_MODEL)?.trim()?.takeIf(String::isNotEmpty)
+            ?: defaults.openAiTtsModel,
+        openAiVoice = getProperty(KEY_VOICE_OPENAI_VOICE)?.trim()?.takeIf(String::isNotEmpty)
+            ?: defaults.openAiVoice,
+        credentialRef = getProperty(KEY_VOICE_CREDENTIAL_REF)?.trim()?.takeIf(String::isNotEmpty)
+            ?.let(::AiCredentialRef) ?: OPENAI_VOICE_CREDENTIAL_REF,
+        windowsVoice = getProperty(KEY_VOICE_WINDOWS_VOICE)?.trim()?.takeIf(String::isNotEmpty),
+        localTtsRate = getProperty(KEY_VOICE_LOCAL_TTS_RATE)?.toIntOrNull()?.takeIf { it in -10..10 }
+            ?: defaults.localTtsRate,
+        localTtsVolume = getProperty(KEY_VOICE_LOCAL_TTS_VOLUME)?.toIntOrNull()?.takeIf { it in 0..100 }
+            ?: defaults.localTtsVolume,
+    )
+}.getOrElse {
+    warningSink("Voice I/O settings are invalid and were disabled")
+    VoiceConfig.Defaults
+}
+
 private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferences {
     val disabledLayers = getProperty(KEY_OVERLAY_DISABLED_LAYERS)
         ?.split(',')
@@ -531,8 +577,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "4"
-private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", SETTINGS_VERSION)
+const val SETTINGS_VERSION = "5"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -589,6 +635,17 @@ private const val KEY_AI_PROVIDER_TIMEOUT_SECONDS = "aiProvider.requestTimeoutSe
 private const val KEY_AI_PROVIDER_PROFILES_PREFIX = "aiProviderProfiles."
 private const val KEY_WEB_SEARCH_ENABLED = "webSearch.enabled"
 private const val KEY_WEB_SEARCH_CREDENTIAL_REF = "webSearch.credentialRef"
+private const val KEY_VOICE_INPUT_PROVIDER = "voice.inputProvider"
+private const val KEY_VOICE_OUTPUT_PROVIDER = "voice.outputProvider"
+private const val KEY_VOICE_AUTO_SEND = "voice.autoSendAfterTranscription"
+private const val KEY_VOICE_AUTO_READ = "voice.readAssistantRepliesAloud"
+private const val KEY_VOICE_STT_MODEL = "voice.openAiSttModel"
+private const val KEY_VOICE_TTS_MODEL = "voice.openAiTtsModel"
+private const val KEY_VOICE_OPENAI_VOICE = "voice.openAiVoice"
+private const val KEY_VOICE_CREDENTIAL_REF = "voice.credentialRef"
+private const val KEY_VOICE_WINDOWS_VOICE = "voice.windowsVoice"
+private const val KEY_VOICE_LOCAL_TTS_RATE = "voice.localTtsRate"
+private const val KEY_VOICE_LOCAL_TTS_VOLUME = "voice.localTtsVolume"
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"

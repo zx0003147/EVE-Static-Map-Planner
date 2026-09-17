@@ -408,6 +408,41 @@ class EmbeddedAiAssistantWindowTest {
         assertEquals("action-1", denied)
     }
 
+    @Test
+    fun `voice controls expose recording cancel transcript draft and assistant replay`() = runComposeUiTest {
+        var voiceCancelled = false
+        var spoken: Pair<String, String>? = null
+        val state = chatState(message("voice-answer", EmbeddedAiMessageRole.ASSISTANT, "Route complete"))
+        setContent {
+            MaterialTheme {
+                Box(Modifier.requiredSize(680.dp, 640.dp)) {
+                    EmbeddedAiAssistantContent(
+                        state = state,
+                        confirmation = null,
+                        providerStatus = READY_PROVIDER,
+                        voiceState = VoiceUiState(VoiceActivity.RECORDING, message = "Recording…"),
+                        onSend = {},
+                        onCancel = {},
+                        onNewChat = {},
+                        onOpenSettings = {},
+                        onApprove = { true },
+                        onDeny = { true },
+                        onMicrophone = { callback -> callback("Jita 到 Amarr 几跳？", false) },
+                        onCancelVoice = { voiceCancelled = true },
+                        onSpeak = { id, text -> spoken = id to text },
+                    )
+                }
+            }
+        }
+
+        onNodeWithTag(AI_MICROPHONE_BUTTON_TEST_TAG).assertTextContains("Stop recording").performClick()
+        onNodeWithTag(AI_CHAT_INPUT_TEST_TAG).assertTextContains("Jita 到 Amarr 几跳？")
+        onNodeWithTag(AI_CANCEL_VOICE_TEST_TAG).performClick()
+        assertTrue(voiceCancelled)
+        onNodeWithTag("$AI_SPEAK_MESSAGE_TEST_TAG_PREFIX-voice-answer").performClick()
+        assertEquals("voice-answer" to "Route complete", spoken)
+    }
+
     private fun androidx.compose.ui.test.ComposeUiTest.setAssistantContent(state: EmbeddedAiUiState) {
         setContent {
             MaterialTheme {
