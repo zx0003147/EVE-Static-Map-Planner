@@ -95,11 +95,21 @@ internal fun EmbeddedAiAssistantWindow(
     val state by controller.state.collectAsState()
     val confirmation by controller.confirmation.collectAsState()
     val voiceState by voiceController.state.collectAsState()
-    val completedAssistantMessage = state.chatSession.messages.lastOrNull {
-        it.role == EmbeddedAiMessageRole.ASSISTANT && it.status == EmbeddedAiMessageStatus.COMPLETE
+    val readableAssistantMessage = state.chatSession.messages.lastOrNull {
+        it.role == EmbeddedAiMessageRole.ASSISTANT && it.status != EmbeddedAiMessageStatus.ERROR
     }
-    LaunchedEffect(completedAssistantMessage?.id) {
-        completedAssistantMessage?.let { voiceController.assistantMessageCompleted(it.id, it.content) }
+    LaunchedEffect(
+        readableAssistantMessage?.id,
+        readableAssistantMessage?.status,
+        readableAssistantMessage?.content,
+    ) {
+        readableAssistantMessage?.let {
+            voiceController.assistantMessageUpdated(
+                messageId = it.id,
+                accumulatedMarkdown = it.content,
+                complete = it.status == EmbeddedAiMessageStatus.COMPLETE,
+            )
+        }
     }
 
     Window(

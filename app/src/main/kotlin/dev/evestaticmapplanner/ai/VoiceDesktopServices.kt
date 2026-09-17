@@ -10,6 +10,8 @@ import dev.evestaticmapplanner.embeddedai.SpeechToTextProvider
 import dev.evestaticmapplanner.embeddedai.SpeechTranscript
 import dev.evestaticmapplanner.embeddedai.SynthesizedAudio
 import dev.evestaticmapplanner.embeddedai.TextToSpeechProvider
+import dev.evestaticmapplanner.embeddedai.TtsTextNormalizer
+import java.io.ByteArrayOutputStream
 import java.io.BufferedInputStream
 import java.net.URI
 import java.net.http.HttpClient
@@ -27,6 +29,8 @@ import java.util.Properties
 import java.util.UUID
 import java.util.concurrent.CompletionException
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
 import javax.sound.sampled.AudioFileFormat
 import javax.sound.sampled.AudioFormat
@@ -464,70 +468,389 @@ internal class WindowsSpeechSynthesizer : SpeechSynthesizer, TextToSpeechProvide
 
 internal interface VoiceAudioPlayer : AutoCloseable {
     fun play(wav: ByteArray, onFinished: () -> Unit = {})
+    fun play(wav: ByteArray, context: VoiceAudioPlaybackContext, onFinished: () -> Unit = {}) =
+        play(wav, onFinished)
     fun stop()
 }
 
-internal class JavaSoundVoiceAudioPlayer : VoiceAudioPlayer {
-    private var clip: Clip? = null
+internal data class VoiceAudioPlaybackContext(
+    val playbackInstanceId: String,
+    val diagnosticSink: (AudioPlayerDebugSnapshot) -> Unit = {},
+)
+
+internal data class AudioPlayerDebugSnapshot(
+    val phase: String,
+    val api: String,
+    val playerInstanceId: String,
+    val playbackInstanceId: String,
+    val clipInstanceId: String,
+    val wavByteLength: Int,
+    val wavSha256: String,
+    val riffDeclaredSize: Long?,
+    val dataDeclaredSize: Long?,
+    val sourceFrameLength: Long,
+    val pcmFormat: String,
+    val pcmByteLength: Int,
+    val pcmSha256: String,
+    val sourceStreamOpenCount: Int,
+    val sourceStreamResetCount: Int,
+    val pcmReadCallCount: Int,
+    val pcmReadTotalBytes: Int,
+    val clipPcmTransferCount: Int,
+    val clipPcmTransferByteCount: Int,
+    val clipOpenCount: Int,
+    val clipStartCount: Int,
+    val clipLoopCount: Int,
+    val clipStopCallCount: Int,
+    val clipStopEventCount: Int,
+    val clipCloseCount: Int,
+    val clipFrameLength: Int,
+    val clipFramePosition: Int,
+    val activePlayerCount: Int,
+    val activeClipCount: Int,
+    val failure: String? = null,
+) {
+    fun toSafeLogMessage(): String = buildString {
+        append("AudioPlayer DEBUG: phase=").append(phase)
+        append(", api=").append(api)
+        append(", playerInstanceId=").append(playerInstanceId)
+        append(", playbackInstanceId=").append(playbackInstanceId)
+        append(", clipInstanceId=").append(clipInstanceId)
+        append(", wavBytes=").append(wavByteLength)
+        append(", wavSha256=").append(wavSha256)
+        append(", riffDeclaredSize=").append(riffDeclaredSize)
+        append(", dataDeclaredSize=").append(dataDeclaredSize)
+        append(", sourceFrameLength=").append(sourceFrameLength)
+        append(", pcmBytes=").append(pcmByteLength)
+        append(", pcmSha256=").append(pcmSha256)
+        append(", pcmReads=").append(pcmReadCallCount)
+        append(", pcmReadBytes=").append(pcmReadTotalBytes)
+        append(", clipTransferCount=").append(clipPcmTransferCount)
+        append(", clipTransferBytes=").append(clipPcmTransferByteCount)
+        append(", open/start/loop/stopCall/stopEvent/close=")
+            .append(clipOpenCount).append('/')
+            .append(clipStartCount).append('/')
+            .append(clipLoopCount).append('/')
+            .append(clipStopCallCount).append('/')
+            .append(clipStopEventCount).append('/')
+            .append(clipCloseCount)
+        append(", framePosition/frameLength=").append(clipFramePosition).append('/').append(clipFrameLength)
+        append(", activePlayers/activeClips=").append(activePlayerCount).append('/').append(activeClipCount)
+        failure?.let { append(", failure=").append(it) }
+    }
+}
+
+internal data class DecodedPcmAudio(
+    val format: AudioFormat,
+    val bytes: ByteArray,
+    val sourceFrameLength: Long,
+    val sourceStreamOpenCount: Int,
+    val sourceStreamResetCount: Int,
+    val readCallCount: Int,
+    val riffDeclaredSize: Long?,
+    val dataDeclaredSize: Long?,
+)
+
+internal interface JavaSoundClipHandle {
+    val frameLength: Int
+    val framePosition: Int
+    fun onStop(listener: () -> Unit)
+    fun open(format: AudioFormat, pcm: ByteArray, offset: Int, length: Int)
+    fun start()
+    fun stop()
+    fun close()
+}
+
+internal fun interface JavaSoundClipFactory {
+    fun create(): JavaSoundClipHandle
+}
+
+private class SystemJavaSoundClipHandle(
+    private val delegate: Clip = AudioSystem.getClip(),
+) : JavaSoundClipHandle {
+    override val frameLength: Int get() = delegate.frameLength
+    override val framePosition: Int get() = delegate.framePosition
+
+    override fun onStop(listener: () -> Unit) {
+        delegate.addLineListener { event -> if (event.type == LineEvent.Type.STOP) listener() }
+    }
+
+    override fun open(format: AudioFormat, pcm: ByteArray, offset: Int, length: Int) =
+        delegate.open(format, pcm, offset, length)
+
+    override fun start() = delegate.start()
+    override fun stop() = delegate.stop()
+    override fun close() = delegate.close()
+}
+
+internal class JavaSoundVoiceAudioPlayer(
+    private val clipFactory: JavaSoundClipFactory = JavaSoundClipFactory { SystemJavaSoundClipHandle() },
+    private val diagnosticSink: (AudioPlayerDebugSnapshot) -> Unit = {},
+) : VoiceAudioPlayer {
+    private val playerInstanceId = "java-sound-player-${UUID.randomUUID()}"
+    private var active: ActivePlayback? = null
 
     @Synchronized
     override fun play(wav: ByteArray, onFinished: () -> Unit) {
-        stop()
+        play(
+            wav = wav,
+            context = VoiceAudioPlaybackContext("standalone-${UUID.randomUUID()}"),
+            onFinished = onFinished,
+        )
+    }
+
+    @Synchronized
+    override fun play(wav: ByteArray, context: VoiceAudioPlaybackContext, onFinished: () -> Unit) {
+        stopActive()
+        val decoded = try {
+            decodeWavToPcm(wav)
+        } catch (failure: Exception) {
+            throw playbackFailure(failure)
+        }
+        val clipHandle = try {
+            clipFactory.create()
+        } catch (failure: Exception) {
+            throw playbackFailure(failure)
+        }
+        val state = ActivePlayback(
+            context = context,
+            clipInstanceId = "java-sound-clip-${UUID.randomUUID()}",
+            wav = wav,
+            decoded = decoded,
+            clip = clipHandle,
+            onFinished = onFinished,
+        )
+        active = state
         try {
-            val stream = AudioSystem.getAudioInputStream(wav.inputStream().buffered())
-            val next = AudioSystem.getClip()
-            next.addLineListener { event ->
-                if (event.type == LineEvent.Type.STOP && next.framePosition >= next.frameLength) {
-                    runCatching { next.close() }
-                    synchronized(this) { if (clip === next) clip = null }
-                    onFinished()
-                }
-            }
-            next.open(stream)
-            stream.close()
-            clip = next
-            next.start()
-        } catch (_: Exception) {
-            throw voiceFailure(VoiceErrorCode.AUDIO_PLAYBACK_FAILED, "Audio playback failed.")
+            state.clip.onStop { clipStopped(state) }
+            state.clipOpenCount++
+            state.clipPcmTransferCount++
+            state.clipPcmTransferByteCount += decoded.bytes.size
+            state.clip.open(decoded.format, decoded.bytes, 0, decoded.bytes.size)
+            state.registerActive()
+            emit(state, "OPENED")
+            state.clipStartCount++
+            state.clip.start()
+            emit(state, "STARTED")
+        } catch (failure: Exception) {
+            state.failure = "${failure::class.simpleName}: ${failure.message.orEmpty()}".trim()
+            finish(state, invokeFinished = false, phase = "FAILED")
+            throw playbackFailure(failure)
         }
     }
 
     @Synchronized
     override fun stop() {
-        clip?.let { current ->
-            runCatching { current.stop() }
-            runCatching { current.close() }
-        }
-        clip = null
+        stopActive()
     }
 
     override fun close() = stop()
+
+    fun playLocalDiagnosticWav(path: Path, onFinished: () -> Unit = {}) {
+        play(Files.readAllBytes(path), onFinished)
+    }
+
+    private fun clipStopped(state: ActivePlayback) {
+        var callback: (() -> Unit)? = null
+        synchronized(this) {
+            state.clipStopEventCount++
+            emit(state, "STOP_EVENT")
+            if (active === state && state.clip.framePosition >= state.clip.frameLength) {
+                callback = finish(state, invokeFinished = true, phase = "FINISHED")
+            }
+        }
+        callback?.invoke()
+    }
+
+    private fun stopActive() {
+        val state = active ?: return
+        if (!state.finished.compareAndSet(false, true)) return
+        state.clipStopCallCount++
+        runCatching { state.clip.stop() }
+        closeClip(state)
+        if (active === state) active = null
+        state.unregisterActive()
+        emit(state, "STOPPED")
+    }
+
+    private fun finish(state: ActivePlayback, invokeFinished: Boolean, phase: String): (() -> Unit)? {
+        if (!state.finished.compareAndSet(false, true)) return null
+        closeClip(state)
+        if (active === state) active = null
+        state.unregisterActive()
+        emit(state, phase)
+        return state.onFinished.takeIf { invokeFinished }
+    }
+
+    private fun closeClip(state: ActivePlayback) {
+        state.captureFramePosition()
+        state.clipCloseCount++
+        runCatching { state.clip.close() }
+    }
+
+    private fun emit(state: ActivePlayback, phase: String) {
+        state.captureFramePosition()
+        val snapshot = AudioPlayerDebugSnapshot(
+            phase = phase,
+            api = "javax.sound.sampled.Clip",
+            playerInstanceId = playerInstanceId,
+            playbackInstanceId = state.context.playbackInstanceId,
+            clipInstanceId = state.clipInstanceId,
+            wavByteLength = state.wav.size,
+            wavSha256 = sha256Hex(state.wav),
+            riffDeclaredSize = state.decoded.riffDeclaredSize,
+            dataDeclaredSize = state.decoded.dataDeclaredSize,
+            sourceFrameLength = state.decoded.sourceFrameLength,
+            pcmFormat = state.decoded.format.toString(),
+            pcmByteLength = state.decoded.bytes.size,
+            pcmSha256 = sha256Hex(state.decoded.bytes),
+            sourceStreamOpenCount = state.decoded.sourceStreamOpenCount,
+            sourceStreamResetCount = state.decoded.sourceStreamResetCount,
+            pcmReadCallCount = state.decoded.readCallCount,
+            pcmReadTotalBytes = state.decoded.bytes.size,
+            clipPcmTransferCount = state.clipPcmTransferCount,
+            clipPcmTransferByteCount = state.clipPcmTransferByteCount,
+            clipOpenCount = state.clipOpenCount,
+            clipStartCount = state.clipStartCount,
+            clipLoopCount = state.clipLoopCount,
+            clipStopCallCount = state.clipStopCallCount,
+            clipStopEventCount = state.clipStopEventCount,
+            clipCloseCount = state.clipCloseCount,
+            clipFrameLength = state.lastFrameLength,
+            clipFramePosition = state.lastFramePosition,
+            activePlayerCount = ACTIVE_PLAYBACKS.get(),
+            activeClipCount = ACTIVE_CLIPS.get(),
+            failure = state.failure,
+        )
+        runCatching { diagnosticSink(snapshot) }
+        runCatching { state.context.diagnosticSink(snapshot) }
+    }
+
+    private fun playbackFailure(failure: Exception): VoiceException =
+        voiceFailure(VoiceErrorCode.AUDIO_PLAYBACK_FAILED, "Audio playback failed.").also {
+            it.initCause(failure)
+        }
+
+    private data class ActivePlayback(
+        val context: VoiceAudioPlaybackContext,
+        val clipInstanceId: String,
+        val wav: ByteArray,
+        val decoded: DecodedPcmAudio,
+        val clip: JavaSoundClipHandle,
+        val onFinished: () -> Unit,
+        val finished: AtomicBoolean = AtomicBoolean(),
+        var registeredActive: Boolean = false,
+        var clipPcmTransferCount: Int = 0,
+        var clipPcmTransferByteCount: Int = 0,
+        var clipOpenCount: Int = 0,
+        var clipStartCount: Int = 0,
+        var clipLoopCount: Int = 0,
+        var clipStopCallCount: Int = 0,
+        var clipStopEventCount: Int = 0,
+        var clipCloseCount: Int = 0,
+        var failure: String? = null,
+        var lastFrameLength: Int = 0,
+        var lastFramePosition: Int = 0,
+    ) {
+        fun captureFramePosition() {
+            runCatching { clip.frameLength }.getOrNull()?.takeIf { it > 0 }?.let { lastFrameLength = it }
+            runCatching { clip.framePosition }.getOrNull()?.let { position ->
+                if (position > lastFramePosition || lastFramePosition == 0) lastFramePosition = position
+            }
+        }
+
+        fun registerActive() {
+            if (registeredActive) return
+            registeredActive = true
+            ACTIVE_PLAYBACKS.incrementAndGet()
+            ACTIVE_CLIPS.incrementAndGet()
+        }
+
+        fun unregisterActive() {
+            if (!registeredActive) return
+            registeredActive = false
+            ACTIVE_PLAYBACKS.decrementAndGet()
+            ACTIVE_CLIPS.decrementAndGet()
+        }
+    }
+
+    private companion object {
+        val ACTIVE_PLAYBACKS = AtomicInteger()
+        val ACTIVE_CLIPS = AtomicInteger()
+    }
 }
 
-internal fun assistantMarkdownToSpeech(markdown: String): String {
-    val sourcesHeading = Regex("""(?im)^Sources:\s*$""").find(markdown)
-    val sourcesText = sourcesHeading?.let { markdown.substring(it.range.last + 1) }.orEmpty()
-    val sourceCount = Regex("""(?m)^\s*-\s+\[[^]]+]\(https?://[^)]+\)\s*$""")
-        .findAll(sourcesText)
-        .count()
-    val withoutSources = sourcesHeading?.let { markdown.substring(0, it.range.first) } ?: markdown
-    val plain = withoutSources
-        .replace(Regex("(?s)```.*?```"), " ")
-        .replace(Regex("`([^`]+)`"), "$1")
-        .replace(Regex("""!?\[([^]]+)]\(https?://[^)]+\)"""), "$1")
-        .replace(Regex("""https?://\S+"""), " ")
-        .replace(Regex("""(?m)^\s{0,3}#{1,6}\s*"""), "")
-        .replace(Regex("[*_~>]"), "")
-        .replace(Regex("""(?m)^\s*[-+]\s+"""), "")
-        .replace(Regex("""\s+"""), " ")
-        .trim()
-    if (sourceCount == 0) return plain
-    val sourceNotice = if (plain.any { it.code in 0x4E00..0x9FFF }) {
-        "我找到了${sourceCount}个来源。"
+internal fun decodeWavToPcm(wav: ByteArray): DecodedPcmAudio {
+    val source = AudioSystem.getAudioInputStream(BufferedInputStream(wav.inputStream()))
+    val playbackFormat = source.format.toClipPcmFormat()
+    val pcmStream = if (playbackFormat.matches(source.format)) {
+        source
     } else {
-        "I found $sourceCount ${if (sourceCount == 1) "source" else "sources"}."
+        AudioSystem.getAudioInputStream(playbackFormat, source)
     }
-    return listOf(plain, sourceNotice).filter(String::isNotBlank).joinToString(" ")
+    return try {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var reads = 0
+        while (true) {
+            val count = pcmStream.read(buffer)
+            if (count < 0) break
+            if (count == 0) continue
+            output.write(buffer, 0, count)
+            reads++
+        }
+        val pcm = output.toByteArray()
+        require(pcm.isNotEmpty()) { "WAV contains no PCM audio" }
+        require(playbackFormat.frameSize > 0 && pcm.size % playbackFormat.frameSize == 0) {
+            "PCM byte length is not aligned to the audio frame size"
+        }
+        DecodedPcmAudio(
+            format = playbackFormat,
+            bytes = pcm,
+            sourceFrameLength = source.frameLength,
+            sourceStreamOpenCount = 1,
+            sourceStreamResetCount = 0,
+            readCallCount = reads,
+            riffDeclaredSize = wav.riffUInt32(4),
+            dataDeclaredSize = wav.takeIf { it.ascii(36, 4) == "data" }?.riffUInt32(40),
+        )
+    } finally {
+        runCatching { if (pcmStream !== source) pcmStream.close() }
+        runCatching { source.close() }
+    }
+}
+
+private fun AudioFormat.toClipPcmFormat(): AudioFormat {
+    if (encoding == AudioFormat.Encoding.PCM_SIGNED || encoding == AudioFormat.Encoding.PCM_UNSIGNED) return this
+    val channels = channels.coerceAtLeast(1)
+    return AudioFormat(
+        AudioFormat.Encoding.PCM_SIGNED,
+        sampleRate,
+        16,
+        channels,
+        channels * 2,
+        sampleRate,
+        false,
+    )
+}
+
+private fun ByteArray.riffUInt32(offset: Int): Long? {
+    if (size < offset + 4 || ascii(0, 4) != "RIFF" || ascii(8, 4) != "WAVE") return null
+    return (this[offset].toLong() and 0xff) or
+        ((this[offset + 1].toLong() and 0xff) shl 8) or
+        ((this[offset + 2].toLong() and 0xff) shl 16) or
+        ((this[offset + 3].toLong() and 0xff) shl 24)
+}
+
+private fun ByteArray.ascii(offset: Int, length: Int): String =
+    if (size >= offset + length) copyOfRange(offset, offset + length).toString(Charsets.US_ASCII) else ""
+
+private fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes)
+    .joinToString("") { "%02x".format(it) }
+
+internal fun assistantMarkdownToSpeech(markdown: String): String {
+    return TtsTextNormalizer.normalize(markdown)
 }
 
 internal fun defaultSpeechRoot(environment: (String) -> String? = System::getenv): Path {

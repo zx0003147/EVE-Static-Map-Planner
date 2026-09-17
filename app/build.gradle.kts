@@ -147,6 +147,7 @@ tasks.test {
     dependsOn(featurePackFixture)
     val externalSovereigntyPackJar = sovereigntyPackJar.orNull?.takeIf(String::isNotBlank)
     val externalEsiPackJar = esiPackJar.orNull?.takeIf(String::isNotBlank)
+    val alibabaTtsDiagnosticSmoke = providers.gradleProperty("alibabaTtsDiagnosticSmoke").orNull
     if (externalSovereigntyPackJar == null) {
         exclude("**/SovereigntyPackIntegrationTest.class")
     } else {
@@ -162,6 +163,9 @@ tasks.test {
     }
     doFirst {
         systemProperty("feature.pack.fixture.jar", featurePackFixture.singleFile.absolutePath)
+        alibabaTtsDiagnosticSmoke?.let {
+            systemProperty("eve.alibaba.tts.diagnostic.smoke", it)
+        }
         externalSovereigntyPackJar?.let { configuredPath ->
             systemProperty("sovereignty.pack.jar", file(configuredPath).absolutePath)
         }

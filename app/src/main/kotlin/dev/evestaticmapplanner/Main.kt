@@ -33,6 +33,7 @@ import dev.evestaticmapplanner.ai.WebSearchSettingsController
 import dev.evestaticmapplanner.ai.JavaSoundVoiceAudioPlayer
 import dev.evestaticmapplanner.ai.MicrophoneWavRecorder
 import dev.evestaticmapplanner.ai.SpeechPackManager
+import dev.evestaticmapplanner.ai.defaultTtsDiagnosticCapture
 import dev.evestaticmapplanner.ai.VoiceController
 import dev.evestaticmapplanner.ai.VoiceSettingsController
 import dev.evestaticmapplanner.ai.WhisperCppTranscriber
@@ -554,8 +555,23 @@ private fun FrameWindowScope.ReadyApplication(
         WhisperCppTranscriber(speechPackManager)
     }
     val openAiVoiceClient = remember(configuration) { OpenAiVoiceClient() }
-    val alibabaSpeechClient = remember(configuration) { AlibabaSpeechClient() }
-    val voiceAudioPlayer = remember(configuration) { JavaSoundVoiceAudioPlayer() }
+    val alibabaSpeechClient = remember(configuration) {
+        AlibabaSpeechClient(diagnostics = { AppDiagnostics.warning(it) })
+    }
+    val ttsDiagnosticCapture = remember(configuration) {
+        defaultTtsDiagnosticCapture()?.also { capture ->
+            AppDiagnostics.info(
+                "TTS Diagnostic Mode enabled: playback=" +
+                    (if (capture.isolatePlayback) "SUPPRESSED" else "ENABLED") + ", " +
+                    "artifactRoot=${capture.root.toAbsolutePath().normalize()}",
+            )
+        }
+    }
+    val voiceAudioPlayer = remember(configuration, ttsDiagnosticCapture) {
+        JavaSoundVoiceAudioPlayer(diagnosticSink = { snapshot ->
+            AppDiagnostics.debug(snapshot.toSafeLogMessage())
+        })
+    }
     val speechProviderFactory = remember(
         configuration,
         aiCredentialResolver,
@@ -577,12 +593,20 @@ private fun FrameWindowScope.ReadyApplication(
             ),
         )
     }
-    val voiceController = remember(configuration, mapViewModel, speechProviderFactory, voiceAudioPlayer) {
+    val voiceController = remember(
+        configuration,
+        mapViewModel,
+        speechProviderFactory,
+        voiceAudioPlayer,
+        ttsDiagnosticCapture,
+    ) {
         VoiceController(
             configSource = { mapViewModel.state.value.appPreferences.voice },
             providerFactory = speechProviderFactory,
             recorder = MicrophoneWavRecorder(),
             audioPlayer = voiceAudioPlayer,
+            diagnostics = AppDiagnostics::info,
+            ttsDiagnosticCapture = ttsDiagnosticCapture,
         )
     }
     val voiceSettingsController = remember(

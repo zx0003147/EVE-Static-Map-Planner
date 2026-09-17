@@ -10,7 +10,7 @@ import java.util.logging.SimpleFormatter
 object AppDiagnostics {
     private val logger = Logger.getLogger("dev.evestaticmapplanner.application").apply {
         useParentHandlers = false
-        level = Level.INFO
+        level = Level.FINE
     }
 
     @Volatile
@@ -29,7 +29,7 @@ object AppDiagnostics {
                     3,
                     true,
                 ).apply {
-                    level = Level.INFO
+                    level = Level.FINE
                     formatter = SimpleFormatter()
                     logger.addHandler(this)
                 }
@@ -39,6 +39,8 @@ object AppDiagnostics {
     }
 
     fun info(message: String) = logger.log(Level.INFO, message)
+
+    fun debug(message: String) = logger.log(Level.FINE, message)
 
     fun warning(message: String, error: Throwable? = null) = logger.log(Level.WARNING, message, error)
 

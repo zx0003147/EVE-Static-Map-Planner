@@ -243,6 +243,17 @@ class FeatureSettingsWindowsTest {
         config = config.copy(
             profiles = SpeechProviderProfiles(
                 alibaba = AlibabaSpeechProfile(
+                    sttModel = "qwen-audio-3.0-asr-flash",
+                    workspaceId = "fixture-workspace",
+                ),
+            ),
+        )
+        waitForIdle()
+        onNodeWithText("Workspace ID").assertExists()
+
+        config = config.copy(
+            profiles = SpeechProviderProfiles(
+                alibaba = AlibabaSpeechProfile(
                     ttsModel = "qwen-audio-3.0-tts-flash",
                     voice = "longanhuan_v3.6",
                     workspaceId = "fixture-workspace",

@@ -354,6 +354,7 @@ const val DEFAULT_OPENAI_STT_MODEL = "gpt-4o-mini-transcribe"
 const val DEFAULT_OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
 const val DEFAULT_OPENAI_VOICE = "alloy"
 const val DEFAULT_ALIBABA_STT_MODEL = "qwen3-asr-flash"
+const val ALIBABA_QWEN_AUDIO_ASR_FLASH_MODEL = "qwen-audio-3.0-asr-flash"
 const val DEFAULT_ALIBABA_TTS_MODEL = "qwen3-tts-flash"
 const val DEFAULT_ALIBABA_VOICE = "Cherry"
 const val DEFAULT_ALIBABA_TTS_SAMPLE_RATE = 24_000

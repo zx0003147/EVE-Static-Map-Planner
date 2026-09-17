@@ -35,6 +35,7 @@ data class SpeechRecognitionConfig(
     val model: String? = null,
     val region: AlibabaSpeechRegion? = null,
     val timeout: Duration = DEFAULT_VOICE_TIMEOUT,
+    val workspaceId: String? = null,
 )
 
 data class SpeechSynthesisConfig(
@@ -45,7 +46,31 @@ data class SpeechSynthesisConfig(
     val timeout: Duration = DEFAULT_VOICE_TIMEOUT,
     val rate: Int = 0,
     val volume: Int = 100,
+    val requestContext: TtsRequestContext? = null,
 )
+
+data class TtsRequestContext(
+    val messageId: String,
+    val chunkId: String,
+    val chunkIndex: Int,
+    val rawStartOffset: Int,
+    val rawEndOffset: Int,
+    val providerTraceSink: TtsProviderTraceSink? = null,
+)
+
+enum class TtsProviderHttpStage { SYNTHESIS, AUDIO_DOWNLOAD }
+
+enum class TtsProviderHttpEventType { REQUEST_STARTED, RESPONSE_RECEIVED }
+
+data class TtsProviderHttpEvent(
+    val stage: TtsProviderHttpStage,
+    val type: TtsProviderHttpEventType,
+    val statusCode: Int? = null,
+)
+
+fun interface TtsProviderTraceSink {
+    fun record(event: TtsProviderHttpEvent)
+}
 
 data class SpeechProviderCapability(
     val supportsStt: Boolean,
@@ -89,6 +114,7 @@ fun VoiceConfig.recognitionConfig(): SpeechRecognitionConfig = when (inputProvid
     VoiceInputProvider.ALIBABA -> SpeechRecognitionConfig(
         model = profiles.alibaba.sttModel,
         region = profiles.alibaba.sttRegion,
+        workspaceId = profiles.alibaba.workspaceId,
         timeout = Duration.ofSeconds(profiles.alibaba.sttTimeoutSeconds),
     )
     VoiceInputProvider.OFF -> SpeechRecognitionConfig()

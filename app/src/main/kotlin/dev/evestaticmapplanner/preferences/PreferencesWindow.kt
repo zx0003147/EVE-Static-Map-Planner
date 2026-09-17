@@ -45,6 +45,7 @@ import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.ALIBABA_QWEN_AUDIO_ASR_FLASH_MODEL
 import dev.evestaticmapplanner.embeddedai.SearchTestCheck
 import dev.evestaticmapplanner.embeddedai.SearchTestCheckStatus
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
@@ -433,8 +434,11 @@ internal fun VoicePreferencesContent(
     var alibabaSttRegionExpanded by remember { mutableStateOf(false) }
     var alibabaTtsRegionExpanded by remember { mutableStateOf(false) }
     val busy = state.busy
-    val workspaceRequired = alibabaTtsModel.startsWith("qwen-audio-", true) ||
-        alibabaTtsModel.startsWith("cosyvoice-", true)
+    val sttWorkspaceRequired = inputProvider == VoiceInputProvider.ALIBABA &&
+        alibabaSttModel.equals(ALIBABA_QWEN_AUDIO_ASR_FLASH_MODEL, ignoreCase = true)
+    val ttsWorkspaceRequired = outputProvider == VoiceOutputProvider.ALIBABA &&
+        (alibabaTtsModel.startsWith("qwen-audio-", true) || alibabaTtsModel.startsWith("cosyvoice-", true))
+    val workspaceRequired = sttWorkspaceRequired || ttsWorkspaceRequired
     val config = remember(
         inputProvider, outputProvider, autoSend, autoRead, openAiSttModel, openAiTtsModel, openAiVoice,
         alibabaSttModel, alibabaTtsModel, alibabaVoice, alibabaSttRegion, alibabaTtsRegion, workspaceId,
@@ -469,8 +473,7 @@ internal fun VoicePreferencesContent(
                 ),
             )
         }.getOrNull()?.takeUnless {
-            workspaceRequired && outputProvider == VoiceOutputProvider.ALIBABA &&
-                it.profiles.alibaba.workspaceId == null
+            workspaceRequired && it.profiles.alibaba.workspaceId == null
         }
     }
     LaunchedEffect(savedConfig) { onViewed(savedConfig) }
@@ -534,6 +537,9 @@ internal fun VoicePreferencesContent(
                     alibabaSttRegion, alibabaSttRegionExpanded, { alibabaSttRegionExpanded = it },
                     { alibabaSttRegion = it; alibabaSttRegionExpanded = false }, busy,
                 )
+                if (sttWorkspaceRequired) {
+                    SpeechTextField("Workspace ID", workspaceId, { workspaceId = it }, busy)
+                }
                 TextButton(
                     onClick = { config?.let(onTestRecognition) },
                     enabled = !busy && config != null && state.alibabaCredentialSource != null,
@@ -610,7 +616,7 @@ internal fun VoicePreferencesContent(
                     alibabaTtsRegion, alibabaTtsRegionExpanded, { alibabaTtsRegionExpanded = it },
                     { alibabaTtsRegion = it; alibabaTtsRegionExpanded = false }, busy,
                 )
-                if (workspaceRequired) {
+                if (ttsWorkspaceRequired && !sttWorkspaceRequired) {
                     SpeechTextField("Workspace ID", workspaceId, { workspaceId = it }, busy)
                 }
                 TextButton(
