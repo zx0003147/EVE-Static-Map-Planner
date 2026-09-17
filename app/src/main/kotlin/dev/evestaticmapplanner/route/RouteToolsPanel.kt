@@ -325,27 +325,41 @@ internal fun SidebarControlCluster(
     if (expanded) {
         Row(
             modifier = modifier.height(SIDEBAR_CONTROL_SIZE),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            SidebarUtilityButton(
-                description = "Toggle 2D/3D map mode",
-                stateDescription = projectionId.projectionToggleStateDescription,
-                testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
-                onClick = onToggleProjection,
+            Box(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-            ) { ProjectionToggleGraphic(projectionId) }
-            SidebarUtilityButton(
-                description = "Open Embedded AI Assistant",
-                testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
-                onClick = onOpenEmbeddedAi,
+                contentAlignment = Alignment.Center,
+            ) {
+                SidebarUtilityButton(
+                    description = "Toggle 2D/3D map mode",
+                    stateDescription = projectionId.projectionToggleStateDescription,
+                    testTag = SIDEBAR_PROJECTION_TOGGLE_TEST_TAG,
+                    onClick = onToggleProjection,
+                    modifier = Modifier.width(TOOL_SIDEBAR_COLLAPSED_WIDTH).fillMaxHeight(),
+                ) { ProjectionToggleGraphic(projectionId) }
+            }
+            Box(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-            ) { AuraAvatar() }
-            SidebarUtilityButton(
-                description = "Collapse sidebar",
-                testTag = SIDEBAR_TOGGLE_TEST_TAG,
-                onClick = onToggleSidebar,
+                contentAlignment = Alignment.Center,
+            ) {
+                SidebarUtilityButton(
+                    description = "Open Embedded AI Assistant",
+                    testTag = SIDEBAR_AI_BUTTON_TEST_TAG,
+                    onClick = onOpenEmbeddedAi,
+                    modifier = Modifier.width(TOOL_SIDEBAR_COLLAPSED_WIDTH).fillMaxHeight(),
+                ) { AuraAvatar() }
+            }
+            Box(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-            ) { SidebarToggleIcon(expanded = true) }
+                contentAlignment = Alignment.Center,
+            ) {
+                SidebarUtilityButton(
+                    description = "Collapse sidebar",
+                    testTag = SIDEBAR_TOGGLE_TEST_TAG,
+                    onClick = onToggleSidebar,
+                    modifier = Modifier.width(TOOL_SIDEBAR_COLLAPSED_WIDTH).fillMaxHeight(),
+                ) { SidebarToggleIcon(expanded = true) }
+            }
         }
     } else {
         Column(modifier = modifier.height(SIDEBAR_CONTROL_SIZE * 3)) {

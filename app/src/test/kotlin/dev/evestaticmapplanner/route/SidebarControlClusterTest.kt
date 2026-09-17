@@ -51,9 +51,15 @@ class SidebarControlClusterTest {
         val projection = onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val ai = onNodeWithTag(SIDEBAR_AI_BUTTON_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val collapse = onNodeWithTag(SIDEBAR_TOGGLE_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val collapsedRailWidth = with(density) { TOOL_SIDEBAR_COLLAPSED_WIDTH.toPx() }
+        val expandedWidth = with(density) { 270.dp.toPx() }
         assertTrue(projection.left < ai.left && ai.left < collapse.left)
         assertTrue(abs(projection.width - ai.width) <= 1.1f)
         assertTrue(abs(ai.width - collapse.width) <= 1.1f)
+        assertTrue(abs(projection.width - collapsedRailWidth) <= 1.1f)
+        assertTrue(abs(projection.center.x - expandedWidth / 6f) <= 1.1f)
+        assertTrue(abs(ai.center.x - expandedWidth / 2f) <= 1.1f)
+        assertTrue(abs(collapse.center.x - expandedWidth * 5f / 6f) <= 1.1f)
         val twoDimensionalLabel = onNodeWithTag(
             SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG,
             useUnmergedTree = true,
@@ -110,9 +116,11 @@ class SidebarControlClusterTest {
         val projection = onNodeWithTag(SIDEBAR_PROJECTION_TOGGLE_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val ai = onNodeWithTag(SIDEBAR_AI_BUTTON_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val expand = onNodeWithTag(SIDEBAR_TOGGLE_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val collapsedRailWidth = with(density) { TOOL_SIDEBAR_COLLAPSED_WIDTH.toPx() }
         assertTrue(projection.top < ai.top && ai.top < expand.top)
         assertTrue(abs(projection.height - ai.height) < 1f)
         assertTrue(abs(ai.height - expand.height) < 1f)
+        assertTrue(abs(projection.width - collapsedRailWidth) <= 1.1f)
         val twoDimensionalLabel = onNodeWithTag(
             SIDEBAR_PROJECTION_2D_LABEL_TEST_TAG,
             useUnmergedTree = true,
