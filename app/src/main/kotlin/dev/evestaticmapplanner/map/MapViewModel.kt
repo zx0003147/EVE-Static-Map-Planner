@@ -28,6 +28,7 @@ import dev.evestaticmapplanner.preferences.MiniMapPreferences
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SharedMapPreferences
+import dev.evestaticmapplanner.localization.AppLocale
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -354,6 +355,13 @@ class MapViewModel(
 
     fun resetOverlayVisibilityPreferences() {
         updateOverlayVisibilityPreferences(OverlayVisibilityPreferences.Defaults)
+    }
+
+    fun updateAppLocale(locale: AppLocale) {
+        mutableState.update { current ->
+            current.copy(appPreferences = current.appPreferences.copy(uiLocale = locale))
+        }
+        schedulePreferencesSave()
     }
 
     suspend fun updateAiControlPreferences(preferences: AiControlPreferences): Result<Unit> = withContext(NonCancellable) {

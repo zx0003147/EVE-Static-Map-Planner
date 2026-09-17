@@ -13,7 +13,11 @@ import dev.evestaticmapplanner.embeddedai.OpenAiSpeechProfile
 import dev.evestaticmapplanner.embeddedai.SpeechProviderProfiles
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppLocaleDetector
+import dev.evestaticmapplanner.localization.SystemLocaleSource
 import java.nio.file.Files
+import java.util.Locale
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.name
 import kotlin.test.Test
@@ -92,7 +96,7 @@ class PreferencesStoreTest {
 
             store.save(migrated)
             val reloaded = store.load()
-            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=6" })
+            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=7" })
             assertEquals(AiCredentialRef("openrouter"), reloaded.aiProvider?.credentialRef)
             assertEquals(active, reloaded.aiProviderProfiles[AiProviderType.OPENROUTER])
         }
@@ -224,7 +228,7 @@ class PreferencesStoreTest {
     }
 
     @Test
-    fun `save writes version four and a new store reloads all values`() = withTemporaryDirectory { root ->
+    fun `save writes version seven and a new store reloads all values`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val expected = AppPreferences(
             mapDisplay = MapDisplayPreferences(
@@ -263,7 +267,7 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=6" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=7" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
@@ -564,6 +568,79 @@ class PreferencesStoreTest {
     }
 
     @Test
+    fun `locale preference round trips as a stable tag and survives restart`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val expected = AppPreferences.Defaults.copy(
+            uiLocale = AppLocale.ZH_CN,
+            mapDisplay = MapDisplayPreferences.Defaults.copy(systemZoomThreshold = 8.0),
+            aiControl = AiControlPreferences(enabled = true, savedMarkerAccessEnabled = true),
+        )
+
+        PropertiesPreferencesStore(path).save(expected)
+        val savedText = Files.readString(path)
+        val restarted = PropertiesPreferencesStore(path).load()
+
+        assertTrue(savedText.lineSequence().any { it == "settings.version=7" })
+        assertTrue(savedText.lineSequence().any { it == "ui.locale=zh-CN" })
+        assertEquals(expected, restarted)
+    }
+
+    @Test
+    fun `versions one through six without locale preserve English upgrade behavior`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val chineseDetector = localeDetector("zh-CN")
+
+        (1..6).forEach { version ->
+            Files.writeString(
+                path,
+                "settings.version=$version\nmapDisplay.systemZoomThreshold=8.0\n",
+            )
+
+            val loaded = PropertiesPreferencesStore(path, appLocaleDetector = chineseDetector).load()
+            assertEquals(AppLocale.EN_US, loaded.uiLocale, "settings v$version")
+            assertEquals(8.0, loaded.mapDisplay.systemZoomThreshold, "settings v$version")
+        }
+    }
+
+    @Test
+    fun `invalid version seven locale safely falls back to English`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        Files.writeString(path, "settings.version=7\nui.locale=zh-Hans\n")
+
+        val loaded = PropertiesPreferencesStore(
+            path,
+            appLocaleDetector = localeDetector("zh-CN"),
+        ).load()
+
+        assertEquals(AppLocale.EN_US, loaded.uiLocale)
+    }
+
+    @Test
+    fun `fresh install selects Simplified Chinese for Chinese system locales without global mutation`() =
+        withTemporaryDirectory { root ->
+            val originalJvmLocale = Locale.getDefault()
+            listOf("zh", "zh-CN", "zh-SG", "zh-Hans", "zh-Hant-TW").forEachIndexed { index, tag ->
+                val loaded = PropertiesPreferencesStore(
+                    root.resolve("settings-$index.properties"),
+                    appLocaleDetector = localeDetector(tag),
+                ).load()
+
+                assertEquals(AppLocale.ZH_CN, loaded.uiLocale, tag)
+            }
+            assertEquals(originalJvmLocale, Locale.getDefault())
+        }
+
+    @Test
+    fun `fresh install selects English for non Chinese system locale`() = withTemporaryDirectory { root ->
+        val loaded = PropertiesPreferencesStore(
+            root.resolve("settings.properties"),
+            appLocaleDetector = localeDetector("fr-FR"),
+        ).load()
+
+        assertEquals(AppLocale.EN_US, loaded.uiLocale)
+    }
+
+    @Test
     fun `reset to defaults is persisted`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val store = PropertiesPreferencesStore(path)
@@ -597,6 +674,8 @@ class PreferencesStoreTest {
         assertFalse(Files.isDirectory(staticDatabase))
         assertFalse(Files.isDirectory(userDatabase))
     }
+
+    private fun localeDetector(tag: String): AppLocaleDetector = AppLocaleDetector(SystemLocaleSource { tag })
 }
 
 private inline fun withTemporaryDirectory(block: (java.nio.file.Path) -> Unit) {

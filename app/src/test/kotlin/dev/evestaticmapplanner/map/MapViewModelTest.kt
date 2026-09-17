@@ -28,6 +28,7 @@ import dev.evestaticmapplanner.preferences.OverlayLayerKey
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
+import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -304,6 +305,29 @@ class MapViewModelTest {
         assertEquals(AppPreferences.Defaults, restarted.state.value.appPreferences)
         advanceUntilIdle()
         assertEquals(AppPreferences.Defaults, store.stored)
+    }
+
+    @Test
+    fun `application locale updates runtime state and persists across view model restart`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store = FakePreferencesStore()
+        val first = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        advanceUntilIdle()
+
+        first.updateAppLocale(AppLocale.ZH_CN)
+        assertEquals(AppLocale.ZH_CN, first.state.value.appPreferences.uiLocale)
+        advanceUntilIdle()
+        assertEquals(AppLocale.ZH_CN, store.stored.uiLocale)
+
+        val restarted = fixture.viewModel(this, dispatcher, preferencesStore = store)
+        advanceUntilIdle()
+        assertEquals(AppLocale.ZH_CN, restarted.state.value.appPreferences.uiLocale)
+
+        restarted.updateAppLocale(AppLocale.EN_US)
+        assertEquals(AppLocale.EN_US, restarted.state.value.appPreferences.uiLocale)
+        advanceUntilIdle()
+        assertEquals(AppLocale.EN_US, store.stored.uiLocale)
     }
 
     @Test

@@ -70,6 +70,8 @@ import dev.evestaticmapplanner.feature.api.OverlayState
 import dev.evestaticmapplanner.minimap.MINI_MAP_RECOVERY_HOTKEY_LABEL
 import dev.evestaticmapplanner.minimap.MiniMapHudRuntimeState
 import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.shared.SharedAdminUiState
 import dev.evestaticmapplanner.shared.SharedMapMembersDialog
@@ -96,6 +98,7 @@ internal fun PreferencesWindow(
     currentZoom: Double?,
     preferences: AppPreferences,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
+    onLocaleChange: (AppLocale) -> Unit,
     aiProviderSettingsState: AiProviderSettingsUiState = AiProviderSettingsUiState(),
     webSearchSettingsState: WebSearchSettingsUiState = WebSearchSettingsUiState(),
     voiceSettingsState: VoiceSettingsUiState = VoiceSettingsUiState(),
@@ -149,9 +152,10 @@ internal fun PreferencesWindow(
     onDismiss: () -> Unit,
 ) {
     var selectedCategory by remember(initialCategory) { mutableStateOf(initialCategory) }
+    val strings = LocalAppStrings.current
     Window(
         onCloseRequest = onDismiss,
-        title = "Preferences",
+        title = strings.preferences.title,
         state = rememberWindowState(width = 650.dp, height = 720.dp),
     ) {
         EveWindowChrome(window)
@@ -162,7 +166,8 @@ internal fun PreferencesWindow(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize().padding(18.dp),
             ) {
-                Text("Preferences", style = MaterialTheme.typography.titleLarge)
+                Text(strings.preferences.title, style = MaterialTheme.typography.titleLarge)
+                LanguagePreferenceContent(preferences.uiLocale, onLocaleChange)
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     Column(Modifier.width(150.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         PreferencesCategory.entries.forEach { item ->
@@ -254,7 +259,43 @@ internal fun PreferencesWindow(
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = onResetAll) { Text("Reset All Preferences") }
-                    TextButton(onClick = onDismiss) { Text("Close") }
+                    TextButton(onClick = onDismiss) { Text(strings.common.close) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LanguagePreferenceContent(
+    locale: AppLocale,
+    onLocaleChange: (AppLocale) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val strings = LocalAppStrings.current
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(strings.preferences.language, style = MaterialTheme.typography.titleSmall)
+        Box {
+            TextButton(
+                onClick = { expanded = true },
+                modifier = Modifier.testTag("language-selector"),
+            ) {
+                Text("${strings.preferences.languageName(locale)} ▾")
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                AppLocale.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(strings.preferences.languageName(option)) },
+                        onClick = {
+                            expanded = false
+                            if (option != locale) onLocaleChange(option)
+                        },
+                        modifier = Modifier.testTag("language-option-${option.tag}"),
+                    )
                 }
             }
         }

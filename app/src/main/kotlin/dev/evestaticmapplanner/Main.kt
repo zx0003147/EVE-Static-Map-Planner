@@ -90,6 +90,9 @@ import dev.evestaticmapplanner.embeddedai.WebSearchConfigSource
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
+import dev.evestaticmapplanner.localization.AppLocalizationState
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.ProvideAppLocalization
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
 import dev.evestaticmapplanner.map.SharedMarkerPresentationState
@@ -202,39 +205,54 @@ fun main(arguments: Array<String>) {
     application {
         val wormholeSessionStore = remember { WormholeSessionStore() }
         val windowState = rememberWindowState(width = 1280.dp, height = 780.dp)
+        val preferencesStore = remember {
+            PropertiesPreferencesStore(
+                ApplicationDirectories.root().resolve("settings.properties"),
+                warningSink = AppDiagnostics::warning,
+            )
+        }
+        val localizationState = remember(preferencesStore) {
+            AppLocalizationState(preferencesStore.load().uiLocale)
+        }
+        val localization by localizationState.state.collectAsState()
         var startup by remember { mutableStateOf(initial) }
         var exitRequested by remember { mutableStateOf(false) }
         var isAlwaysOnTop by remember { mutableStateOf(false) }
         val windowIcon = painterResource("icons/app-icon.png")
-        Window(
-            onCloseRequest = {
-                if (startup is StartupResolution.Ready) exitRequested = true else exitApplication()
-            },
-            title = "EVE Static Map Planner",
-            state = windowState,
-            icon = windowIcon,
-            alwaysOnTop = isAlwaysOnTop,
-        ) {
-            EveTheme {
-                EveWindowChrome(window)
-                when (val resolution = startup) {
-                    is StartupResolution.Ready -> ReadyApplication(
-                        resolution.configuration,
-                        featurePackRuntime,
-                        wormholeSessionStore,
-                        exitRequested,
-                        ::exitApplication,
-                        isAlwaysOnTop,
-                        { isAlwaysOnTop = !isAlwaysOnTop },
-                    )
-                    is StartupResolution.Bootstrap -> BootstrapApplication(
-                        resolution.configuration,
-                        onInstalled = { startup = StartupResolution.Ready(resolution.configuration) },
-                    )
-                    is StartupResolution.ExternalPathError -> StartupError(
-                        "External static database error\n\n${resolution.message}\n\n${resolution.path}",
-                    )
-                    is StartupResolution.Fatal -> StartupError("Fatal static-data error\n\n${resolution.message}")
+        ProvideAppLocalization(localization) {
+            val strings = LocalAppStrings.current
+            Window(
+                onCloseRequest = {
+                    if (startup is StartupResolution.Ready) exitRequested = true else exitApplication()
+                },
+                title = strings.appTitle,
+                state = windowState,
+                icon = windowIcon,
+                alwaysOnTop = isAlwaysOnTop,
+            ) {
+                EveTheme {
+                    EveWindowChrome(window)
+                    when (val resolution = startup) {
+                        is StartupResolution.Ready -> ReadyApplication(
+                            resolution.configuration,
+                            featurePackRuntime,
+                            wormholeSessionStore,
+                            preferencesStore,
+                            localizationState,
+                            exitRequested,
+                            ::exitApplication,
+                            isAlwaysOnTop,
+                            { isAlwaysOnTop = !isAlwaysOnTop },
+                        )
+                        is StartupResolution.Bootstrap -> BootstrapApplication(
+                            resolution.configuration,
+                            onInstalled = { startup = StartupResolution.Ready(resolution.configuration) },
+                        )
+                        is StartupResolution.ExternalPathError -> StartupError(
+                            "External static database error\n\n${resolution.message}\n\n${resolution.path}",
+                        )
+                        is StartupResolution.Fatal -> StartupError("Fatal static-data error\n\n${resolution.message}")
+                    }
                 }
             }
         }
@@ -266,6 +284,8 @@ private fun FrameWindowScope.ReadyApplication(
     configuration: StartupConfiguration,
     featurePackRuntime: ProductionFeaturePackRuntime,
     wormholeSessionStore: WormholeSessionStore,
+    preferencesStore: PropertiesPreferencesStore,
+    localizationState: AppLocalizationState,
     exitRequested: Boolean,
     onExitApplication: () -> Unit,
     isAlwaysOnTop: Boolean,
@@ -277,12 +297,6 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val searchRepository = remember(configuration) { SqliteSystemSearchRepository(configuration.database.path) }
     val universeRepository = remember(configuration) { SqliteUniverseRepository(configuration.database.path) }
-    val preferencesStore = remember(configuration) {
-        PropertiesPreferencesStore(
-            ApplicationDirectories.root().resolve("settings.properties"),
-            warningSink = AppDiagnostics::warning,
-        )
-    }
     val featurePackManagerViewModel = remember(featurePackRuntime) {
         FeaturePackManagerViewModel(featurePackRuntime.manager, featurePackRuntime.packControlHost)
     }
@@ -734,6 +748,9 @@ private fun FrameWindowScope.ReadyApplication(
     }
 
     val mapState by mapViewModel.state.collectAsState()
+    LaunchedEffect(mapState.isLoading, mapState.appPreferences.uiLocale, localizationState) {
+        if (!mapState.isLoading) localizationState.updateLocale(mapState.appPreferences.uiLocale)
+    }
     val aiProviderSettingsState by aiProviderSettingsController.state.collectAsState()
     val webSearchSettingsState by webSearchSettingsController.state.collectAsState()
     val voiceSettingsState by voiceSettingsController.state.collectAsState()
@@ -1029,6 +1046,10 @@ private fun FrameWindowScope.ReadyApplication(
             currentZoom = mapState.viewport?.zoom,
             preferences = mapState.appPreferences,
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
+            onLocaleChange = { locale ->
+                localizationState.updateLocale(locale)
+                mapViewModel.updateAppLocale(locale)
+            },
             aiProviderSettingsState = aiProviderSettingsState,
             webSearchSettingsState = webSearchSettingsState,
             voiceSettingsState = voiceSettingsState,

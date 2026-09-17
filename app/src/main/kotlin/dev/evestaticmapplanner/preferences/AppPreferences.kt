@@ -15,6 +15,8 @@ import dev.evestaticmapplanner.embeddedai.VoiceConfig
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppLocaleDetector
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -35,6 +37,7 @@ data class AppPreferences(
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
+    val uiLocale: AppLocale = AppLocale.EN_US,
 ) {
     companion object {
         val Defaults = AppPreferences()
@@ -160,16 +163,20 @@ object DefaultPreferencesStore : PreferencesStore {
 class PropertiesPreferencesStore(
     val path: Path,
     private val warningSink: (String) -> Unit = {},
+    private val appLocaleDetector: AppLocaleDetector = AppLocaleDetector(),
 ) : PreferencesStore {
     override fun load(): AppPreferences {
-        if (!Files.isRegularFile(path)) return AppPreferences.Defaults
+        if (!Files.isRegularFile(path)) {
+            return AppPreferences.Defaults.copy(uiLocale = appLocaleDetector.detect())
+        }
         val properties = runCatching {
             Properties().also { values -> Files.newInputStream(path).use(values::load) }
         }.getOrElse {
             warningSink("Preferences could not be read; AI Control remains disabled")
             return AppPreferences.Defaults
         }
-        if (properties.getProperty(KEY_SETTINGS_VERSION) !in SUPPORTED_SETTINGS_VERSIONS) {
+        val settingsVersion = properties.getProperty(KEY_SETTINGS_VERSION)
+        if (settingsVersion !in SUPPORTED_SETTINGS_VERSIONS) {
             return AppPreferences.Defaults
         }
 
@@ -327,6 +334,11 @@ class PropertiesPreferencesStore(
                     snapToScreenEdges = properties.validBoolean(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, true),
                 )
             },
+            uiLocale = if (settingsVersion == SETTINGS_VERSION) {
+                AppLocale.fromTagOrNull(properties.getProperty(KEY_UI_LOCALE)) ?: AppLocale.EN_US
+            } else {
+                AppLocale.EN_US
+            },
         )
     }
 
@@ -352,6 +364,7 @@ class PropertiesPreferencesStore(
             val miniMap = preferences.miniMap
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
+                setProperty(KEY_UI_LOCALE, preferences.uiLocale.tag)
                 setProperty(KEY_CONSTELLATION_THRESHOLD, mapDisplay.constellationZoomThreshold.toString())
                 setProperty(KEY_SYSTEM_THRESHOLD, mapDisplay.systemZoomThreshold.toString())
                 setProperty(
@@ -618,8 +631,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "6"
-private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", SETTINGS_VERSION)
+const val SETTINGS_VERSION = "7"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", "6", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -646,6 +659,7 @@ const val MIN_SAVED_MARKER_GLOW_STRENGTH = 0f
 const val MAX_SAVED_MARKER_GLOW_STRENGTH = 1f
 
 private const val KEY_SETTINGS_VERSION = "settings.version"
+private const val KEY_UI_LOCALE = "ui.locale"
 private const val KEY_CONSTELLATION_THRESHOLD = "mapDisplay.constellationZoomThreshold"
 private const val KEY_SYSTEM_THRESHOLD = "mapDisplay.systemZoomThreshold"
 private const val KEY_REAL_3D_CONSTELLATION_THRESHOLD = "mapDisplay.real3DConstellationScaleThreshold"
