@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.ai
 
 import com.sun.jna.Platform
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
+import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,6 +35,26 @@ class WindowsDpapiAiCredentialStoreTest {
             store.delete(reference)
             assertFalse(store.contains(reference))
             assertNull(store.load(reference))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `Brave Search credential uses its independent DPAPI namespace`() {
+        assumeTrue(Platform.isWindows())
+        val root = createTempDirectory("brave-dpapi-")
+        val store = WindowsDpapiAiCredentialStore(root)
+        try {
+            SecretValue.from("fixture-brave-key").use { store.save(BRAVE_SEARCH_CREDENTIAL_REF, it) }
+
+            assertTrue(store.contains(BRAVE_SEARCH_CREDENTIAL_REF))
+            assertTrue(store.pathForTesting(BRAVE_SEARCH_CREDENTIAL_REF).fileName.toString() == "brave-search.dpapi")
+            assertSecretEquals("fixture-brave-key", store.load(BRAVE_SEARCH_CREDENTIAL_REF))
+            assertFalse(
+                String(Files.readAllBytes(store.pathForTesting(BRAVE_SEARCH_CREDENTIAL_REF)), Charsets.UTF_8)
+                    .contains("fixture-brave-key"),
+            )
         } finally {
             root.toFile().deleteRecursively()
         }

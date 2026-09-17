@@ -88,6 +88,16 @@ class EmbeddedAiAssistantWindowTest {
         assertEquals("Bold and code", annotated.text)
         assertTrue(annotated.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
         assertTrue(annotated.spanStyles.any { it.item.fontFamily == FontFamily.Monospace })
+
+        val links = inlineMarkdown(
+            "[Safe](https://example.com/news) [Bad](javascript:alert(1)) [File](file:///secret)",
+        )
+        assertEquals(
+            listOf("https://example.com/news"),
+            links.getStringAnnotations(ASSISTANT_LINK_TAG, 0, links.length).map { it.item },
+        )
+        assertTrue(links.text.contains("[Bad](javascript:alert(1))"))
+        assertTrue(links.text.contains("[File](file:///secret)"))
     }
 
     @Test

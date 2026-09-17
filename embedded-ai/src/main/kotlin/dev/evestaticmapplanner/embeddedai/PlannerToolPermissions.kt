@@ -66,3 +66,7 @@ internal object PlannerToolPermissions {
         }
     }
 }
+
+internal object EmbeddedAiToolCatalog {
+    fun names(plannerTools: PlannerToolSet): List<String> = plannerTools.names + WebSearchTool.NAME
+}

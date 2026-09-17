@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -18,8 +20,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.ui.EveColors
+import dev.evestaticmapplanner.embeddedai.safeWebUrl
 
 internal sealed interface AssistantMarkdownBlock {
     data class Paragraph(val text: String) : AssistantMarkdownBlock
@@ -34,9 +38,9 @@ internal fun AssistantMarkdown(markdown: String, modifier: Modifier = Modifier) 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         parseAssistantMarkdown(markdown).forEach { block ->
             when (block) {
-                is AssistantMarkdownBlock.Paragraph -> Text(inlineMarkdown(block.text))
-                is AssistantMarkdownBlock.Heading -> Text(
-                    inlineMarkdown(block.text),
+                is AssistantMarkdownBlock.Paragraph -> MarkdownInlineText(block.text)
+                is AssistantMarkdownBlock.Heading -> MarkdownInlineText(
+                    block.text,
                     style = when (block.level) {
                         1 -> MaterialTheme.typography.titleLarge
                         2 -> MaterialTheme.typography.titleMedium
@@ -65,8 +69,25 @@ internal fun AssistantMarkdown(markdown: String, modifier: Modifier = Modifier) 
 private fun MarkdownListItem(marker: String, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(marker, fontWeight = FontWeight.SemiBold)
-        Text(inlineMarkdown(text))
+        MarkdownInlineText(text)
     }
+}
+
+@Composable
+private fun MarkdownInlineText(text: String, style: TextStyle = MaterialTheme.typography.bodyLarge) {
+    val annotated = inlineMarkdown(text)
+    val uriHandler = LocalUriHandler.current
+    ClickableText(
+        text = annotated,
+        style = style,
+        onClick = { offset ->
+            annotated.getStringAnnotations(ASSISTANT_LINK_TAG, offset, offset)
+                .firstOrNull()
+                ?.item
+                ?.let { safeWebUrl(it) }
+                ?.let(uriHandler::openUri)
+        },
+    )
 }
 
 internal fun parseAssistantMarkdown(markdown: String): List<AssistantMarkdownBlock> {
@@ -130,6 +151,31 @@ private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
     var index = 0
     while (index < text.length) {
         when {
+            text[index] == '[' -> {
+                val labelEnd = text.indexOf(']', index + 1)
+                val targetStart = labelEnd + 1
+                val targetEnd = if (labelEnd >= 0 && targetStart < text.length && text[targetStart] == '(') {
+                    text.indexOf(')', targetStart + 1)
+                } else {
+                    -1
+                }
+                if (targetEnd >= 0) {
+                    val label = text.substring(index + 1, labelEnd)
+                    val target = safeWebUrl(text.substring(targetStart + 1, targetEnd))
+                    if (target != null) {
+                        pushStringAnnotation(ASSISTANT_LINK_TAG, target)
+                        withStyle(SpanStyle(color = EveColors.PrimaryAccent, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)) {
+                            appendInlineMarkdown(label)
+                        }
+                        pop()
+                    } else {
+                        append(text.substring(index, targetEnd + 1))
+                    }
+                    index = targetEnd + 1
+                } else {
+                    append(text[index++])
+                }
+            }
             text.startsWith("**", index) -> {
                 val end = text.indexOf("**", index + 2)
                 if (end >= 0) {
@@ -175,3 +221,4 @@ private val HEADING = Regex("^\\s*(#{1,3})\\s+(.+)$")
 private val BULLET = Regex("^\\s*[-+*]\\s+(.+)$")
 private val NUMBERED = Regex("^\\s*\\d+[.)]\\s+(.+)$")
 private val INLINE_CODE_BACKGROUND = Color(0x332FC7E5)
+internal const val ASSISTANT_LINK_TAG = "assistant-http-link"

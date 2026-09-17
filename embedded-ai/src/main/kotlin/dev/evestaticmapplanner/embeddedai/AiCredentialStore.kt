@@ -69,11 +69,15 @@ class AiCredentialResolver(
 ) {
     fun resolve(config: AiProviderConfig): ResolvedAiCredential? {
         val reference = config.credentialRef
+        return resolve(reference, config.providerType.environmentVariable)
+    }
+
+    fun resolve(reference: AiCredentialRef?, environmentVariable: String): ResolvedAiCredential? {
         if (reference != null) {
             sessionStore.load(reference)?.let { return ResolvedAiCredential(it, AiCredentialSource.SESSION_ONLY) }
             secureStore.load(reference)?.let { return ResolvedAiCredential(it, AiCredentialSource.SECURE_STORAGE) }
         }
-        val environmentSecret = environment(config.providerType.environmentVariable)?.trim().orEmpty()
+        val environmentSecret = environment(environmentVariable)?.trim().orEmpty()
         return environmentSecret.takeIf(String::isNotEmpty)?.let {
             ResolvedAiCredential(SecretValue.from(it), AiCredentialSource.ENVIRONMENT)
         }
@@ -86,13 +90,15 @@ class AiCredentialResolver(
     fun source(
         providerType: AiProviderType,
         reference: AiCredentialRef? = AiCredentialRef.forProvider(providerType),
-    ): AiCredentialSource? {
+    ): AiCredentialSource? = source(reference, providerType.environmentVariable)
+
+    fun source(reference: AiCredentialRef?, environmentVariable: String): AiCredentialSource? {
         if (reference != null) {
             if (sessionStore.contains(reference)) return AiCredentialSource.SESSION_ONLY
             if (secureStore.contains(reference)) return AiCredentialSource.SECURE_STORAGE
         }
         return AiCredentialSource.ENVIRONMENT.takeIf {
-            !environment(providerType.environmentVariable).isNullOrBlank()
+            !environment(environmentVariable).isNullOrBlank()
         }
     }
 }

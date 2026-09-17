@@ -29,6 +29,7 @@ import java.awt.EventQueue
 import dev.evestaticmapplanner.ai.EmbeddedAiAssistantWindow
 import dev.evestaticmapplanner.ai.AiAssistantProviderStatus
 import dev.evestaticmapplanner.ai.AiProviderSettingsController
+import dev.evestaticmapplanner.ai.WebSearchSettingsController
 import dev.evestaticmapplanner.ai.WindowsDpapiAiCredentialStore
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
@@ -63,11 +64,14 @@ import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
 import dev.evestaticmapplanner.embeddedai.AiCredentialResolver
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.ConfiguredKoogAgentFactory
+import dev.evestaticmapplanner.embeddedai.BraveSearchTester
+import dev.evestaticmapplanner.embeddedai.BraveWebSearchClient
 import dev.evestaticmapplanner.embeddedai.DefaultAiClientFactory
 import dev.evestaticmapplanner.embeddedai.InMemoryAiCredentialStore
 import dev.evestaticmapplanner.embeddedai.KoogAiConnectionTester
 import dev.evestaticmapplanner.embeddedai.SavedOrEnvironmentAiProviderConfigSource
 import dev.evestaticmapplanner.embeddedai.UnavailableAiCredentialStore
+import dev.evestaticmapplanner.embeddedai.WebSearchConfigSource
 import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
@@ -469,10 +473,14 @@ private fun FrameWindowScope.ReadyApplication(
         AiCredentialResolver(aiSecureCredentialStore, aiSessionCredentialStore)
     }
     val aiClientFactory = remember(configuration) { DefaultAiClientFactory() }
+    val braveSearchClient = remember(configuration) { BraveWebSearchClient() }
     val aiConfigSource = remember(configuration, mapViewModel) {
         SavedOrEnvironmentAiProviderConfigSource(
             savedConfig = { mapViewModel.state.value.appPreferences.aiProvider },
         )
+    }
+    val webSearchConfigSource = remember(configuration, mapViewModel) {
+        WebSearchConfigSource { mapViewModel.state.value.appPreferences.webSearch }
     }
     val embeddedAiController = remember(mapControlCoordinator, aiCredentialResolver, aiClientFactory, aiConfigSource) {
         EmbeddedAiController(
@@ -481,6 +489,8 @@ private fun FrameWindowScope.ReadyApplication(
                 configSource = aiConfigSource,
                 credentialResolver = aiCredentialResolver,
                 clientFactory = aiClientFactory,
+                webSearchConfigSource = webSearchConfigSource,
+                webSearchClient = braveSearchClient,
                 diagnostics = AppDiagnostics::info,
             ),
             uiDispatcher = Dispatchers.Main.immediate,
@@ -502,6 +512,23 @@ private fun FrameWindowScope.ReadyApplication(
             connectionTester = KoogAiConnectionTester(aiClientFactory),
             persistConfig = mapViewModel::updateAiProviderConfig,
             onConfigurationChanged = embeddedAiController::configurationChanged,
+            diagnostics = AppDiagnostics::info,
+        )
+    }
+    val webSearchSettingsController = remember(
+        configuration,
+        aiSecureCredentialStore,
+        aiSessionCredentialStore,
+        aiCredentialResolver,
+        braveSearchClient,
+        mapViewModel,
+    ) {
+        WebSearchSettingsController(
+            secureStore = aiSecureCredentialStore,
+            sessionStore = aiSessionCredentialStore,
+            credentialResolver = aiCredentialResolver,
+            tester = BraveSearchTester(braveSearchClient),
+            persistConfig = mapViewModel::updateWebSearchConfig,
             diagnostics = AppDiagnostics::info,
         )
     }
@@ -558,6 +585,7 @@ private fun FrameWindowScope.ReadyApplication(
         staticDataViewModel,
         embeddedAiController,
         aiProviderSettingsController,
+        webSearchSettingsController,
         aiSessionCredentialStore,
         mapControlCoordinator,
         controlServiceScope,
@@ -581,6 +609,7 @@ private fun FrameWindowScope.ReadyApplication(
                 savedMarkerService::close,
                 staticDataViewModel::close,
                 aiProviderSettingsController::close,
+                webSearchSettingsController::close,
                 aiSessionCredentialStore::close,
             ),
             closeDiagnostics = AppDiagnostics::close,
@@ -601,6 +630,7 @@ private fun FrameWindowScope.ReadyApplication(
 
     val mapState by mapViewModel.state.collectAsState()
     val aiProviderSettingsState by aiProviderSettingsController.state.collectAsState()
+    val webSearchSettingsState by webSearchSettingsController.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
     val miniMapHudState by miniMapHudController.state.collectAsState()
@@ -889,11 +919,16 @@ private fun FrameWindowScope.ReadyApplication(
             preferences = mapState.appPreferences,
             onMapDisplayChange = mapViewModel::updateMapDisplayPreferences,
             aiProviderSettingsState = aiProviderSettingsState,
+            webSearchSettingsState = webSearchSettingsState,
             initialCategory = preferencesInitialCategory,
             onAiProviderViewed = aiProviderSettingsController::refresh,
             onAiProviderTest = aiProviderSettingsController::test,
             onAiProviderSave = aiProviderSettingsController::save,
             onAiCredentialDelete = aiProviderSettingsController::deleteCredential,
+            onWebSearchViewed = webSearchSettingsController::refresh,
+            onWebSearchTest = webSearchSettingsController::test,
+            onWebSearchSave = webSearchSettingsController::save,
+            onWebSearchCredentialDelete = webSearchSettingsController::deleteCredential,
             aiControlStatus = aiControlStatus,
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,

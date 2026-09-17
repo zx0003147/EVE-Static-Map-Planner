@@ -393,6 +393,22 @@ class MapViewModel(
         }
     }
 
+    suspend fun updateWebSearchConfig(
+        config: dev.evestaticmapplanner.embeddedai.WebSearchConfig,
+    ): Result<Unit> = withContext(NonCancellable) {
+        preferencesMutation.withLock {
+            settingsSaveJob?.cancel()
+            val next = mutableState.value.appPreferences.copy(webSearch = config)
+            val saved = withContext(ioDispatcher) { runCatching { preferencesStore.save(next) } }
+            if (saved.isSuccess) {
+                mutableState.update { current ->
+                    current.copy(appPreferences = current.appPreferences.copy(webSearch = config))
+                }
+            }
+            saved
+        }
+    }
+
     suspend fun updateSharedMapPreferences(preferences: SharedMapPreferences): Result<Unit> = withContext(NonCancellable) {
         preferencesMutation.withLock {
             settingsSaveJob?.cancel()

@@ -3,6 +3,8 @@ package dev.evestaticmapplanner.preferences
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
+import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.name
@@ -82,7 +84,7 @@ class PreferencesStoreTest {
 
             store.save(migrated)
             val reloaded = store.load()
-            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=3" })
+            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=4" })
             assertEquals(AiCredentialRef("openrouter"), reloaded.aiProvider?.credentialRef)
             assertEquals(active, reloaded.aiProviderProfiles[AiProviderType.OPENROUTER])
         }
@@ -214,7 +216,7 @@ class PreferencesStoreTest {
     }
 
     @Test
-    fun `save writes version three and a new store reloads all values`() = withTemporaryDirectory { root ->
+    fun `save writes version four and a new store reloads all values`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val expected = AppPreferences(
             mapDisplay = MapDisplayPreferences(
@@ -242,6 +244,7 @@ class PreferencesStoreTest {
                 ),
             ),
             aiControl = AiControlPreferences(enabled = true, savedMarkerAccessEnabled = true),
+            webSearch = WebSearchConfig(enabled = true),
             overlayVisibility = OverlayVisibilityPreferences(
                 disabledLayers = setOf(
                     OverlayLayerKey("fixture.provider", "second"),
@@ -252,13 +255,15 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=3" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=4" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.glowEnabled=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.enabled=true" })
         assertTrue(Files.readString(path).lineSequence().any { it == "aiControl.savedMarkerAccessEnabled=true" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "webSearch.enabled=true" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "webSearch.credentialRef=brave-search" })
         assertTrue(Files.readString(path).lineSequence().any {
             it == "mapDisplay.sovereigntyLogoEmphasisZoom=0.85"
         })
@@ -283,6 +288,23 @@ class PreferencesStoreTest {
         assertFalse(disabled.enabled)
         assertFalse(disabled.savedMarkerAccessEnabled)
     }
+
+    @Test
+    fun `Web Search settings round trip only the DPAPI reference and never a Brave Key`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            val marker = "BRAVE_SECRET_MUST_NOT_BE_WRITTEN"
+            val expected = WebSearchConfig(enabled = true, credentialRef = BRAVE_SEARCH_CREDENTIAL_REF)
+
+            PropertiesPreferencesStore(path).save(AppPreferences(webSearch = expected))
+
+            val text = Files.readString(path)
+            assertTrue(text.contains("webSearch.enabled=true"))
+            assertTrue(text.contains("webSearch.credentialRef=brave-search"))
+            assertFalse(text.contains(marker))
+            assertFalse(text.contains("BRAVE_SEARCH_API_KEY"))
+            assertEquals(expected, PropertiesPreferencesStore(path).load().webSearch)
+        }
 
     @Test
     fun `atomic replacement leaves no temporary settings file`() = withTemporaryDirectory { root ->

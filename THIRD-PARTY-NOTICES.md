@@ -64,6 +64,10 @@ CCP/EVE materials are not open-source dependencies and are not licensed by this 
 
 The application is unofficial and is not affiliated with or endorsed by CCP hf. The distributor must have accepted and must comply with the then-current CCP Developer License Agreement before sharing a binary.
 
+## Optional external search service
+
+The Desktop Embedded Assistant can call the Brave Search LLM Context API when the user enables Web Search and supplies a Brave Search API credential. Brave Search is an external service, not bundled software or content. Use remains subject to Brave's current Search API terms and privacy policy. The integration uses only JDK networking and the existing kotlinx serialization runtime; it adds no Brave-distributed library to the application.
+
 ## Build-only components
 
 Gradle 9.2.1 and its wrapper, Kotlin/Compose build plugins, WiX Toolset 4.0.6, and test frameworks are build/test tools and are not bundled as application runtime libraries. Their source and binary distributions remain under their own licenses.

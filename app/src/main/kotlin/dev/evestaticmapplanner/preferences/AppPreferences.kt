@@ -3,6 +3,8 @@ package dev.evestaticmapplanner.preferences
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.BRAVE_SEARCH_CREDENTIAL_REF
+import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -18,6 +20,7 @@ data class AppPreferences(
     val aiProviderProfiles: Map<AiProviderType, AiProviderConfig> = aiProvider
         ?.let { mapOf(it.providerType to it) }
         .orEmpty(),
+    val webSearch: WebSearchConfig = WebSearchConfig.Defaults,
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
@@ -262,6 +265,7 @@ class PropertiesPreferencesStore(
             ),
             aiProvider = legacyAiProvider,
             aiProviderProfiles = aiProviderProfiles,
+            webSearch = properties.webSearchConfig(warningSink),
             overlayVisibility = properties.overlayVisibilityPreferences(),
             sharedMap = SharedMapPreferences(
                 serverUrl = properties.getProperty(KEY_SHARED_MAP_SERVER_URL)
@@ -329,6 +333,7 @@ class PropertiesPreferencesStore(
             val aiProviderProfiles = preferences.aiProviderProfiles.toMutableMap().apply {
                 aiProvider?.let { put(it.providerType, it) }
             }
+            val webSearch = preferences.webSearch
             val overlayVisibility = preferences.overlayVisibility
             val sharedMap = preferences.sharedMap
             val miniMap = preferences.miniMap
@@ -376,6 +381,8 @@ class PropertiesPreferencesStore(
                     config.temperature?.let { setProperty("${prefix}temperature", it.toString()) }
                     setProperty("${prefix}requestTimeoutSeconds", config.requestTimeoutSeconds.toString())
                 }
+                setProperty(KEY_WEB_SEARCH_ENABLED, webSearch.enabled.toString())
+                setProperty(KEY_WEB_SEARCH_CREDENTIAL_REF, webSearch.credentialRef.value)
                 setProperty(
                     KEY_OVERLAY_DISABLED_LAYERS,
                     overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
@@ -494,6 +501,21 @@ private fun Properties.aiProviderProfiles(warningSink: (String) -> Unit): Map<Ai
         }
     }.toMap()
 
+private fun Properties.webSearchConfig(warningSink: (String) -> Unit): WebSearchConfig = runCatching {
+    val reference = getProperty(KEY_WEB_SEARCH_CREDENTIAL_REF)
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let(::AiCredentialRef)
+        ?: BRAVE_SEARCH_CREDENTIAL_REF
+    WebSearchConfig(
+        enabled = validBoolean(KEY_WEB_SEARCH_ENABLED, WebSearchConfig.Defaults.enabled),
+        credentialRef = reference,
+    )
+}.getOrElse {
+    warningSink("Web Search settings are invalid and were disabled")
+    WebSearchConfig.Defaults
+}
+
 private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferences {
     val disabledLayers = getProperty(KEY_OVERLAY_DISABLED_LAYERS)
         ?.split(',')
@@ -509,8 +531,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "3"
-private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", SETTINGS_VERSION)
+const val SETTINGS_VERSION = "4"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -565,6 +587,8 @@ private const val KEY_AI_PROVIDER_MODEL_ID = "aiProvider.modelId"
 private const val KEY_AI_PROVIDER_TEMPERATURE = "aiProvider.temperature"
 private const val KEY_AI_PROVIDER_TIMEOUT_SECONDS = "aiProvider.requestTimeoutSeconds"
 private const val KEY_AI_PROVIDER_PROFILES_PREFIX = "aiProviderProfiles."
+private const val KEY_WEB_SEARCH_ENABLED = "webSearch.enabled"
+private const val KEY_WEB_SEARCH_CREDENTIAL_REF = "webSearch.credentialRef"
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"

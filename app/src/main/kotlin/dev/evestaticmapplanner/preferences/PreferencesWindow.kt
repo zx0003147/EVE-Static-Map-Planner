@@ -35,12 +35,16 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.control.AiControlStatus
 import dev.evestaticmapplanner.ai.AiProviderSettingsUiState
+import dev.evestaticmapplanner.ai.WebSearchSettingsUiState
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.SearchTestCheck
+import dev.evestaticmapplanner.embeddedai.SearchTestCheckStatus
+import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import dev.evestaticmapplanner.featurepack.FeaturePackInstallationState
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerItem
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
@@ -80,11 +84,16 @@ internal fun PreferencesWindow(
     preferences: AppPreferences,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     aiProviderSettingsState: AiProviderSettingsUiState = AiProviderSettingsUiState(),
+    webSearchSettingsState: WebSearchSettingsUiState = WebSearchSettingsUiState(),
     initialCategory: PreferencesCategory = PreferencesCategory.MAP_DISPLAY,
     onAiProviderViewed: (AiProviderType) -> Unit = {},
     onAiProviderTest: (AiProviderConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
     onAiProviderSave: (AiProviderConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
     onAiCredentialDelete: (AiProviderType) -> Unit = {},
+    onWebSearchViewed: (WebSearchConfig) -> Unit = {},
+    onWebSearchTest: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onWebSearchSave: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onWebSearchCredentialDelete: (WebSearchConfig) -> Unit = {},
     aiControlStatus: AiControlStatus,
     aiControlError: String?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
@@ -160,6 +169,12 @@ internal fun PreferencesWindow(
                                 onTest = onAiProviderTest,
                                 onSave = onAiProviderSave,
                                 onDeleteCredential = onAiCredentialDelete,
+                                webSearchConfig = preferences.webSearch,
+                                webSearchState = webSearchSettingsState,
+                                onWebSearchViewed = onWebSearchViewed,
+                                onWebSearchTest = onWebSearchTest,
+                                onWebSearchSave = onWebSearchSave,
+                                onWebSearchCredentialDelete = onWebSearchCredentialDelete,
                                 aiControlPreferences = preferences.aiControl,
                                 aiControlStatus = aiControlStatus,
                                 aiControlError = aiControlError,
@@ -243,6 +258,12 @@ internal fun AiFeaturesPreferencesContent(
     onAiControlChange: (Boolean) -> Unit,
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
     onResetAiControl: () -> Unit,
+    webSearchConfig: WebSearchConfig = WebSearchConfig.Defaults,
+    webSearchState: WebSearchSettingsUiState = WebSearchSettingsUiState(),
+    onWebSearchViewed: (WebSearchConfig) -> Unit = {},
+    onWebSearchTest: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onWebSearchSave: (WebSearchConfig, SecretValue?) -> Unit = { _, secret -> secret?.close() },
+    onWebSearchCredentialDelete: (WebSearchConfig) -> Unit = {},
 ) {
     var expansion by remember { mutableStateOf(AiFeaturesExpansionState()) }
     AiFeaturesAccordionHeader(
@@ -259,6 +280,15 @@ internal fun AiFeaturesPreferencesContent(
             onTest = onTest,
             onSave = onSave,
             onDeleteCredential = onDeleteCredential,
+        )
+        HorizontalDivider()
+        WebSearchPreferencesContent(
+            savedConfig = webSearchConfig,
+            state = webSearchState,
+            onViewed = onWebSearchViewed,
+            onTest = onWebSearchTest,
+            onSave = onWebSearchSave,
+            onDeleteCredential = onWebSearchCredentialDelete,
         )
     }
     HorizontalDivider()
@@ -360,7 +390,8 @@ internal fun AiProviderPreferencesContent(
         return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
     }
 
-    Text("AI Provider", style = MaterialTheme.typography.titleMedium)
+    Text("AI Model", style = MaterialTheme.typography.titleMedium)
+    Text("AI Provider", style = MaterialTheme.typography.titleSmall)
     Text(
         "The provider is initialized only when you test the connection or send an AI message.",
         color = EveColors.SecondaryText,
@@ -474,6 +505,104 @@ internal fun AiProviderPreferencesContent(
     }
     state.message?.let { Text(it, color = EveColors.SecondaryText) }
     state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+}
+
+@Composable
+internal fun WebSearchPreferencesContent(
+    savedConfig: WebSearchConfig,
+    state: WebSearchSettingsUiState,
+    onViewed: (WebSearchConfig) -> Unit,
+    onTest: (WebSearchConfig, SecretValue?) -> Unit,
+    onSave: (WebSearchConfig, SecretValue?) -> Unit,
+    onDeleteCredential: (WebSearchConfig) -> Unit,
+) {
+    var enabled by remember(savedConfig) { mutableStateOf(savedConfig.enabled) }
+    var apiKeyDraft by remember(savedConfig) { mutableStateOf("") }
+    val config = remember(enabled, savedConfig.credentialRef) {
+        WebSearchConfig(enabled = enabled, credentialRef = savedConfig.credentialRef)
+    }
+    val busy = state.isSaving || state.isTesting
+    LaunchedEffect(savedConfig) { onViewed(savedConfig) }
+
+    fun draftSecret(clear: Boolean): SecretValue? {
+        val normalized = apiKeyDraft.trim()
+        if (clear) apiKeyDraft = ""
+        return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
+    }
+
+    Text("Web Search", style = MaterialTheme.typography.titleMedium)
+    PreferenceCheckbox("Enable Web Search", enabled, enabled = !busy) { enabled = it }
+    Text("Provider: Brave Search", style = MaterialTheme.typography.titleSmall)
+    Text(
+        "Uses Brave LLM Context for current public information. Planner routes and map data stay local.",
+        color = EveColors.SecondaryText,
+    )
+    OutlinedTextField(
+        value = apiKeyDraft,
+        onValueChange = { apiKeyDraft = it },
+        label = { Text(if (state.credentialSource == null) "Brave API Key" else "Replace Brave API Key") },
+        placeholder = {
+            Text(if (state.credentialSource == null) "Enter Brave Search API Key" else "Leave blank to keep current Key")
+        },
+        singleLine = true,
+        enabled = !busy,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        when (state.credentialSource) {
+            AiCredentialSource.SECURE_STORAGE -> "Brave API Key: Saved securely"
+            AiCredentialSource.SESSION_ONLY -> "Brave API Key: This session only — Key will not be saved"
+            AiCredentialSource.ENVIRONMENT -> "Credential: BRAVE_SEARCH_API_KEY"
+            null -> "Brave API Key: Not configured"
+        },
+        color = EveColors.SecondaryText,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(
+            onClick = { onTest(config, draftSecret(clear = false)) },
+            enabled = !busy,
+        ) { Text("Test Search") }
+        TextButton(
+            onClick = { onSave(config, draftSecret(clear = true)) },
+            enabled = !busy,
+        ) { Text("Save") }
+        TextButton(
+            onClick = { onDeleteCredential(config) },
+            enabled = !busy && state.credentialSource in setOf(
+                AiCredentialSource.SECURE_STORAGE,
+                AiCredentialSource.SESSION_ONLY,
+            ),
+        ) { Text("Delete API Key") }
+        if (busy) CircularProgressIndicator()
+    }
+    state.testResult?.let { result ->
+        HorizontalDivider()
+        Text("Search Test", style = MaterialTheme.typography.titleSmall)
+        SearchCheckRow("Connection", result.connection)
+        SearchCheckRow("Authentication", result.authentication)
+        SearchCheckRow("Search response", result.searchResponse)
+        SearchCheckRow("Source parsing", result.sourceParsing)
+    }
+    state.message?.let { Text(it, color = EveColors.SecondaryText) }
+    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+}
+
+@Composable
+private fun SearchCheckRow(label: String, check: SearchTestCheck) {
+    val prefix = when (check.status) {
+        SearchTestCheckStatus.PASSED -> "✓"
+        SearchTestCheckStatus.FAILED -> "✗"
+        SearchTestCheckStatus.NOT_RUN -> "–"
+    }
+    Text(
+        "$prefix $label: ${check.message}",
+        color = if (check.status == SearchTestCheckStatus.FAILED) {
+            MaterialTheme.colorScheme.error
+        } else {
+            EveColors.SecondaryText
+        },
+    )
 }
 
 private fun AiProviderType.modelPlaceholder(): String = when (this) {

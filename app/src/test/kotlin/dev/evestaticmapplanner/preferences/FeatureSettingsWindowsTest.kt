@@ -86,6 +86,7 @@ class FeatureSettingsWindowsTest {
 
         onNodeWithText("▸ Embedded Assistant").assertIsDisplayed().performClick()
         onNodeWithText("AI Provider").assertIsDisplayed()
+        onNodeWithText("Web Search").assertIsDisplayed()
         onNodeWithText("▸ MCP Integration").assertIsDisplayed().performClick()
         onNodeWithText("AI Provider").assertDoesNotExist()
         onNodeWithText("MCP Server & Permissions").assertIsDisplayed()
