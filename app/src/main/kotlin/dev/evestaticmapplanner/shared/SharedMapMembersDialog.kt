@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.shared.model.SharedMember
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveLazyColumn
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
@@ -49,6 +50,8 @@ internal fun SharedMapMembersDialog(
     onClearInvite: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.sharedMap
     var selectedMemberId by remember(state.workspaceId) { mutableStateOf<String?>(null) }
     var showCreateMember by remember { mutableStateOf(false) }
     var pendingRemove by remember { mutableStateOf<SharedMember?>(null) }
@@ -63,15 +66,15 @@ internal fun SharedMapMembersDialog(
 
     AlertDialog(
         onDismissRequest = { if (state.busyMemberId == null) onDismiss() },
-        title = { Text("Shared Map Members") },
+        title = { Text(strings.membersTitle) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Text(workspaceName, color = EveColors.SecondaryText)
-                Text("Members: ${state.members.size}")
-                if (state.loading) Text("Loading members…", color = EveColors.SecondaryText)
+                Text(strings.memberCount(state.members.size))
+                if (state.loading) Text(strings.loadingMembers, color = EveColors.SecondaryText)
                 state.error?.let {
-                    Text(sharedMapErrorMessage(it), color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = onClearError) { Text("Dismiss") }
+                    Text(strings.error(it), color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = onClearError) { Text(strings.dismiss) }
                 }
                 EveLazyColumn(Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 330.dp)) {
                     items(state.members, key = SharedMember::memberId) { member ->
@@ -95,20 +98,20 @@ internal fun SharedMapMembersDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(member.displayName, modifier = Modifier.weight(1f), maxLines = 1)
-                            Text(member.role.name, modifier = Modifier.width(70.dp))
-                            Text(if (member.isActive) "ACTIVE" else "REVOKED", modifier = Modifier.width(75.dp))
+                            Text(strings.role(member.role), modifier = Modifier.width(70.dp))
+                            Text(if (member.isActive) strings.active else strings.revoked, modifier = Modifier.width(75.dp))
                         }
                     }
                 }
                 if (selected != null && selected.isActive) {
-                    Text("Role", style = MaterialTheme.typography.labelMedium)
+                    Text(strings.role, style = MaterialTheme.typography.labelMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         SharedWorkspaceRole.entries.forEach { role ->
                             TextButton(
                                 enabled = state.busyMemberId == null && role != selected.role,
                                 selected = role == selected.role,
                                 onClick = { onChangeRole(selected.memberId, selected.version, role) },
-                            ) { Text(role.name.lowercase().replaceFirstChar(Char::uppercase)) }
+                            ) { Text(strings.role(role)) }
                         }
                     }
                 }
@@ -116,24 +119,24 @@ internal fun SharedMapMembersDialog(
                     TextButton(
                         enabled = state.busyMemberId == null,
                         onClick = { showCreateMember = true },
-                    ) { Text("Add Member…") }
+                    ) { Text(strings.addMember) }
                     TextButton(
                         enabled = selected?.isActive == true && state.busyMemberId == null,
                         onClick = { selected?.let { onCreateInvite(it.memberId, 72) } },
-                    ) { Text("Create Invite") }
+                    ) { Text(strings.createInvite) }
                     TextButton(
                         enabled = selected?.isActive == true && state.busyMemberId == null,
                         onClick = { pendingRemove = selected },
-                    ) { Text("Remove") }
+                    ) { Text(appStrings.common.remove) }
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = onLoad, enabled = !state.loading && state.busyMemberId == null) {
-                        Text("Refresh")
+                        Text(strings.refresh)
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = state.busyMemberId == null, onClick = onDismiss) { Text("Close") }
+            TextButton(enabled = state.busyMemberId == null, onClick = onDismiss) { Text(appStrings.common.close) }
         },
     )
 
@@ -150,18 +153,18 @@ internal fun SharedMapMembersDialog(
     pendingRemove?.let { member ->
         AlertDialog(
             onDismissRequest = { if (state.busyMemberId == null) pendingRemove = null },
-            title = { Text("Remove member?") },
-            text = { Text("Remove ${member.displayName} from $workspaceName? Their devices will lose access immediately.") },
+            title = { Text(strings.removeMemberTitle) },
+            text = { Text(strings.removeMember(member.displayName, workspaceName)) },
             confirmButton = {
                 TextButton(
                     enabled = state.busyMemberId == null,
                     onClick = {
                         if (onRemoveMember(member.memberId, member.version)) pendingRemove = null
                     },
-                ) { Text("Remove") }
+                ) { Text(appStrings.common.remove) }
             },
             dismissButton = {
-                TextButton(enabled = state.busyMemberId == null, onClick = { pendingRemove = null }) { Text("Cancel") }
+                TextButton(enabled = state.busyMemberId == null, onClick = { pendingRemove = null }) { Text(appStrings.common.cancel) }
             },
         )
     }
@@ -177,26 +180,28 @@ private fun CreateSharedMemberDialog(
     onCreate: (String, SharedWorkspaceRole) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.sharedMap
     var displayName by remember { mutableStateOf("") }
     var role by remember { mutableStateOf(SharedWorkspaceRole.VIEWER) }
     val validName = displayName.trim().let { it.isNotEmpty() && it.codePointCount(0, it.length) <= 80 }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Add Shared Map Member") },
+        title = { Text(strings.addMember.removeSuffix("…")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { if (it.codePointCount(0, it.length) <= 80) displayName = it },
-                    label = { Text("Display name") },
+                    label = { Text(strings.displayName) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("Initial role")
+                Text(strings.initialRole)
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     SharedWorkspaceRole.entries.forEach { option ->
                         TextButton(enabled = !busy, selected = role == option, onClick = { role = option }) {
-                            Text(if (role == option) "✓ ${option.name}" else option.name)
+                            Text(if (role == option) "✓ ${strings.role(option)}" else strings.role(option))
                         }
                     }
                 }
@@ -204,15 +209,17 @@ private fun CreateSharedMemberDialog(
         },
         confirmButton = {
             TextButton(enabled = validName && !busy, onClick = { onCreate(displayName, role) }) {
-                Text(if (busy) "Adding…" else "Add Member")
+                Text(if (busy) strings.adding else strings.addMember.removeSuffix("…"))
             }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(appStrings.common.cancel) } },
     )
 }
 
 @Composable
 private fun OneTimeInviteDialog(invite: OneTimeSharedInvite, onDismiss: () -> Unit) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.sharedMap
     var inviteText by remember(invite) { mutableStateOf(invite.useSecret { it }) }
     var copied by remember(invite) { mutableStateOf(false) }
     DisposableEffect(invite) {
@@ -220,19 +227,19 @@ private fun OneTimeInviteDialog(invite: OneTimeSharedInvite, onDismiss: () -> Un
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("One-time Shared Map Invite") },
+        title = { Text(strings.oneTimeInviteTitle) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("This invite is shown once. Send it through a trusted channel.")
+                Text(strings.oneTimeInviteHelp)
                 OutlinedTextField(
                     value = inviteText,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Invite") },
+                    label = { Text(strings.invite) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (copied) Text("Copied to clipboard.", color = EveColors.SecondaryText)
+                if (copied) Text(strings.copied, color = EveColors.SecondaryText)
             }
         },
         confirmButton = {
@@ -241,8 +248,8 @@ private fun OneTimeInviteDialog(invite: OneTimeSharedInvite, onDismiss: () -> Un
                     Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(inviteText), null)
                     copied = true
                 },
-            ) { Text("Copy") }
+            ) { Text(strings.copy) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(appStrings.common.close) } },
     )
 }

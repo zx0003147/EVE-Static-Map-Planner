@@ -4,6 +4,12 @@ import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
+import dev.evestaticmapplanner.localization.MarkerMessage
+import dev.evestaticmapplanner.localization.MarkerStrings
+import dev.evestaticmapplanner.localization.MarkerUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 
 data class SavedMarkerRowPresentation(
     val systemId: Int,
@@ -26,11 +32,12 @@ object MarkerManagerPresentationBuilder {
         systemNamesById: Map<Int, String>,
         query: String,
         selectedSystemId: Int?,
+        strings: MarkerStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).marker,
     ): MarkerManagerPresentation {
         val normalizedQuery = query.trim()
         val rows = state.markersBySystemId.values.asSequence()
             .filter { it.persistence == MarkerPersistence.SAVED }
-            .map { marker -> marker.toRow(systemNamesById[marker.systemId] ?: "System ${marker.systemId}") }
+            .map { marker -> marker.toRow(systemNamesById[marker.systemId] ?: strings.fallbackSystem(marker.systemId)) }
             .filter { row ->
                 normalizedQuery.isEmpty() ||
                     row.systemName.contains(normalizedQuery, ignoreCase = true) ||
@@ -48,11 +55,10 @@ object MarkerManagerPresentationBuilder {
     }
 }
 
-internal fun markerCreationConflict(marker: Marker?): String? = when (marker?.persistence) {
+internal fun markerCreationConflict(marker: Marker?): UiMessage? = when (marker?.persistence) {
     null -> null
-    MarkerPersistence.TEMPORARY ->
-        "This system already has a temporary marker. Use Save Permanently on that marker instead."
-    MarkerPersistence.SAVED -> "This system already has a marker."
+    MarkerPersistence.TEMPORARY -> MarkerUiMessage(MarkerMessage.TEMPORARY_CONFLICT)
+    MarkerPersistence.SAVED -> MarkerUiMessage(MarkerMessage.SAVED_CONFLICT)
 }
 
 private fun Marker.toRow(systemName: String) = SavedMarkerRowPresentation(
@@ -64,5 +70,5 @@ private fun Marker.toRow(systemName: String) = SavedMarkerRowPresentation(
     createdBy = checkNotNull(createdBy),
 )
 
-internal fun savedMarkerProvenanceLabel(createdBy: SavedMarkerCreatedBy): String? =
-    if (createdBy == SavedMarkerCreatedBy.AI) "Created by AI" else null
+internal fun savedMarkerProvenanceLabel(createdBy: SavedMarkerCreatedBy, strings: MarkerStrings): String? =
+    if (createdBy == SavedMarkerCreatedBy.AI) strings.createdByAi else null

@@ -6,6 +6,10 @@ import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import dev.evestaticmapplanner.marker.application.SavedMarkerState
+import dev.evestaticmapplanner.localization.MarkerDatabaseUnavailableUiMessage
+import dev.evestaticmapplanner.localization.MarkerMessage
+import dev.evestaticmapplanner.localization.MarkerUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +49,12 @@ class MarkerViewModel(
         }
         val marker = runCatching { Marker.temporary(systemId) }.getOrElse { error ->
             updateTransient { state ->
-                state.copy(operationError = error.message ?: "Unable to create temporary marker")
+                state.copy(
+                    operationError = MarkerUiMessage(
+                        MarkerMessage.CREATE_TEMPORARY_FAILED,
+                        technicalDetail = error.message,
+                    ),
+                )
             }
             return@synchronized false
         }
@@ -62,10 +71,10 @@ class MarkerViewModel(
         val current = currentState()
         val marker = current.markersBySystemId[systemId]
         val error = when {
-            systemId in current.busySystemIds -> "Marker operation is already in progress for solar system $systemId"
-            marker == null -> "Marker no longer exists for solar system $systemId"
+            systemId in current.busySystemIds -> MarkerUiMessage(MarkerMessage.OPERATION_IN_PROGRESS, systemId)
+            marker == null -> MarkerUiMessage(MarkerMessage.MARKER_MISSING, systemId)
             marker.persistence != MarkerPersistence.TEMPORARY ->
-                "Saved marker cannot be updated as temporary for solar system $systemId"
+                MarkerUiMessage(MarkerMessage.SAVED_CANNOT_UPDATE_AS_TEMPORARY, systemId)
             else -> null
         }
         if (error != null) {
@@ -86,10 +95,10 @@ class MarkerViewModel(
         val current = currentState()
         val marker = current.markersBySystemId[systemId]
         val error = when {
-            systemId in current.busySystemIds -> "Marker operation is already in progress for solar system $systemId"
-            marker == null -> "Marker no longer exists for solar system $systemId"
+            systemId in current.busySystemIds -> MarkerUiMessage(MarkerMessage.OPERATION_IN_PROGRESS, systemId)
+            marker == null -> MarkerUiMessage(MarkerMessage.MARKER_MISSING, systemId)
             marker.persistence != MarkerPersistence.TEMPORARY ->
-                "Saved marker cannot be removed as temporary for solar system $systemId"
+                MarkerUiMessage(MarkerMessage.SAVED_CANNOT_REMOVE_AS_TEMPORARY, systemId)
             else -> null
         }
         if (error != null) {
@@ -109,7 +118,7 @@ class MarkerViewModel(
         val current = currentState()
         val busyTemporary = current.busySystemIds.any(transientState.temporaryMarkersBySystemId::containsKey)
         if (busyTemporary) {
-            updateTransient { it.copy(operationError = "A temporary marker operation is still in progress") }
+            updateTransient { it.copy(operationError = MarkerUiMessage(MarkerMessage.TEMPORARY_OPERATION_IN_PROGRESS)) }
             return@synchronized false
         }
         updateTransient { it.copy(temporaryMarkersBySystemId = emptyMap(), operationError = null) }
@@ -132,7 +141,7 @@ class MarkerViewModel(
         scope.launch {
             runCatching { savedMarkerService.create(systemId, draft, initialTags) }
                 .onSuccess { completeSavedMutation(systemId) }
-                .onFailure { error -> failSavedMutation(systemId, error, "Unable to create saved marker") }
+                .onFailure { error -> failSavedMutation(systemId, error, MarkerMessage.CREATE_SAVED_FAILED) }
         }
         return true
     }
@@ -142,7 +151,7 @@ class MarkerViewModel(
         scope.launch {
             runCatching { savedMarkerService.update(systemId, draft) }
                 .onSuccess { completeSavedMutation(systemId) }
-                .onFailure { error -> failSavedMutation(systemId, error, "Unable to update saved marker") }
+                .onFailure { error -> failSavedMutation(systemId, error, MarkerMessage.UPDATE_SAVED_FAILED) }
         }
         return true
     }
@@ -157,7 +166,7 @@ class MarkerViewModel(
             }.onSuccess {
                 completeSavedMutation(systemId)
             }.onFailure { error ->
-                failSavedMutation(systemId, error, "Unable to remove saved marker")
+                failSavedMutation(systemId, error, MarkerMessage.REMOVE_SAVED_FAILED)
             }
         }
         return true
@@ -171,7 +180,7 @@ class MarkerViewModel(
                 updateTransient { state ->
                     state.copy(
                         busySystemIds = state.busySystemIds - parentSystemId,
-                        operationError = "${type.key} is already assigned to this saved marker",
+                        operationError = MarkerUiMessage(MarkerMessage.TAG_ALREADY_ASSIGNED, tag = type.key),
                     )
                 }
                 return false
@@ -180,7 +189,7 @@ class MarkerViewModel(
         scope.launch {
             runCatching { savedMarkerService.addChild(parentSystemId, type) }
                 .onSuccess { completeSavedMutation(parentSystemId) }
-                .onFailure { error -> failSavedMutation(parentSystemId, error, "Unable to add saved marker tag") }
+                .onFailure { error -> failSavedMutation(parentSystemId, error, MarkerMessage.ADD_TAG_FAILED) }
         }
         return true
     }
@@ -190,7 +199,7 @@ class MarkerViewModel(
             currentState().childrenByParentSystemId[parentSystemId].orEmpty().any { it.id == childId }
         }
         if (!childExists) {
-            setOperationError("Saved marker tag no longer exists")
+            setOperationError(MarkerUiMessage(MarkerMessage.TAG_MISSING))
             return false
         }
         if (!reserveExistingSaved(parentSystemId)) return false
@@ -201,7 +210,7 @@ class MarkerViewModel(
                 }
             }
                 .onSuccess { completeSavedMutation(parentSystemId) }
-                .onFailure { error -> failSavedMutation(parentSystemId, error, "Unable to remove saved marker tag") }
+                .onFailure { error -> failSavedMutation(parentSystemId, error, MarkerMessage.REMOVE_TAG_FAILED) }
         }
         return true
     }
@@ -211,13 +220,13 @@ class MarkerViewModel(
             val current = currentState()
             val marker = current.markersBySystemId[systemId]
             val error = when {
-                current.isLoading -> "Saved markers are still loading"
-                current.databaseError != null -> current.databaseError
+                current.isLoading -> MarkerUiMessage(MarkerMessage.STILL_LOADING)
+                current.databaseError != null -> MarkerDatabaseUnavailableUiMessage(current.databaseError)
                 systemId in current.busySystemIds ->
-                    "Marker operation is already in progress for solar system $systemId"
-                marker == null -> "Marker no longer exists for solar system $systemId"
+                    MarkerUiMessage(MarkerMessage.OPERATION_IN_PROGRESS, systemId)
+                marker == null -> MarkerUiMessage(MarkerMessage.MARKER_MISSING, systemId)
                 marker.persistence != MarkerPersistence.TEMPORARY ->
-                    "Marker is already saved for solar system $systemId"
+                    MarkerUiMessage(MarkerMessage.ALREADY_SAVED, systemId)
                 else -> null
             }
             if (error != null) {
@@ -244,7 +253,7 @@ class MarkerViewModel(
                     }
                 }
                 .onFailure { error ->
-                    failSavedMutation(systemId, error, "Unable to save temporary marker permanently")
+                    failSavedMutation(systemId, error, MarkerMessage.SAVE_TEMPORARY_FAILED)
                 }
         }
         return true
@@ -258,12 +267,12 @@ class MarkerViewModel(
         val current = currentState()
         val marker = current.markersBySystemId[systemId]
         val error = when {
-            current.isLoading -> "Saved markers are still loading"
-            current.databaseError != null -> current.databaseError
-            systemId in current.busySystemIds -> "Marker operation is already in progress for solar system $systemId"
-            marker == null -> "Marker no longer exists for solar system $systemId"
+            current.isLoading -> MarkerUiMessage(MarkerMessage.STILL_LOADING)
+            current.databaseError != null -> MarkerDatabaseUnavailableUiMessage(current.databaseError)
+            systemId in current.busySystemIds -> MarkerUiMessage(MarkerMessage.OPERATION_IN_PROGRESS, systemId)
+            marker == null -> MarkerUiMessage(MarkerMessage.MARKER_MISSING, systemId)
             marker.persistence != MarkerPersistence.SAVED ->
-                "Temporary marker cannot use a saved marker operation for solar system $systemId"
+                MarkerUiMessage(MarkerMessage.TEMPORARY_CANNOT_USE_SAVED_OPERATION, systemId)
             else -> null
         }
         if (error != null) {
@@ -274,11 +283,11 @@ class MarkerViewModel(
         true
     }
 
-    private fun creationError(state: MarkerUiState, systemId: Int): String? = when {
-        state.isLoading -> "Saved markers are still loading"
-        state.databaseError != null -> state.databaseError
-        systemId in state.busySystemIds -> "Marker operation is already in progress for solar system $systemId"
-        systemId in state.markersBySystemId -> "Solar system $systemId already has a marker"
+    private fun creationError(state: MarkerUiState, systemId: Int): UiMessage? = when {
+        state.isLoading -> MarkerUiMessage(MarkerMessage.STILL_LOADING)
+        state.databaseError != null -> MarkerDatabaseUnavailableUiMessage(state.databaseError)
+        systemId in state.busySystemIds -> MarkerUiMessage(MarkerMessage.OPERATION_IN_PROGRESS, systemId)
+        systemId in state.markersBySystemId -> MarkerUiMessage(MarkerMessage.SYSTEM_ALREADY_MARKED, systemId)
         else -> null
     }
 
@@ -290,15 +299,15 @@ class MarkerViewModel(
         state.copy(busySystemIds = state.busySystemIds - systemId, operationError = null)
     }
 
-    private fun failSavedMutation(systemId: Int, error: Throwable, fallback: String) =
+    private fun failSavedMutation(systemId: Int, error: Throwable, message: MarkerMessage) =
         updateTransient { state ->
             state.copy(
                 busySystemIds = state.busySystemIds - systemId,
-                operationError = error.message ?: fallback,
+                operationError = MarkerUiMessage(message, systemId = systemId, technicalDetail = error.message),
             )
         }
 
-    private fun setOperationError(message: String?) = synchronized(stateLock) {
+    private fun setOperationError(message: UiMessage?) = synchronized(stateLock) {
         updateTransient { it.copy(operationError = message) }
     }
 
@@ -313,7 +322,7 @@ class MarkerViewModel(
 private data class MarkerTransientState(
     val temporaryMarkersBySystemId: Map<Int, Marker> = emptyMap(),
     val busySystemIds: Set<Int> = emptySet(),
-    val operationError: String? = null,
+    val operationError: UiMessage? = null,
 )
 
 private fun buildUiState(saved: SavedMarkerState, transient: MarkerTransientState): MarkerUiState = MarkerUiState(

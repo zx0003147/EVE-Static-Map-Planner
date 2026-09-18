@@ -22,4 +22,10 @@ object SimplifiedChineseAppStrings : AppStrings {
     override val preferences: PreferencesStrings = SimplifiedChinesePreferencesStrings
     override val route: RouteStrings = SimplifiedChineseRouteStrings
     override val staticData: StaticDataStrings = SimplifiedChineseStaticDataStrings
+    override val aiAssistant: dev.evestaticmapplanner.localization.AiAssistantStrings = SimplifiedChineseAiAssistantStrings
+    override val marker: dev.evestaticmapplanner.localization.MarkerStrings = SimplifiedChineseMarkerStrings
+    override val sharedMap: dev.evestaticmapplanner.localization.SharedMapStrings = SimplifiedChineseSharedMapStrings
+    override val wormhole: dev.evestaticmapplanner.localization.WormholeStrings = SimplifiedChineseWormholeStrings
+    override val ansiblex: dev.evestaticmapplanner.localization.AnsiblexStrings = SimplifiedChineseAnsiblexStrings
+    override val miniMap: dev.evestaticmapplanner.localization.MiniMapStrings = SimplifiedChineseMiniMapStrings
 }

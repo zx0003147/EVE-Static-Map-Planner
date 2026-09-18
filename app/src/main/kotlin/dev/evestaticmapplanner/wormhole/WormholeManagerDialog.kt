@@ -30,6 +30,9 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import dev.evestaticmapplanner.search.SystemSearchField
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.WormholeMessage
+import dev.evestaticmapplanner.localization.WormholeUiMessage
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveDivider
@@ -46,11 +49,12 @@ fun WormholeManagerDialog(
     viewModel: WormholeViewModel,
     onDismiss: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.wormhole
     var confirmClearAll by remember { mutableStateOf(false) }
 
     DialogWindow(
         onCloseRequest = onDismiss,
-        title = "Wormhole Manager",
+        title = strings.managerTitle,
         state = rememberDialogState(
             width = WORMHOLE_MANAGER_DEFAULT_SIZE.width,
             height = WORMHOLE_MANAGER_DEFAULT_SIZE.height,
@@ -97,26 +101,28 @@ internal fun WormholeManagerContent(
     onDismiss: () -> Unit,
     onRequestClearAll: () -> Unit,
 ) {
-    val rows = remember(state.connections, state.systemNamesById) {
-        WormholePresentationBuilder.rows(state.connections, state.systemNamesById)
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.wormhole
+    val rows = remember(state.connections, state.systemNamesById, strings) {
+        WormholePresentationBuilder.rows(state.connections, state.systemNamesById, strings)
     }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("Wormhole Manager", style = MaterialTheme.typography.titleLarge)
+                Text(strings.managerTitle, style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "${state.connections.size} active session ${if (state.connections.size == 1) "connection" else "connections"}",
+                    strings.connectionCount(state.connections.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = EveColors.SecondaryText,
                 )
                 Text(
-                    "Wormholes exist only for the current application session.",
+                    strings.sessionOnlyHelp,
                     style = MaterialTheme.typography.labelSmall,
                     color = EveColors.SecondaryText,
                 )
             }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text(appStrings.common.close) }
         }
         EveDivider()
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -124,10 +130,10 @@ internal fun WormholeManagerContent(
                 Modifier.width(WORMHOLE_MANAGER_FORM_WIDTH).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("Add Wormhole", style = MaterialTheme.typography.titleMedium)
+                Text(strings.addWormhole, style = MaterialTheme.typography.titleMedium)
                 SystemSearchField(
                     value = state.managerFromQuery,
-                    label = "From",
+                    label = strings.from,
                     results = state.managerFromResults,
                     onValueChange = viewModel::updateManagerFromQuery,
                     onSelect = viewModel::selectManagerFrom,
@@ -136,7 +142,7 @@ internal fun WormholeManagerContent(
                 )
                 SystemSearchField(
                     value = state.managerToQuery,
-                    label = "To",
+                    label = strings.to,
                     results = state.managerToResults,
                     onValueChange = viewModel::updateManagerToQuery,
                     onSelect = viewModel::selectManagerTo,
@@ -147,11 +153,16 @@ internal fun WormholeManagerContent(
                     onClick = { viewModel.addFromManager() },
                     enabled = state.canAddFromManager && !state.isLoading,
                     modifier = Modifier.testTag(WORMHOLE_MANAGER_ADD_TEST_TAG),
-                ) { Text("Add Wormhole") }
+                ) { Text(strings.addWormhole) }
                 state.managerMessage?.let {
                     Text(
-                        it,
-                        color = if (it == WORMHOLE_ADDED_MESSAGE || it == WORMHOLE_REMOVED_MESSAGE || it.startsWith("Cleared")) {
+                        it.resolve(appStrings),
+                        color = if (it is WormholeUiMessage && it.id in setOf(
+                                WormholeMessage.ADDED,
+                                WormholeMessage.REMOVED,
+                                WormholeMessage.CLEARED,
+                            )
+                        ) {
                             EveColors.Important
                         } else {
                             EveColors.Error
@@ -159,13 +170,13 @@ internal fun WormholeManagerContent(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                state.loadError?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
+                state.loadError?.let { Text(it.resolve(appStrings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
             }
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                Text("Current Wormholes", style = MaterialTheme.typography.titleMedium)
+                Text(strings.currentWormholes, style = MaterialTheme.typography.titleMedium)
                 if (rows.isEmpty()) {
                     Text(
-                        "No active Wormhole connections",
+                        strings.noActiveConnections,
                         modifier = Modifier.padding(vertical = 16.dp),
                         color = EveColors.SecondaryText,
                     )
@@ -185,7 +196,7 @@ internal fun WormholeManagerContent(
                         onClick = onRequestClearAll,
                         enabled = rows.isNotEmpty(),
                         modifier = Modifier.testTag(WORMHOLE_MANAGER_CLEAR_ALL_TEST_TAG),
-                    ) { Text("Clear All") }
+                    ) { Text(strings.clearAll) }
                 }
             }
         }
@@ -194,25 +205,28 @@ internal fun WormholeManagerContent(
 
 @Composable
 private fun WormholeManagerConnectionRow(row: WormholeConnectionRow, onRemove: () -> Unit) {
+    val common = LocalAppStrings.current.common
     EvePanel(secondary = true, bordered = false) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(row.canonicalLabel, modifier = Modifier.weight(1f))
-            TextButton(onClick = onRemove) { Text("Remove") }
+            TextButton(onClick = onRemove) { Text(common.remove) }
         }
     }
 }
 
 @Composable
 internal fun WormholeClearAllConfirmationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.wormhole
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Clear all Wormholes?") },
-        text = { Text("This will remove all temporary Wormhole connections for the current application session.") },
-        confirmButton = { Button(onClick = onConfirm) { Text("Clear All") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text(strings.clearAllTitle) },
+        text = { Text(strings.clearAllMessage) },
+        confirmButton = { Button(onClick = onConfirm) { Text(strings.clearAll) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(appStrings.common.cancel) } },
     )
 }
 
@@ -223,13 +237,15 @@ fun CreateWormholeDialog(
     onCreated: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.wormhole
     val origin = state.quickOrigin ?: return
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create Wormhole") },
+        title = { Text(strings.createWormhole) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("From", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+                Text(strings.from, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
                 Text(
                     origin.name,
                     style = MaterialTheme.typography.titleMedium,
@@ -237,14 +253,14 @@ fun CreateWormholeDialog(
                 )
                 SystemSearchField(
                     value = state.quickToQuery,
-                    label = "To",
+                    label = strings.to,
                     results = state.quickToResults,
                     onValueChange = viewModel::updateQuickToQuery,
                     onSelect = viewModel::selectQuickTo,
                     modifier = Modifier.fillMaxWidth(),
                     suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
                 )
-                state.quickMessage?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
+                state.quickMessage?.let { Text(it.resolve(appStrings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
@@ -254,9 +270,9 @@ fun CreateWormholeDialog(
                 },
                 enabled = state.canAddFromQuickCreate,
                 modifier = Modifier.testTag(WORMHOLE_QUICK_ADD_TEST_TAG),
-            ) { Text("Add") }
+            ) { Text(appStrings.common.add) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(appStrings.common.cancel) } },
     )
 }
 
@@ -268,12 +284,14 @@ fun WormholeConnectionsDialog(
     viewModel: WormholeViewModel,
     onDismiss: () -> Unit,
 ) {
-    val rows = remember(systemId, state.connections, state.systemNamesById) {
-        WormholePresentationBuilder.rowsForSystem(systemId, state.connections, state.systemNamesById)
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.wormhole
+    val rows = remember(systemId, state.connections, state.systemNamesById, strings) {
+        WormholePresentationBuilder.rowsForSystem(systemId, state.connections, state.systemNamesById, strings)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Wormhole Connections — $systemName") },
+        title = { Text(strings.connectionsTitle(systemName)) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(rows, key = WormholeConnectionRow::id) { row ->
@@ -283,12 +301,12 @@ fun WormholeConnectionsDialog(
                             onClick = {
                                 if (viewModel.remove(row.id) && rows.size == 1) onDismiss()
                             },
-                        ) { Text("Remove") }
+                        ) { Text(appStrings.common.remove) }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(appStrings.common.close) } },
     )
 }
 

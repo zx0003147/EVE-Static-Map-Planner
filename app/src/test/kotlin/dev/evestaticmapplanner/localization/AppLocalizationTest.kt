@@ -1,12 +1,18 @@
 package dev.evestaticmapplanner.localization
 
 import java.util.Locale
+import java.nio.file.Files
+import java.nio.file.Path
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AlibabaSpeechRegion
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
 import dev.evestaticmapplanner.sde.update.SdeUpdaterPhase
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
+import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -103,6 +109,54 @@ class AppLocalizationTest {
     }
 
     @Test
+    fun `Step 2C semantic statuses re-resolve without repeating their operations`() {
+        val english = AppStringsCatalog.forLocale(AppLocale.EN_US)
+        val chinese = AppStringsCatalog.forLocale(AppLocale.ZH_CN)
+        val messages: List<UiMessage> = listOf(
+            MarkerUiMessage(MarkerMessage.SAVED_CONFLICT),
+            SharedMapOperationFailedUiMessage,
+            WormholeUiMessage(WormholeMessage.DUPLICATE),
+            AnsiblexUiMessage(AnsiblexMessage.IMPORT_APPLIED, count = 2, updatedCount = 1, removedCount = 3),
+            AiVoiceStatusUiMessage(AiVoiceStatus.TRANSCRIBING),
+        )
+
+        val englishText = messages.map { it.resolve(english) }
+        val chineseText = messages.map { it.resolve(chinese) }
+
+        assertTrue(englishText.all(String::isNotBlank))
+        assertTrue(chineseText.all(String::isNotBlank))
+        assertTrue(englishText.zip(chineseText).all { (en, zh) -> en != zh })
+        assertEquals("Applied 2 additions, 1 updates, 3 removals", englishText[3])
+        assertEquals("已应用 2 个新增、1 个更新、3 个删除", chineseText[3])
+    }
+
+    @Test
+    fun `Step 2C display localization preserves protocol and enum identifiers`() {
+        val english = AppStringsCatalog.forLocale(AppLocale.EN_US)
+        val chinese = AppStringsCatalog.forLocale(AppLocale.ZH_CN)
+
+        assertEquals(listOf("MERGE", "REPLACE"), AnsiblexImportMode.entries.map(Enum<*>::name))
+        assertEquals("MERGE", english.ansiblex.importMode(AnsiblexImportMode.MERGE))
+        assertEquals("合并（MERGE）", chinese.ansiblex.importMode(AnsiblexImportMode.MERGE))
+        assertEquals(listOf("IMPORT", "MANUAL"), AnsiblexSource.entries.map(Enum<*>::name))
+        assertEquals(
+            listOf("BIDIRECTIONAL", "FIRST_TO_SECOND", "SECOND_TO_FIRST"),
+            AnsiblexDirection.entries.map(Enum<*>::name),
+        )
+        assertEquals(listOf("VIEWER", "EDITOR", "ADMIN"), SharedWorkspaceRole.entries.map(Enum<*>::name))
+        assertEquals("查看者", chinese.sharedMap.role(SharedWorkspaceRole.VIEWER))
+        assertEquals("编辑者", chinese.sharedMap.role(SharedWorkspaceRole.EDITOR))
+        assertEquals("管理员", chinese.sharedMap.role(SharedWorkspaceRole.ADMIN))
+        val parserSource = sequenceOf(
+            Path.of("data", "src", "main", "kotlin", "dev", "evestaticmapplanner", "data", "ansiblex", "AnsiblexImportParsers.kt"),
+            Path.of("..", "data", "src", "main", "kotlin", "dev", "evestaticmapplanner", "data", "ansiblex", "AnsiblexImportParsers.kt"),
+        ).first(Files::isRegularFile).let(Files::readString)
+        assertTrue("\"from_system_id\"" in parserSource)
+        assertTrue("\"to_system_id\"" in parserSource)
+        assertTrue("@SerialName(\"format_version\")" in parserSource)
+    }
+
+    @Test
     fun `runtime localization changes English to Chinese and back without changing JVM locale`() {
         val jvmLocale = Locale.getDefault()
         val state = AppLocalizationState(AppLocale.EN_US)
@@ -192,6 +246,24 @@ class AppLocalizationTest {
                 manualMaximumLyMustBePositive, addWaypointOrDestination, invalidNavigationStop,
                 ansiblexDataUnavailable,
             )
+        },
+        strings.aiAssistant.run {
+            listOf(title, chats, newChat, chatLifetimeHelper, startConversation, messagePlaceholder, readAloud)
+        },
+        strings.marker.run {
+            listOf(managerTitle, addSavedMarker, editMarker, removeSavedMarkerTitle, clearTemporaryTitle, noSavedMarkers)
+        },
+        strings.sharedMap.run {
+            listOf(sharedMarkerManager, sharedMarker, membersTitle, role, invite, removeMemberTitle, noMarkers)
+        },
+        strings.wormhole.run {
+            listOf(managerTitle, addWormhole, from, to, noActiveConnections, clearAllTitle)
+        },
+        strings.ansiblex.run {
+            listOf(managerTitle, importCsvJson, manualAdd, connections, clearImported, clearAllAnsiblex)
+        },
+        strings.miniMap.run {
+            listOf(title, selectCharacter, noTrackedCharacters, options, diagnostics)
         },
     )
         .flatMap { value -> if (value is List<*>) value.filterIsInstance<String>() else listOf(value as String) }

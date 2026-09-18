@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.shared.model.SharedInvite
 import dev.evestaticmapplanner.shared.model.SharedMarker
 import dev.evestaticmapplanner.shared.model.SharedMember
 import dev.evestaticmapplanner.shared.model.SharedRouteHandoff
+import dev.evestaticmapplanner.localization.UiMessage
 
 internal enum class SharedMarkerMutationKind { CREATE, UPDATE, DELETE }
 
@@ -47,6 +48,6 @@ internal data class SharedAdminUiState(
 internal data class RouteHandoffPublishUiState(
     val busy: Boolean = false,
     val lastPublished: SharedRouteHandoff? = null,
-    val message: String? = null,
+    val message: UiMessage? = null,
     val error: SharedMapError? = null,
 )

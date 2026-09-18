@@ -4,6 +4,12 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.wormhole.WormholeConnection
+import dev.evestaticmapplanner.localization.UiMessage
+import dev.evestaticmapplanner.localization.WormholeMessage
+import dev.evestaticmapplanner.localization.WormholeUiMessage
+import dev.evestaticmapplanner.localization.WormholeStrings
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +26,7 @@ import kotlinx.coroutines.withContext
 
 data class WormholeUiState(
     val isLoading: Boolean = true,
-    val loadError: String? = null,
+    val loadError: UiMessage? = null,
     val connections: List<WormholeConnection> = emptyList(),
     val systemNamesById: Map<Int, String> = emptyMap(),
     val managerFromQuery: String = "",
@@ -29,12 +35,12 @@ data class WormholeUiState(
     val managerToQuery: String = "",
     val managerToResults: List<SolarSystem> = emptyList(),
     val selectedManagerTo: SolarSystem? = null,
-    val managerMessage: String? = null,
+    val managerMessage: UiMessage? = null,
     val quickOrigin: SolarSystem? = null,
     val quickToQuery: String = "",
     val quickToResults: List<SolarSystem> = emptyList(),
     val selectedQuickTo: SolarSystem? = null,
-    val quickMessage: String? = null,
+    val quickMessage: UiMessage? = null,
 ) {
     val canAddFromManager: Boolean
         get() = selectedManagerFrom != null &&
@@ -72,13 +78,14 @@ object WormholePresentationBuilder {
     fun rows(
         connections: List<WormholeConnection>,
         systemNamesById: Map<Int, String>,
+        strings: WormholeStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).wormhole,
     ): List<WormholeConnectionRow> = connections.map { connection ->
         WormholeConnectionRow(
             id = connection.id,
             firstSystemId = connection.firstSystemId,
             secondSystemId = connection.secondSystemId,
-            firstSystemName = systemNamesById[connection.firstSystemId] ?: "System ${connection.firstSystemId}",
-            secondSystemName = systemNamesById[connection.secondSystemId] ?: "System ${connection.secondSystemId}",
+            firstSystemName = systemNamesById[connection.firstSystemId] ?: strings.fallbackSystem(connection.firstSystemId),
+            secondSystemName = systemNamesById[connection.secondSystemId] ?: strings.fallbackSystem(connection.secondSystemId),
         )
     }
 
@@ -86,7 +93,8 @@ object WormholePresentationBuilder {
         systemId: Int,
         connections: List<WormholeConnection>,
         systemNamesById: Map<Int, String>,
-    ): List<WormholeConnectionRow> = rows(connections, systemNamesById).filter {
+        strings: WormholeStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).wormhole,
+    ): List<WormholeConnectionRow> = rows(connections, systemNamesById, strings).filter {
         it.firstSystemId == systemId || it.secondSystemId == systemId
     }
 }
@@ -182,7 +190,7 @@ class WormholeViewModel(
                     managerToQuery = "",
                     managerToResults = emptyList(),
                     selectedManagerTo = null,
-                    managerMessage = WORMHOLE_ADDED_MESSAGE,
+                    managerMessage = WormholeUiMessage(WormholeMessage.ADDED),
                 )
                 else -> it.copy(managerMessage = result.message)
             }
@@ -255,7 +263,11 @@ class WormholeViewModel(
     fun remove(connectionId: String): Boolean {
         val removed = store.remove(connectionId)
         mutableState.update {
-            it.copy(managerMessage = if (removed) WORMHOLE_REMOVED_MESSAGE else WORMHOLE_MISSING_MESSAGE)
+            it.copy(
+                managerMessage = WormholeUiMessage(
+                    if (removed) WormholeMessage.REMOVED else WormholeMessage.MISSING,
+                ),
+            )
         }
         return removed
     }
@@ -263,7 +275,7 @@ class WormholeViewModel(
     fun clearAll(): Int {
         val cleared = store.clear()
         mutableState.update {
-            it.copy(managerMessage = "Cleared $cleared Wormhole ${if (cleared == 1) "connection" else "connections"}")
+            it.copy(managerMessage = WormholeUiMessage(WormholeMessage.CLEARED, count = cleared))
         }
         return cleared
     }
@@ -297,7 +309,13 @@ class WormholeViewModel(
                 }
                 .onFailure { failure ->
                     mutableState.update {
-                        it.copy(isLoading = false, loadError = failure.message ?: "Unable to load solar systems")
+                        it.copy(
+                            isLoading = false,
+                            loadError = WormholeUiMessage(
+                                WormholeMessage.LOAD_FAILED,
+                                technicalDetail = failure.message,
+                            ),
+                        )
                     }
                 }
         }
@@ -313,7 +331,7 @@ class WormholeViewModel(
 
     private fun scheduleSearch(
         query: String,
-        onError: (String) -> Unit,
+        onError: (UiMessage) -> Unit,
         publish: (List<SolarSystem>) -> Unit,
     ): Job = scope.launch {
         if (query.isBlank()) {
@@ -323,26 +341,24 @@ class WormholeViewModel(
         delay(searchDebounceMillis)
         val results = runCatching { withContext(ioDispatcher) { searchRepository.searchSystems(query, 20) } }
             .getOrElse { failure ->
-                onError(failure.message ?: "System search failed")
+                onError(WormholeUiMessage(WormholeMessage.SEARCH_FAILED, technicalDetail = failure.message))
                 emptyList()
             }
         publish(results)
     }
 
-    private fun sameEndpointMessage(first: SolarSystem?, second: SolarSystem?): String? =
-        if (first != null && second != null && first.id == second.id) SAME_ENDPOINT_MESSAGE else null
+    private fun sameEndpointMessage(first: SolarSystem?, second: SolarSystem?): UiMessage? =
+        if (first != null && second != null && first.id == second.id) {
+            WormholeUiMessage(WormholeMessage.SAME_ENDPOINT)
+        } else {
+            null
+        }
 }
 
-private val CreateWormholeUiResult.message: String
+private val CreateWormholeUiResult.message: UiMessage
     get() = when (this) {
-        CreateWormholeUiResult.CREATED -> WORMHOLE_ADDED_MESSAGE
-        CreateWormholeUiResult.ALREADY_EXISTS -> WORMHOLE_DUPLICATE_MESSAGE
-        CreateWormholeUiResult.SAME_ENDPOINT -> SAME_ENDPOINT_MESSAGE
-        CreateWormholeUiResult.INVALID_SELECTION -> "Select both Wormhole endpoints"
+        CreateWormholeUiResult.CREATED -> WormholeUiMessage(WormholeMessage.ADDED)
+        CreateWormholeUiResult.ALREADY_EXISTS -> WormholeUiMessage(WormholeMessage.DUPLICATE)
+        CreateWormholeUiResult.SAME_ENDPOINT -> WormholeUiMessage(WormholeMessage.SAME_ENDPOINT)
+        CreateWormholeUiResult.INVALID_SELECTION -> WormholeUiMessage(WormholeMessage.INVALID_SELECTION)
     }
-
-internal const val WORMHOLE_ADDED_MESSAGE = "Wormhole added"
-internal const val WORMHOLE_REMOVED_MESSAGE = "Wormhole removed"
-internal const val WORMHOLE_MISSING_MESSAGE = "Wormhole connection no longer exists"
-internal const val WORMHOLE_DUPLICATE_MESSAGE = "Wormhole connection already exists"
-internal const val SAME_ENDPOINT_MESSAGE = "Wormhole endpoints must be different systems"

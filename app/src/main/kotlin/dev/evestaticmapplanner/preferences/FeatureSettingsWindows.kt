@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.minimap.MiniMapHudRuntimeState
 import dev.evestaticmapplanner.ui.EveDivider
 import dev.evestaticmapplanner.ui.EveTextButton
@@ -43,8 +44,9 @@ internal fun MiniMapSettingsWindow(
     focusRequest: Int,
     onDismiss: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     FeatureSettingsWindow(
-        title = "Mini-map Settings",
+        title = strings.mainShell.miniMapSettings,
         width = 500.dp,
         height = 680.dp,
         focusRequest = focusRequest,
@@ -67,8 +69,9 @@ internal fun MarkerSettingsWindow(
     focusRequest: Int,
     onDismiss: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     FeatureSettingsWindow(
-        title = "Marker Settings",
+        title = strings.mainShell.markerSettings,
         width = 500.dp,
         height = 620.dp,
         focusRequest = focusRequest,
@@ -91,6 +94,7 @@ private fun FeatureSettingsWindow(
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     val windowState = rememberWindowState(width = width, height = height)
     Window(
         onCloseRequest = onDismiss,
@@ -121,7 +125,7 @@ private fun FeatureSettingsWindow(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    EveTextButton(onClick = onDismiss) { Text("Close") }
+                    EveTextButton(onClick = onDismiss) { Text(strings.common.close) }
                 }
             }
         }

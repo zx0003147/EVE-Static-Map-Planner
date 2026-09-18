@@ -8,6 +8,8 @@ import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.preferences.MarkerPreferences
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +18,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MarkerManagerPresentationTest {
+    private val strings = AppStringsCatalog.forLocale(AppLocale.EN_US)
     private val alpha = saved(1, "Home", MarkerColor.GREEN, "Quiet staging")
     private val bravo = saved(2, "Trade", MarkerColor.BLUE, "Market", SavedMarkerCreatedBy.AI)
     private val temporary = Marker.temporary(3, MarkerDraft.create(name = "Session"))
@@ -30,8 +33,8 @@ class MarkerManagerPresentationTest {
         assertTrue(presentation.rows.none { it.systemId == temporary.systemId })
         assertNull(presentation.selectedRow)
         assertFalse(presentation.selectionActionsEnabled)
-        assertEquals(null, savedMarkerProvenanceLabel(presentation.rows[0].createdBy))
-        assertEquals("Created by AI", savedMarkerProvenanceLabel(presentation.rows[1].createdBy))
+        assertEquals(null, savedMarkerProvenanceLabel(presentation.rows[0].createdBy, strings.marker))
+        assertEquals("Created by AI", savedMarkerProvenanceLabel(presentation.rows[1].createdBy, strings.marker))
     }
 
     @Test
@@ -60,8 +63,8 @@ class MarkerManagerPresentationTest {
     @Test
     fun `temporary and saved conflicts produce distinct non destructive guidance`() {
         assertNull(markerCreationConflict(null))
-        assertEquals("This system already has a marker.", markerCreationConflict(alpha))
-        assertTrue(markerCreationConflict(temporary)?.contains("Save Permanently") == true)
+        assertEquals("This system already has a marker.", markerCreationConflict(alpha)?.resolve(strings))
+        assertTrue(markerCreationConflict(temporary)?.resolve(strings)?.contains("Save Permanently") == true)
     }
 
     @Test

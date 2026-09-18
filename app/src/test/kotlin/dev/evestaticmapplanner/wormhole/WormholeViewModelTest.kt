@@ -6,6 +6,9 @@ import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.WormholeMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +23,9 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WormholeViewModelTest {
+    private val strings = AppStringsCatalog.forLocale(AppLocale.EN_US)
+
+    private fun resolved(message: dev.evestaticmapplanner.localization.UiMessage?): String? = message?.resolve(strings)
     @Test
     fun `empty manager loads one reusable system name index`() = runTest {
         val fixture = Fixture(StandardTestDispatcher(testScheduler))
@@ -66,7 +72,7 @@ class WormholeViewModelTest {
         assertEquals(2, viewModel.state.value.connections.size)
         assertEquals("", viewModel.state.value.managerFromQuery)
         assertEquals("", viewModel.state.value.managerToQuery)
-        assertEquals(WORMHOLE_ADDED_MESSAGE, viewModel.state.value.managerMessage)
+        assertEquals(strings.wormhole.message(WormholeMessage.ADDED), resolved(viewModel.state.value.managerMessage))
     }
 
     @Test
@@ -79,7 +85,7 @@ class WormholeViewModelTest {
         fixture.viewModel.selectManagerFrom(fixture.systems[0])
         fixture.viewModel.selectManagerTo(fixture.systems[1])
         assertEquals(CreateWormholeUiResult.ALREADY_EXISTS, fixture.viewModel.addFromManager())
-        assertEquals(WORMHOLE_DUPLICATE_MESSAGE, fixture.viewModel.state.value.managerMessage)
+        assertEquals(strings.wormhole.message(WormholeMessage.DUPLICATE), resolved(fixture.viewModel.state.value.managerMessage))
         assertEquals(fixture.systems[0], fixture.viewModel.state.value.selectedManagerFrom)
 
         fixture.viewModel.selectManagerFrom(fixture.systems[1])
@@ -97,7 +103,7 @@ class WormholeViewModelTest {
         fixture.viewModel.selectManagerTo(fixture.systems[0])
 
         assertFalse(fixture.viewModel.state.value.canAddFromManager)
-        assertEquals(SAME_ENDPOINT_MESSAGE, fixture.viewModel.state.value.managerMessage)
+        assertEquals(strings.wormhole.message(WormholeMessage.SAME_ENDPOINT), resolved(fixture.viewModel.state.value.managerMessage))
         assertEquals(CreateWormholeUiResult.SAME_ENDPOINT, fixture.viewModel.addFromManager())
         assertTrue(fixture.store.connections.value.isEmpty())
     }
@@ -130,7 +136,7 @@ class WormholeViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf("wormhole:1:3"), fixture.viewModel.state.value.connections.map { it.id })
         assertFalse(fixture.viewModel.remove("wormhole:1:4"))
-        assertEquals(WORMHOLE_MISSING_MESSAGE, fixture.viewModel.state.value.managerMessage)
+        assertEquals(strings.wormhole.message(WormholeMessage.MISSING), resolved(fixture.viewModel.state.value.managerMessage))
     }
 
     @Test
@@ -183,7 +189,7 @@ class WormholeViewModelTest {
 
         assertEquals("Alpha", viewModel.state.value.quickOrigin?.name)
         assertEquals(CreateWormholeUiResult.ALREADY_EXISTS, viewModel.addFromQuickCreate())
-        assertEquals(WORMHOLE_DUPLICATE_MESSAGE, viewModel.state.value.quickMessage)
+        assertEquals(strings.wormhole.message(WormholeMessage.DUPLICATE), resolved(viewModel.state.value.quickMessage))
     }
 
     @Test
@@ -195,7 +201,7 @@ class WormholeViewModelTest {
         viewModel.beginQuickCreate(fixture.systems[0])
         viewModel.selectQuickTo(fixture.systems[0])
         assertFalse(viewModel.state.value.canAddFromQuickCreate)
-        assertEquals(SAME_ENDPOINT_MESSAGE, viewModel.state.value.quickMessage)
+        assertEquals(strings.wormhole.message(WormholeMessage.SAME_ENDPOINT), resolved(viewModel.state.value.quickMessage))
         viewModel.selectQuickTo(fixture.systems[1])
         assertTrue(viewModel.state.value.canAddFromQuickCreate)
         viewModel.updateQuickToQuery("B")

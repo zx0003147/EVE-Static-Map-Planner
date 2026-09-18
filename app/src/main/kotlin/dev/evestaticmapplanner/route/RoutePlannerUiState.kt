@@ -37,8 +37,8 @@ data class RoutePlannerUiState(
     val wormholeConnections: List<WormholeConnection> = emptyList(),
     val importMode: AnsiblexImportMode = AnsiblexImportMode.MERGE,
     val importPreview: AnsiblexImportPreview? = null,
-    val importError: String? = null,
-    val managerMessage: String? = null,
+    val importError: UiMessage? = null,
+    val managerMessage: UiMessage? = null,
     val isImportBusy: Boolean = false,
 ) {
     val isAnsiblexAvailable: Boolean get() = userDatabaseError == null

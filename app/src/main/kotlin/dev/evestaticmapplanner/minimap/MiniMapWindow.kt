@@ -68,6 +68,10 @@ import dev.evestaticmapplanner.map.MISSION_ROUTE_COLORS
 import dev.evestaticmapplanner.map.activeRouteConnectionGeometry
 import dev.evestaticmapplanner.map.drawDirectionalRouteArrows
 import dev.evestaticmapplanner.map.routeLegRenderStyle
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.MiniMapStrings
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
@@ -102,6 +106,7 @@ internal fun MiniMapWindow(
     onNativeWindowFailure: (Throwable) -> Unit,
     onClose: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.miniMap
     val bounds = state.preferences.windowBounds
     val initialBounds = remember {
         MiniMapWindowPlacement.recover(bounds, AwtMiniMapWorkAreaProvider.workAreas())
@@ -155,7 +160,7 @@ internal fun MiniMapWindow(
     key(hud) {
         Window(
             onCloseRequest = onClose,
-            title = "EVE Mini-map",
+            title = strings.title,
             state = windowState,
             alwaysOnTop = true,
             undecorated = hud,
@@ -215,6 +220,7 @@ internal fun MiniMapContent(
     headerModifier: Modifier = Modifier,
     onBindCurrentWindow: (Long) -> String,
 ) {
+    val strings = LocalAppStrings.current.miniMap
     var characterMenuExpanded by remember { mutableStateOf(false) }
     var followModeMenuExpanded by remember { mutableStateOf(false) }
     var optionsMenuExpanded by remember { mutableStateOf(false) }
@@ -250,13 +256,13 @@ internal fun MiniMapContent(
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            state.followedCharacter?.characterName ?: "Select character",
+                            state.followedCharacter?.characterName ?: strings.selectCharacter,
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            miniMapLocationLine(state),
+                            miniMapLocationLine(state, strings),
                             style = MaterialTheme.typography.labelSmall,
                             color = miniMapStatusColor(state.followedCharacter?.locationStatus),
                             maxLines = 1,
@@ -270,7 +276,7 @@ internal fun MiniMapContent(
                 ) {
                     if (available.isEmpty()) {
                         EveDropdownMenuItem(
-                            text = { Text("No tracked characters") },
+                            text = { Text(strings.noTrackedCharacters) },
                             enabled = false,
                             onClick = {},
                         )
@@ -293,21 +299,21 @@ internal fun MiniMapContent(
                     selected = true,
                     contentPadding = PaddingValues(horizontal = 8.dp),
                 ) {
-                    Text(state.preferences.followMode.name, style = MaterialTheme.typography.labelMedium)
+                    Text(strings.followMode(state.preferences.followMode), style = MaterialTheme.typography.labelMedium)
                 }
                 EveDropdownMenu(
                     expanded = followModeMenuExpanded,
                     onDismissRequest = { followModeMenuExpanded = false },
                 ) {
                     EveDropdownMenuItem(
-                        text = { Text("AUTO — Follow foreground EVE client") },
+                        text = { Text(strings.automaticFollow) },
                         onClick = {
                             viewModel.setFollowMode(MiniMapFollowMode.AUTO)
                             followModeMenuExpanded = false
                         },
                     )
                     EveDropdownMenuItem(
-                        text = { Text("PINNED — Keep current character") },
+                        text = { Text(strings.pinnedFollow) },
                         enabled = state.followedCharacter != null,
                         onClick = {
                             state.followedCharacter?.let { viewModel.setPinnedCharacter(it.characterId) }
@@ -317,7 +323,7 @@ internal fun MiniMapContent(
                 }
             } else {
                 Text(
-                    state.preferences.followMode.name,
+                    strings.followMode(state.preferences.followMode),
                     modifier = Modifier.padding(horizontal = 8.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = EveColors.PrimaryAccent,
@@ -326,7 +332,7 @@ internal fun MiniMapContent(
             if (!locked) Box {
                 EveTextButton(
                     onClick = { optionsMenuExpanded = true },
-                    modifier = Modifier.semantics { contentDescription = "Mini-map options" },
+                    modifier = Modifier.semantics { contentDescription = strings.options },
                     contentPadding = PaddingValues(horizontal = 8.dp),
                 ) {
                     Text("•••", style = MaterialTheme.typography.labelLarge)
@@ -336,7 +342,7 @@ internal fun MiniMapContent(
                     onDismissRequest = { optionsMenuExpanded = false },
                 ) {
                     EveDropdownMenuItem(
-                        text = { Text(if (diagnosticsExpanded) "Hide diagnostics" else "Show diagnostics") },
+                        text = { Text(if (diagnosticsExpanded) strings.hideDiagnostics else strings.showDiagnostics) },
                         onClick = {
                             diagnosticsExpanded = !diagnosticsExpanded
                             optionsMenuExpanded = false
@@ -344,7 +350,7 @@ internal fun MiniMapContent(
                     )
                     EveDivider()
                     EveDropdownMenuItem(
-                        text = { Text("Bind current EVE client…") },
+                        text = { Text(strings.bindCurrentClient) },
                         enabled = available.isNotEmpty(),
                         onClick = {
                             optionsMenuExpanded = false
@@ -357,7 +363,7 @@ internal fun MiniMapContent(
                     onDismissRequest = { bindMenuExpanded = false },
                 ) {
                     Text(
-                        "Temporarily bind this EVE client to:",
+                        strings.bindPrompt,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = EveColors.SecondaryText,
@@ -377,7 +383,7 @@ internal fun MiniMapContent(
         }
         EveDivider()
         if (diagnosticsExpanded && !locked) {
-            MiniMapDiagnostics(state, automaticFollowDiagnostic, bindingFeedback)
+            MiniMapDiagnostics(state, automaticFollowDiagnostic, bindingFeedback, strings)
             EveDivider()
         }
         Box(
@@ -391,7 +397,7 @@ internal fun MiniMapContent(
                     secondary = true,
                 ) {
                     Text(
-                        diagnostic,
+                        strings.diagnosticText(diagnostic),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                         color = EveColors.SecondaryText,
                         style = MaterialTheme.typography.bodySmall,
@@ -463,6 +469,7 @@ private val MINI_MAP_MAXIMUM_SIZE = MiniMapWindowPixelSize(width = 2_000, height
 
 @Composable
 private fun CharacterPortraitAvatar(character: TrackedCharacterSnapshot?) {
+    val strings = LocalAppStrings.current.miniMap
     val textMeasurer = rememberTextMeasurer()
     val stack = remember(character) {
         if (character == null) {
@@ -473,7 +480,7 @@ private fun CharacterPortraitAvatar(character: TrackedCharacterSnapshot?) {
     }
     Canvas(
         Modifier.size(38.dp).semantics {
-            contentDescription = "${character?.characterName ?: "Unknown character"} portrait"
+            contentDescription = strings.portraitDescription(character?.characterName ?: strings.unknownCharacter)
         },
     ) {
         drawCharacterPortraitDisc(
@@ -492,6 +499,7 @@ private fun MiniMapDiagnostics(
     state: MiniMapUiState,
     automaticFollowDiagnostic: String,
     bindingFeedback: String?,
+    strings: MiniMapStrings,
 ) {
     val available = state.characters.filter { it.trackingEnabled }
     val counts = TrackedCharacterLocationStatus.entries.associateWith { status ->
@@ -502,47 +510,54 @@ private fun MiniMapDiagnostics(
         secondary = true,
     ) {
         Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Diagnostics", style = MaterialTheme.typography.labelMedium, color = EveColors.PrimaryAccent)
+            Text(strings.diagnostics, style = MaterialTheme.typography.labelMedium, color = EveColors.PrimaryAccent)
             if (state.preferences.followMode == MiniMapFollowMode.AUTO) {
-                Text(automaticFollowDiagnostic, style = MaterialTheme.typography.labelSmall, color = EveColors.SecondaryText)
+                Text(strings.diagnosticText(automaticFollowDiagnostic), style = MaterialTheme.typography.labelSmall, color = EveColors.SecondaryText)
             }
             Text(
-                "Tracking ${available.size}/${state.characters.size} · current ${counts.getValue(TrackedCharacterLocationStatus.CURRENT)} · " +
-                    "stale ${counts.getValue(TrackedCharacterLocationStatus.STALE)} · " +
-                    "degraded ${counts.getValue(TrackedCharacterLocationStatus.DEGRADED)} · " +
-                    "unknown ${counts.getValue(TrackedCharacterLocationStatus.UNKNOWN)}",
+                strings.trackingSummary(
+                    total = state.characters.size,
+                    tracked = available.size,
+                    current = counts.getValue(TrackedCharacterLocationStatus.CURRENT),
+                    stale = counts.getValue(TrackedCharacterLocationStatus.STALE),
+                    degraded = counts.getValue(TrackedCharacterLocationStatus.DEGRADED),
+                    unknown = counts.getValue(TrackedCharacterLocationStatus.UNKNOWN),
+                ),
                 style = MaterialTheme.typography.labelSmall,
                 color = EveColors.SecondaryText,
             )
             state.followedCharacter?.let { character ->
                 Text(
-                    "Validated ${character.lastValidatedAt ?: "never"} · Error ${character.lastErrorCategory ?: "none"}",
+                    strings.validationSummary(
+                        character.lastValidatedAt?.toString() ?: strings.never,
+                        character.lastErrorCategory?.toString() ?: strings.none,
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = EveColors.SecondaryText,
                 )
             }
             Text(
-                "${state.preferences.stargateHops} hops · Ansiblex ${if (state.preferences.includeAnsiblexEdges) "included" else "excluded"}",
+                strings.routeScope(state.preferences.stargateHops, state.preferences.includeAnsiblexEdges),
                 style = MaterialTheme.typography.labelSmall,
                 color = EveColors.SecondaryText,
             )
             bindingFeedback?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = EveColors.Important)
+                Text(strings.diagnosticText(it), style = MaterialTheme.typography.labelSmall, color = EveColors.Important)
             }
         }
     }
 }
 
-internal fun miniMapLocationLine(state: MiniMapUiState): String {
-    val character = state.followedCharacter ?: return "No character selected · UNKNOWN"
+internal fun miniMapLocationLine(
+    state: MiniMapUiState,
+    strings: MiniMapStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).miniMap,
+): String {
+    val character = state.followedCharacter
+        ?: return "${strings.noCharacterSelected} · ${strings.status(TrackedCharacterLocationStatus.UNKNOWN)}"
     val status = character.locationStatus
-    val system = state.followedSystemName ?: if (character.solarSystemId == null) "Location unavailable" else "Unknown system"
-    return when (status) {
-        TrackedCharacterLocationStatus.STALE -> "Last known: $system · STALE"
-        TrackedCharacterLocationStatus.CURRENT -> "$system · CURRENT"
-        TrackedCharacterLocationStatus.DEGRADED -> "$system · DEGRADED"
-        TrackedCharacterLocationStatus.UNKNOWN -> "$system · UNKNOWN"
-    }
+    val system = state.followedSystemName
+        ?: if (character.solarSystemId == null) strings.locationUnavailable else strings.unknownSystem
+    return strings.locationLine(system, status)
 }
 
 internal fun miniMapStatusColor(status: TrackedCharacterLocationStatus?): Color = when (status) {

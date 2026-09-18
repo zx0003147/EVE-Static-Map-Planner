@@ -32,6 +32,8 @@ import dev.evestaticmapplanner.localization.NavigationSegmentFailureUiMessage
 import dev.evestaticmapplanner.localization.NavigationStopUiRole
 import dev.evestaticmapplanner.localization.UiMessage
 import dev.evestaticmapplanner.localization.UnableToLoadRouteGraphUiMessage
+import dev.evestaticmapplanner.localization.AnsiblexMessage
+import dev.evestaticmapplanner.localization.AnsiblexUiMessage
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -331,7 +333,15 @@ class RoutePlannerViewModel(
                     mutableState.update { it.copy(isImportBusy = false, importPreview = preview) }
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(isImportBusy = false, importError = error.message ?: "Unable to preview import") }
+                    mutableState.update {
+                        it.copy(
+                            isImportBusy = false,
+                            importError = AnsiblexUiMessage(
+                                AnsiblexMessage.PREVIEW_FAILED,
+                                technicalDetail = error.message,
+                            ),
+                        )
+                    }
                 }
         }
     }
@@ -344,12 +354,24 @@ class RoutePlannerViewModel(
             runCatching { withContext(ioDispatcher) { service.apply(preview) } }
                 .onSuccess { result ->
                     refreshAnsiblex(
-                        "Applied ${result.addedCount} additions, ${result.updatedCount} updates, " +
-                            "${result.removedCount} removals",
+                        AnsiblexUiMessage(
+                            AnsiblexMessage.IMPORT_APPLIED,
+                            count = result.addedCount,
+                            updatedCount = result.updatedCount,
+                            removedCount = result.removedCount,
+                        ),
                     )
                 }
                 .onFailure { error ->
-                    mutableState.update { it.copy(isImportBusy = false, importError = error.message ?: "Unable to apply import") }
+                    mutableState.update {
+                        it.copy(
+                            isImportBusy = false,
+                            importError = AnsiblexUiMessage(
+                                AnsiblexMessage.APPLY_FAILED,
+                                technicalDetail = error.message,
+                            ),
+                        )
+                    }
                 }
         }
     }
@@ -369,8 +391,8 @@ class RoutePlannerViewModel(
         scope.launch {
             runCatching {
                 withContext(ioDispatcher) {
-                    val fromSystem = resolveExact(from) ?: error("Unknown or ambiguous From system: $from")
-                    val toSystem = resolveExact(to) ?: error("Unknown or ambiguous To system: $to")
+                    val fromSystem = resolveExact(from) ?: throw AnsiblexEndpointException(true, from)
+                    val toSystem = resolveExact(to) ?: throw AnsiblexEndpointException(false, to)
                     repository.addManual(
                         AnsiblexDraft(
                             fromSystemId = fromSystem.id,
@@ -382,26 +404,37 @@ class RoutePlannerViewModel(
                     )
                 }
             }.onSuccess {
-                refreshAnsiblex("Manual connection added")
+                refreshAnsiblex(AnsiblexUiMessage(AnsiblexMessage.MANUAL_ADDED))
             }.onFailure { error ->
-                mutableState.update { it.copy(managerMessage = error.message ?: "Unable to add connection") }
+                val message = when (error) {
+                    is AnsiblexEndpointException -> AnsiblexUiMessage(
+                        if (error.fromEndpoint) AnsiblexMessage.UNKNOWN_FROM else AnsiblexMessage.UNKNOWN_TO,
+                        value = error.value,
+                    )
+                    else -> AnsiblexUiMessage(AnsiblexMessage.ADD_FAILED, technicalDetail = error.message)
+                }
+                mutableState.update { it.copy(managerMessage = message) }
             }
         }
     }
 
     fun setConnectionEnabled(id: String, enabled: Boolean) = mutateConnections {
         check(it.setEnabled(id, enabled)) { "Connection no longer exists" }
-        if (enabled) "Connection enabled" else "Connection disabled"
+        AnsiblexUiMessage(if (enabled) AnsiblexMessage.ENABLED else AnsiblexMessage.DISABLED)
     }
 
     fun deleteConnection(id: String) = mutateConnections {
         check(it.delete(id)) { "Connection no longer exists" }
-        "Connection deleted"
+        AnsiblexUiMessage(AnsiblexMessage.DELETED)
     }
 
-    fun clearImported() = mutateConnections { "Cleared ${it.clearImported()} imported connections" }
+    fun clearImported() = mutateConnections {
+        AnsiblexUiMessage(AnsiblexMessage.CLEARED_IMPORTED, count = it.clearImported())
+    }
 
-    fun clearAll() = mutateConnections { "Cleared ${it.clearAll()} Ansiblex connections" }
+    fun clearAll() = mutateConnections {
+        AnsiblexUiMessage(AnsiblexMessage.CLEARED_ALL, count = it.clearAll())
+    }
 
     fun clearManagerMessage() {
         mutableState.update { it.copy(managerMessage = null) }
@@ -538,18 +571,25 @@ class RoutePlannerViewModel(
         return searchRepository.searchSystems(query, 20).singleOrNull { it.name.equals(query, ignoreCase = true) }
     }
 
-    private fun mutateConnections(block: (AnsiblexRepository) -> String) {
+    private fun mutateConnections(block: (AnsiblexRepository) -> UiMessage) {
         val repository = ansiblexRepository ?: return
         scope.launch {
             runCatching { withContext(ioDispatcher) { block(repository) } }
                 .onSuccess(::refreshAnsiblex)
                 .onFailure { error ->
-                    mutableState.update { it.copy(managerMessage = error.message ?: "Unable to update connection") }
+                    mutableState.update {
+                        it.copy(
+                            managerMessage = AnsiblexUiMessage(
+                                AnsiblexMessage.UPDATE_FAILED,
+                                technicalDetail = error.message,
+                            ),
+                        )
+                    }
                 }
         }
     }
 
-    private fun refreshAnsiblex(message: String) {
+    private fun refreshAnsiblex(message: UiMessage) {
         val repository = ansiblexRepository ?: return
         scope.launch {
             val connectionsResult = runCatching { withContext(ioDispatcher) { repository.getAll() } }
@@ -644,6 +684,11 @@ class RoutePlannerViewModel(
         }.onSuccess { graph = it }
     }
 }
+
+private class AnsiblexEndpointException(
+    val fromEndpoint: Boolean,
+    val value: String,
+) : IllegalArgumentException()
 
 private fun NavigationStopRole.toUiRole(): NavigationStopUiRole = when (this) {
     NavigationStopRole.START -> NavigationStopUiRole.START

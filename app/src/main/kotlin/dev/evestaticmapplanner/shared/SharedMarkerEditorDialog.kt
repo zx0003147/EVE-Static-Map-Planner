@@ -33,6 +33,10 @@ import dev.evestaticmapplanner.shared.model.SharedMarker
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedMarkerDraft
 import dev.evestaticmapplanner.shared.model.SharedMarkerValidation
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.SharedMapStrings
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
@@ -59,13 +63,15 @@ internal fun SharedMarkerEditorDialog(
     onClearFeedback: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.sharedMap
     val initial = request.marker
     var name by remember(request) { mutableStateOf(initial?.name.orEmpty()) }
     var notes by remember(request) { mutableStateOf(initial?.notes.orEmpty()) }
     var color by remember(request) { mutableStateOf(initial?.color ?: SharedMarkerColor.YELLOW) }
     var tagText by remember(request) { mutableStateOf(initial?.tags?.joinToString(", ").orEmpty()) }
     var expectedVersion by remember(request) { mutableStateOf(initial?.version) }
-    var localError by remember(request) { mutableStateOf<String?>(null) }
+    var localError by remember(request) { mutableStateOf<SharedMapError?>(null) }
     var pendingOperationId by remember(request) { mutableStateOf<Long?>(null) }
     var confirmDelete by remember(request) { mutableStateOf(false) }
     var confirmReload by remember(request) { mutableStateOf(false) }
@@ -84,7 +90,7 @@ internal fun SharedMarkerEditorDialog(
             SharedMarkerDraft(name, color, parseSharedMarkerTags(tagText), notes),
         ).also { localError = null }
     } catch (error: IllegalArgumentException) {
-        localError = error.message ?: "One or more fields are invalid."
+        localError = SharedMapError.InvalidArgument(error.message ?: "One or more fields are invalid.")
         null
     }
 
@@ -93,9 +99,9 @@ internal fun SharedMarkerEditorDialog(
         title = {
             Text(
                 when (request.mode) {
-                    SharedMarkerEditorMode.CREATE -> "Add Shared Marker"
-                    SharedMarkerEditorMode.EDIT -> "Edit Shared Marker"
-                    SharedMarkerEditorMode.VIEW -> "Shared Marker"
+                    SharedMarkerEditorMode.CREATE -> strings.addSharedMarker
+                    SharedMarkerEditorMode.EDIT -> strings.editSharedMarker
+                    SharedMarkerEditorMode.VIEW -> strings.sharedMarker
                 },
             )
         },
@@ -107,7 +113,7 @@ internal fun SharedMarkerEditorDialog(
                 OutlinedTextField(
                     value = request.systemName,
                     onValueChange = {},
-                    label = { Text("Solar System") },
+                    label = { Text(strings.solarSystem) },
                     readOnly = true,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -115,13 +121,13 @@ internal fun SharedMarkerEditorDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { if (it.codePointCount(0, it.length) <= 80) name = it },
-                    label = { Text("Name") },
+                    label = { Text(strings.name) },
                     supportingText = { Text("${name.codePointCount(0, name.length)} / 80") },
                     enabled = canWrite && !remoteDeleted && request.mode != SharedMarkerEditorMode.VIEW && !busy,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("Color", style = MaterialTheme.typography.labelLarge)
+                Text(strings.color, style = MaterialTheme.typography.labelLarge)
                 SharedMarkerColorPalette(
                     selected = color,
                     enabled = canWrite && !remoteDeleted && request.mode != SharedMarkerEditorMode.VIEW && !busy,
@@ -130,8 +136,8 @@ internal fun SharedMarkerEditorDialog(
                 OutlinedTextField(
                     value = tagText,
                     onValueChange = { tagText = it },
-                    label = { Text("Tags") },
-                    supportingText = { Text("Comma or space separated; up to 9 lowercase tags") },
+                    label = { Text(strings.tags) },
+                    supportingText = { Text(strings.tagsHelper) },
                     enabled = canWrite && !remoteDeleted && request.mode != SharedMarkerEditorMode.VIEW && !busy,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -148,7 +154,7 @@ internal fun SharedMarkerEditorDialog(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { if (it.codePointCount(0, it.length) <= 2_000) notes = it },
-                    label = { Text("Notes") },
+                    label = { Text(strings.notes) },
                     supportingText = { Text("${notes.codePointCount(0, notes.length)} / 2000") },
                     enabled = canWrite && !remoteDeleted && request.mode != SharedMarkerEditorMode.VIEW && !busy,
                     minLines = 3,
@@ -156,26 +162,26 @@ internal fun SharedMarkerEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (!canWrite && request.mode != SharedMarkerEditorMode.VIEW) {
-                    Text("Shared Map is temporarily unavailable or your role is read-only.", color = EveColors.Warning)
+                    Text(strings.temporarilyUnavailable, color = EveColors.Warning)
                 }
                 if (remoteDeleted) {
-                    Text("This Shared Marker no longer exists.", color = MaterialTheme.colorScheme.error)
+                    Text(strings.markerMissing, color = MaterialTheme.colorScheme.error)
                 }
                 if (conflict != null) {
-                    Text("This Shared Marker was changed by another user.", color = MaterialTheme.colorScheme.error)
-                    Text("Reload the latest server version before editing again.", color = EveColors.SecondaryText)
+                    Text(strings.markerChanged, color = MaterialTheme.colorScheme.error)
+                    Text(strings.reloadBeforeEditing, color = EveColors.SecondaryText)
                 } else {
-                    (localError ?: operationError?.let(::sharedMapErrorMessage))?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error)
+                    (localError ?: operationError)?.let {
+                        Text(strings.error(it), color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         },
         confirmButton = {
             when {
-                conflict != null -> TextButton(onClick = { confirmReload = true }) { Text("Reload Latest") }
+                conflict != null -> TextButton(onClick = { confirmReload = true }) { Text(strings.reloadLatest) }
                 request.mode == SharedMarkerEditorMode.VIEW || remoteDeleted || !canWrite ->
-                    TextButton(onClick = onDismiss) { Text("Close") }
+                    TextButton(onClick = onDismiss) { Text(appStrings.common.close) }
                 else -> TextButton(
                     enabled = !busy,
                     onClick = {
@@ -194,11 +200,11 @@ internal fun SharedMarkerEditorDialog(
                 ) {
                     Text(
                         if (busy && mutation.kind == SharedMarkerMutationKind.DELETE) {
-                            "Deleting…"
-                        } else if (busy) "Saving…" else if (request.mode == SharedMarkerEditorMode.CREATE) {
-                            "Save Shared Marker"
+                            strings.deleting
+                        } else if (busy) strings.saving else if (request.mode == SharedMarkerEditorMode.CREATE) {
+                            strings.saveSharedMarker
                         } else {
-                            "Save Changes"
+                            strings.saveChanges
                         },
                     )
                 }
@@ -207,10 +213,10 @@ internal fun SharedMarkerEditorDialog(
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (request.mode == SharedMarkerEditorMode.EDIT && canWrite && !remoteDeleted && conflict == null) {
-                    TextButton(enabled = !busy, onClick = { confirmDelete = true }) { Text("Delete Shared Marker") }
+                    TextButton(enabled = !busy, onClick = { confirmDelete = true }) { Text(strings.deleteSharedMarker) }
                 }
                 if (request.mode != SharedMarkerEditorMode.VIEW && !remoteDeleted) {
-                    TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel") }
+                    TextButton(enabled = !busy, onClick = onDismiss) { Text(appStrings.common.cancel) }
                 }
             }
         },
@@ -219,8 +225,8 @@ internal fun SharedMarkerEditorDialog(
     if (confirmDelete && request.marker != null) {
         AlertDialog(
             onDismissRequest = { if (!busy) confirmDelete = false },
-            title = { Text("Delete Shared Marker?") },
-            text = { Text("Delete shared marker “${request.marker.name}” from ${request.systemName}?") },
+            title = { Text(strings.deleteSharedMarkerTitle) },
+            text = { Text(strings.deleteSharedMarker(request.marker.name, request.systemName)) },
             confirmButton = {
                 TextButton(
                     enabled = !busy,
@@ -229,9 +235,9 @@ internal fun SharedMarkerEditorDialog(
                         pendingOperationId = onDelete(request.marker.markerId, checkNotNull(expectedVersion))
                         confirmDelete = false
                     },
-                ) { Text(if (busy) "Deleting…" else "Delete") }
+                ) { Text(if (busy) strings.deleting else appStrings.common.delete) }
             },
-            dismissButton = { TextButton(enabled = !busy, onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(enabled = !busy, onClick = { confirmDelete = false }) { Text(appStrings.common.cancel) } },
         )
     }
 
@@ -239,8 +245,8 @@ internal fun SharedMarkerEditorDialog(
         val latest = conflict?.currentMarker ?: currentMarker
         AlertDialog(
             onDismissRequest = { confirmReload = false },
-            title = { Text("Reload latest Shared Marker?") },
-            text = { Text("Your unsaved changes will be discarded.") },
+            title = { Text(strings.reloadLatestTitle) },
+            text = { Text(strings.discardUnsavedChanges) },
             confirmButton = {
                 TextButton(
                     enabled = latest != null,
@@ -255,9 +261,9 @@ internal fun SharedMarkerEditorDialog(
                         onClearFeedback()
                         confirmReload = false
                     },
-                ) { Text("Reload Latest") }
+                ) { Text(strings.reloadLatest) }
             },
-            dismissButton = { TextButton(onClick = { confirmReload = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmReload = false }) { Text(appStrings.common.cancel) } },
         )
     }
 }
@@ -267,24 +273,10 @@ internal fun parseSharedMarkerTags(value: String): List<String> = value
     .map(String::trim)
     .filter(String::isNotEmpty)
 
-internal fun sharedMapErrorMessage(error: SharedMapError): String = when (error) {
-    is SharedMapError.Forbidden -> "You no longer have permission to change Shared Markers."
-    is SharedMapError.Authentication -> "Authentication is required before Shared Markers can be changed."
-    is SharedMapError.MarkerAlreadyExists -> "This system already has a Shared Marker. Reload the latest snapshot."
-    is SharedMapError.MarkerVersionConflict -> "This Shared Marker was changed by another user."
-    is SharedMapError.InvalidArgument -> error.message
-    is SharedMapError.RateLimited -> "Too many requests. Please try again shortly."
-    is SharedMapError.Network -> "The Shared Map server could not be reached. Your changes were not confirmed."
-    is SharedMapError.Server -> "The Shared Map server could not complete this operation."
-    is SharedMapError.NotFound -> "This Shared Marker no longer exists."
-    is SharedMapError.MemberVersionConflict -> "This member was changed by another administrator. Reload members."
-    is SharedMapError.LastAdminRequired -> "The Workspace must retain at least one active Admin."
-    is SharedMapError.IdempotencyResponseNotReplayable ->
-        "The invite was created, but its one-time secret could not be replayed. Revoke it and create another."
-    is SharedMapError.Protocol -> error.message
-    is SharedMapError.InvalidResponse -> "The Shared Map server returned an invalid response."
-    is SharedMapError.InvalidConfiguration -> error.message
-}
+internal fun sharedMapErrorMessage(
+    error: SharedMapError,
+    strings: SharedMapStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).sharedMap,
+): String = strings.error(error)
 
 @Composable
 private fun SharedMarkerColorPalette(
@@ -310,7 +302,7 @@ private fun SharedMarkerColorPalette(
 
 @Composable
 private fun CommonSharedMarkerTags(current: List<String>, enabled: Boolean, onToggle: (String) -> Unit) {
-    Text("Common tags", style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+    Text(LocalAppStrings.current.sharedMap.commonTags, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         COMMON_SHARED_MARKER_TAGS.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

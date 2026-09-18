@@ -4,6 +4,9 @@ import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.shared.model.SharedMarker
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import java.time.Instant
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.SharedMapStrings
 
 internal enum class SharedMarkerManagerSort { SYSTEM, UPDATED, NAME }
 
@@ -33,6 +36,7 @@ internal object SharedMarkerManagerPresentationBuilder {
         query: String,
         sort: SharedMarkerManagerSort,
         selectedMarkerId: String?,
+        strings: SharedMapStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).sharedMap,
     ): SharedMarkerManagerPresentation {
         val normalizedQuery = query.trim()
         val comparator = when (sort) {
@@ -51,7 +55,7 @@ internal object SharedMarkerManagerPresentationBuilder {
             )
         }
         val rows = state.snapshot?.markers?.values.orEmpty().asSequence()
-            .map { it.toManagerRow(systemNamesById[it.systemId]) }
+            .map { it.toManagerRow(systemNamesById[it.systemId], strings) }
             .filter { row ->
                 normalizedQuery.isEmpty() ||
                     row.systemName.contains(normalizedQuery, ignoreCase = true) ||
@@ -68,10 +72,10 @@ internal object SharedMarkerManagerPresentationBuilder {
     }
 }
 
-private fun SharedMarker.toManagerRow(systemName: String?) = SharedMarkerManagerRow(
+private fun SharedMarker.toManagerRow(systemName: String?, strings: SharedMapStrings) = SharedMarkerManagerRow(
     markerId = markerId,
     systemId = systemId,
-    systemName = systemName ?: "Unknown System ($systemId)",
+    systemName = systemName ?: strings.unknownSystem(systemId),
     systemKnown = systemName != null,
     name = name,
     color = color,

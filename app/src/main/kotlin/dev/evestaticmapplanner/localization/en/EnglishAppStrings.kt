@@ -22,4 +22,10 @@ object EnglishAppStrings : AppStrings {
     override val preferences: PreferencesStrings = EnglishPreferencesStrings
     override val route: RouteStrings = EnglishRouteStrings
     override val staticData: StaticDataStrings = EnglishStaticDataStrings
+    override val aiAssistant: dev.evestaticmapplanner.localization.AiAssistantStrings = EnglishAiAssistantStrings
+    override val marker: dev.evestaticmapplanner.localization.MarkerStrings = EnglishMarkerStrings
+    override val sharedMap: dev.evestaticmapplanner.localization.SharedMapStrings = EnglishSharedMapStrings
+    override val wormhole: dev.evestaticmapplanner.localization.WormholeStrings = EnglishWormholeStrings
+    override val ansiblex: dev.evestaticmapplanner.localization.AnsiblexStrings = EnglishAnsiblexStrings
+    override val miniMap: dev.evestaticmapplanner.localization.MiniMapStrings = EnglishMiniMapStrings
 }

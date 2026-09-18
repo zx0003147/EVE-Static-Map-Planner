@@ -75,6 +75,7 @@ import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.localization.PreferencesStrings
 import dev.evestaticmapplanner.localization.PreferencesText
+import dev.evestaticmapplanner.localization.UiMessage
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.shared.SharedAdminUiState
 import dev.evestaticmapplanner.shared.SharedMapMembersDialog
@@ -125,12 +126,12 @@ internal fun PreferencesWindow(
     onSpeechPackInstall: () -> Unit = {},
     onSpeechPackRemove: () -> Unit = {},
     aiControlStatus: AiControlStatus,
-    aiControlError: String?,
+    aiControlError: UiMessage?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
     overlayState: OverlayState,
     webPackExportState: WebPackExportUiState,
     sharedMapState: SharedMapState,
-    sharedMapOperationError: String?,
+    sharedMapOperationError: UiMessage?,
     sharedAdminState: SharedAdminUiState,
     onSharedMapConnect: (String, SecretValue, String) -> Unit,
     onSharedMapWorkspaceChange: (String) -> Unit,
@@ -350,7 +351,7 @@ internal fun AiFeaturesPreferencesContent(
     onDeleteCredential: (AiProviderType) -> Unit,
     aiControlPreferences: AiControlPreferences,
     aiControlStatus: AiControlStatus,
-    aiControlError: String?,
+    aiControlError: UiMessage?,
     onAiControlChange: (Boolean) -> Unit,
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
     onResetAiControl: () -> Unit,
@@ -1238,7 +1239,7 @@ internal fun WebPackPreferencesContent(
 private fun SharedMapPreferencesContent(
     preferences: SharedMapPreferences,
     state: SharedMapState,
-    operationError: String?,
+    operationError: UiMessage?,
     adminState: SharedAdminUiState,
     onConnect: (String, SecretValue, String) -> Unit,
     onWorkspaceChange: (String) -> Unit,
@@ -1253,7 +1254,9 @@ private fun SharedMapPreferencesContent(
     onClearAdminError: () -> Unit,
     onClearInvite: () -> Unit,
 ) {
-    val strings = LocalAppStrings.current.preferences
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.preferences
+    val sharedStrings = appStrings.sharedMap
     var serverUrl by remember(preferences.serverUrl) { mutableStateOf(preferences.serverUrl.orEmpty()) }
     var deviceName by remember(preferences.deviceName) { mutableStateOf(preferences.deviceName) }
     var showInviteDialog by remember { mutableStateOf(false) }
@@ -1297,9 +1300,9 @@ private fun SharedMapPreferencesContent(
         modifier = Modifier.fillMaxWidth(),
     )
     Text(strings.text(PreferencesText.STATUS, sharedMapStatusLabel(state, strings)))
-    state.statusMessage?.let { Text(it, color = EveColors.SecondaryText) }
+    sharedStrings.statusMessage(state.statusMessage)?.let { Text(it, color = EveColors.SecondaryText) }
     operationError?.let {
-        Text(it, color = MaterialTheme.colorScheme.error)
+        Text(it.resolve(appStrings), color = MaterialTheme.colorScheme.error)
         TextButton(onClick = onClearError) { Text(strings.text(PreferencesText.DISMISS)) }
     }
 
@@ -1329,7 +1332,7 @@ private fun SharedMapPreferencesContent(
         }
     }
     state.identity?.workspace?.role?.let { role ->
-        Text(strings.text(PreferencesText.ROLE, role.name.lowercase().replaceFirstChar(Char::uppercase)))
+        Text(strings.text(PreferencesText.ROLE, sharedStrings.role(role)))
     }
     Text(strings.text(PreferencesText.LAST_SYNC, state.lastSuccessfulSyncAt?.let(::formatLocalInstant) ?: strings.text(PreferencesText.NEVER)))
     Text(strings.text(PreferencesText.SHARED_MARKERS_COUNT, state.markerCount))
@@ -1635,7 +1638,7 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
         controls.firstOrNull { it.packId == pack.packId }?.let { control ->
             Text(strings.text(PreferencesText.CONTROLS), style = MaterialTheme.typography.titleSmall)
             Text(
-                control.primaryText,
+                localizedPackControlText(control.primaryText, strings),
                 color = when (control.severity) {
                     PackControlSeverity.NORMAL -> EveColors.PrimaryText
                     PackControlSeverity.WARNING -> EveColors.Warning
@@ -1643,7 +1646,7 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
                 },
             )
             control.secondaryText?.let { secondary ->
-                Text(secondary, color = EveColors.SecondaryText)
+                Text(localizedPackControlText(secondary, strings), color = EveColors.SecondaryText)
             }
             PackControlActionList(control.actions, control.busyActionId, viewModel::invokeControl)
             control.actions.mapNotNull { it.description }.distinct().forEach { description ->
@@ -1837,6 +1840,13 @@ internal fun MarkerPreferencesContent(
     TextButton(onClick = onReset) { Text(strings.text(PreferencesText.RESET_MARKER)) }
 }
 
+private fun localizedPackControlText(text: String, strings: dev.evestaticmapplanner.localization.PreferencesStrings): String =
+    when (text) {
+        "Feature Pack controls unavailable" -> strings.text(PreferencesText.FEATURE_PACK_CONTROLS_UNAVAILABLE)
+        "This Pack could not provide its current status." -> strings.text(PreferencesText.FEATURE_PACK_STATUS_UNAVAILABLE)
+        else -> text
+    }
+
 @Composable
 internal fun MiniMapPreferencesContent(
     preferences: MiniMapPreferences,
@@ -1944,7 +1954,7 @@ private fun hotkeyStatusLabel(state: MiniMapHudRuntimeState, strings: Preference
 private fun AiControlPreferencesContent(
     preferences: AiControlPreferences,
     status: AiControlStatus,
-    preferenceError: String?,
+    preferenceError: UiMessage?,
     onChange: (Boolean) -> Unit,
     onSavedMarkerAccessChange: (Boolean) -> Unit,
     onReset: () -> Unit,
@@ -1974,7 +1984,7 @@ private fun AiControlPreferencesContent(
             else -> EveColors.SecondaryText
         },
     )
-    if (preferenceError != null) Text(preferenceError, color = EveColors.Error)
+    if (preferenceError != null) Text(preferenceError.resolve(LocalAppStrings.current), color = EveColors.Error)
     Text(
         strings.text(PreferencesText.MCP_SESSION_HELP),
         color = EveColors.SecondaryText,

@@ -507,18 +507,18 @@ internal fun StaticMapScreen(
                     markerViewModel.clearOperationError()
                 }
             },
-            title = { Text("Remove saved marker?") },
+            title = { Text(strings.marker.removeSavedMarkerTitle) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Remove the saved marker from $name? This cannot be undone.")
-                    markerState.operationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Text(strings.marker.removeSavedMarkerCannotUndo(name))
+                    markerState.operationError?.let { Text(it.resolve(strings), color = MaterialTheme.colorScheme.error) }
                 }
             },
             confirmButton = {
                 TextButton(
                     enabled = systemId !in markerState.busySystemIds,
                     onClick = { savedRemovalStarted = markerViewModel.removeSaved(systemId) },
-                ) { Text(if (systemId in markerState.busySystemIds) "Removing…" else "Remove") }
+                ) { Text(if (systemId in markerState.busySystemIds) strings.marker.removing else strings.common.remove) }
             },
             dismissButton = {
                 TextButton(
@@ -528,7 +528,7 @@ internal fun StaticMapScreen(
                         savedRemovalStarted = false
                         markerViewModel.clearOperationError()
                     },
-                ) { Text("Cancel") }
+                ) { Text(strings.common.cancel) }
             },
         )
     }
@@ -537,9 +537,9 @@ internal fun StaticMapScreen(
     ) {
         AlertDialog(
             onDismissRequest = markerViewModel::clearOperationError,
-            title = { Text("Marker operation failed") },
-            text = { Text(checkNotNull(markerState.operationError)) },
-            confirmButton = { TextButton(onClick = markerViewModel::clearOperationError) { Text("OK") } },
+            title = { Text(strings.marker.markerOperationFailed) },
+            text = { Text(checkNotNull(markerState.operationError).resolve(strings)) },
+            confirmButton = { TextButton(onClick = markerViewModel::clearOperationError) { Text(strings.common.ok) } },
         )
     }
 }

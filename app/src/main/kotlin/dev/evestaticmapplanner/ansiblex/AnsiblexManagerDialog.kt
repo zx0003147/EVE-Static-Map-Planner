@@ -32,6 +32,7 @@ import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
 import dev.evestaticmapplanner.ui.EveColors
@@ -57,6 +58,8 @@ fun AnsiblexManagerDialog(
     viewModel: RoutePlannerViewModel,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.ansiblex
     var manualFrom by remember { mutableStateOf("") }
     var manualTo by remember { mutableStateOf("") }
     var manualName by remember { mutableStateOf("") }
@@ -74,7 +77,7 @@ fun AnsiblexManagerDialog(
 
     DialogWindow(
         onCloseRequest = dismissManager,
-        title = "Ansiblex Manager",
+        title = strings.managerTitle,
         state = rememberDialogState(
             width = ANSIBLEX_MANAGER_DEFAULT_SIZE.width,
             height = ANSIBLEX_MANAGER_DEFAULT_SIZE.height,
@@ -91,15 +94,19 @@ fun AnsiblexManagerDialog(
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column {
-                        Text("Ansiblex Manager", style = MaterialTheme.typography.titleLarge)
+                        Text(strings.managerTitle, style = MaterialTheme.typography.titleLarge)
                         Text(
-                            "${state.enabledAnsiblexCount} enabled / ${state.ansiblexConnections.size} total · $userDatabasePath",
+                            strings.summary(
+                                state.enabledAnsiblexCount,
+                                state.ansiblexConnections.size,
+                                userDatabasePath.toString(),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = EveColors.SecondaryText,
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = dismissManager) { Text("Close") }
+                    TextButton(onClick = dismissManager) { Text(appStrings.common.close) }
                 }
                 EveDivider()
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -109,35 +116,45 @@ fun AnsiblexManagerDialog(
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Import CSV / JSON", style = MaterialTheme.typography.titleMedium)
+                        Text(strings.importCsvJson, style = MaterialTheme.typography.titleMedium)
                         Row {
                             AnsiblexImportMode.entries.forEach { mode ->
                                 TextButton(
                                     onClick = { viewModel.setImportMode(mode) },
                                     enabled = mode != state.importMode,
                                     selected = mode == state.importMode,
-                                ) { Text(mode.name) }
+                                ) { Text(strings.importMode(mode)) }
                             }
                         }
                         Button(
                             onClick = {
-                                chooseImportFile()?.let(viewModel::previewImport)
+                                chooseImportFile(strings.fileChooserTitle, strings.fileChooserFilter)
+                                    ?.let(viewModel::previewImport)
                             },
                             enabled = !state.isImportBusy,
-                        ) { Text(if (state.isImportBusy) "Working…" else "Import and Preview") }
+                        ) { Text(if (state.isImportBusy) strings.working else strings.importAndPreview) }
                         state.importPreview?.let { preview ->
                             Text(
-                                "Rows ${preview.rawRowCount} · valid ${preview.validRowCount} · invalid ${preview.invalidRowCount} · " +
-                                    "duplicates ${preview.duplicateCount}",
+                                strings.previewCounts(
+                                    preview.rawRowCount,
+                                    preview.validRowCount,
+                                    preview.invalidRowCount,
+                                    preview.duplicateCount,
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text(
-                                "+${preview.additions.size}  ~${preview.updates.size}  =${preview.unchanged.size}  -${preview.removals.size}",
+                                strings.previewChanges(
+                                    preview.additions.size,
+                                    preview.updates.size,
+                                    preview.unchanged.size,
+                                    preview.removals.size,
+                                ),
                                 color = EveColors.Important,
                             )
                             preview.diagnostics.take(6).forEach { diagnostic ->
                                 Text(
-                                    "${diagnostic.rowNumber?.let { "Row $it: " }.orEmpty()}${diagnostic.message}",
+                                    strings.diagnostic(diagnostic),
                                     color = if (diagnostic.severity == ImportDiagnosticSeverity.ERROR) EveColors.Error else EveColors.Warning,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -146,33 +163,35 @@ fun AnsiblexManagerDialog(
                                 Button(
                                     onClick = viewModel::applyImport,
                                     enabled = preview.canApply && !state.isImportBusy,
-                                ) { Text("Apply") }
-                                TextButton(onClick = viewModel::discardImportPreview) { Text("Discard") }
+                                ) { Text(appStrings.common.apply) }
+                                TextButton(onClick = viewModel::discardImportPreview) { Text(strings.discard) }
                             }
                         }
-                        state.importError?.let { Text(it, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
+                        state.importError?.let {
+                            Text(it.resolve(appStrings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
+                        }
                         EveDivider()
-                        Text("Manual Add", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(manualFrom, { manualFrom = it }, label = { Text("From name or ID") }, singleLine = true)
-                        OutlinedTextField(manualTo, { manualTo = it }, label = { Text("To name or ID") }, singleLine = true)
-                        OutlinedTextField(manualName, { manualName = it }, label = { Text("Connection name (optional)") }, singleLine = true)
-                        OutlinedTextField(manualNotes, { manualNotes = it }, label = { Text("Notes (optional)") })
+                        Text(strings.manualAdd, style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(manualFrom, { manualFrom = it }, label = { Text(strings.fromNameOrId) }, singleLine = true)
+                        OutlinedTextField(manualTo, { manualTo = it }, label = { Text(strings.toNameOrId) }, singleLine = true)
+                        OutlinedTextField(manualName, { manualName = it }, label = { Text(strings.connectionNameOptional) }, singleLine = true)
+                        OutlinedTextField(manualNotes, { manualNotes = it }, label = { Text(strings.notesOptional) })
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(bidirectional, { bidirectional = it })
-                            Text(if (bidirectional) "Bidirectional" else "From → To")
+                            Text(if (bidirectional) strings.bidirectional else strings.fromTo)
                         }
                         Button(
                             onClick = {
                                 viewModel.addManual(manualFrom, manualTo, bidirectional, manualName, manualNotes)
                             },
                             enabled = manualFrom.isNotBlank() && manualTo.isNotBlank(),
-                        ) { Text("Add Connection") }
+                        ) { Text(strings.addConnection) }
                     }
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Connections", style = MaterialTheme.typography.titleMedium)
+                            Text(strings.connections, style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = { confirmation = ClearConfirmation.IMPORTED }) { Text("Clear Imported") }
+                            TextButton(onClick = { confirmation = ClearConfirmation.IMPORTED }) { Text(strings.clearImported) }
                         }
                         EveLazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             items(state.ansiblexConnections, key = AnsiblexConnection::id) { connection ->
@@ -181,16 +200,16 @@ fun AnsiblexManagerDialog(
                         }
                         EveDivider()
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Danger zone", color = EveColors.Error, style = MaterialTheme.typography.labelSmall)
+                            Text(strings.dangerZone, color = EveColors.Error, style = MaterialTheme.typography.labelSmall)
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = { confirmation = ClearConfirmation.ALL }) {
-                                Text("Clear All Ansiblex", color = EveColors.Error)
+                                Text(strings.clearAllAnsiblex, color = EveColors.Error)
                             }
                         }
                     }
                 }
                 state.managerMessage?.let {
-                    Text(it, color = EveColors.Important, style = MaterialTheme.typography.bodySmall)
+                    Text(it.resolve(appStrings), color = EveColors.Important, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -231,20 +250,22 @@ internal fun AnsiblexClearConfirmationDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.ansiblex
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (kind == ClearConfirmation.ALL) "Delete all Ansiblex data?" else "Delete imported Ansiblex data?") },
+        title = { Text(if (kind == ClearConfirmation.ALL) strings.deleteAllTitle else strings.deleteImportedTitle) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     if (kind == ClearConfirmation.ALL) {
-                        "This permanently deletes IMPORT and MANUAL connections from user.db. This cannot be undone."
+                        strings.deleteAllWarning
                     } else {
-                        "This deletes only source=IMPORT connections. MANUAL connections are preserved."
+                        strings.deleteImportedWarning
                     },
                 )
                 if (kind == ClearConfirmation.ALL) {
-                    Text("Type DELETE MANUAL to confirm:", color = EveColors.Error)
+                    Text(strings.typeDeleteManual, color = EveColors.Error)
                     OutlinedTextField(clearAllPhrase, onClearAllPhraseChange, singleLine = true)
                 }
             }
@@ -253,36 +274,39 @@ internal fun AnsiblexClearConfirmationDialog(
             Button(
                 onClick = onConfirm,
                 enabled = kind != ClearConfirmation.ALL || clearAllPhrase == "DELETE MANUAL",
-            ) { Text(if (kind == ClearConfirmation.ALL) "Delete Everything" else "Clear Imported") }
+            ) { Text(if (kind == ClearConfirmation.ALL) strings.deleteEverything else strings.clearImported) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(appStrings.common.cancel) }
         },
     )
 }
 
 @Composable
 private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlannerViewModel) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.ansiblex
     EvePanel(secondary = true, bordered = false) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(connection.enabled, { viewModel.setConnectionEnabled(connection.id, it) })
             Column(Modifier.weight(1f)) {
                 Text(connection.displayName ?: "${connection.firstSystemId} ↔ ${connection.secondSystemId}")
                 Text(
-                    "${connection.firstSystemId} / ${connection.secondSystemId} · ${connection.direction.name} · ${connection.source.name}",
+                    "${connection.firstSystemId} / ${connection.secondSystemId} · " +
+                        "${strings.direction(connection.direction)} · ${strings.source(connection.source)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = EveColors.SecondaryText,
                 )
             }
-            TextButton(onClick = { viewModel.deleteConnection(connection.id) }) { Text("Delete") }
+            TextButton(onClick = { viewModel.deleteConnection(connection.id) }) { Text(appStrings.common.delete) }
         }
     }
 }
 
-private fun chooseImportFile(): Path? {
+private fun chooseImportFile(dialogTitle: String, filterDescription: String): Path? {
     val chooser = JFileChooser().apply {
-        dialogTitle = "Select synthetic or user-maintained Ansiblex CSV/JSON"
-        fileFilter = FileNameExtensionFilter("Ansiblex CSV or JSON", "csv", "json")
+        this.dialogTitle = dialogTitle
+        fileFilter = FileNameExtensionFilter(filterDescription, "csv", "json")
     }
     return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile.toPath() else null
 }

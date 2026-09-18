@@ -7,6 +7,9 @@ import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.SharedMapStrings
 import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import java.time.Instant
@@ -115,10 +118,12 @@ data class PresentedSharedMarker(
     val hasLocalSavedMarker: Boolean,
     val hasAiMissionMarker: Boolean,
 ) {
-    val hoverLines: List<String>
-        get() = listOf(
+    val hoverLines: List<String> get() = hoverLines(AppStringsCatalog.forLocale(AppLocale.EN_US).sharedMap)
+
+    fun hoverLines(strings: SharedMapStrings): List<String> = listOf(
             marker.name,
-            marker.tags.firstOrNull()?.let { "Shared Marker · ${sharedMarkerTagLabel(it)}" } ?: "Shared Marker",
+            marker.tags.firstOrNull()?.let { "${strings.sharedMarker} · ${sharedMarkerTagLabel(it)}" }
+                ?: strings.sharedMarker,
         )
 }
 

@@ -804,7 +804,7 @@ fun StaticMapCanvas(
         }
         hoveredSharedMarker?.let { marker ->
             MapMarkerTooltip(
-                lines = marker.hoverLines,
+                lines = marker.hoverLines(strings.sharedMap),
                 offset = IntOffset(
                     marker.screenCenter.x.toInt() + marker.ringRadiusPx.toInt() + 8,
                     marker.screenCenter.y.toInt() - marker.ringRadiusPx.toInt() - 12,
@@ -820,7 +820,7 @@ fun StaticMapCanvas(
         }
         hoveredSavedMarkerChild?.let { child ->
             MapMarkerTooltip(
-                lines = listOf(child.visual.label),
+                lines = listOf(strings.marker.childType(child.visual.type, child.visual.label)),
                 offset = IntOffset(
                     child.screenCenter.x.toInt() + 12,
                     child.screenCenter.y.toInt() - 16,
@@ -953,7 +953,7 @@ fun StaticMapCanvas(
                         if (item.action == SystemContextAction.MARKERS_UNAVAILABLE) {
                             markerState.databaseError?.let { error ->
                                 Text(
-                                    text = error,
+                                    text = strings.marker.databaseUnavailable(error),
                                     color = androidx.compose.ui.graphics.Color(0xFFFF9F9F),
                                     style = MaterialTheme.typography.labelSmall,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),

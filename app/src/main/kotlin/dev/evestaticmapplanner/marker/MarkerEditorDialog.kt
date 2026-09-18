@@ -35,6 +35,8 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.search.SearchSuggestionsPresentation
 import dev.evestaticmapplanner.search.SystemSearchField
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.UiMessage
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveDropdownMenu as DropdownMenu
 import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
@@ -65,7 +67,7 @@ data class MarkerEditorSystemSearch(
 fun MarkerEditorDialog(
     request: MarkerEditorRequest,
     isBusy: Boolean,
-    error: String?,
+    error: UiMessage?,
     saveEnabled: Boolean = true,
     systemSearch: MarkerEditorSystemSearch? = null,
     onSystemQueryChange: (String) -> Unit = {},
@@ -76,13 +78,15 @@ fun MarkerEditorDialog(
     onSave: (Int, MarkerDraft, List<SavedMarkerChildType>) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.marker
     var name by remember(request) { mutableStateOf(request.marker?.name.orEmpty()) }
     var notes by remember(request) { mutableStateOf(request.marker?.notes.orEmpty()) }
     var color by remember(request) { mutableStateOf(request.marker?.color ?: MarkerColor.YELLOW) }
     var initialTags by remember(request) { mutableStateOf(emptyList<SavedMarkerChildType>()) }
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
-        title = { Text(if (request.mode == MarkerEditorMode.CREATE_SAVED) "Add Saved Marker" else "Edit Marker") },
+        title = { Text(if (request.mode == MarkerEditorMode.CREATE_SAVED) strings.addSavedMarker else strings.editMarker) },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -98,7 +102,7 @@ fun MarkerEditorDialog(
                     OutlinedTextField(
                         value = request.systemName.orEmpty(),
                         onValueChange = {},
-                        label = { Text("Solar System") },
+                        label = { Text(strings.system) },
                         readOnly = true,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -106,7 +110,7 @@ fun MarkerEditorDialog(
                 } else if (systemSearch != null) {
                     SystemSearchField(
                         value = systemSearch.query,
-                        label = "Search system",
+                        label = strings.searchSystem,
                         results = systemSearch.results,
                         onValueChange = onSystemQueryChange,
                         onSelect = onSystemSelected,
@@ -114,25 +118,25 @@ fun MarkerEditorDialog(
                         suggestionsPresentation = SearchSuggestionsPresentation.DROPDOWN,
                     )
                     systemSearch.selectedSystem?.let { selected ->
-                        Text("Selected: ${selected.name} · ${selected.id}", style = MaterialTheme.typography.bodySmall)
+                        Text(strings.selectedSystem(selected.name, selected.id), style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name") },
+                    label = { Text(strings.name) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notes") },
+                    label = { Text(strings.notes) },
                     minLines = 3,
                     maxLines = 6,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("Color", style = MaterialTheme.typography.labelLarge)
+                Text(strings.color, style = MaterialTheme.typography.labelLarge)
                 MarkerColorPalette(color, onSelected = { color = it })
                 if (request.mode == MarkerEditorMode.CREATE_SAVED || request.mode == MarkerEditorMode.EDIT_SAVED) {
                     val assignedTypes = if (request.mode == MarkerEditorMode.CREATE_SAVED) {
@@ -159,7 +163,7 @@ fun MarkerEditorDialog(
                         },
                     )
                 }
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                error?.let { Text(it.resolve(appStrings), color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
@@ -173,10 +177,10 @@ fun MarkerEditorDialog(
                         if (request.mode == MarkerEditorMode.CREATE_SAVED) initialTags else emptyList(),
                     )
                 },
-            ) { Text(if (isBusy) "Saving…" else "Save") }
+            ) { Text(if (isBusy) strings.saving else strings.save) }
         },
         dismissButton = {
-            TextButton(enabled = !isBusy, onClick = onDismiss) { Text("Cancel") }
+            TextButton(enabled = !isBusy, onClick = onDismiss) { Text(appStrings.common.cancel) }
         },
     )
 }
@@ -190,11 +194,12 @@ private fun SavedMarkerTagsEditor(
     onAddChild: (SavedMarkerChildType) -> Unit,
     onRemoveChild: (SavedMarkerChildType) -> Unit,
 ) {
+    val strings = LocalAppStrings.current.marker
     var addMenuExpanded by remember { mutableStateOf(false) }
     val available = remember(types) { SavedMarkerChildVisuals.availableForTypes(types) }
-    Text("Tags", style = MaterialTheme.typography.labelLarge)
+    Text(strings.tags, style = MaterialTheme.typography.labelLarge)
     if (types.isEmpty()) {
-        Text("No tags assigned.", style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
+        Text(strings.noTagsAssigned, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
             types.forEach { type ->
@@ -209,7 +214,7 @@ private fun SavedMarkerTagsEditor(
                         modifier = Modifier.padding(start = 9.dp, end = 3.dp, top = 3.dp, bottom = 3.dp),
                     ) {
                         SavedMarkerChildIcon(visual, Modifier.size(20.dp))
-                        Text(visual.label, modifier = Modifier.weight(1f))
+                        Text(strings.childType(visual.type, visual.label), modifier = Modifier.weight(1f))
                         TextButton(enabled = enabled, onClick = { onRemoveChild(type) }) { Text("×") }
                     }
                 }
@@ -220,7 +225,7 @@ private fun SavedMarkerTagsEditor(
         TextButton(
             enabled = enabled && available.isNotEmpty(),
             onClick = { addMenuExpanded = true },
-        ) { Text(if (available.isEmpty()) "All tags assigned" else "+ Add Tag") }
+        ) { Text(if (available.isEmpty()) strings.allTagsAssigned else strings.addTag) }
         DropdownMenu(
             expanded = addMenuExpanded,
             onDismissRequest = { addMenuExpanded = false },
@@ -230,7 +235,7 @@ private fun SavedMarkerTagsEditor(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             SavedMarkerChildIcon(visual, Modifier.size(20.dp))
-                            Text(visual.label)
+                            Text(strings.childType(visual.type, visual.label))
                         }
                     },
                     onClick = {

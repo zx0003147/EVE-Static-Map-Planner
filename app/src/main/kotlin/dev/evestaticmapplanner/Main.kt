@@ -894,7 +894,7 @@ private fun FrameWindowScope.ReadyApplication(
     var showMarkerManager by remember { mutableStateOf(false) }
     var showSharedMarkerManager by remember { mutableStateOf(false) }
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
-    var aiPreferenceError by remember { mutableStateOf<String?>(null) }
+    var aiPreferenceError by remember { mutableStateOf<dev.evestaticmapplanner.localization.UiMessage?>(null) }
     var webPackExportState by remember(configuration) { mutableStateOf<WebPackExportUiState>(WebPackExportUiState.Idle) }
     val aiControlReady = !mapState.isLoading && mapState.scene != null && !mapState.canvasSize.isEmpty
     LaunchedEffect(aiControlReady, mapState.appPreferences.aiControl.enabled, exitRequested, localhostMcpHost) {
@@ -1101,7 +1101,13 @@ private fun FrameWindowScope.ReadyApplication(
                     )
                     return@export
                 }
-                val parentDirectory = chooseWebPackExportParentDirectory() ?: return@export
+                val parentDirectory = chooseWebPackExportParentDirectory(
+                    strings.preferences.text(
+                        dev.evestaticmapplanner.localization.PreferencesText.SELECT_WEB_PACK_PARENT,
+                        WebPackSchema.EXPORT_DIRECTORY_NAME,
+                    ),
+                    strings.preferences.text(dev.evestaticmapplanner.localization.PreferencesText.EXPORT_HERE),
+                ) ?: return@export
                 val outputDirectory = parentDirectory.resolve(WebPackSchema.EXPORT_DIRECTORY_NAME)
                 webPackExportState = WebPackExportUiState.Exporting
                 uiScope.launch {
@@ -1140,7 +1146,9 @@ private fun FrameWindowScope.ReadyApplication(
                             if (!enabled || aiControlReady) controlLifecycle.setEnabled(enabled)
                         },
                         onFailure = {
-                            aiPreferenceError = "The setting could not be saved; AI Map Control was not changed."
+                            aiPreferenceError = dev.evestaticmapplanner.localization.PreferencesUiMessage(
+                                dev.evestaticmapplanner.localization.PreferencesMessage.AI_CONTROL_SAVE_FAILED,
+                            )
                             AppDiagnostics.warning("AI Control preference save failed", it)
                         },
                     )
@@ -1152,7 +1160,9 @@ private fun FrameWindowScope.ReadyApplication(
                     mapViewModel.updateAiControlPreferences(
                         mapState.appPreferences.aiControl.copy(savedMarkerAccessEnabled = enabled),
                     ).onFailure {
-                        aiPreferenceError = "The setting could not be saved; AI Saved Marker access was not changed."
+                        aiPreferenceError = dev.evestaticmapplanner.localization.PreferencesUiMessage(
+                            dev.evestaticmapplanner.localization.PreferencesMessage.AI_SAVED_MARKER_ACCESS_SAVE_FAILED,
+                        )
                         AppDiagnostics.warning("AI Saved Marker access preference save failed", it)
                     }
                 }
@@ -1168,7 +1178,9 @@ private fun FrameWindowScope.ReadyApplication(
                             controlLifecycle.setEnabled(false)
                         },
                         onFailure = {
-                            aiPreferenceError = "The setting could not be reset; AI Map Control was not changed."
+                            aiPreferenceError = dev.evestaticmapplanner.localization.PreferencesUiMessage(
+                                dev.evestaticmapplanner.localization.PreferencesMessage.AI_CONTROL_RESET_FAILED,
+                            )
                             AppDiagnostics.warning("AI Control preference reset failed", it)
                         },
                     )
@@ -1180,7 +1192,9 @@ private fun FrameWindowScope.ReadyApplication(
                     aiPreferenceError = null
                     val sharedDisconnected = sharedMapViewModel.disconnectForPreferencesReset()
                     if (sharedDisconnected.isFailure) {
-                        aiPreferenceError = "Preferences could not be reset because the Shared Map credential could not be removed."
+                        aiPreferenceError = dev.evestaticmapplanner.localization.PreferencesUiMessage(
+                            dev.evestaticmapplanner.localization.PreferencesMessage.RESET_SHARED_CREDENTIAL_FAILED,
+                        )
                         AppDiagnostics.warning("Shared Map disconnect during preference reset failed")
                         return@launch
                     }
@@ -1190,7 +1204,9 @@ private fun FrameWindowScope.ReadyApplication(
                             embeddedAiController.configurationChanged()
                         },
                         onFailure = {
-                            aiPreferenceError = "Preferences could not be reset."
+                            aiPreferenceError = dev.evestaticmapplanner.localization.PreferencesUiMessage(
+                                dev.evestaticmapplanner.localization.PreferencesMessage.RESET_PREFERENCES_FAILED,
+                            )
                             AppDiagnostics.warning("Preferences reset failed", it)
                         },
                     )
@@ -1245,16 +1261,16 @@ private fun FrameWindowScope.ReadyApplication(
     if (confirmClearTemporaryMarkers) {
         AlertDialog(
             onDismissRequest = { confirmClearTemporaryMarkers = false },
-            title = { Text("Clear temporary markers?") },
-            text = { Text("Remove all $temporaryMarkerCount temporary markers? Saved markers will not be changed.") },
+            title = { Text(strings.marker.clearTemporaryTitle) },
+            text = { Text(strings.marker.clearTemporaryMessage(temporaryMarkerCount)) },
             confirmButton = {
                 TextButton(onClick = {
                     markerViewModel.clearTemporaryMarkers()
                     confirmClearTemporaryMarkers = false
-                }) { Text("Clear") }
+                }) { Text(strings.common.clear) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmClearTemporaryMarkers = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmClearTemporaryMarkers = false }) { Text(strings.common.cancel) }
             },
         )
     }

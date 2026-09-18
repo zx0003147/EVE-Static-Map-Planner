@@ -33,6 +33,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.map.sharedMarkerColor
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveDivider as HorizontalDivider
@@ -56,6 +57,8 @@ internal fun SharedMarkerManagerWindow(
     onFocusSystem: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.sharedMap
     val systemIds = state.snapshot?.markers?.values.orEmpty().map { it.systemId }.distinct().sorted()
     var systemNamesById by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     var query by remember { mutableStateOf("") }
@@ -89,6 +92,7 @@ internal fun SharedMarkerManagerWindow(
         query,
         sort,
         selectedMarkerId,
+        strings,
     )
     LaunchedEffect(presentation.selected, selectedMarkerId) {
         if (selectedMarkerId != null && presentation.selected == null) selectedMarkerId = null
@@ -103,7 +107,7 @@ internal fun SharedMarkerManagerWindow(
 
     Window(
         onCloseRequest = { if (!mutation.busy) onDismiss() },
-        title = "Shared Marker Manager",
+        title = strings.sharedMarkerManager,
         state = rememberWindowState(width = 1_050.dp, height = 620.dp),
     ) {
         EveWindowChrome(window)
@@ -114,20 +118,20 @@ internal fun SharedMarkerManagerWindow(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize().padding(16.dp),
             ) {
-                Text("Shared Marker Manager", style = MaterialTheme.typography.titleLarge)
+                Text(strings.sharedMarkerManager, style = MaterialTheme.typography.titleLarge)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Text("Workspace: ${state.selectedWorkspace?.name ?: "None"}")
-                    Text("Status: ${managerConnectionLabel(state)}")
-                    Text("Role: ${state.identity?.workspace?.role?.name ?: "—"}")
-                    Text("Markers: ${state.markerCount}")
+                    Text(strings.workspaceLabel(state.selectedWorkspace?.name ?: strings.none))
+                    Text(strings.statusLabel(strings.connectionState(state.connectionState, state.stale)))
+                    Text(strings.roleLabel(state.identity?.workspace?.role?.let(strings::role) ?: "—"))
+                    Text(strings.markersLabel(state.markerCount))
                 }
                 if (state.connectionState != dev.evestaticmapplanner.shared.model.SharedConnectionState.ONLINE) {
                     Text(
                         when {
                             state.connectionState == dev.evestaticmapplanner.shared.model.SharedConnectionState.FORBIDDEN ->
-                                "Shared Map access was removed."
-                            state.stale -> "Showing stale Shared Marker data; editing is disabled."
-                            else -> "Shared Map is read-only until the connection is online."
+                                strings.accessRemoved
+                            state.stale -> strings.staleDataReadOnly
+                            else -> strings.readOnlyUntilOnline
                         },
                         color = EveColors.Warning,
                     )
@@ -136,21 +140,21 @@ internal fun SharedMarkerManagerWindow(
                     OutlinedTextField(
                         value = query,
                         onValueChange = { query = it },
-                        label = { Text("Search system, marker, or tag") },
+                        label = { Text(strings.searchMarker) },
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { sort = SharedMarkerManagerSort.SYSTEM }, selected = sort == SharedMarkerManagerSort.SYSTEM) { Text("System") }
-                    TextButton(onClick = { sort = SharedMarkerManagerSort.UPDATED }, selected = sort == SharedMarkerManagerSort.UPDATED) { Text("Updated") }
-                    TextButton(onClick = { sort = SharedMarkerManagerSort.NAME }, selected = sort == SharedMarkerManagerSort.NAME) { Text("Name") }
-                    TextButton(onClick = viewModel::refreshNow) { Text("Refresh") }
+                    TextButton(onClick = { sort = SharedMarkerManagerSort.SYSTEM }, selected = sort == SharedMarkerManagerSort.SYSTEM) { Text(strings.system) }
+                    TextButton(onClick = { sort = SharedMarkerManagerSort.UPDATED }, selected = sort == SharedMarkerManagerSort.UPDATED) { Text(strings.updated) }
+                    TextButton(onClick = { sort = SharedMarkerManagerSort.NAME }, selected = sort == SharedMarkerManagerSort.NAME) { Text(strings.name) }
+                    TextButton(onClick = viewModel::refreshNow) { Text(strings.refresh) }
                 }
                 SharedMarkerTableHeader()
                 HorizontalDivider()
                 when {
-                    state.snapshot == null -> Text("No Shared Marker snapshot is available.", color = EveColors.SecondaryText)
+                    state.snapshot == null -> Text(strings.noSnapshot, color = EveColors.SecondaryText)
                     presentation.rows.isEmpty() -> Text(
-                        if (query.isBlank()) "No Shared Markers in this Workspace." else "No Shared Markers match this search.",
+                        if (query.isBlank()) strings.noMarkers else strings.noMarkersMatch,
                         color = EveColors.SecondaryText,
                     )
                     else -> EveLazyColumn(Modifier.weight(1f).fillMaxWidth().heightIn(min = 160.dp)) {
@@ -169,7 +173,7 @@ internal fun SharedMarkerManagerWindow(
                     TextButton(
                         enabled = presentation.selected?.systemKnown == true,
                         onClick = { presentation.selected?.let { onFocusSystem(it.systemId) } },
-                    ) { Text("Focus") }
+                    ) { Text(strings.focus) }
                     TextButton(
                         enabled = presentation.selected != null,
                         onClick = {
@@ -185,13 +189,13 @@ internal fun SharedMarkerManagerWindow(
                                 marker,
                             )
                         },
-                    ) { Text(if (presentation.canWrite) "Edit" else "View") }
+                    ) { Text(if (presentation.canWrite) strings.edit else strings.view) }
                     TextButton(
                         enabled = presentation.canWrite && presentation.selected != null && !mutation.busy,
                         onClick = { pendingDelete = presentation.selected },
-                    ) { Text("Delete") }
+                    ) { Text(appStrings.common.delete) }
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss, enabled = !mutation.busy) { Text("Close") }
+                    TextButton(onClick = onDismiss, enabled = !mutation.busy) { Text(appStrings.common.close) }
                 }
             }
         }
@@ -218,12 +222,12 @@ internal fun SharedMarkerManagerWindow(
             val operationMatches = pendingDeleteOperation != null && mutation.operationId == pendingDeleteOperation
             AlertDialog(
                 onDismissRequest = { if (!mutation.busy) pendingDelete = null },
-                title = { Text("Delete Shared Marker?") },
+                title = { Text(strings.deleteSharedMarkerTitle) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Delete shared marker “${row.name}” from ${row.systemName}?")
+                        Text(strings.deleteSharedMarker(row.name, row.systemName))
                         mutation.error.takeIf { operationMatches }?.let {
-                            Text(sharedMapErrorMessage(it), color = MaterialTheme.colorScheme.error)
+                            Text(strings.error(it), color = MaterialTheme.colorScheme.error)
                         }
                     }
                 },
@@ -234,10 +238,10 @@ internal fun SharedMarkerManagerWindow(
                             viewModel.clearMarkerMutationFeedback()
                             pendingDeleteOperation = viewModel.deleteSharedMarker(row.markerId, row.version)
                         },
-                    ) { Text(if (mutation.busy && operationMatches) "Deleting…" else "Delete") }
+                    ) { Text(if (mutation.busy && operationMatches) strings.deleting else appStrings.common.delete) }
                 },
                 dismissButton = {
-                    TextButton(enabled = !mutation.busy, onClick = { pendingDelete = null }) { Text("Cancel") }
+                    TextButton(enabled = !mutation.busy, onClick = { pendingDelete = null }) { Text(appStrings.common.cancel) }
                 },
             )
         }
@@ -246,13 +250,14 @@ internal fun SharedMarkerManagerWindow(
 
 @Composable
 private fun SharedMarkerTableHeader() {
+    val strings = LocalAppStrings.current.sharedMap
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("System", fontWeight = FontWeight.SemiBold, modifier = Modifier.width(150.dp))
-        Text("Name", fontWeight = FontWeight.SemiBold, modifier = Modifier.width(180.dp))
-        Text("Color", fontWeight = FontWeight.SemiBold, modifier = Modifier.width(75.dp))
-        Text("Tags", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        Text("Updated by", fontWeight = FontWeight.SemiBold, modifier = Modifier.width(120.dp))
-        Text("Updated", fontWeight = FontWeight.SemiBold, modifier = Modifier.width(150.dp))
+        Text(strings.system, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(150.dp))
+        Text(strings.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(180.dp))
+        Text(strings.color, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(75.dp))
+        Text(strings.tags, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(strings.updatedBy, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(120.dp))
+        Text(strings.updated, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(150.dp))
     }
 }
 
@@ -263,6 +268,7 @@ private fun SharedMarkerTableRow(
     onClick: () -> Unit,
     onDoubleClick: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.sharedMap
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
     Row(
@@ -282,16 +288,11 @@ private fun SharedMarkerTableRow(
     ) {
         Text(row.systemName, modifier = Modifier.width(150.dp), maxLines = 1)
         Text(row.name, modifier = Modifier.width(180.dp), maxLines = 1)
-        Text(row.color.name, color = sharedMarkerColor(row.color), modifier = Modifier.width(75.dp))
+        Text(strings.markerColor(row.color), color = sharedMarkerColor(row.color), modifier = Modifier.width(75.dp))
         Text(row.tags.joinToString(" · "), modifier = Modifier.weight(1f), maxLines = 1)
         Text(row.updatedBy, modifier = Modifier.width(120.dp), maxLines = 1)
         Text(MANAGER_TIME_FORMATTER.format(row.updatedAt.atZone(ZoneId.systemDefault())), modifier = Modifier.width(150.dp))
     }
-}
-
-private fun managerConnectionLabel(state: SharedMapState): String = when {
-    state.stale -> "${state.connectionState.name} · stale"
-    else -> state.connectionState.name
 }
 
 private val MANAGER_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

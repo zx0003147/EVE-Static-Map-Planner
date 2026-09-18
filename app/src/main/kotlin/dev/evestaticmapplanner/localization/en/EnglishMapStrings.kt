@@ -18,6 +18,7 @@ internal object EnglishMapStrings : MapStrings {
     override val expandSidebar = "Expand sidebar"
     override val official2DSelected = "Official 2D selected"
     override val real3DSelected = "Real 3D selected"
+    override val mapOverlays = "Map overlays"
     override val addTemporaryMarker = "Add Temporary Marker"
     override val addSavedMarker = "Add Saved Marker…"
     override val editMarker = "Edit Marker…"

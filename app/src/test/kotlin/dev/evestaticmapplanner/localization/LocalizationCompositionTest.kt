@@ -202,4 +202,43 @@ class LocalizationCompositionTest {
             onNodeWithText("Test Connection").assertIsDisplayed()
             onNodeWithText("Voice test played successfully.").assertIsDisplayed()
         }
+
+    @Test
+    fun `existing Step 2C status objects rerender immediately after locale switch`() = runComposeUiTest {
+        var localization by mutableStateOf(AppLocalization(AppLocale.EN_US))
+        val markerStatus: UiMessage = MarkerUiMessage(MarkerMessage.SAVED_CONFLICT)
+        val sharedStatus: UiMessage = SharedMapOperationFailedUiMessage
+        val ansiblexStatus: UiMessage = AnsiblexUiMessage(
+            AnsiblexMessage.IMPORT_APPLIED,
+            count = 1,
+            updatedCount = 2,
+            removedCount = 3,
+        )
+        val aiControllerStatus = "Transcribing…"
+
+        setContent {
+            ProvideAppLocalization(localization) {
+                val strings = LocalAppStrings.current
+                Column {
+                    Text(markerStatus.resolve(strings))
+                    Text(sharedStatus.resolve(strings))
+                    Text(ansiblexStatus.resolve(strings))
+                    Text(strings.aiAssistant.voiceControllerMessage(aiControllerStatus))
+                }
+            }
+        }
+
+        onNodeWithText("This system already has a marker.").assertIsDisplayed()
+        onNodeWithText("The Shared Map operation could not be completed.").assertIsDisplayed()
+        onNodeWithText("Applied 1 additions, 2 updates, 3 removals").assertIsDisplayed()
+        onNodeWithText("Transcribing…").assertIsDisplayed()
+
+        runOnIdle { localization = AppLocalization(AppLocale.ZH_CN) }
+        waitForIdle()
+
+        onNodeWithText("该星系已有标记。").assertIsDisplayed()
+        onNodeWithText("无法完成共享地图操作。").assertIsDisplayed()
+        onNodeWithText("已应用 1 个新增、2 个更新、3 个删除").assertIsDisplayed()
+        onNodeWithText("正在转写……").assertIsDisplayed()
+    }
 }

@@ -74,6 +74,11 @@ internal object SimplifiedChinesePreferencesStrings : PreferencesStrings {
             PreferencesMessage.SPEECH_PACK_INSTALL_FAILED -> "语音包下载或验证失败。"
             PreferencesMessage.SPEECH_PACK_REMOVED -> "语音包已移除。"
             PreferencesMessage.SPEECH_PACK_REMOVE_FAILED -> "无法移除语音包。"
+            PreferencesMessage.AI_CONTROL_SAVE_FAILED -> "无法保存设置；AI 地图控制未更改。"
+            PreferencesMessage.AI_SAVED_MARKER_ACCESS_SAVE_FAILED -> "无法保存设置；AI 已保存标记访问权限未更改。"
+            PreferencesMessage.AI_CONTROL_RESET_FAILED -> "无法重置设置；AI 地图控制未更改。"
+            PreferencesMessage.RESET_SHARED_CREDENTIAL_FAILED -> "无法重置设置，因为无法删除共享地图凭据。"
+            PreferencesMessage.RESET_PREFERENCES_FAILED -> "无法重置设置。"
         }
         return technicalDetail?.takeIf(String::isNotBlank)?.let { "$summary\n$it" } ?: summary
     }

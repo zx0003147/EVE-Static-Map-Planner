@@ -76,6 +76,8 @@ import dev.evestaticmapplanner.embeddedai.EmbeddedAiChatSession
 import dev.evestaticmapplanner.embeddedai.MAX_CUSTOM_CHAT_TITLE_CODE_POINTS
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.embeddedai.isEstablished
+import dev.evestaticmapplanner.localization.AiAssistantStrings
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
@@ -92,6 +94,7 @@ internal fun EmbeddedAiAssistantWindow(
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.aiAssistant
     val state by controller.state.collectAsState()
     val confirmation by controller.confirmation.collectAsState()
     val voiceState by voiceController.state.collectAsState()
@@ -117,7 +120,7 @@ internal fun EmbeddedAiAssistantWindow(
             controller.cancel()
             onDismiss()
         },
-        title = "Embedded AI Assistant",
+        title = strings.title,
         state = rememberWindowState(width = 880.dp, height = 680.dp),
     ) {
         EveWindowChrome(window)
@@ -168,6 +171,8 @@ internal fun EmbeddedAiAssistantContent(
     onSpeak: (String, String) -> Unit = { _, _ -> },
     onStopSpeaking: () -> Unit = {},
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.aiAssistant
     var prompt by remember { mutableStateOf(TextFieldValue()) }
     var sidebarVisible by remember { mutableStateOf(true) }
     val inputFocusRequester = remember { FocusRequester() }
@@ -216,14 +221,14 @@ internal fun EmbeddedAiAssistantContent(
                     modifier = Modifier.testTag(AI_ASSISTANT_HEADER_TEST_TAG),
                 ) {
                     Text(
-                        "Embedded AI Assistant",
+                        strings.title,
                         style = MaterialTheme.typography.titleLarge,
                     )
-                    Text(providerStatus.description, color = EveColors.SecondaryText)
+                    Text(providerStatus.description(strings), color = EveColors.SecondaryText)
                 }
-                state.contextNotice?.let { Text(it, color = EveColors.SecondaryText) }
+                state.contextNotice?.let { Text(strings.contextNotice(it), color = EveColors.SecondaryText) }
                 if (!providerStatus.ready) {
-                    TextButton(onClick = onOpenSettings) { Text("Open AI Settings") }
+                    TextButton(onClick = onOpenSettings) { Text(strings.openAiSettings) }
                 }
 
                 Box(
@@ -235,7 +240,7 @@ internal fun EmbeddedAiAssistantContent(
                 ) {
                     if (messages.isEmpty()) {
                         Text(
-                            if (providerStatus.ready) "Start a conversation with the Planner." else providerStatus.actionMessage,
+                            if (providerStatus.ready) strings.startConversation else providerStatus.actionMessage(strings),
                             color = EveColors.SecondaryText,
                             modifier = Modifier.align(Alignment.Center),
                         )
@@ -302,7 +307,7 @@ internal fun EmbeddedAiAssistantContent(
                 }
                 voiceState.message?.let {
                     Text(
-                        it,
+                        strings.voiceControllerMessage(it),
                         color = if (voiceState.errorCode == null) EveColors.SecondaryText else MaterialTheme.colorScheme.error,
                     )
                 }
@@ -333,6 +338,7 @@ private fun ChatComposer(
     onMicrophone: () -> Unit,
     onCancelVoice: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.aiAssistant
     var focused by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(10.dp)
@@ -370,7 +376,7 @@ private fun ChatComposer(
                     Box {
                         if (prompt.text.isEmpty()) {
                             Text(
-                                "Message…",
+                                strings.messagePlaceholder,
                                 color = colors.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyLarge,
                             )
@@ -417,9 +423,9 @@ private fun ChatComposer(
                     VoiceActivity.TRANSCRIBING,
                 )
                 val microphoneDescription = when (voiceState.activity) {
-                    VoiceActivity.RECORDING -> "Stop recording and transcribe"
-                    VoiceActivity.TRANSCRIBING -> "Cancel transcription"
-                    else -> "Start voice input"
+                    VoiceActivity.RECORDING -> strings.stopRecordingAndTranscribe
+                    VoiceActivity.TRANSCRIBING -> strings.cancelTranscription
+                    else -> strings.startVoiceInput
                 }
                 ComposerActionButton(
                     contentDescription = microphoneDescription,
@@ -444,8 +450,8 @@ private fun ChatComposer(
             }
             val actionEnabled = agentRunning || prompt.text.isNotBlank() && inputEnabled
             ComposerActionButton(
-                contentDescription = if (agentRunning) "Stop generating" else "Send message",
-                stateDescription = if (agentRunning) "stop" else "send",
+                contentDescription = if (agentRunning) strings.stopGenerating else strings.sendMessage,
+                stateDescription = if (agentRunning) strings.stopState else strings.sendState,
                 enabled = actionEnabled,
                 filled = actionEnabled,
                 modifier = Modifier.testTag(AI_SEND_STOP_BUTTON_TEST_TAG),
@@ -468,6 +474,7 @@ private fun ComposerActionButton(
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.aiAssistant
     val colors = MaterialTheme.colorScheme
     val container = when {
         active -> colors.errorContainer
@@ -553,6 +560,7 @@ private fun ConversationSidebar(
     onSelectChat: (String) -> Unit,
     onRenameChat: (String, String) -> Boolean,
 ) {
+    val strings = LocalAppStrings.current.aiAssistant
     var editingSessionId by remember { mutableStateOf<String?>(null) }
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -563,8 +571,8 @@ private fun ConversationSidebar(
             .padding(10.dp)
             .testTag(AI_SESSION_SIDEBAR_TEST_TAG),
     ) {
-        Text("Chats", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 26.dp))
-        Button(onClick = onNewChat, modifier = Modifier.fillMaxWidth()) { Text("+ New Chat") }
+        Text(strings.chats, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 26.dp))
+        Button(onClick = onNewChat, modifier = Modifier.fillMaxWidth()) { Text(strings.newChat) }
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(3.dp),
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -589,7 +597,7 @@ private fun ConversationSidebar(
             }
         }
         Text(
-            "Chats last until the Planner closes.",
+            strings.chatLifetimeHelper,
             style = MaterialTheme.typography.labelSmall,
             color = EveColors.SecondaryText,
         )
@@ -625,11 +633,12 @@ private fun ChatSessionItem(
 
 @Composable
 private fun ChatRenameIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val strings = LocalAppStrings.current.aiAssistant
     Box(
         modifier = modifier
             .size(28.dp)
             .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "Rename chat" },
+            .semantics { contentDescription = strings.renameChat },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.size(15.dp)) {
@@ -648,6 +657,7 @@ private fun SessionRenameEditor(
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.aiAssistant
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var receivedFocus by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(false) }
@@ -706,14 +716,15 @@ private fun ChatSidebarChevronButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current.aiAssistant
     Box(
         modifier = modifier
             .size(CHAT_SIDEBAR_CHEVRON_SIZE)
             .background(EveColors.SecondarySurface, RoundedCornerShape(4.dp))
             .clickable(role = Role.Button, onClick = onClick)
             .semantics {
-                contentDescription = if (expanded) "Collapse chat sidebar" else "Expand chat sidebar"
-                stateDescription = if (expanded) "Left chevron" else "Right chevron"
+                contentDescription = if (expanded) strings.collapseChatSidebar else strings.expandChatSidebar
+                stateDescription = if (expanded) strings.leftChevron else strings.rightChevron
             }
             .testTag(if (expanded) AI_HIDE_SIDEBAR_TEST_TAG else AI_SHOW_SIDEBAR_TEST_TAG),
         contentAlignment = Alignment.Center,
@@ -737,6 +748,7 @@ private fun ChatMessageBubble(
     onSpeak: (String, String) -> Unit,
     onStopSpeaking: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.aiAssistant
     val user = message.role == EmbeddedAiMessageRole.USER
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val bubbleMaxWidth = maxWidth * 0.76f
@@ -756,7 +768,7 @@ private fun ChatMessageBubble(
                     .testTag("$AI_CHAT_MESSAGE_TEST_TAG_PREFIX-${message.id}"),
             ) {
                 Text(
-                    if (user) "You" else "AI",
+                    if (user) strings.you else strings.ai,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = if (user) EveColors.PrimaryAccent else EveColors.SecondaryText,
@@ -766,8 +778,8 @@ private fun ChatMessageBubble(
                 } else {
                     val display = when {
                         message.status != EmbeddedAiMessageStatus.THINKING -> message.content
-                        waitingForConfirmation -> "Waiting for confirmation…"
-                        else -> "Thinking…"
+                        waitingForConfirmation -> strings.waitingForConfirmation
+                        else -> strings.thinking
                     }
                     AssistantMarkdown(display)
                     if (message.status == EmbeddedAiMessageStatus.COMPLETE && message.content.isNotBlank()) {
@@ -776,7 +788,7 @@ private fun ChatMessageBubble(
                         TextButton(
                             onClick = { if (isThisPlaying) onStopSpeaking() else onSpeak(message.id, message.content) },
                             modifier = Modifier.testTag("$AI_SPEAK_MESSAGE_TEST_TAG_PREFIX-${message.id}"),
-                        ) { Text(if (isThisPlaying) "Stop" else "Read aloud") }
+                        ) { Text(if (isThisPlaying) strings.stopReading else strings.readAloud) }
                     }
                 }
             }
@@ -803,35 +815,29 @@ private fun AiActionConfirmationDialog(
     onCancel: () -> Unit,
     onAllow: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.aiAssistant
     AlertDialog(
         modifier = Modifier.testTag(AI_CONFIRMATION_DIALOG_TEST_TAG),
         onDismissRequest = onCancel,
-        title = { Text("Confirm AI action") },
+        title = { Text(strings.confirmAiAction) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Action: ${confirmation.action}")
+                Text("${strings.action}: ${confirmation.action}")
                 confirmation.details.forEach { detail -> Text("${detail.label}: ${detail.value}") }
-                if (confirmation.details.none { it.label == "Character" }) Text("Target: ${confirmation.target}")
-                Text("Risk: ${confirmation.risk.userFacingLabel()}")
-                Text("Effect: ${confirmation.effect}", color = EveColors.SecondaryText)
+                if (confirmation.details.none { it.label == "Character" }) Text("${strings.target}: ${confirmation.target}")
+                Text("${strings.risk}: ${strings.riskLabel(confirmation.risk)}")
+                Text("${strings.effect}: ${confirmation.effect}", color = EveColors.SecondaryText)
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onCancel,
                 modifier = Modifier.testTag(AI_CONFIRMATION_CANCEL_TEST_TAG),
-            ) { Text("Cancel") }
+            ) { Text(appStrings.common.cancel) }
         },
-        confirmButton = { Button(onClick = onAllow) { Text("Allow") } },
+        confirmButton = { Button(onClick = onAllow) { Text(strings.allow) } },
     )
-}
-
-private fun PlannerToolRisk.userFacingLabel(): String = when (this) {
-    PlannerToolRisk.READ_ONLY -> "Read only"
-    PlannerToolRisk.TEMPORARY_UI -> "Temporary map change"
-    PlannerToolRisk.PERSISTENT_WRITE -> "Permanent write"
-    PlannerToolRisk.DESTRUCTIVE_WRITE -> "Destructive change"
-    PlannerToolRisk.EXTERNAL_ACTION -> "External action"
 }
 
 data class AiAssistantProviderStatus(
@@ -840,14 +846,13 @@ data class AiAssistantProviderStatus(
     val credentialSource: AiCredentialSource?,
 ) {
     val ready: Boolean get() = providerType != null && credentialSource != null
-    val description: String
-        get() = when {
-            providerType == null -> "AI provider is not configured."
-            credentialSource == null -> "Provider: ${providerType.displayName} · AI API Key is not configured."
-            else -> "${providerType.displayName} · $modelId · ${credentialSource.displayName}"
-        }
-    val actionMessage: String
-        get() = if (providerType == null) "Configure an AI provider to begin." else "Configure an AI API Key to begin."
+    fun description(strings: AiAssistantStrings): String = strings.providerDescription(
+        providerType?.displayName,
+        modelId,
+        credentialSource,
+    )
+
+    fun actionMessage(strings: AiAssistantStrings): String = strings.providerAction(providerType != null)
 }
 
 internal const val AI_ASSISTANT_ROOT_TEST_TAG = "embedded-ai-assistant-root"

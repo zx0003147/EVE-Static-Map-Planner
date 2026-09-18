@@ -10,12 +10,12 @@ sealed interface WebPackExportUiState {
     data class Failure(val message: String) : WebPackExportUiState
 }
 
-internal fun chooseWebPackExportParentDirectory(): Path? {
+internal fun chooseWebPackExportParentDirectory(dialogTitle: String, approveButtonText: String): Path? {
     val chooser = JFileChooser().apply {
-        dialogTitle = "Select parent directory for ${WebPackSchema.EXPORT_DIRECTORY_NAME}"
+        this.dialogTitle = dialogTitle
         fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
         isAcceptAllFileFilterUsed = false
-        approveButtonText = "Export Here"
+        this.approveButtonText = approveButtonText
     }
     return if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile.toPath() else null
 }

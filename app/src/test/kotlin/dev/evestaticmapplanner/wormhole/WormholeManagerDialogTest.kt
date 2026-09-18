@@ -33,6 +33,9 @@ import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.WormholeMessage
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -186,7 +189,7 @@ class WormholeManagerDialogTest {
         }
 
         onNodeWithTag(WORMHOLE_QUICK_ORIGIN_TEST_TAG).assertIsDisplayed()
-        onNodeWithText(SAME_ENDPOINT_MESSAGE).assertIsDisplayed()
+        onNodeWithText(englishWormholeMessage(WormholeMessage.SAME_ENDPOINT)).assertIsDisplayed()
         onNodeWithTag(WORMHOLE_QUICK_ADD_TEST_TAG).assertIsNotEnabled()
     }
 
@@ -207,7 +210,7 @@ class WormholeManagerDialogTest {
 
         onNodeWithTag(WORMHOLE_QUICK_ADD_TEST_TAG).assertIsEnabled().performClick()
         waitForIdle()
-        onNodeWithText(WORMHOLE_DUPLICATE_MESSAGE).assertIsDisplayed()
+        onNodeWithText(englishWormholeMessage(WormholeMessage.DUPLICATE)).assertIsDisplayed()
         assertEquals(0, createdCount)
     }
 
@@ -297,3 +300,6 @@ class WormholeManagerDialogTest {
         return this
     }
 }
+
+private fun englishWormholeMessage(id: WormholeMessage): String =
+    AppStringsCatalog.forLocale(AppLocale.EN_US).wormhole.message(id)

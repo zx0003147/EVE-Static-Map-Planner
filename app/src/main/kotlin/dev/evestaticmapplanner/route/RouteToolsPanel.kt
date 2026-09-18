@@ -1154,8 +1154,8 @@ private fun RouteHandoffPublishControl(
     }
     Button(onClick = onPublish, enabled = reason == null) { Text(label) }
     reason?.let { Text(it, color = EveColors.SecondaryText, style = MaterialTheme.typography.labelSmall) }
-    publishState.message?.let { Text(it, color = EveColors.Success, style = MaterialTheme.typography.bodySmall) }
-    publishState.error?.let { Text(it.message, color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
+    publishState.message?.let { Text(it.resolve(strings), color = EveColors.Success, style = MaterialTheme.typography.bodySmall) }
+    publishState.error?.let { Text(strings.sharedMap.error(it), color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
 }
 
 internal val WAYPOINT_ROW_HEIGHT = 32.dp

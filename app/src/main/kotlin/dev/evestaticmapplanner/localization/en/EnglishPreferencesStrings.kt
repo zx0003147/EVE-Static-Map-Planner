@@ -74,6 +74,11 @@ internal object EnglishPreferencesStrings : PreferencesStrings {
             PreferencesMessage.SPEECH_PACK_INSTALL_FAILED -> "Speech Pack download or verification failed."
             PreferencesMessage.SPEECH_PACK_REMOVED -> "Speech Pack removed."
             PreferencesMessage.SPEECH_PACK_REMOVE_FAILED -> "Speech Pack could not be removed."
+            PreferencesMessage.AI_CONTROL_SAVE_FAILED -> "The setting could not be saved; AI Map Control was not changed."
+            PreferencesMessage.AI_SAVED_MARKER_ACCESS_SAVE_FAILED -> "The setting could not be saved; AI Saved Marker access was not changed."
+            PreferencesMessage.AI_CONTROL_RESET_FAILED -> "The setting could not be reset; AI Map Control was not changed."
+            PreferencesMessage.RESET_SHARED_CREDENTIAL_FAILED -> "Preferences could not be reset because the Shared Map credential could not be removed."
+            PreferencesMessage.RESET_PREFERENCES_FAILED -> "Preferences could not be reset."
         }
         return technicalDetail?.takeIf(String::isNotBlank)?.let { "$summary\n$it" } ?: summary
     }

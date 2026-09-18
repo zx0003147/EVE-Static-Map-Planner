@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.ui.EvePanel
 
 @Composable
@@ -25,10 +26,11 @@ internal fun FeatureOverlayLegend(
     sections: List<FeatureOverlayLegendSection>,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalAppStrings.current.map
     val visibleSections = sections.filterNot { it.title == HIDDEN_OVERLAY_LEGEND_TITLE }
     if (visibleSections.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
-    val header = if (visibleSections.size == 1) visibleSections.single().title else "Map overlays"
+    val header = if (visibleSections.size == 1) visibleSections.single().title else strings.mapOverlays
     EvePanel(modifier = modifier, secondary = true) {
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),

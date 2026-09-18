@@ -38,6 +38,9 @@ import dev.evestaticmapplanner.embeddedai.EmbeddedAiChatSession
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessage
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageRole
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiUiState
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppLocalization
+import dev.evestaticmapplanner.localization.ProvideAppLocalization
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveTheme
@@ -50,6 +53,48 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class EmbeddedAiAssistantWindowTest {
+    @Test
+    fun `assistant shell switches locale while conversation and provider identifiers remain unchanged`() =
+        runComposeUiTest {
+            var localization by mutableStateOf(AppLocalization(AppLocale.EN_US))
+            val userContent = "帮我规划一条从 C-J6MT 到 Atioth 的路线。"
+            val assistantContent = "Use the Ansiblex connection, then continue by Stargate."
+            val state = chatState(
+                message("user-localized-shell", EmbeddedAiMessageRole.USER, userContent),
+                message("assistant-localized-shell", EmbeddedAiMessageRole.ASSISTANT, assistantContent),
+            ).copy(contextNotice = "Provider changed. New AI context started.")
+
+            setContent {
+                ProvideAppLocalization(localization) {
+                    MaterialTheme {
+                        Box(Modifier.requiredSize(880.dp, 680.dp)) { TestContent(state) }
+                    }
+                }
+            }
+
+            onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
+            onNodeWithText("Chats").assertIsDisplayed()
+            onNodeWithText("+ New Chat").assertIsDisplayed()
+            onNodeWithText("Message…").assertIsDisplayed()
+            onNodeWithText("Read aloud").assertIsDisplayed()
+            onNodeWithText("DeepSeek · deepseek-flash · Secure storage").assertIsDisplayed()
+            onNodeWithText(userContent).assertIsDisplayed()
+            onNodeWithText(assistantContent).assertIsDisplayed()
+
+            runOnIdle { localization = AppLocalization(AppLocale.ZH_CN) }
+            waitForIdle()
+
+            onNodeWithText("内置 AI 助手").assertIsDisplayed()
+            onNodeWithText("对话").assertIsDisplayed()
+            onNodeWithText("+ 新建对话").assertIsDisplayed()
+            onNodeWithText("输入消息……").assertIsDisplayed()
+            onNodeWithText("朗读").assertIsDisplayed()
+            onNodeWithText("DeepSeek · deepseek-flash · 安全存储").assertIsDisplayed()
+            onNodeWithText("提供商已更改，已启动新的 AI 上下文。").assertIsDisplayed()
+            onNodeWithText(userContent).assertIsDisplayed()
+            onNodeWithText(assistantContent).assertIsDisplayed()
+        }
+
     @Test
     fun `user messages align right assistant messages align left and order remains chronological`() = runComposeUiTest {
         val state = chatState(

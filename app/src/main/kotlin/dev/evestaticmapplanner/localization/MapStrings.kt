@@ -17,6 +17,7 @@ interface MapStrings {
     val expandSidebar: String
     val official2DSelected: String
     val real3DSelected: String
+    val mapOverlays: String
 
     val addTemporaryMarker: String
     val addSavedMarker: String

@@ -34,6 +34,8 @@ import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.core.marker.SavedMarkerCreatedBy
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
+import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.UiMessage
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveDivider as HorizontalDivider
 import dev.evestaticmapplanner.ui.EveLazyColumn
@@ -54,6 +56,8 @@ fun MarkerManagerWindow(
     onShowOnMap: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.marker
     val savedSystemIds = markerState.markersBySystemId.values
         .filter { it.persistence == MarkerPersistence.SAVED }
         .map { it.systemId }
@@ -65,7 +69,7 @@ fun MarkerManagerWindow(
     var editorSystemQuery by remember { mutableStateOf("") }
     var editorSystemResults by remember { mutableStateOf<List<SolarSystem>>(emptyList()) }
     var editorSelectedSystem by remember { mutableStateOf<SolarSystem?>(null) }
-    var editorLocalError by remember { mutableStateOf<String?>(null) }
+    var editorLocalError by remember { mutableStateOf<UiMessage?>(null) }
     var expectedDraft by remember { mutableStateOf<MarkerDraft?>(null) }
     var pendingEditorSystemId by remember { mutableStateOf<Int?>(null) }
     var pendingDelete by remember { mutableStateOf<SavedMarkerRowPresentation?>(null) }
@@ -74,7 +78,7 @@ fun MarkerManagerWindow(
     LaunchedEffect(savedSystemIds) {
         systemNamesById = withContext(Dispatchers.IO) {
             savedSystemIds.associateWith { systemId ->
-                searchRepository.searchSystems(systemId.toString(), 1).singleOrNull()?.name ?: "System $systemId"
+                searchRepository.searchSystems(systemId.toString(), 1).singleOrNull()?.name ?: strings.fallbackSystem(systemId)
             }
         }
     }
@@ -84,6 +88,7 @@ fun MarkerManagerWindow(
         systemNamesById = systemNamesById,
         query = query,
         selectedSystemId = selectedSystemId,
+        strings = strings,
     )
     LaunchedEffect(presentation.selectedRow, selectedSystemId) {
         if (selectedSystemId != null && presentation.selectedRow == null) selectedSystemId = null
@@ -136,7 +141,7 @@ fun MarkerManagerWindow(
 
     Window(
         onCloseRequest = dismissManager,
-        title = "Marker Manager",
+        title = strings.managerTitle,
         state = rememberWindowState(width = 760.dp, height = 560.dp),
     ) {
         EveWindowChrome(window)
@@ -147,24 +152,24 @@ fun MarkerManagerWindow(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize().padding(16.dp),
             ) {
-                Text("Saved Marker Manager", style = MaterialTheme.typography.titleLarge)
+                Text(strings.savedMarkerManager, style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Search saved markers…") },
+                    label = { Text(strings.searchSavedMarkers) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 MarkerTableHeader()
                 HorizontalDivider()
                 when {
-                    markerState.isLoading -> Text("Loading saved markers…", color = EveColors.SecondaryText)
+                    markerState.isLoading -> Text(strings.loadingSavedMarkers, color = EveColors.SecondaryText)
                     markerState.databaseError != null -> Text(
-                        markerState.databaseError,
+                        strings.databaseUnavailable(markerState.databaseError),
                         color = MaterialTheme.colorScheme.error,
                     )
                     presentation.rows.isEmpty() -> Text(
-                        if (query.isBlank()) "No saved markers." else "No saved markers match this search.",
+                        if (query.isBlank()) strings.noSavedMarkers else strings.noSavedMarkersMatch,
                         color = EveColors.SecondaryText,
                     )
                     else -> EveLazyColumn(Modifier.weight(1f).fillMaxWidth().heightIn(min = 120.dp)) {
@@ -194,7 +199,7 @@ fun MarkerManagerWindow(
                             editorSelectedSystem = null
                             editorLocalError = null
                         },
-                    ) { Text("Add") }
+                    ) { Text(appStrings.common.add) }
                     TextButton(
                         enabled = presentation.selectionActionsEnabled,
                         onClick = {
@@ -204,7 +209,7 @@ fun MarkerManagerWindow(
                             editor = MarkerEditorRequest(MarkerEditorMode.EDIT_SAVED, row.systemId, row.systemName, marker)
                             editorLocalError = null
                         },
-                    ) { Text("Edit") }
+                    ) { Text(strings.editMarker) }
                     TextButton(
                         enabled = presentation.selectionActionsEnabled,
                         onClick = {
@@ -212,13 +217,13 @@ fun MarkerManagerWindow(
                             deleteStarted = false
                             markerViewModel.clearOperationError()
                         },
-                    ) { Text("Delete") }
+                    ) { Text(appStrings.common.delete) }
                     TextButton(
                         enabled = presentation.selectionActionsEnabled,
                         onClick = { presentation.selectedRow?.let { showOnMap(it.systemId) } },
-                    ) { Text("Show on Map") }
+                    ) { Text(strings.showOnMap) }
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-                    TextButton(onClick = dismissManager) { Text("Close") }
+                    TextButton(onClick = dismissManager) { Text(appStrings.common.close) }
                 }
             }
         }
@@ -300,32 +305,34 @@ fun MarkerManagerWindow(
 @Composable
 internal fun SavedMarkerDeleteConfirmationDialog(
     row: SavedMarkerRowPresentation,
-    operationError: String?,
+    operationError: UiMessage?,
     isBusy: Boolean,
     onRemove: () -> Unit,
     onCancel: () -> Unit,
     onDismissRequest: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.marker
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("Remove saved marker?") },
+        title = { Text(strings.removeSavedMarkerTitle) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Remove saved marker from ${row.systemName}?")
-                operationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Text(strings.removeSavedMarker(row.systemName))
+                operationError?.let { Text(it.resolve(appStrings), color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             TextButton(
                 enabled = !isBusy,
                 onClick = onRemove,
-            ) { Text(if (isBusy) "Removing…" else "Remove") }
+            ) { Text(if (isBusy) strings.removing else appStrings.common.remove) }
         },
         dismissButton = {
             TextButton(
                 enabled = !isBusy,
                 onClick = onCancel,
-            ) { Text("Cancel") }
+            ) { Text(appStrings.common.cancel) }
         },
     )
 }
@@ -335,10 +342,11 @@ internal fun markerManagerCanClose(editorOpen: Boolean, deleteConfirmationOpen: 
 
 @Composable
 private fun MarkerTableHeader() {
+    val strings = LocalAppStrings.current.marker
     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
-        Text("System", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
-        Text("Name", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
-        Text("Color", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(0.7f))
+        Text(strings.system, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
+        Text(strings.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.2f))
+        Text(strings.color, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(0.7f))
     }
 }
 
@@ -350,6 +358,7 @@ private fun MarkerTableRow(
     onClick: () -> Unit,
     onDoubleClick: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.marker
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
     Row(
@@ -372,13 +381,13 @@ private fun MarkerTableRow(
             Text(row.markerName.orEmpty())
             SavedMarkerProvenanceBadge(row.createdBy)
         }
-        Text(row.color.name, color = markerColor(row.color), modifier = Modifier.weight(0.7f))
+        Text(strings.markerColor(row.color), color = markerColor(row.color), modifier = Modifier.weight(0.7f))
     }
 }
 
 @Composable
 internal fun SavedMarkerProvenanceBadge(createdBy: SavedMarkerCreatedBy) {
-    savedMarkerProvenanceLabel(createdBy)?.let { label ->
+    savedMarkerProvenanceLabel(createdBy, LocalAppStrings.current.marker)?.let { label ->
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,

@@ -18,6 +18,7 @@ internal object SimplifiedChineseMapStrings : MapStrings {
     override val expandSidebar = "展开侧边栏"
     override val official2DSelected = "已选择官方 2D"
     override val real3DSelected = "已选择真实 3D"
+    override val mapOverlays = "地图叠加层"
     override val addTemporaryMarker = "添加临时标记"
     override val addSavedMarker = "添加已保存标记…"
     override val editMarker = "编辑标记…"

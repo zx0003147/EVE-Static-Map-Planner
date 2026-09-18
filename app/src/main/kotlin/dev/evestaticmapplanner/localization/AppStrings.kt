@@ -14,6 +14,12 @@ interface AppStrings {
     val preferences: PreferencesStrings
     val route: RouteStrings
     val staticData: StaticDataStrings
+    val aiAssistant: AiAssistantStrings
+    val marker: MarkerStrings
+    val sharedMap: SharedMapStrings
+    val wormhole: WormholeStrings
+    val ansiblex: AnsiblexStrings
+    val miniMap: MiniMapStrings
 }
 
 object AppStringsCatalog {

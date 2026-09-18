@@ -124,6 +124,7 @@ internal fun Real3DMapCanvas(
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     val scene = state.scene ?: return
     val camera = state.real3DCamera ?: return
     if (state.canvasSize.isEmpty) return
@@ -629,7 +630,7 @@ internal fun Real3DMapCanvas(
             ?.let { hoveredId -> presentedSharedMarkers.firstOrNull { it.marker.systemId == hoveredId } }
             ?.let { marker ->
                 MapMarkerTooltip(
-                    lines = marker.hoverLines,
+                    lines = marker.hoverLines(strings.sharedMap),
                     offset = IntOffset(
                         marker.screenCenter.x.toInt() + marker.ringRadiusPx.toInt() + 8,
                         marker.screenCenter.y.toInt() - marker.ringRadiusPx.toInt() - 12,
@@ -638,7 +639,7 @@ internal fun Real3DMapCanvas(
             }
         hoveredSavedMarkerChild?.let { child ->
             MapMarkerTooltip(
-                lines = listOf(child.visual.label),
+                lines = listOf(strings.marker.childType(child.visual.type, child.visual.label)),
                 offset = IntOffset(
                     child.screenCenter.x.toInt() + 12,
                     child.screenCenter.y.toInt() - 16,
@@ -763,7 +764,7 @@ private fun Real3DSystemContextMenu(
                 if (item.action == SystemContextAction.MARKERS_UNAVAILABLE) {
                     markerState.databaseError?.let { error ->
                         Text(
-                            text = error,
+                            text = strings.marker.databaseUnavailable(error),
                             color = Color(0xFFFF9F9F),
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),

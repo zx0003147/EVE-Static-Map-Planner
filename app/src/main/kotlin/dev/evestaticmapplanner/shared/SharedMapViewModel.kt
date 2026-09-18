@@ -11,6 +11,9 @@ import dev.evestaticmapplanner.shared.model.SharedMarkerValidationException
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
 import dev.evestaticmapplanner.shared.sync.SharedMapSession
+import dev.evestaticmapplanner.localization.RoutePublishedToWebUiMessage
+import dev.evestaticmapplanner.localization.SharedMapOperationFailedUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,8 +28,8 @@ internal class SharedMapViewModel(
 ) : AutoCloseable {
     val state: StateFlow<SharedMapState> = session.state
 
-    private val _operationError = MutableStateFlow<String?>(null)
-    val operationError: StateFlow<String?> = _operationError.asStateFlow()
+    private val _operationError = MutableStateFlow<UiMessage?>(null)
+    val operationError: StateFlow<UiMessage?> = _operationError.asStateFlow()
 
     private val _markerMutation = MutableStateFlow(SharedMarkerMutationUiState())
     val markerMutation: StateFlow<SharedMarkerMutationUiState> = _markerMutation.asStateFlow()
@@ -85,7 +88,7 @@ internal class SharedMapViewModel(
                 val published = session.publishRouteHandoff(draft)
                 _routeHandoffPublish.value = RouteHandoffPublishUiState(
                     lastPublished = published,
-                    message = "Route published to Web.",
+                    message = RoutePublishedToWebUiMessage,
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -266,7 +269,7 @@ internal class SharedMapViewModel(
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            _operationError.value = "The Shared Map operation could not be completed."
+            _operationError.value = SharedMapOperationFailedUiMessage
         }
     }
 }
