@@ -1,6 +1,12 @@
 package dev.evestaticmapplanner.localization
 
 import java.util.Locale
+import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechRegion
+import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
+import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
+import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
+import dev.evestaticmapplanner.sde.update.SdeUpdaterPhase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -54,6 +60,49 @@ class AppLocalizationTest {
     }
 
     @Test
+    fun `Preferences Provider Voice and Static Data catalogs are complete in both locales`() {
+        AppLocale.entries.forEach { locale ->
+            val strings = AppStringsCatalog.forLocale(locale)
+            assertTrue(PreferencesText.entries.all { strings.preferences.text(it, "fixture", "fixture-2").isNotBlank() })
+            assertTrue(VoiceInputProvider.entries.all { strings.preferences.voiceInputProvider(it).isNotBlank() })
+            assertTrue(VoiceOutputProvider.entries.all { strings.preferences.voiceOutputProvider(it).isNotBlank() })
+            assertTrue(AlibabaSpeechRegion.entries.all { strings.preferences.speechRegion(it).isNotBlank() })
+            assertTrue(AiCredentialSource.entries.all {
+                strings.preferences.credentialStatus("Provider", "ENV_KEY", it).isNotBlank()
+            })
+            assertTrue(PreferencesMessage.entries.all {
+                strings.preferences.message(it, "fixture", "detail").isNotBlank()
+            })
+            assertTrue(SdeUpdaterPhase.entries.all { strings.staticData.phase(it, 3_466_501).isNotBlank() })
+            assertTrue(SdeUpdateComparison.entries.all { strings.staticData.comparison(it).isNotBlank() })
+        }
+    }
+
+    @Test
+    fun `already-created semantic status resolves again in the current locale`() {
+        val providerStatus = PreferencesUiMessage(PreferencesMessage.AI_SETTINGS_SAVED)
+        val voiceStatus = PreferencesUiMessage(PreferencesMessage.VOICE_TEST_SUCCEEDED)
+        val staticDataStatus = StaticDataUpdateFailedUiMessage("checksum mismatch")
+
+        assertEquals(
+            "Settings saved. Changing provider or model starts a new AI session.",
+            providerStatus.resolve(AppStringsCatalog.forLocale(AppLocale.EN_US)),
+        )
+        assertEquals(
+            "设置已保存。更改提供商或模型会启动新的 AI 会话。",
+            providerStatus.resolve(AppStringsCatalog.forLocale(AppLocale.ZH_CN)),
+        )
+        assertEquals(
+            "测试语音已成功播放。",
+            voiceStatus.resolve(AppStringsCatalog.forLocale(AppLocale.ZH_CN)),
+        )
+        assertEquals(
+            "静态数据更新失败。\nchecksum mismatch",
+            staticDataStatus.resolve(AppStringsCatalog.forLocale(AppLocale.ZH_CN)),
+        )
+    }
+
+    @Test
     fun `runtime localization changes English to Chinese and back without changing JVM locale`() {
         val jvmLocale = Locale.getDefault()
         val state = AppLocalizationState(AppLocale.EN_US)
@@ -90,6 +139,14 @@ class AppLocalizationTest {
             listOf(ok, cancel, close, apply, add, clear, remove, update, rename, delete, select, unavailable, on, off)
         },
         strings.preferences.run { listOf(title, language, english, simplifiedChinese) },
+        strings.staticData.run {
+            listOf(
+                setupTitle, noStaticDataInstalled, title, mode, managedDatabase, externalDatabase, database,
+                currentBuild, latestBuild, lastChecked, status, notInstalled, notChecked, never,
+                externalDatabaseWarning, unknownSize, checkForUpdates, installStaticData, downloadAndPrepare,
+                cancel, discardPendingUpdate,
+            )
+        },
         strings.mainShell.run {
             listOf(
                 marker, markerManager, sharedMarkerManager, clearAllTemporaryMarkers, markerSettings,

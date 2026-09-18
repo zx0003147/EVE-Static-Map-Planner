@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.StaticDatabaseMode
 import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
 import dev.evestaticmapplanner.sde.update.SdeUpdaterPhase
+import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveOutlinedButton as OutlinedButton
@@ -24,6 +25,7 @@ import dev.evestaticmapplanner.ui.EveWindowSurface
 
 @Composable
 fun StaticDataBootstrapScreen(state: StaticDataManagerUiState, viewModel: StaticDataManagerViewModel) {
+    val strings = LocalAppStrings.current.staticData
     EveWindowSurface(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize().padding(48.dp),
@@ -31,8 +33,8 @@ fun StaticDataBootstrapScreen(state: StaticDataManagerUiState, viewModel: Static
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.fillMaxWidth(0.65f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Static Data Setup", style = MaterialTheme.typography.headlineMedium)
-                Text("No static data installed")
+                Text(strings.setupTitle, style = MaterialTheme.typography.headlineMedium)
+                Text(strings.noStaticDataInstalled)
                 StaticDataManagerContent(state, viewModel)
             }
         }
@@ -45,25 +47,28 @@ fun StaticDataManagerDialog(
     viewModel: StaticDataManagerViewModel,
     onDismiss: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Static Data") },
+        title = { Text(strings.staticData.title) },
         text = { StaticDataManagerContent(state, viewModel) },
-        confirmButton = { Button(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { Button(onClick = onDismiss) { Text(strings.common.close) } },
     )
 }
 
 @Composable
 private fun StaticDataManagerContent(state: StaticDataManagerUiState, viewModel: StaticDataManagerViewModel) {
+    val strings = LocalAppStrings.current
+    val staticData = strings.staticData
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Info("Mode", if (state.mode == StaticDatabaseMode.MANAGED) "Managed database" else "External database")
-        Info("Database", state.databasePath.toString())
-        Info("Current", state.currentBuild?.toString() ?: "Not installed")
-        Info("Latest", state.latestBuild?.toString() ?: "Not checked")
-        Info("Last checked", state.lastChecked ?: "Never")
-        Info("Status", statusText(state))
+        Info(staticData.mode, if (state.mode == StaticDatabaseMode.MANAGED) staticData.managedDatabase else staticData.externalDatabase)
+        Info(staticData.database, state.databasePath.toString())
+        Info(staticData.currentBuild, state.currentBuild?.toString() ?: staticData.notInstalled)
+        Info(staticData.latestBuild, state.latestBuild?.toString() ?: staticData.notChecked)
+        Info(staticData.lastChecked, state.lastChecked ?: staticData.never)
+        Info(staticData.status, statusText(state, staticData))
         if (state.mode == StaticDatabaseMode.EXTERNAL) {
-            Text("Updates cannot replace this file automatically.", color = EveColors.Warning)
+            Text(staticData.externalDatabaseWarning, color = EveColors.Warning)
         }
         if (state.phase == SdeUpdaterPhase.DOWNLOADING) {
             val total = state.totalBytes
@@ -75,26 +80,26 @@ private fun StaticDataManagerContent(state: StaticDataManagerUiState, viewModel:
             } else {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-            Text("${formatMb(state.downloadedBytes)} / ${total?.let(::formatMb) ?: "unknown"}")
+            Text("${formatMb(state.downloadedBytes)} / ${total?.let(::formatMb) ?: staticData.unknownSize}")
         }
-        state.error?.let { Text(it, color = EveColors.Error) }
+        state.error?.let { Text(it.resolve(strings), color = EveColors.Error) }
         if (state.mode == StaticDatabaseMode.MANAGED) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { viewModel.checkForUpdates() },
                     enabled = state.phase in setOf(SdeUpdaterPhase.IDLE, SdeUpdaterPhase.FAILED, SdeUpdaterPhase.SUCCEEDED),
-                ) { Text("Check for Updates") }
+                ) { Text(staticData.checkForUpdates) }
                 Button(
                     onClick = { viewModel.downloadAndPrepare() },
                     enabled = state.phase in setOf(SdeUpdaterPhase.IDLE, SdeUpdaterPhase.FAILED) &&
                         state.comparison in setOf(SdeUpdateComparison.INSTALL_AVAILABLE, SdeUpdateComparison.UPDATE_AVAILABLE),
-                ) { Text(if (state.currentBuild == null) "Install Static Data" else "Download & Prepare") }
+                ) { Text(if (state.currentBuild == null) staticData.installStaticData else staticData.downloadAndPrepare) }
             }
             if (state.phase == SdeUpdaterPhase.CHECKING || state.phase == SdeUpdaterPhase.DOWNLOADING) {
-                OutlinedButton(onClick = { viewModel.cancel() }) { Text("Cancel") }
+                OutlinedButton(onClick = { viewModel.cancel() }) { Text(staticData.cancel) }
             }
             if (state.pendingBuild != null) {
-                OutlinedButton(onClick = { viewModel.discardPending() }) { Text("Discard Pending Update") }
+                OutlinedButton(onClick = { viewModel.discardPending() }) { Text(staticData.discardPendingUpdate) }
             }
         }
     }
@@ -108,17 +113,13 @@ private fun Info(label: String, value: String) {
     }
 }
 
-private fun statusText(state: StaticDataManagerUiState): String = when (state.phase) {
-    SdeUpdaterPhase.IDLE -> when (state.comparison) {
-        SdeUpdateComparison.INSTALL_AVAILABLE -> "Install available"
-        SdeUpdateComparison.UPDATE_AVAILABLE -> "Update available"
-        SdeUpdateComparison.UP_TO_DATE -> "Up to date"
-        SdeUpdateComparison.LOCAL_NEWER -> "Local build is newer"
-        null -> "Idle"
-    }
-    SdeUpdaterPhase.RESTART_REQUIRED -> "Restart required to install build ${state.pendingBuild}"
-    SdeUpdaterPhase.SUCCEEDED -> "Static data installed"
-    else -> state.phase.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)
+private fun statusText(
+    state: StaticDataManagerUiState,
+    strings: dev.evestaticmapplanner.localization.StaticDataStrings,
+): String = if (state.phase == SdeUpdaterPhase.IDLE) {
+    strings.comparison(state.comparison)
+} else {
+    strings.phase(state.phase, state.pendingBuild)
 }
 
 private fun formatMb(bytes: Long): String = "%.1f MB".format(java.util.Locale.ROOT, bytes / 1024.0 / 1024.0)

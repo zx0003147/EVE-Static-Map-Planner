@@ -6,6 +6,8 @@ import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
 import dev.evestaticmapplanner.sde.update.SdeUpdateService
 import dev.evestaticmapplanner.sde.update.SdeUpdateState
 import dev.evestaticmapplanner.sde.update.SdeUpdaterPhase
+import dev.evestaticmapplanner.localization.StaticDataUpdateFailedUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +26,7 @@ data class StaticDataManagerUiState(
     val phase: SdeUpdaterPhase = SdeUpdaterPhase.IDLE,
     val downloadedBytes: Long = 0,
     val totalBytes: Long? = null,
-    val error: String? = null,
+    val error: UiMessage? = null,
     val pendingBuild: Long? = null,
 )
 
@@ -74,6 +76,6 @@ private fun SdeUpdateState.toUiState(mode: StaticDatabaseMode, path: Path) = Sta
     phase = phase,
     downloadedBytes = downloadedBytes,
     totalBytes = totalBytes,
-    error = error,
+    error = error?.let(::StaticDataUpdateFailedUiMessage),
     pendingBuild = pendingBuild,
 )

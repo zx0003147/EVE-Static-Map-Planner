@@ -12,6 +12,8 @@ import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.embeddedai.InMemoryAiCredentialStore
 import dev.evestaticmapplanner.embeddedai.UnavailableAiCredentialStore
 import dev.evestaticmapplanner.shared.auth.SecretValue
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,7 +72,7 @@ class AiProviderSettingsControllerTest {
 
             assertEquals(AiProviderConfig.DefaultOpenRouter, persisted)
             assertEquals(AiCredentialSource.SESSION_ONLY, controller.state.value.credentialSource)
-            assertTrue(controller.state.value.message.orEmpty().contains("Key will not be saved"))
+            assertTrue(controller.state.value.message?.resolve(ENGLISH).orEmpty().contains("Key will not be saved"))
         } finally {
             controller.close()
             session.close()
@@ -93,7 +95,7 @@ class AiProviderSettingsControllerTest {
 
             assertFalse(secure.contains(checkNotNull(AiProviderConfig.DefaultOpenRouter.credentialRef)))
             assertNotNull(controller.state.value.errorMessage)
-            assertFalse(controller.state.value.errorMessage.orEmpty().contains("disk details"))
+            assertFalse(controller.state.value.errorMessage?.resolve(ENGLISH).orEmpty().contains("disk details"))
         } finally {
             controller.close()
             secure.close()
@@ -202,6 +204,8 @@ class AiProviderSettingsControllerTest {
         }
     }
 }
+
+private val ENGLISH = AppStringsCatalog.forLocale(AppLocale.EN_US)
 
 private fun testConfig(providerType: AiProviderType) = AiProviderConfig.normalized(
     providerType = providerType,

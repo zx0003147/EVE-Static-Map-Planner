@@ -22,6 +22,10 @@ import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.map.MapToolbarContent
 import dev.evestaticmapplanner.preferences.LanguagePreferenceContent
+import dev.evestaticmapplanner.preferences.PreferencesCategory
+import dev.evestaticmapplanner.preferences.categoryLabel
+import dev.evestaticmapplanner.embeddedai.AlibabaSpeechRegion
+import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.route.NormalRouteConnectionOptions
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.SIDEBAR_PROJECTION_TOGGLE_TEST_TAG
@@ -152,4 +156,50 @@ class LocalizationCompositionTest {
         onNodeWithText("Preferences").assertIsDisplayed()
         onNodeWithText("Language").assertIsDisplayed()
     }
+
+    @Test
+    fun `open Preferences Provider Voice Static Data labels and existing status refresh with locale`() =
+        runComposeUiTest {
+            var localization by mutableStateOf(AppLocalization(AppLocale.EN_US))
+            val existingStatus: UiMessage = PreferencesUiMessage(PreferencesMessage.VOICE_TEST_SUCCEEDED)
+
+            setContent {
+                ProvideAppLocalization(localization) {
+                    EveTheme {
+                        val appStrings = LocalAppStrings.current
+                        val preferences = appStrings.preferences
+                        Column {
+                            Text(preferences.categoryLabel(PreferencesCategory.AI_FEATURES))
+                            Text(preferences.text(PreferencesText.TEST_CONNECTION))
+                            Text(preferences.voiceInputProvider(VoiceInputProvider.LOCAL))
+                            Text(preferences.speechRegion(AlibabaSpeechRegion.CHINA_BEIJING))
+                            Text(appStrings.staticData.checkForUpdates)
+                            Text(existingStatus.resolve(appStrings))
+                        }
+                    }
+                }
+            }
+
+            onNodeWithText("AI Features").assertIsDisplayed()
+            onNodeWithText("Test Connection").assertIsDisplayed()
+            onNodeWithText("Local").assertIsDisplayed()
+            onNodeWithText("China (Beijing)").assertIsDisplayed()
+            onNodeWithText("Check for Updates").assertIsDisplayed()
+            onNodeWithText("Voice test played successfully.").assertIsDisplayed()
+
+            runOnIdle { localization = AppLocalization(AppLocale.ZH_CN) }
+            waitForIdle()
+
+            onNodeWithText("AI 功能").assertIsDisplayed()
+            onNodeWithText("测试连接").assertIsDisplayed()
+            onNodeWithText("本地").assertIsDisplayed()
+            onNodeWithText("中国（北京）").assertIsDisplayed()
+            onNodeWithText("检查更新").assertIsDisplayed()
+            onNodeWithText("测试语音已成功播放。").assertIsDisplayed()
+
+            runOnIdle { localization = AppLocalization(AppLocale.EN_US) }
+            waitForIdle()
+            onNodeWithText("Test Connection").assertIsDisplayed()
+            onNodeWithText("Voice test played successfully.").assertIsDisplayed()
+        }
 }

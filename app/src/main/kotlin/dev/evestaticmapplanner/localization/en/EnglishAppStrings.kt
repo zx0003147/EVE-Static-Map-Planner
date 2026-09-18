@@ -9,6 +9,7 @@ import dev.evestaticmapplanner.localization.PreferencesStrings
 import dev.evestaticmapplanner.localization.RouteStrings
 import dev.evestaticmapplanner.localization.SearchStrings
 import dev.evestaticmapplanner.localization.SystemInfoStrings
+import dev.evestaticmapplanner.localization.StaticDataStrings
 
 object EnglishAppStrings : AppStrings {
     override val locale = AppLocale.EN_US
@@ -20,4 +21,5 @@ object EnglishAppStrings : AppStrings {
     override val systemInfo: SystemInfoStrings = EnglishSystemInfoStrings
     override val preferences: PreferencesStrings = EnglishPreferencesStrings
     override val route: RouteStrings = EnglishRouteStrings
+    override val staticData: StaticDataStrings = EnglishStaticDataStrings
 }

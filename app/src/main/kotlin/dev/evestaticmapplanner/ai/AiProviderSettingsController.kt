@@ -9,6 +9,9 @@ import dev.evestaticmapplanner.embeddedai.AiCredentialStore
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.embeddedai.AiProviderException
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.localization.PreferencesMessage
+import dev.evestaticmapplanner.localization.PreferencesUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineDispatcher
@@ -26,8 +29,8 @@ data class AiProviderSettingsUiState(
     val isTesting: Boolean = false,
     val isSaving: Boolean = false,
     val testResult: AiConnectionTestResult? = null,
-    val message: String? = null,
-    val errorMessage: String? = null,
+    val message: UiMessage? = null,
+    val errorMessage: UiMessage? = null,
 )
 
 class AiProviderSettingsController(
@@ -86,7 +89,7 @@ class AiProviderSettingsController(
                 if (secret == null) {
                     mutableState.value = mutableState.value.copy(
                         isTesting = false,
-                        errorMessage = "AI API Key is not configured.",
+                        errorMessage = PreferencesUiMessage(PreferencesMessage.AI_API_KEY_NOT_CONFIGURED),
                     )
                     return@launch
                 }
@@ -141,11 +144,13 @@ class AiProviderSettingsController(
                         isSaving = false,
                         credentialSource = source,
                         testResult = null,
-                        message = if (storageResult.sessionOnlyFallback) {
-                            "Settings saved. Secure storage is unavailable; Key will not be saved and is available for this session only."
-                        } else {
-                            "Settings saved. Changing provider or model starts a new AI session."
-                        },
+                        message = PreferencesUiMessage(
+                            if (storageResult.sessionOnlyFallback) {
+                                PreferencesMessage.AI_SETTINGS_SAVED_SESSION_ONLY
+                            } else {
+                                PreferencesMessage.AI_SETTINGS_SAVED
+                            },
+                        ),
                     )
                 } finally {
                     storageResult.dispose?.invoke()
@@ -176,7 +181,7 @@ class AiProviderSettingsController(
                     isSaving = false,
                     credentialSource = credentialResolver.source(providerType),
                     testResult = null,
-                    message = "Saved API Key deleted.",
+                    message = PreferencesUiMessage(PreferencesMessage.AI_API_KEY_DELETED),
                 )
             } catch (failure: Throwable) {
                 restore(secureStore, reference, secureBefore)
@@ -252,7 +257,7 @@ class AiProviderSettingsController(
     )
 }
 
-private fun safeSettingsError(failure: Throwable): String = when (failure) {
-    is AiProviderException -> failure.safeMessage
-    else -> "AI settings could not be updated (${failure::class.simpleName ?: "unknown error"})."
-}
+private fun safeSettingsError(failure: Throwable): UiMessage = PreferencesUiMessage(
+    id = PreferencesMessage.AI_SETTINGS_UPDATE_FAILED,
+    technicalDetail = (failure as? AiProviderException)?.safeMessage,
+)

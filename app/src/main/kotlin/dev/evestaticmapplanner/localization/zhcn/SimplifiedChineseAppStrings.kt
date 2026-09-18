@@ -9,6 +9,7 @@ import dev.evestaticmapplanner.localization.PreferencesStrings
 import dev.evestaticmapplanner.localization.RouteStrings
 import dev.evestaticmapplanner.localization.SearchStrings
 import dev.evestaticmapplanner.localization.SystemInfoStrings
+import dev.evestaticmapplanner.localization.StaticDataStrings
 
 object SimplifiedChineseAppStrings : AppStrings {
     override val locale = AppLocale.ZH_CN
@@ -20,4 +21,5 @@ object SimplifiedChineseAppStrings : AppStrings {
     override val systemInfo: SystemInfoStrings = SimplifiedChineseSystemInfoStrings
     override val preferences: PreferencesStrings = SimplifiedChinesePreferencesStrings
     override val route: RouteStrings = SimplifiedChineseRouteStrings
+    override val staticData: StaticDataStrings = SimplifiedChineseStaticDataStrings
 }

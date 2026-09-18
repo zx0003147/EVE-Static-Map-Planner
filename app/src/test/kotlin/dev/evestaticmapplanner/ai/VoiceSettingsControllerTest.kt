@@ -18,6 +18,8 @@ import dev.evestaticmapplanner.embeddedai.VoiceConfig
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.shared.auth.SecretValue
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import java.nio.file.Files
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -67,7 +69,7 @@ class VoiceSettingsControllerTest {
             assertTrue(secure.contains(ALIBABA_SPEECH_CREDENTIAL_REF))
             assertEquals(AiCredentialSource.SECURE_STORAGE, controller.state.value.openAiCredentialSource)
             assertEquals(AiCredentialSource.SECURE_STORAGE, controller.state.value.alibabaCredentialSource)
-            assertEquals("Voice I/O settings saved.", controller.state.value.message)
+            assertEquals("Voice I/O settings saved.", controller.state.value.message?.resolve(ENGLISH))
         } finally {
             controller.close()
             secure.close()
@@ -138,13 +140,13 @@ class VoiceSettingsControllerTest {
             controller.testRecognition(config)
             advanceUntilIdle()
             assertEquals(listOf("你好，这是语音识别测试。"), recognitionTexts)
-            assertTrue(controller.state.value.message.orEmpty().startsWith("Recognition succeeded:"))
+            assertTrue(controller.state.value.message?.resolve(ENGLISH).orEmpty().startsWith("Recognition succeeded:"))
 
             controller.testVoice(config)
             advanceUntilIdle()
             assertEquals(listOf("你好，这是语音合成测试。"), synthesisTexts)
             assertEquals(1, playCount)
-            assertEquals("Voice test played successfully.", controller.state.value.message)
+            assertEquals("Voice test played successfully.", controller.state.value.message?.resolve(ENGLISH))
         } finally {
             controller.close()
             secure.close()
@@ -158,3 +160,5 @@ class VoiceSettingsControllerTest {
         "WAVE".toByteArray().copyInto(this, 8)
     }
 }
+
+private val ENGLISH = AppStringsCatalog.forLocale(AppLocale.EN_US)

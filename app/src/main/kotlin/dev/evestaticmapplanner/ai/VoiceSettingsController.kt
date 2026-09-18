@@ -12,6 +12,11 @@ import dev.evestaticmapplanner.embeddedai.SpeechSynthesisConfig
 import dev.evestaticmapplanner.embeddedai.VoiceConfig
 import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
+import dev.evestaticmapplanner.embeddedai.VoiceException
+import dev.evestaticmapplanner.localization.PreferencesMessage
+import dev.evestaticmapplanner.localization.PreferencesUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
+import dev.evestaticmapplanner.localization.VoiceFailureUiMessage
 import dev.evestaticmapplanner.embeddedai.recognitionConfig
 import dev.evestaticmapplanner.embeddedai.synthesisConfig
 import dev.evestaticmapplanner.shared.auth.SecretValue
@@ -35,8 +40,8 @@ internal data class VoiceSettingsUiState(
     val isInstallingSpeechPack: Boolean = false,
     val isTestingRecognition: Boolean = false,
     val isTestingVoice: Boolean = false,
-    val message: String? = null,
-    val errorMessage: String? = null,
+    val message: UiMessage? = null,
+    val errorMessage: UiMessage? = null,
 ) {
     val busy: Boolean get() = isSaving || isInstallingSpeechPack || isTestingRecognition || isTestingVoice
 }
@@ -122,11 +127,13 @@ internal class VoiceSettingsController(
                         config.profiles.alibaba.credentialRef,
                         ALIBABA_SPEECH_ENVIRONMENT_VARIABLE,
                     ),
-                    message = if (sessionOnly) {
-                        "Voice settings saved. Secure storage is unavailable; the Key is available for this session only."
-                    } else {
-                        "Voice I/O settings saved."
-                    },
+                    message = PreferencesUiMessage(
+                        if (sessionOnly) {
+                            PreferencesMessage.VOICE_SETTINGS_SAVED_SESSION_ONLY
+                        } else {
+                            PreferencesMessage.VOICE_SETTINGS_SAVED
+                        },
+                    ),
                 )
             } catch (_: Throwable) {
                 references.forEach { reference ->
@@ -135,7 +142,7 @@ internal class VoiceSettingsController(
                 }
                 mutableState.value = mutableState.value.copy(
                     isSaving = false,
-                    errorMessage = "Voice I/O settings could not be updated.",
+                    errorMessage = PreferencesUiMessage(PreferencesMessage.VOICE_SETTINGS_UPDATE_FAILED),
                 )
             } finally {
                 secureBefore.values.forEach { it?.close() }
@@ -170,12 +177,12 @@ internal class VoiceSettingsController(
                     alibabaCredentialSource = if (provider == VoiceCredentialProvider.ALIBABA) {
                         credentialResolver.source(reference, environment)
                     } else mutableState.value.alibabaCredentialSource,
-                    message = "Saved $label API Key deleted.",
+                    message = PreferencesUiMessage(PreferencesMessage.VOICE_API_KEY_DELETED, label),
                 )
             } catch (_: Throwable) {
                 mutableState.value = mutableState.value.copy(
                     isSaving = false,
-                    errorMessage = "The $label API Key could not be deleted.",
+                    errorMessage = PreferencesUiMessage(PreferencesMessage.VOICE_API_KEY_DELETE_FAILED, label),
                 )
             }
         }
@@ -185,7 +192,7 @@ internal class VoiceSettingsController(
         if (closed.get() || mutableState.value.busy || config.inputProvider == VoiceInputProvider.OFF) return
         mutableState.value = mutableState.value.copy(
             isTestingRecognition = true,
-            message = "Testing speech recognition…",
+            message = PreferencesUiMessage(PreferencesMessage.TESTING_RECOGNITION),
             errorMessage = null,
         )
         scope.launch {
@@ -201,13 +208,15 @@ internal class VoiceSettingsController(
                 ).text
                 mutableState.value = mutableState.value.copy(
                     isTestingRecognition = false,
-                    message = "Recognition succeeded: ${transcript.take(MAX_TEST_TRANSCRIPT_DISPLAY)}",
+                    message = PreferencesUiMessage(
+                        PreferencesMessage.RECOGNITION_SUCCEEDED,
+                        transcript.take(MAX_TEST_TRANSCRIPT_DISPLAY),
+                    ),
                 )
             } catch (failure: Throwable) {
                 mutableState.value = mutableState.value.copy(
                     isTestingRecognition = false,
-                    errorMessage = (failure as? dev.evestaticmapplanner.embeddedai.VoiceException)?.safeMessage
-                        ?: "Speech recognition test failed.",
+                    errorMessage = voiceFailure(failure, PreferencesMessage.RECOGNITION_TEST_FAILED),
                 )
             }
         }
@@ -217,7 +226,7 @@ internal class VoiceSettingsController(
         if (closed.get() || mutableState.value.busy || config.outputProvider == VoiceOutputProvider.OFF) return
         mutableState.value = mutableState.value.copy(
             isTestingVoice = true,
-            message = "Testing speech synthesis…",
+            message = PreferencesUiMessage(PreferencesMessage.TESTING_VOICE),
             errorMessage = null,
         )
         scope.launch {
@@ -228,13 +237,12 @@ internal class VoiceSettingsController(
                 audioPlayer.play(audio.wav)
                 mutableState.value = mutableState.value.copy(
                     isTestingVoice = false,
-                    message = "Voice test played successfully.",
+                    message = PreferencesUiMessage(PreferencesMessage.VOICE_TEST_SUCCEEDED),
                 )
             } catch (failure: Throwable) {
                 mutableState.value = mutableState.value.copy(
                     isTestingVoice = false,
-                    errorMessage = (failure as? dev.evestaticmapplanner.embeddedai.VoiceException)?.safeMessage
-                        ?: "Speech synthesis test failed.",
+                    errorMessage = voiceFailure(failure, PreferencesMessage.VOICE_TEST_FAILED),
                 )
             }
         }
@@ -244,7 +252,7 @@ internal class VoiceSettingsController(
         if (closed.get() || mutableState.value.busy) return
         mutableState.value = mutableState.value.copy(
             isInstallingSpeechPack = true,
-            message = "Downloading Speech Pack…",
+            message = PreferencesUiMessage(PreferencesMessage.DOWNLOADING_SPEECH_PACK),
             errorMessage = null,
         )
         scope.launch {
@@ -253,13 +261,13 @@ internal class VoiceSettingsController(
                 mutableState.value = mutableState.value.copy(
                     isInstallingSpeechPack = false,
                     speechPack = speechPackManager.state(),
-                    message = "Speech Pack installed.",
+                    message = PreferencesUiMessage(PreferencesMessage.SPEECH_PACK_INSTALLED),
                 )
             } catch (_: Throwable) {
                 mutableState.value = mutableState.value.copy(
                     isInstallingSpeechPack = false,
                     speechPack = speechPackManager.state(),
-                    errorMessage = "Speech Pack download or verification failed.",
+                    errorMessage = PreferencesUiMessage(PreferencesMessage.SPEECH_PACK_INSTALL_FAILED),
                 )
             }
         }
@@ -272,13 +280,13 @@ internal class VoiceSettingsController(
                 .onSuccess {
                     mutableState.value = mutableState.value.copy(
                         speechPack = speechPackManager.state(),
-                        message = "Speech Pack removed.",
+                        message = PreferencesUiMessage(PreferencesMessage.SPEECH_PACK_REMOVED),
                         errorMessage = null,
                     )
                 }
                 .onFailure {
                     mutableState.value = mutableState.value.copy(
-                        errorMessage = "Speech Pack could not be removed.",
+                        errorMessage = PreferencesUiMessage(PreferencesMessage.SPEECH_PACK_REMOVE_FAILED),
                     )
                 }
         }
@@ -325,3 +333,7 @@ internal class VoiceSettingsController(
         const val MAX_TEST_TRANSCRIPT_DISPLAY = 120
     }
 }
+
+private fun voiceFailure(failure: Throwable, fallback: PreferencesMessage): UiMessage =
+    (failure as? VoiceException)?.let { VoiceFailureUiMessage(it.code, it.safeMessage) }
+        ?: PreferencesUiMessage(fallback)

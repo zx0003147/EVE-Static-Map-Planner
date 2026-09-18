@@ -34,6 +34,10 @@ import dev.evestaticmapplanner.embeddedai.VoiceInputProvider
 import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.ui.EveTheme
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.localization.AppLocalization
+import dev.evestaticmapplanner.localization.ProvideAppLocalization
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,6 +45,91 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class FeatureSettingsWindowsTest {
+    @Test
+    fun `Provider Preferences renders Chinese display text while preserving provider values`() = runComposeUiTest {
+        val saved = dev.evestaticmapplanner.embeddedai.AiProviderConfig.normalized(
+            providerType = dev.evestaticmapplanner.embeddedai.AiProviderType.OPENAI_COMPATIBLE,
+            baseUrl = "https://api.example.com/v1",
+            modelId = "deepseek/deepseek-v4-flash-0731",
+        )
+        var submitted: dev.evestaticmapplanner.embeddedai.AiProviderConfig? = null
+        setContent {
+            ProvideAppLocalization(AppLocalization(AppLocale.ZH_CN)) {
+                EveTheme {
+                    Column {
+                        AiProviderPreferencesContent(
+                            savedConfig = saved,
+                            state = AiProviderSettingsUiState(credentialSource = AiCredentialSource.SECURE_STORAGE),
+                            onProviderViewed = {},
+                            onTest = { _, secret -> secret?.close() },
+                            onSave = { config, secret -> submitted = config; secret?.close() },
+                            onDeleteCredential = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        onNodeWithText("AI 提供商").assertIsDisplayed()
+        onNodeWithText("Base URL").assertIsDisplayed()
+        onNodeWithText("模型").assertIsDisplayed()
+        onNodeWithText("API Key：已安全保存").assertIsDisplayed()
+        onNodeWithText("测试连接").assertIsDisplayed()
+        onNodeWithText("保存").performClick()
+        runOnIdle { assertEquals(saved, submitted) }
+    }
+
+    @Test
+    fun `Voice Preferences renders Chinese labels and preserves Alibaba technical values`() = runComposeUiTest {
+        val config = VoiceConfig(
+            inputProvider = VoiceInputProvider.ALIBABA,
+            outputProvider = VoiceOutputProvider.ALIBABA,
+            profiles = SpeechProviderProfiles(
+                alibaba = AlibabaSpeechProfile(
+                    sttModel = "qwen-audio-3.0-asr-flash",
+                    ttsModel = "qwen-audio-3.0-tts-flash",
+                    voice = "longanfengyue",
+                    workspaceId = "llm-fixture-workspace",
+                ),
+            ),
+        )
+        setContent {
+            ProvideAppLocalization(AppLocalization(AppLocale.ZH_CN)) {
+                EveTheme {
+                    Column {
+                        VoicePreferencesContent(
+                            savedConfig = config,
+                            state = VoiceSettingsUiState(
+                                openAiCredentialSource = AiCredentialSource.SECURE_STORAGE,
+                                alibabaCredentialSource = AiCredentialSource.SECURE_STORAGE,
+                            ),
+                            onViewed = {},
+                            onSave = { _, openAi, alibaba -> openAi?.close(); alibaba?.close() },
+                            onDeleteCredential = {},
+                            onTestRecognition = {},
+                            onTestVoice = {},
+                            onInstallSpeechPack = {},
+                            onRemoveSpeechPack = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        onNodeWithText("语音输入").assertIsDisplayed()
+        onNodeWithText("输入提供商").assertIsDisplayed()
+        onNodeWithText("音频会发送到 Alibaba Cloud 进行识别。").assertIsDisplayed()
+        onNodeWithText("输出提供商").assertIsDisplayed()
+        onNodeWithText("文本会发送到 Alibaba Cloud 进行语音合成。").assertIsDisplayed()
+        onNodeWithText("测试识别").assertIsDisplayed()
+        onNodeWithText("测试语音").assertExists()
+        onNodeWithText("Workspace ID").assertExists()
+        onNodeWithText("qwen-audio-3.0-asr-flash").assertExists()
+        onNodeWithText("qwen-audio-3.0-tts-flash").assertExists()
+        onNodeWithText("longanfengyue").assertExists()
+        onNodeWithText("llm-fixture-workspace").assertExists()
+    }
+
     @Test
     fun `each feature settings window has one open instance and repeat show requests focus`() {
         val initial = FeatureSettingsWindowState()
@@ -62,7 +151,9 @@ class FeatureSettingsWindowsTest {
     fun `general Preferences contains only global categories`() {
         assertEquals(
             listOf("Map Display", "AI Features", "Feature Packs", "Overlays", "Web Pack", "Shared Map"),
-            PreferencesCategory.entries.map { it.label },
+            PreferencesCategory.entries.map {
+                AppStringsCatalog.forLocale(AppLocale.EN_US).preferences.categoryLabel(it)
+            },
         )
     }
 

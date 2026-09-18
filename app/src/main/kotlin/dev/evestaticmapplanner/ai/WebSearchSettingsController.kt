@@ -9,6 +9,9 @@ import dev.evestaticmapplanner.embeddedai.SearchTestCheck
 import dev.evestaticmapplanner.embeddedai.SearchTestCheckStatus
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import dev.evestaticmapplanner.embeddedai.WebSearchTestResult
+import dev.evestaticmapplanner.localization.PreferencesMessage
+import dev.evestaticmapplanner.localization.PreferencesUiMessage
+import dev.evestaticmapplanner.localization.UiMessage
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineDispatcher
@@ -26,8 +29,8 @@ data class WebSearchSettingsUiState(
     val isTesting: Boolean = false,
     val isSaving: Boolean = false,
     val testResult: WebSearchTestResult? = null,
-    val message: String? = null,
-    val errorMessage: String? = null,
+    val message: UiMessage? = null,
+    val errorMessage: UiMessage? = null,
 )
 
 class WebSearchSettingsController(
@@ -77,7 +80,7 @@ class WebSearchSettingsController(
                     mutableState.value = mutableState.value.copy(
                         isTesting = false,
                         testResult = missingCredentialTestResult(),
-                        errorMessage = "Web search is not configured.",
+                        errorMessage = PreferencesUiMessage(PreferencesMessage.WEB_SEARCH_NOT_CONFIGURED),
                     )
                     return@launch
                 }
@@ -93,7 +96,7 @@ class WebSearchSettingsController(
             } catch (_: Throwable) {
                 mutableState.value = mutableState.value.copy(
                     isTesting = false,
-                    errorMessage = "Web Search settings could not be tested.",
+                    errorMessage = PreferencesUiMessage(PreferencesMessage.WEB_SEARCH_TEST_FAILED),
                 )
             } finally {
                 secret?.close()
@@ -143,16 +146,18 @@ class WebSearchSettingsController(
                         BRAVE_SEARCH_ENVIRONMENT_VARIABLE,
                     ),
                     testResult = null,
-                    message = if (sessionOnly) {
-                        "Settings saved. Secure storage is unavailable; Key is available for this session only."
-                    } else {
-                        "Web Search settings saved."
-                    },
+                    message = PreferencesUiMessage(
+                        if (sessionOnly) {
+                            PreferencesMessage.WEB_SEARCH_SETTINGS_SAVED_SESSION_ONLY
+                        } else {
+                            PreferencesMessage.WEB_SEARCH_SETTINGS_SAVED
+                        },
+                    ),
                 )
             } catch (_: Throwable) {
                 mutableState.value = mutableState.value.copy(
                     isSaving = false,
-                    errorMessage = "Web Search settings could not be updated.",
+                    errorMessage = PreferencesUiMessage(PreferencesMessage.WEB_SEARCH_SETTINGS_UPDATE_FAILED),
                 )
             } finally {
                 secureBefore?.close()
@@ -176,12 +181,12 @@ class WebSearchSettingsController(
                         BRAVE_SEARCH_ENVIRONMENT_VARIABLE,
                     ),
                     testResult = null,
-                    message = "Saved Brave Search API Key deleted.",
+                    message = PreferencesUiMessage(PreferencesMessage.WEB_SEARCH_API_KEY_DELETED),
                 )
             } catch (_: Throwable) {
                 mutableState.value = mutableState.value.copy(
                     isSaving = false,
-                    errorMessage = "The Brave Search API Key could not be deleted.",
+                    errorMessage = PreferencesUiMessage(PreferencesMessage.WEB_SEARCH_API_KEY_DELETE_FAILED),
                 )
             }
         }

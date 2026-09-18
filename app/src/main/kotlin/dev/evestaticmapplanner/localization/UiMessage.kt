@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.localization
 
+import dev.evestaticmapplanner.embeddedai.VoiceErrorCode
+
 sealed interface UiMessage {
     fun resolve(strings: AppStrings): String
 }
@@ -70,4 +72,24 @@ data class NavigationSegmentFailureUiMessage(
 
 data object AnsiblexDataUnavailableUiMessage : UiMessage {
     override fun resolve(strings: AppStrings): String = strings.route.ansiblexDataUnavailable
+}
+
+data class PreferencesUiMessage(
+    val id: PreferencesMessage,
+    val argument: String? = null,
+    val technicalDetail: String? = null,
+) : UiMessage {
+    override fun resolve(strings: AppStrings): String =
+        strings.preferences.message(id, argument, technicalDetail)
+}
+
+data class VoiceFailureUiMessage(
+    val code: VoiceErrorCode?,
+    val technicalDetail: String? = null,
+) : UiMessage {
+    override fun resolve(strings: AppStrings): String = strings.preferences.voiceFailure(code, technicalDetail)
+}
+
+data class StaticDataUpdateFailedUiMessage(val technicalDetail: String? = null) : UiMessage {
+    override fun resolve(strings: AppStrings): String = strings.staticData.updateFailed(technicalDetail)
 }

@@ -71,7 +71,10 @@ import dev.evestaticmapplanner.minimap.MINI_MAP_RECOVERY_HOTKEY_LABEL
 import dev.evestaticmapplanner.minimap.MiniMapHudRuntimeState
 import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
 import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.PreferencesStrings
+import dev.evestaticmapplanner.localization.PreferencesText
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.shared.SharedAdminUiState
 import dev.evestaticmapplanner.shared.SharedMapMembersDialog
@@ -175,7 +178,7 @@ internal fun PreferencesWindow(
                                 onClick = { selectedCategory = item },
                                 selected = selectedCategory == item,
                                 modifier = Modifier.fillMaxWidth(),
-                            ) { Text(item.label) }
+                            ) { Text(strings.preferences.categoryLabel(item)) }
                         }
                     }
                     EveVerticalScrollColumn(
@@ -258,7 +261,9 @@ internal fun PreferencesWindow(
                 }
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = onResetAll) { Text("Reset All Preferences") }
+                    TextButton(onClick = onResetAll) {
+                        Text(strings.preferences.text(PreferencesText.RESET_ALL))
+                    }
                     TextButton(onClick = onDismiss) { Text(strings.common.close) }
                 }
             }
@@ -302,14 +307,25 @@ internal fun LanguagePreferenceContent(
     }
 }
 
-internal enum class PreferencesCategory(val label: String) {
-    MAP_DISPLAY("Map Display"),
-    AI_FEATURES("AI Features"),
-    FEATURE_PACKS("Feature Packs"),
-    OVERLAYS("Overlays"),
-    WEB_PACK("Web Pack"),
-    SHARED_MAP("Shared Map"),
+internal enum class PreferencesCategory {
+    MAP_DISPLAY,
+    AI_FEATURES,
+    FEATURE_PACKS,
+    OVERLAYS,
+    WEB_PACK,
+    SHARED_MAP,
 }
+
+internal fun PreferencesStrings.categoryLabel(category: PreferencesCategory): String = text(
+    when (category) {
+        PreferencesCategory.MAP_DISPLAY -> PreferencesText.CATEGORY_MAP_DISPLAY
+        PreferencesCategory.AI_FEATURES -> PreferencesText.CATEGORY_AI_FEATURES
+        PreferencesCategory.FEATURE_PACKS -> PreferencesText.CATEGORY_FEATURE_PACKS
+        PreferencesCategory.OVERLAYS -> PreferencesText.CATEGORY_OVERLAYS
+        PreferencesCategory.WEB_PACK -> PreferencesText.CATEGORY_WEB_PACK
+        PreferencesCategory.SHARED_MAP -> PreferencesText.CATEGORY_SHARED_MAP
+    },
+)
 
 internal enum class AiFeaturesSection { EMBEDDED_ASSISTANT, MCP_INTEGRATION }
 
@@ -357,10 +373,11 @@ internal fun AiFeaturesPreferencesContent(
     onSpeechPackInstall: () -> Unit = {},
     onSpeechPackRemove: () -> Unit = {},
 ) {
+    val strings = LocalAppStrings.current.preferences
     var expansion by remember { mutableStateOf(AiFeaturesExpansionState()) }
     var assistantExpansion by remember { mutableStateOf(EmbeddedAssistantExpansionState()) }
     AiFeaturesAccordionHeader(
-        title = "Embedded Assistant",
+        title = strings.text(PreferencesText.EMBEDDED_ASSISTANT),
         expanded = expansion.expanded == AiFeaturesSection.EMBEDDED_ASSISTANT,
         onClick = {
             expansion = expansion.toggle(AiFeaturesSection.EMBEDDED_ASSISTANT)
@@ -369,7 +386,7 @@ internal fun AiFeaturesPreferencesContent(
     )
     if (expansion.expanded == AiFeaturesSection.EMBEDDED_ASSISTANT) {
         AiFeaturesAccordionHeader(
-            title = "AI Model",
+            title = strings.text(PreferencesText.AI_MODEL),
             expanded = assistantExpansion.expanded == EmbeddedAssistantSection.AI_MODEL,
             onClick = { assistantExpansion = assistantExpansion.toggle(EmbeddedAssistantSection.AI_MODEL) },
         )
@@ -386,7 +403,7 @@ internal fun AiFeaturesPreferencesContent(
         }
         HorizontalDivider()
         AiFeaturesAccordionHeader(
-            title = "Web Search",
+            title = strings.text(PreferencesText.WEB_SEARCH),
             expanded = assistantExpansion.expanded == EmbeddedAssistantSection.WEB_SEARCH,
             onClick = { assistantExpansion = assistantExpansion.toggle(EmbeddedAssistantSection.WEB_SEARCH) },
         )
@@ -402,7 +419,7 @@ internal fun AiFeaturesPreferencesContent(
         }
         HorizontalDivider()
         AiFeaturesAccordionHeader(
-            title = "Voice I/O",
+            title = strings.text(PreferencesText.VOICE_IO),
             expanded = assistantExpansion.expanded == EmbeddedAssistantSection.VOICE_IO,
             onClick = { assistantExpansion = assistantExpansion.toggle(EmbeddedAssistantSection.VOICE_IO) },
         )
@@ -422,7 +439,7 @@ internal fun AiFeaturesPreferencesContent(
     }
     HorizontalDivider()
     AiFeaturesAccordionHeader(
-        title = "MCP Integration",
+        title = strings.text(PreferencesText.MCP_INTEGRATION),
         expanded = expansion.expanded == AiFeaturesSection.MCP_INTEGRATION,
         onClick = { expansion = expansion.toggle(AiFeaturesSection.MCP_INTEGRATION) },
     )
@@ -450,6 +467,8 @@ internal fun VoicePreferencesContent(
     onInstallSpeechPack: () -> Unit,
     onRemoveSpeechPack: () -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.preferences
     var inputProvider by remember(savedConfig) { mutableStateOf(savedConfig.inputProvider) }
     var outputProvider by remember(savedConfig) { mutableStateOf(savedConfig.outputProvider) }
     var autoSend by remember(savedConfig) { mutableStateOf(savedConfig.autoSendAfterTranscription) }
@@ -529,19 +548,19 @@ internal fun VoicePreferencesContent(
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxWidth().testTag(VOICE_INPUT_SECTION_TEST_TAG),
     ) {
-        Text("Voice Input", style = MaterialTheme.typography.titleSmall)
-        EnumDropdown("Input Provider", inputProvider.displayName, inputExpanded, { inputExpanded = it }, !busy,
+        Text(strings.text(PreferencesText.VOICE_INPUT), style = MaterialTheme.typography.titleSmall)
+        EnumDropdown(strings.text(PreferencesText.INPUT_PROVIDER), strings.voiceInputProvider(inputProvider), inputExpanded, { inputExpanded = it }, !busy,
             Modifier.testTag(VOICE_INPUT_PROVIDER_TEST_TAG)) {
             VoiceInputProvider.entries.forEach { provider ->
-                DropdownMenuItem({ Text(provider.displayName) }, { inputProvider = provider; inputExpanded = false })
+                DropdownMenuItem({ Text(strings.voiceInputProvider(provider)) }, { inputProvider = provider; inputExpanded = false })
             }
         }
         Text(
             when (inputProvider) {
-                VoiceInputProvider.LOCAL -> "Local: Audio stays on this computer."
-                VoiceInputProvider.OPENAI -> "Audio is sent to OpenAI for transcription."
-                VoiceInputProvider.ALIBABA -> "Audio is sent to Alibaba Cloud for transcription."
-                VoiceInputProvider.OFF -> "Microphone recording is disabled."
+                VoiceInputProvider.LOCAL -> strings.text(PreferencesText.INPUT_LOCAL_HELP)
+                VoiceInputProvider.OPENAI -> strings.text(PreferencesText.INPUT_OPENAI_HELP)
+                VoiceInputProvider.ALIBABA -> strings.text(PreferencesText.INPUT_ALIBABA_HELP)
+                VoiceInputProvider.OFF -> strings.text(PreferencesText.INPUT_OFF_HELP)
             },
             color = EveColors.SecondaryText,
         )
@@ -550,19 +569,21 @@ internal fun VoicePreferencesContent(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth().testTag(VOICE_SPEECH_PACK_TEST_TAG),
             ) {
-                Text("Optional Speech Pack", style = MaterialTheme.typography.titleSmall)
+                Text(strings.text(PreferencesText.OPTIONAL_SPEECH_PACK), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    if (state.speechPack.installed) "Installed: ${state.speechPack.modelName}"
-                    else "Local speech model not installed.",
+                    if (state.speechPack.installed) strings.text(PreferencesText.INSTALLED_MODEL, state.speechPack.modelName)
+                    else strings.text(PreferencesText.LOCAL_SPEECH_MODEL_NOT_INSTALLED),
                     color = EveColors.SecondaryText,
                 )
                 TextButton(
                     onClick = if (state.speechPack.installed) onRemoveSpeechPack else onInstallSpeechPack,
                     enabled = !busy,
-                ) { Text(if (state.speechPack.installed) "Remove Speech Pack" else "Download Speech Pack") }
+                ) {
+                    Text(strings.text(if (state.speechPack.installed) PreferencesText.REMOVE_SPEECH_PACK else PreferencesText.DOWNLOAD_SPEECH_PACK))
+                }
             }
             VoiceInputProvider.OPENAI -> {
-                SpeechTextField("STT Model", openAiSttModel, { openAiSttModel = it }, busy)
+                SpeechTextField(strings.text(PreferencesText.STT_MODEL), openAiSttModel, { openAiSttModel = it }, busy)
                 VoiceCredentialFields(
                     "OpenAI Voice", "OPENAI_VOICE_API_KEY", openAiKeyDraft,
                     { openAiKeyDraft = it }, state.openAiCredentialSource, busy,
@@ -573,22 +594,24 @@ internal fun VoicePreferencesContent(
                     "Alibaba Speech", "DASHSCOPE_API_KEY", alibabaKeyDraft,
                     { alibabaKeyDraft = it }, state.alibabaCredentialSource, busy,
                 )
-                SpeechTextField("STT Model", alibabaSttModel, { alibabaSttModel = it }, busy)
+                SpeechTextField(strings.text(PreferencesText.STT_MODEL), alibabaSttModel, { alibabaSttModel = it }, busy)
                 AlibabaRegionDropdown(
                     alibabaSttRegion, alibabaSttRegionExpanded, { alibabaSttRegionExpanded = it },
                     { alibabaSttRegion = it; alibabaSttRegionExpanded = false }, busy,
                 )
                 if (sttWorkspaceRequired) {
-                    SpeechTextField("Workspace ID", workspaceId, { workspaceId = it }, busy)
+                    SpeechTextField(strings.text(PreferencesText.WORKSPACE_ID), workspaceId, { workspaceId = it }, busy)
                 }
                 TextButton(
                     onClick = { config?.let(onTestRecognition) },
                     enabled = !busy && config != null && state.alibabaCredentialSource != null,
-                ) { Text(if (state.isTestingRecognition) "Testing Recognition…" else "Test Recognition") }
+                ) {
+                    Text(strings.text(if (state.isTestingRecognition) PreferencesText.TESTING_RECOGNITION else PreferencesText.TEST_RECOGNITION))
+                }
             }
             VoiceInputProvider.OFF -> Unit
         }
-        PreferenceCheckbox("Auto-send after transcription", autoSend, !busy) { autoSend = it }
+        PreferenceCheckbox(strings.text(PreferencesText.AUTO_SEND_AFTER_TRANSCRIPTION), autoSend, !busy) { autoSend = it }
     }
 
     HorizontalDivider()
@@ -597,40 +620,40 @@ internal fun VoicePreferencesContent(
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxWidth().testTag(VOICE_OUTPUT_SECTION_TEST_TAG),
     ) {
-        Text("Voice Output", style = MaterialTheme.typography.titleSmall)
-        EnumDropdown("Output Provider", outputProvider.displayName, outputExpanded, { outputExpanded = it }, !busy,
+        Text(strings.text(PreferencesText.VOICE_OUTPUT), style = MaterialTheme.typography.titleSmall)
+        EnumDropdown(strings.text(PreferencesText.OUTPUT_PROVIDER), strings.voiceOutputProvider(outputProvider), outputExpanded, { outputExpanded = it }, !busy,
             Modifier.testTag(VOICE_OUTPUT_PROVIDER_TEST_TAG)) {
             VoiceOutputProvider.entries.forEach { provider ->
-                DropdownMenuItem({ Text(provider.displayName) }, { outputProvider = provider; outputExpanded = false })
+                DropdownMenuItem({ Text(strings.voiceOutputProvider(provider)) }, { outputProvider = provider; outputExpanded = false })
             }
         }
         Text(
             when (outputProvider) {
-                VoiceOutputProvider.LOCAL -> "Local: Assistant text is read by the Windows speech engine."
-                VoiceOutputProvider.OPENAI -> "Assistant text is sent to OpenAI for speech synthesis."
-                VoiceOutputProvider.ALIBABA -> "Text is sent to Alibaba Cloud for speech synthesis."
-                VoiceOutputProvider.OFF -> "Speech playback is disabled."
+                VoiceOutputProvider.LOCAL -> strings.text(PreferencesText.OUTPUT_LOCAL_HELP)
+                VoiceOutputProvider.OPENAI -> strings.text(PreferencesText.OUTPUT_OPENAI_HELP)
+                VoiceOutputProvider.ALIBABA -> strings.text(PreferencesText.OUTPUT_ALIBABA_HELP)
+                VoiceOutputProvider.OFF -> strings.text(PreferencesText.OUTPUT_OFF_HELP)
             },
             color = EveColors.SecondaryText,
         )
         when (outputProvider) {
             VoiceOutputProvider.LOCAL -> {
-                Text("Windows Speech", style = MaterialTheme.typography.titleSmall)
-                EnumDropdown("Windows Voice", windowsVoice ?: "System default", windowsVoiceExpanded,
+                Text(strings.text(PreferencesText.WINDOWS_SPEECH), style = MaterialTheme.typography.titleSmall)
+                EnumDropdown(strings.text(PreferencesText.WINDOWS_VOICE), windowsVoice ?: strings.text(PreferencesText.SYSTEM_DEFAULT), windowsVoiceExpanded,
                     { windowsVoiceExpanded = it }, !busy && state.windowsVoices.isNotEmpty()) {
-                    DropdownMenuItem({ Text("System default") }, { windowsVoice = null; windowsVoiceExpanded = false })
+                    DropdownMenuItem({ Text(strings.text(PreferencesText.SYSTEM_DEFAULT)) }, { windowsVoice = null; windowsVoiceExpanded = false })
                     state.windowsVoices.forEach { voice ->
                         DropdownMenuItem({ Text(voice) }, { windowsVoice = voice; windowsVoiceExpanded = false })
                     }
                 }
-                Text("Rate: $rate")
+                Text(strings.text(PreferencesText.RATE, rate))
                 Slider(rate.toFloat(), { rate = it.toInt() }, valueRange = -10f..10f, steps = 19)
-                Text("Volume: $volume")
+                Text(strings.text(PreferencesText.VOLUME, volume))
                 Slider(volume.toFloat(), { volume = it.toInt() }, valueRange = 0f..100f, steps = 99)
             }
             VoiceOutputProvider.OPENAI -> {
-                SpeechTextField("TTS Model", openAiTtsModel, { openAiTtsModel = it }, busy)
-                EnumDropdown("OpenAI Voice", openAiVoice, openAiVoiceExpanded, { openAiVoiceExpanded = it }, !busy) {
+                SpeechTextField(strings.text(PreferencesText.TTS_MODEL), openAiTtsModel, { openAiTtsModel = it }, busy)
+                EnumDropdown("OpenAI ${strings.text(PreferencesText.VOICE)}", openAiVoice, openAiVoiceExpanded, { openAiVoiceExpanded = it }, !busy) {
                     OPENAI_BUILT_IN_VOICES.forEach { voice ->
                         DropdownMenuItem({ Text(voice) }, { openAiVoice = voice; openAiVoiceExpanded = false })
                     }
@@ -651,23 +674,25 @@ internal fun VoicePreferencesContent(
                         { alibabaKeyDraft = it }, state.alibabaCredentialSource, busy,
                     )
                 }
-                SpeechTextField("TTS Model", alibabaTtsModel, { alibabaTtsModel = it }, busy)
-                SpeechTextField("Voice", alibabaVoice, { alibabaVoice = it }, busy)
+                SpeechTextField(strings.text(PreferencesText.TTS_MODEL), alibabaTtsModel, { alibabaTtsModel = it }, busy)
+                SpeechTextField(strings.text(PreferencesText.VOICE), alibabaVoice, { alibabaVoice = it }, busy)
                 AlibabaRegionDropdown(
                     alibabaTtsRegion, alibabaTtsRegionExpanded, { alibabaTtsRegionExpanded = it },
                     { alibabaTtsRegion = it; alibabaTtsRegionExpanded = false }, busy,
                 )
                 if (ttsWorkspaceRequired && !sttWorkspaceRequired) {
-                    SpeechTextField("Workspace ID", workspaceId, { workspaceId = it }, busy)
+                    SpeechTextField(strings.text(PreferencesText.WORKSPACE_ID), workspaceId, { workspaceId = it }, busy)
                 }
                 TextButton(
                     onClick = { config?.let(onTestVoice) },
                     enabled = !busy && config != null && state.alibabaCredentialSource != null,
-                ) { Text(if (state.isTestingVoice) "Testing Voice…" else "Test Voice") }
+                ) {
+                    Text(strings.text(if (state.isTestingVoice) PreferencesText.TESTING_VOICE else PreferencesText.TEST_VOICE))
+                }
             }
             VoiceOutputProvider.OFF -> Unit
         }
-        PreferenceCheckbox("Read assistant replies aloud", autoRead, !busy) { autoRead = it }
+        PreferenceCheckbox(strings.text(PreferencesText.READ_ASSISTANT_REPLIES_ALOUD), autoRead, !busy) { autoRead = it }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -682,25 +707,25 @@ internal fun VoicePreferencesContent(
                 }
             },
             enabled = !busy && config != null,
-        ) { Text("Save Voice Settings") }
+        ) { Text(strings.text(PreferencesText.SAVE_VOICE_SETTINGS)) }
         if (state.isSaving) CircularProgressIndicator()
     }
     if (state.openAiCredentialSource in setOf(AiCredentialSource.SECURE_STORAGE, AiCredentialSource.SESSION_ONLY) &&
         (inputProvider == VoiceInputProvider.OPENAI || outputProvider == VoiceOutputProvider.OPENAI)
     ) {
         TextButton(onClick = { onDeleteCredential(VoiceCredentialProvider.OPENAI) }, enabled = !busy) {
-            Text("Delete OpenAI Voice Key")
+            Text(strings.text(PreferencesText.DELETE_OPENAI_VOICE_KEY))
         }
     }
     if (state.alibabaCredentialSource in setOf(AiCredentialSource.SECURE_STORAGE, AiCredentialSource.SESSION_ONLY) &&
         (inputProvider == VoiceInputProvider.ALIBABA || outputProvider == VoiceOutputProvider.ALIBABA)
     ) {
         TextButton(onClick = { onDeleteCredential(VoiceCredentialProvider.ALIBABA) }, enabled = !busy) {
-            Text("Delete Alibaba Speech Key")
+            Text(strings.text(PreferencesText.DELETE_ALIBABA_SPEECH_KEY))
         }
     }
-    state.message?.let { Text(it, color = EveColors.SecondaryText) }
-    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    state.message?.let { Text(it.resolve(appStrings), color = EveColors.SecondaryText) }
+    state.errorMessage?.let { Text(it.resolve(appStrings), color = MaterialTheme.colorScheme.error) }
 }
 
 @Composable
@@ -724,11 +749,16 @@ private fun VoiceCredentialFields(
     source: AiCredentialSource?,
     busy: Boolean,
 ) {
+    val strings = LocalAppStrings.current.preferences
     OutlinedTextField(
         value = draft,
         onValueChange = onDraftChange,
-        label = { Text(if (source == null) "$providerName API Key" else "Replace $providerName API Key") },
-        placeholder = { Text(if (source == null) "Enter API Key" else "Leave blank to keep current Key") },
+        label = {
+            Text(strings.text(if (source == null) PreferencesText.PROVIDER_API_KEY else PreferencesText.REPLACE_PROVIDER_API_KEY, providerName))
+        },
+        placeholder = {
+            Text(strings.text(if (source == null) PreferencesText.ENTER_API_KEY else PreferencesText.LEAVE_BLANK_TO_KEEP_KEY))
+        },
         singleLine = true,
         enabled = !busy,
         visualTransformation = PasswordVisualTransformation(),
@@ -739,13 +769,9 @@ private fun VoiceCredentialFields(
 
 @Composable
 private fun VoiceCredentialStatus(providerName: String, environmentName: String, source: AiCredentialSource?) {
+    val strings = LocalAppStrings.current.preferences
     Text(
-        when (source) {
-            AiCredentialSource.SECURE_STORAGE -> "$providerName API Key: Saved securely"
-            AiCredentialSource.SESSION_ONLY -> "$providerName API Key: This session only"
-            AiCredentialSource.ENVIRONMENT -> "Credential: $environmentName"
-            null -> "$providerName API Key: Not configured"
-        },
+        strings.credentialStatus(providerName, environmentName, source),
         color = EveColors.SecondaryText,
     )
 }
@@ -758,9 +784,10 @@ private fun AlibabaRegionDropdown(
     onSelect: (AlibabaSpeechRegion) -> Unit,
     busy: Boolean,
 ) {
-    EnumDropdown("Region", value.displayName, expanded, onExpandedChange, !busy) {
+    val strings = LocalAppStrings.current.preferences
+    EnumDropdown(strings.text(PreferencesText.REGION), strings.speechRegion(value), expanded, onExpandedChange, !busy) {
         AlibabaSpeechRegion.entries.forEach { region ->
-            DropdownMenuItem({ Text(region.displayName) }, { onSelect(region) })
+            DropdownMenuItem({ Text(strings.speechRegion(region)) }, { onSelect(region) })
         }
     }
 }
@@ -813,6 +840,8 @@ internal fun AiProviderPreferencesContent(
     onSave: (AiProviderConfig, SecretValue?) -> Unit,
     onDeleteCredential: (AiProviderType) -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.preferences
     val initial = savedConfig ?: AiProviderConfig.DefaultOpenRouter
     var providerType by remember(savedConfig, savedProviderConfigs) { mutableStateOf(initial.providerType) }
     var baseUrl by remember(savedConfig, savedProviderConfigs) { mutableStateOf(initial.baseUrl.orEmpty()) }
@@ -825,7 +854,7 @@ internal fun AiProviderPreferencesContent(
     }
     var apiKeyDraft by remember(savedConfig, savedProviderConfigs) { mutableStateOf("") }
     var providerMenuExpanded by remember { mutableStateOf(false) }
-    var validationError by remember { mutableStateOf<String?>(null) }
+    var validationError by remember { mutableStateOf<PreferencesText?>(null) }
     val busy = state.isSaving || state.isTesting
 
     LaunchedEffect(providerType) { onProviderViewed(providerType) }
@@ -855,7 +884,7 @@ internal fun AiProviderPreferencesContent(
             credentialRef = AiCredentialRef.forProvider(providerType),
             modelId = modelId,
             temperature = temperature.trim().takeIf(String::isNotEmpty)?.toDouble()
-                ?: throw IllegalArgumentException("Temperature is required"),
+                ?: throw IllegalArgumentException(),
             requestTimeoutSeconds = timeout.trim().toInt(),
         )
     }.fold(
@@ -864,7 +893,11 @@ internal fun AiProviderPreferencesContent(
             it
         },
         onFailure = {
-            validationError = it.message ?: "Provider settings are invalid."
+            validationError = if (temperature.isBlank()) {
+                PreferencesText.TEMPERATURE_REQUIRED
+            } else {
+                PreferencesText.PROVIDER_SETTINGS_INVALID
+            }
             null
         },
     )
@@ -875,12 +908,12 @@ internal fun AiProviderPreferencesContent(
         return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
     }
 
-    Text("AI Provider", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.AI_PROVIDER), style = MaterialTheme.typography.titleSmall)
     Text(
-        "The provider is initialized only when you test the connection or send an AI message.",
+        strings.text(PreferencesText.AI_PROVIDER_LAZY_HELP),
         color = EveColors.SecondaryText,
     )
-    Text("Provider", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.PROVIDER), style = MaterialTheme.typography.titleSmall)
     Box {
         TextButton(onClick = { providerMenuExpanded = true }, enabled = !busy) {
             Text(providerType.displayName)
@@ -904,20 +937,20 @@ internal fun AiProviderPreferencesContent(
         OutlinedTextField(
             value = baseUrl,
             onValueChange = { baseUrl = it },
-            label = { Text("Base URL") },
+            label = { Text(strings.text(PreferencesText.BASE_URL)) },
             placeholder = { Text("https://example.com/v1") },
             singleLine = true,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         )
     } else {
-        Text("Uses the official ${providerType.displayName} API endpoint.", color = EveColors.SecondaryText)
+        Text(strings.text(PreferencesText.OFFICIAL_PROVIDER_ENDPOINT, providerType.displayName), color = EveColors.SecondaryText)
     }
     OutlinedTextField(
         value = modelId,
         onValueChange = { modelId = it },
-        label = { Text("Model") },
-        placeholder = { Text(providerType.modelPlaceholder()) },
+        label = { Text(strings.text(PreferencesText.MODEL)) },
+        placeholder = { Text(providerType.modelPlaceholder(strings)) },
         singleLine = true,
         enabled = !busy,
         modifier = Modifier.fillMaxWidth(),
@@ -925,8 +958,8 @@ internal fun AiProviderPreferencesContent(
     OutlinedTextField(
         value = apiKeyDraft,
         onValueChange = { apiKeyDraft = it },
-        label = { Text(if (state.credentialSource == null) "API Key" else "Replace API Key") },
-        placeholder = { Text(if (state.credentialSource == null) "Enter API Key" else "Leave blank to keep current Key") },
+        label = { Text(strings.text(if (state.credentialSource == null) PreferencesText.API_KEY else PreferencesText.REPLACE_API_KEY)) },
+        placeholder = { Text(strings.text(if (state.credentialSource == null) PreferencesText.ENTER_API_KEY else PreferencesText.LEAVE_BLANK_TO_KEEP_KEY)) },
         singleLine = true,
         enabled = !busy,
         visualTransformation = PasswordVisualTransformation(),
@@ -934,10 +967,10 @@ internal fun AiProviderPreferencesContent(
     )
     Text(
         when (state.credentialSource) {
-            AiCredentialSource.SECURE_STORAGE -> "API Key: Saved securely"
-            AiCredentialSource.SESSION_ONLY -> "API Key: This session only — Key will not be saved"
-            AiCredentialSource.ENVIRONMENT -> "Credential: Environment variable"
-            null -> "API Key: Not configured"
+            AiCredentialSource.SECURE_STORAGE -> strings.text(PreferencesText.API_KEY_SAVED_SECURELY)
+            AiCredentialSource.SESSION_ONLY -> strings.text(PreferencesText.API_KEY_SESSION_ONLY)
+            AiCredentialSource.ENVIRONMENT -> strings.text(PreferencesText.CREDENTIAL_ENVIRONMENT_VARIABLE)
+            null -> strings.text(PreferencesText.API_KEY_NOT_CONFIGURED)
         },
         color = EveColors.SecondaryText,
     )
@@ -945,7 +978,7 @@ internal fun AiProviderPreferencesContent(
         OutlinedTextField(
             value = timeout,
             onValueChange = { timeout = it },
-            label = { Text("Timeout (seconds)") },
+            label = { Text(strings.text(PreferencesText.TIMEOUT_SECONDS)) },
             singleLine = true,
             enabled = !busy,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -954,41 +987,41 @@ internal fun AiProviderPreferencesContent(
         OutlinedTextField(
             value = temperature,
             onValueChange = { temperature = it },
-            label = { Text("Temperature") },
+            label = { Text(strings.text(PreferencesText.TEMPERATURE)) },
             singleLine = true,
             enabled = !busy,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.weight(1f),
         )
     }
-    validationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    validationError?.let { Text(strings.text(it), color = MaterialTheme.colorScheme.error) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         TextButton(
             onClick = { buildConfig()?.let { onTest(it, draftSecret(clear = false)) } },
             enabled = !busy,
-        ) { Text("Test Connection") }
+        ) { Text(strings.text(PreferencesText.TEST_CONNECTION)) }
         TextButton(
             onClick = { buildConfig()?.let { onSave(it, draftSecret(clear = true)) } },
             enabled = !busy,
-        ) { Text("Save") }
+        ) { Text(strings.text(PreferencesText.SAVE)) }
         TextButton(
             onClick = { onDeleteCredential(providerType) },
             enabled = !busy && state.credentialSource in setOf(
                 AiCredentialSource.SECURE_STORAGE,
                 AiCredentialSource.SESSION_ONLY,
             ),
-        ) { Text("Delete API Key") }
+        ) { Text(strings.text(PreferencesText.DELETE_API_KEY)) }
         if (busy) CircularProgressIndicator()
     }
     state.testResult?.let { result ->
         HorizontalDivider()
-        Text("Connection Test", style = MaterialTheme.typography.titleSmall)
-        AiConnectionCheckRow(result.connection)
-        AiConnectionCheckRow(result.model)
-        AiConnectionCheckRow(result.toolCalling)
+        Text(strings.text(PreferencesText.CONNECTION_TEST), style = MaterialTheme.typography.titleSmall)
+        AiConnectionCheckRow(AiConnectionCheckRole.CONNECTION, result.connection)
+        AiConnectionCheckRow(AiConnectionCheckRole.MODEL, result.model)
+        AiConnectionCheckRow(AiConnectionCheckRole.TOOL_CALLING, result.toolCalling)
     }
-    state.message?.let { Text(it, color = EveColors.SecondaryText) }
-    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    state.message?.let { Text(it.resolve(appStrings), color = EveColors.SecondaryText) }
+    state.errorMessage?.let { Text(it.resolve(appStrings), color = MaterialTheme.colorScheme.error) }
 }
 
 @Composable
@@ -1000,6 +1033,8 @@ internal fun WebSearchPreferencesContent(
     onSave: (WebSearchConfig, SecretValue?) -> Unit,
     onDeleteCredential: (WebSearchConfig) -> Unit,
 ) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.preferences
     var enabled by remember(savedConfig) { mutableStateOf(savedConfig.enabled) }
     var apiKeyDraft by remember(savedConfig) { mutableStateOf("") }
     val config = remember(enabled, savedConfig.credentialRef) {
@@ -1014,18 +1049,18 @@ internal fun WebSearchPreferencesContent(
         return normalized.takeIf(String::isNotEmpty)?.let(SecretValue::from)
     }
 
-    PreferenceCheckbox("Enable Web Search", enabled, enabled = !busy) { enabled = it }
-    Text("Provider: Brave Search", style = MaterialTheme.typography.titleSmall)
+    PreferenceCheckbox(strings.text(PreferencesText.ENABLE_WEB_SEARCH), enabled, enabled = !busy) { enabled = it }
+    Text(strings.text(PreferencesText.WEB_SEARCH_PROVIDER), style = MaterialTheme.typography.titleSmall)
     Text(
-        "Uses Brave LLM Context for current public information. Planner routes and map data stay local.",
+        strings.text(PreferencesText.WEB_SEARCH_HELP),
         color = EveColors.SecondaryText,
     )
     OutlinedTextField(
         value = apiKeyDraft,
         onValueChange = { apiKeyDraft = it },
-        label = { Text(if (state.credentialSource == null) "Brave API Key" else "Replace Brave API Key") },
+        label = { Text(strings.text(if (state.credentialSource == null) PreferencesText.BRAVE_API_KEY else PreferencesText.REPLACE_BRAVE_API_KEY)) },
         placeholder = {
-            Text(if (state.credentialSource == null) "Enter Brave Search API Key" else "Leave blank to keep current Key")
+            Text(strings.text(if (state.credentialSource == null) PreferencesText.ENTER_BRAVE_API_KEY else PreferencesText.LEAVE_BLANK_TO_KEEP_KEY))
         },
         singleLine = true,
         enabled = !busy,
@@ -1034,10 +1069,10 @@ internal fun WebSearchPreferencesContent(
     )
     Text(
         when (state.credentialSource) {
-            AiCredentialSource.SECURE_STORAGE -> "Brave API Key: Saved securely"
-            AiCredentialSource.SESSION_ONLY -> "Brave API Key: This session only — Key will not be saved"
-            AiCredentialSource.ENVIRONMENT -> "Credential: BRAVE_SEARCH_API_KEY"
-            null -> "Brave API Key: Not configured"
+            AiCredentialSource.SECURE_STORAGE -> strings.text(PreferencesText.BRAVE_API_KEY_SAVED_SECURELY)
+            AiCredentialSource.SESSION_ONLY -> strings.text(PreferencesText.BRAVE_API_KEY_SESSION_ONLY)
+            AiCredentialSource.ENVIRONMENT -> strings.text(PreferencesText.BRAVE_CREDENTIAL_ENVIRONMENT)
+            null -> strings.text(PreferencesText.BRAVE_API_KEY_NOT_CONFIGURED)
         },
         color = EveColors.SecondaryText,
     )
@@ -1045,41 +1080,51 @@ internal fun WebSearchPreferencesContent(
         TextButton(
             onClick = { onTest(config, draftSecret(clear = false)) },
             enabled = !busy,
-        ) { Text("Test Search") }
+        ) { Text(strings.text(PreferencesText.TEST_SEARCH)) }
         TextButton(
             onClick = { onSave(config, draftSecret(clear = true)) },
             enabled = !busy,
-        ) { Text("Save") }
+        ) { Text(strings.text(PreferencesText.SAVE)) }
         TextButton(
             onClick = { onDeleteCredential(config) },
             enabled = !busy && state.credentialSource in setOf(
                 AiCredentialSource.SECURE_STORAGE,
                 AiCredentialSource.SESSION_ONLY,
             ),
-        ) { Text("Delete API Key") }
+        ) { Text(strings.text(PreferencesText.DELETE_API_KEY)) }
         if (busy) CircularProgressIndicator()
     }
     state.testResult?.let { result ->
         HorizontalDivider()
-        Text("Search Test", style = MaterialTheme.typography.titleSmall)
-        SearchCheckRow("Connection", result.connection)
-        SearchCheckRow("Authentication", result.authentication)
-        SearchCheckRow("Search response", result.searchResponse)
-        SearchCheckRow("Source parsing", result.sourceParsing)
+        Text(strings.text(PreferencesText.SEARCH_TEST), style = MaterialTheme.typography.titleSmall)
+        SearchCheckRow(strings.text(PreferencesText.CONNECTION), result.connection)
+        SearchCheckRow(strings.text(PreferencesText.AUTHENTICATION), result.authentication)
+        SearchCheckRow(strings.text(PreferencesText.SEARCH_RESPONSE), result.searchResponse)
+        SearchCheckRow(strings.text(PreferencesText.SOURCE_PARSING), result.sourceParsing)
     }
-    state.message?.let { Text(it, color = EveColors.SecondaryText) }
-    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    state.message?.let { Text(it.resolve(appStrings), color = EveColors.SecondaryText) }
+    state.errorMessage?.let { Text(it.resolve(appStrings), color = MaterialTheme.colorScheme.error) }
 }
 
 @Composable
 private fun SearchCheckRow(label: String, check: SearchTestCheck) {
+    val strings = LocalAppStrings.current.preferences
     val prefix = when (check.status) {
         SearchTestCheckStatus.PASSED -> "✓"
         SearchTestCheckStatus.FAILED -> "✗"
         SearchTestCheckStatus.NOT_RUN -> "–"
     }
+    val status = when (check.status) {
+        SearchTestCheckStatus.PASSED -> strings.text(PreferencesText.CHECK_PASSED)
+        SearchTestCheckStatus.FAILED -> strings.text(PreferencesText.CHECK_FAILED)
+        SearchTestCheckStatus.NOT_RUN -> strings.text(PreferencesText.CHECK_NOT_RUN)
+    }
+    val detail = check.message.takeIf { check.status == SearchTestCheckStatus.FAILED && it.isNotBlank() }
     Text(
-        "$prefix $label: ${check.message}",
+        buildString {
+            append("$prefix $label: $status")
+            if (detail != null) append("\n$detail")
+        },
         color = if (check.status == SearchTestCheckStatus.FAILED) {
             MaterialTheme.colorScheme.error
         } else {
@@ -1088,24 +1133,46 @@ private fun SearchCheckRow(label: String, check: SearchTestCheck) {
     )
 }
 
-private fun AiProviderType.modelPlaceholder(): String = when (this) {
+private fun AiProviderType.modelPlaceholder(strings: PreferencesStrings): String = when (this) {
     AiProviderType.OPENROUTER -> "provider/model-name"
-    AiProviderType.OPENAI -> "OpenAI model ID"
-    AiProviderType.ANTHROPIC -> "Claude model ID"
-    AiProviderType.DEEPSEEK -> "DeepSeek model ID"
-    AiProviderType.GOOGLE -> "Gemini model ID"
-    AiProviderType.OPENAI_COMPATIBLE -> "Provider model ID"
+    AiProviderType.OPENAI -> strings.text(PreferencesText.MODEL_ID_PLACEHOLDER, "OpenAI")
+    AiProviderType.ANTHROPIC -> strings.text(PreferencesText.MODEL_ID_PLACEHOLDER, "Claude")
+    AiProviderType.DEEPSEEK -> strings.text(PreferencesText.MODEL_ID_PLACEHOLDER, "DeepSeek")
+    AiProviderType.GOOGLE -> strings.text(PreferencesText.MODEL_ID_PLACEHOLDER, "Gemini")
+    AiProviderType.OPENAI_COMPATIBLE -> strings.text(
+        PreferencesText.MODEL_ID_PLACEHOLDER,
+        strings.text(PreferencesText.PROVIDER),
+    )
 }
 
+private enum class AiConnectionCheckRole { CONNECTION, MODEL, TOOL_CALLING }
+
 @Composable
-private fun AiConnectionCheckRow(check: AiConnectionCheck) {
+private fun AiConnectionCheckRow(role: AiConnectionCheckRole, check: AiConnectionCheck) {
+    val strings = LocalAppStrings.current.preferences
     val prefix = when (check.status) {
         AiConnectionCheckStatus.PASSED -> "✓"
         AiConnectionCheckStatus.FAILED -> "✗"
         AiConnectionCheckStatus.NOT_RUN -> "–"
     }
+    val localizedMessage = when (check.status) {
+        AiConnectionCheckStatus.PASSED -> when (role) {
+            AiConnectionCheckRole.CONNECTION -> strings.text(PreferencesText.API_CONNECTION_SUCCESSFUL)
+            AiConnectionCheckRole.MODEL -> strings.text(
+                PreferencesText.MODEL_VALUE,
+                check.message.substringAfter("Model: ", check.message),
+            )
+            AiConnectionCheckRole.TOOL_CALLING -> strings.text(PreferencesText.TOOL_CALLING_SUPPORTED)
+        }
+        AiConnectionCheckStatus.NOT_RUN -> when (role) {
+            AiConnectionCheckRole.CONNECTION -> strings.text(PreferencesText.CHECK_NOT_RUN)
+            AiConnectionCheckRole.MODEL -> strings.text(PreferencesText.MODEL_NOT_TESTED)
+            AiConnectionCheckRole.TOOL_CALLING -> strings.text(PreferencesText.TOOL_CALLING_NOT_TESTED)
+        }
+        AiConnectionCheckStatus.FAILED -> check.message
+    }
     Text(
-        "$prefix ${check.message}",
+        "$prefix $localizedMessage",
         color = if (check.status == AiConnectionCheckStatus.FAILED) MaterialTheme.colorScheme.error else EveColors.SecondaryText,
     )
 }
@@ -1122,44 +1189,47 @@ internal fun WebPackPreferencesContent(
     state: WebPackExportUiState,
     onExport: () -> Unit,
 ) {
-    Text("Web Pack", style = MaterialTheme.typography.titleMedium)
+    val strings = LocalAppStrings.current.preferences
+    Text(strings.text(PreferencesText.WEB_PACK), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Exports the validated static universe and currently enabled Ansiblex links for a Web client. " +
-            "Choose a parent directory; the app creates ${dev.evestaticmapplanner.webpack.WebPackSchema.EXPORT_DIRECTORY_NAME} inside it.",
+        strings.text(
+            PreferencesText.WEB_PACK_HELP,
+            dev.evestaticmapplanner.webpack.WebPackSchema.EXPORT_DIRECTORY_NAME,
+        ),
         color = EveColors.SecondaryText,
     )
     TextButton(
         onClick = onExport,
         enabled = state !is WebPackExportUiState.Exporting,
     ) {
-        Text(if (state is WebPackExportUiState.Exporting) "Exporting…" else "Export Web Pack")
+        Text(strings.text(if (state is WebPackExportUiState.Exporting) PreferencesText.EXPORTING else PreferencesText.EXPORT_WEB_PACK))
     }
     when (state) {
         WebPackExportUiState.Idle -> Text(
-            "The export is read-only and does not modify static.db or user.db.",
+            strings.text(PreferencesText.WEB_PACK_READ_ONLY_HELP),
             color = EveColors.SecondaryText,
             style = MaterialTheme.typography.bodySmall,
         )
         WebPackExportUiState.Exporting -> Text(
-            "Validating and writing the Web Pack…",
+            strings.text(PreferencesText.WEB_PACK_WRITING),
             color = EveColors.Important,
         )
         is WebPackExportUiState.Failure -> {
-            Text("Web Pack export failed", color = EveColors.Error)
+            Text(strings.text(PreferencesText.WEB_PACK_EXPORT_FAILED), color = EveColors.Error)
             Text(state.message, color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
         }
         is WebPackExportUiState.Success -> {
             val report = state.report
-            Text("Web Pack exported successfully", color = EveColors.Important)
+            Text(strings.text(PreferencesText.WEB_PACK_EXPORT_SUCCEEDED), color = EveColors.Important)
             Text("SDE: ${report.sdeBuild}")
-            Text("Systems: ${report.counts.systems}")
-            Text("Stargate links: ${report.counts.stargateLinks}")
-            Text("Regions: ${report.counts.regions}")
-            Text("Constellations: ${report.counts.constellations}")
-            Text("Ansiblex links: ${report.counts.ansiblexLinks}")
-            Text("Pack schema: ${report.schemaVersion}")
-            Text("Pack version: ${report.packVersion}", style = MaterialTheme.typography.bodySmall)
-            Text("Output: ${report.outputDirectory}", style = MaterialTheme.typography.bodySmall)
+            Text(strings.text(PreferencesText.SYSTEMS_COUNT, report.counts.systems))
+            Text(strings.text(PreferencesText.STARGATE_LINKS_COUNT, report.counts.stargateLinks))
+            Text(strings.text(PreferencesText.REGIONS_COUNT, report.counts.regions))
+            Text(strings.text(PreferencesText.CONSTELLATIONS_COUNT, report.counts.constellations))
+            Text(strings.text(PreferencesText.ANSIBLEX_LINKS_COUNT, report.counts.ansiblexLinks))
+            Text(strings.text(PreferencesText.PACK_SCHEMA, report.schemaVersion))
+            Text(strings.text(PreferencesText.PACK_VERSION, report.packVersion), style = MaterialTheme.typography.bodySmall)
+            Text(strings.text(PreferencesText.OUTPUT_PATH, report.outputDirectory), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -1183,6 +1253,7 @@ private fun SharedMapPreferencesContent(
     onClearAdminError: () -> Unit,
     onClearInvite: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.preferences
     var serverUrl by remember(preferences.serverUrl) { mutableStateOf(preferences.serverUrl.orEmpty()) }
     var deviceName by remember(preferences.deviceName) { mutableStateOf(preferences.deviceName) }
     var showInviteDialog by remember { mutableStateOf(false) }
@@ -1203,15 +1274,15 @@ private fun SharedMapPreferencesContent(
         }
     }
 
-    Text("Shared Map", style = MaterialTheme.typography.titleMedium)
+    Text(strings.text(PreferencesText.SHARED_MAP), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Connect to a Shared Map Server and keep its read-only marker snapshot synchronized.",
+        strings.text(PreferencesText.SHARED_MAP_HELP),
         color = EveColors.SecondaryText,
     )
     OutlinedTextField(
         value = serverUrl,
         onValueChange = { serverUrl = it },
-        label = { Text("Server URL") },
+        label = { Text(strings.text(PreferencesText.SERVER_URL)) },
         placeholder = { Text("https://map.example.com") },
         singleLine = true,
         enabled = canConnect,
@@ -1220,26 +1291,26 @@ private fun SharedMapPreferencesContent(
     OutlinedTextField(
         value = deviceName,
         onValueChange = { if (it.codePointCount(0, it.length) <= 80) deviceName = it },
-        label = { Text("Device name") },
+        label = { Text(strings.text(PreferencesText.DEVICE_NAME)) },
         singleLine = true,
         enabled = canConnect,
         modifier = Modifier.fillMaxWidth(),
     )
-    Text("Status: ${sharedMapStatusLabel(state)}")
+    Text(strings.text(PreferencesText.STATUS, sharedMapStatusLabel(state, strings)))
     state.statusMessage?.let { Text(it, color = EveColors.SecondaryText) }
     operationError?.let {
         Text(it, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = onClearError) { Text("Dismiss") }
+        TextButton(onClick = onClearError) { Text(strings.text(PreferencesText.DISMISS)) }
     }
 
     if (state.workspaces.isNotEmpty()) {
-        Text("Workspace", style = MaterialTheme.typography.titleSmall)
+        Text(strings.text(PreferencesText.WORKSPACE), style = MaterialTheme.typography.titleSmall)
         Box {
             TextButton(
                 onClick = { workspaceMenuExpanded = true },
                 enabled = state.workspaces.size > 1,
             ) {
-                Text(state.selectedWorkspace?.name ?: "Select Workspace")
+                Text(state.selectedWorkspace?.name ?: strings.text(PreferencesText.SELECT_WORKSPACE))
             }
             DropdownMenu(
                 expanded = workspaceMenuExpanded,
@@ -1258,17 +1329,17 @@ private fun SharedMapPreferencesContent(
         }
     }
     state.identity?.workspace?.role?.let { role ->
-        Text("Role: ${role.name.lowercase().replaceFirstChar(Char::uppercase)}")
+        Text(strings.text(PreferencesText.ROLE, role.name.lowercase().replaceFirstChar(Char::uppercase)))
     }
-    Text("Last sync: ${state.lastSuccessfulSyncAt?.let(::formatLocalInstant) ?: "Never"}")
-    Text("Shared markers: ${state.markerCount}")
-    state.snapshot?.let { Text("Revision: ${it.revision}", color = EveColors.SecondaryText) }
+    Text(strings.text(PreferencesText.LAST_SYNC, state.lastSuccessfulSyncAt?.let(::formatLocalInstant) ?: strings.text(PreferencesText.NEVER)))
+    Text(strings.text(PreferencesText.SHARED_MARKERS_COUNT, state.markerCount))
+    state.snapshot?.let { Text(strings.text(PreferencesText.REVISION, it.revision), color = EveColors.SecondaryText) }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton(
             onClick = { showInviteDialog = true },
             enabled = canConnect && serverUrl.isNotBlank(),
-        ) { Text("Connect with Invite…") }
+        ) { Text(strings.text(PreferencesText.CONNECT_WITH_INVITE)) }
         TextButton(
             onClick = onRefresh,
             enabled = state.selectedWorkspaceId != null && state.connectionState in setOf(
@@ -1276,19 +1347,19 @@ private fun SharedMapPreferencesContent(
                 SharedConnectionState.DEGRADED,
                 SharedConnectionState.OFFLINE,
             ),
-        ) { Text("Refresh Now") }
+        ) { Text(strings.text(PreferencesText.REFRESH_NOW)) }
     }
     TextButton(
         onClick = onDisconnect,
         enabled = state.serverUrl != null && state.connectionState != SharedConnectionState.CONNECTING,
-    ) { Text("Disconnect") }
+    ) { Text(strings.text(PreferencesText.DISCONNECT)) }
     if (state.identity?.workspace?.role == SharedWorkspaceRole.ADMIN) {
         TextButton(
             onClick = { showMembers = true },
             enabled = canAdmin,
-        ) { Text("Manage Members…") }
+        ) { Text(strings.text(PreferencesText.MANAGE_MEMBERS)) }
         if (!canAdmin) {
-            Text("Member management is available only while Shared Map is online.", color = EveColors.SecondaryText)
+            Text(strings.text(PreferencesText.MEMBER_MANAGEMENT_ONLINE_ONLY), color = EveColors.SecondaryText)
         }
     }
 
@@ -1311,7 +1382,7 @@ private fun SharedMapPreferencesContent(
     }
     if (showMembers) {
         SharedMapMembersDialog(
-            workspaceName = state.selectedWorkspace?.name ?: "Shared Map",
+            workspaceName = state.selectedWorkspace?.name ?: strings.text(PreferencesText.SHARED_MAP),
             state = adminState,
             canAdmin = canAdmin,
             onLoad = onLoadMembers,
@@ -1335,6 +1406,7 @@ private fun InviteConnectDialog(
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit,
 ) {
+    val strings = LocalAppStrings.current.preferences
     var invite by remember { mutableStateOf("") }
     fun clearAndDismiss() {
         invite = ""
@@ -1342,19 +1414,19 @@ private fun InviteConnectDialog(
     }
     AlertDialog(
         onDismissRequest = ::clearAndDismiss,
-        title = { Text("Connect to Shared Map") },
+        title = { Text(strings.text(PreferencesText.CONNECT_TO_SHARED_MAP)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(serverUrl, color = EveColors.SecondaryText)
                 OutlinedTextField(
                     value = invite,
                     onValueChange = { invite = it },
-                    label = { Text("One-time invite") },
+                    label = { Text(strings.text(PreferencesText.ONE_TIME_INVITE)) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("The invite is used once and is not saved.", color = EveColors.SecondaryText)
+                Text(strings.text(PreferencesText.INVITE_NOT_SAVED), color = EveColors.SecondaryText)
             }
         },
         confirmButton = {
@@ -1365,28 +1437,34 @@ private fun InviteConnectDialog(
                     onSubmit(submitted)
                 },
                 enabled = invite.isNotBlank(),
-            ) { Text("Connect") }
+            ) { Text(strings.text(PreferencesText.CONNECT)) }
         },
-        dismissButton = { TextButton(onClick = ::clearAndDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = ::clearAndDismiss) { Text(LocalAppStrings.current.common.cancel) } },
     )
 }
 
-internal fun sharedMapStatusLabel(state: SharedConnectionState): String = when (state) {
-    SharedConnectionState.DISCONNECTED -> "Not configured"
-    SharedConnectionState.CONNECTING -> "Connecting"
-    SharedConnectionState.ONLINE -> "Connected"
-    SharedConnectionState.DEGRADED -> "Degraded — showing stale data"
-    SharedConnectionState.OFFLINE -> "Offline"
-    SharedConnectionState.AUTH_REQUIRED -> "Authentication required"
-    SharedConnectionState.FORBIDDEN -> "Access removed"
-    SharedConnectionState.PROTOCOL_UNSUPPORTED -> "Incompatible server"
+internal fun sharedMapStatusLabel(state: SharedConnectionState): String =
+    sharedMapStatusLabel(state, AppStringsCatalog.forLocale(AppLocale.EN_US).preferences)
+
+internal fun sharedMapStatusLabel(state: SharedConnectionState, strings: PreferencesStrings): String = when (state) {
+    SharedConnectionState.DISCONNECTED -> strings.text(PreferencesText.SHARED_NOT_CONFIGURED)
+    SharedConnectionState.CONNECTING -> strings.text(PreferencesText.SHARED_CONNECTING)
+    SharedConnectionState.ONLINE -> strings.text(PreferencesText.SHARED_CONNECTED)
+    SharedConnectionState.DEGRADED -> strings.text(PreferencesText.SHARED_DEGRADED)
+    SharedConnectionState.OFFLINE -> strings.text(PreferencesText.SHARED_OFFLINE)
+    SharedConnectionState.AUTH_REQUIRED -> strings.text(PreferencesText.SHARED_AUTH_REQUIRED)
+    SharedConnectionState.FORBIDDEN -> strings.text(PreferencesText.SHARED_ACCESS_REMOVED)
+    SharedConnectionState.PROTOCOL_UNSUPPORTED -> strings.text(PreferencesText.SHARED_INCOMPATIBLE_SERVER)
 }
 
 internal fun sharedMapStatusLabel(state: SharedMapState): String =
+    sharedMapStatusLabel(state, AppStringsCatalog.forLocale(AppLocale.EN_US).preferences)
+
+internal fun sharedMapStatusLabel(state: SharedMapState, strings: PreferencesStrings): String =
     if (state.connectionState == SharedConnectionState.DISCONNECTED && state.serverUrl != null) {
-        "Disconnected"
+        strings.text(PreferencesText.SHARED_DISCONNECTED)
     } else {
-        sharedMapStatusLabel(state.connectionState)
+        sharedMapStatusLabel(state.connectionState, strings)
     }
 
 private val SHARED_MAP_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")
@@ -1403,49 +1481,49 @@ private fun OverlayPreferencesContent(
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     onReset: () -> Unit,
 ) {
+    val strings = LocalAppStrings.current.preferences
     val uiState = remember(overlayState, preferences) {
         OverlayManagementUiStateBuilder.build(overlayState, preferences)
     }
 
-    Text("Map Overlays", style = MaterialTheme.typography.titleMedium)
+    Text(strings.text(PreferencesText.MAP_OVERLAYS), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Visibility changes affect map presentation only. Feature Packs remain enabled.",
+        strings.text(PreferencesText.OVERLAY_VISIBILITY_HELP),
         color = EveColors.SecondaryText,
     )
     if (uiState.overlays.isEmpty()) {
-        Text("No Feature Pack overlays are currently available.", color = EveColors.SecondaryText)
+        Text(strings.text(PreferencesText.NO_FEATURE_PACK_OVERLAYS), color = EveColors.SecondaryText)
     }
     uiState.overlays.forEach { item ->
         HorizontalDivider()
         PreferenceCheckbox(item.name, item.enabled) { enabled ->
             onChange(preferences.withEnabled(item.key, enabled))
         }
-        Text("Source: ${item.providerName}", color = EveColors.SecondaryText)
+        Text(strings.text(PreferencesText.SOURCE, item.providerName), color = EveColors.SecondaryText)
         item.description?.let { Text(it, color = EveColors.SecondaryText) }
-        item.providerDescription?.let { Text("Provider: $it", color = EveColors.DisabledText) }
+        item.providerDescription?.let { Text(strings.text(PreferencesText.PROVIDER_DESCRIPTION, it), color = EveColors.DisabledText) }
     }
     TextButton(onClick = onReset, enabled = preferences.disabledLayers.isNotEmpty()) {
-        Text("Enable All Overlays")
+        Text(strings.text(PreferencesText.ENABLE_ALL_OVERLAYS))
     }
     HorizontalDivider()
-    Text("Real 3D Stargate Visibility", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.REAL_3D_STARGATE_VISIBILITY), style = MaterialTheme.typography.titleSmall)
     Text(
-        "Controls normal stargate connection visibility in Real 3D mode.",
+        strings.text(PreferencesText.REAL_3D_STARGATE_VISIBILITY_HELP),
         color = EveColors.SecondaryText,
     )
     PreferenceCheckbox(
-        "Focused Region + Adjacent Regions",
+        strings.text(PreferencesText.FOCUSED_AND_ADJACENT_REGIONS),
         mapDisplay.real3DStargateVisibilityFilteringEnabled,
     ) { enabled ->
         onMapDisplayChange(mapDisplay.copy(real3DStargateVisibilityFilteringEnabled = enabled))
     }
     if (uiState.showSovereigntyLogoPreferences) {
         HorizontalDivider()
-        Text("Sovereignty", style = MaterialTheme.typography.titleSmall)
-        Text("Sovereignty Logo Emphasis Zoom", style = MaterialTheme.typography.bodyMedium)
+        Text(strings.text(PreferencesText.SOVEREIGNTY), style = MaterialTheme.typography.titleSmall)
+        Text(strings.text(PreferencesText.SOVEREIGNTY_LOGO_EMPHASIS_ZOOM), style = MaterialTheme.typography.bodyMedium)
         Text(
-            "Choose the zoom level where alliance logos transition between background watermarks and " +
-                "bright political-map emblems.",
+            strings.text(PreferencesText.SOVEREIGNTY_LOGO_HELP),
             color = EveColors.SecondaryText,
         )
         SovereigntyLogoEmphasisZoomPreference(mapDisplay.sovereigntyLogoEmphasisZoom) { emphasisZoom ->
@@ -1459,6 +1537,7 @@ private fun SovereigntyLogoEmphasisZoomPreference(
     value: Double,
     onValueChange: (Double) -> Unit,
 ) {
+    val strings = LocalAppStrings.current.preferences
     var draft by remember { mutableStateOf(formatValue(value, 2)) }
     var showError by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
@@ -1481,8 +1560,11 @@ private fun SovereigntyLogoEmphasisZoomPreference(
         suffix = { Text("x") },
         supportingText = if (showError) ({
             Text(
-                "Enter ${formatValue(MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, 2)}–" +
-                    "${formatValue(MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, 2)}.",
+                strings.text(
+                    PreferencesText.ENTER_RANGE,
+                    formatValue(MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, 2),
+                    formatValue(MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, 2),
+                ),
             )
         }) else null,
         singleLine = true,
@@ -1504,7 +1586,7 @@ private fun SovereigntyLogoEmphasisZoomPreference(
         },
     )
     Text(
-        "Full map range 0.01x–250x; 0.05x steps are recommended near overview zoom.",
+        strings.text(PreferencesText.FULL_MAP_RANGE_HELP),
         color = EveColors.DisabledText,
         style = MaterialTheme.typography.bodySmall,
     )
@@ -1512,40 +1594,46 @@ private fun SovereigntyLogoEmphasisZoomPreference(
 
 @Composable
 private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewModel) {
+    val strings = LocalAppStrings.current.preferences
     val state by viewModel.state.collectAsState()
     val controls by viewModel.controlsState.collectAsState()
     var removePending by remember { mutableStateOf<FeaturePackManagerItem?>(null) }
     LaunchedEffect(viewModel) { viewModel.refresh() }
 
-    Text("Feature Packs", style = MaterialTheme.typography.titleMedium)
+    Text(strings.text(PreferencesText.FEATURE_PACKS), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Installed Packs are local to this Windows user. New Packs are disabled by default.",
+        strings.text(PreferencesText.FEATURE_PACKS_HELP),
         color = EveColors.SecondaryText,
     )
     state.discoveryErrors.forEach { Text(it, color = EveColors.Error) }
     if (state.initialized && state.packs.isEmpty() && state.discoveryErrors.isEmpty()) {
-        Text("No Feature Packs are installed.", color = EveColors.SecondaryText)
+        Text(strings.text(PreferencesText.NO_FEATURE_PACKS), color = EveColors.SecondaryText)
     }
     state.packs.forEach { item ->
         val pack = item.pack
         HorizontalDivider()
         Text(pack.displayName, style = MaterialTheme.typography.titleSmall)
-        Text("ID: ${pack.packId.value}", color = EveColors.SecondaryText)
-        Text("Version: ${pack.version?.value ?: "Unavailable"}")
-        Text("Publisher: ${pack.publisher ?: "Unavailable"}")
-        Text("Path: ${pack.path}", color = EveColors.SecondaryText)
+        Text(strings.text(PreferencesText.ID, pack.packId.value), color = EveColors.SecondaryText)
+        Text(strings.text(PreferencesText.VERSION, pack.version?.value ?: strings.text(PreferencesText.UNAVAILABLE)))
+        Text(strings.text(PreferencesText.PUBLISHER, pack.publisher ?: strings.text(PreferencesText.UNAVAILABLE)))
+        Text(strings.text(PreferencesText.PATH, pack.path), color = EveColors.SecondaryText)
         Text(
-            "Status: " + when {
-                pack.installationState == FeaturePackInstallationState.MISSING_JAR -> "Missing pack.jar"
-                pack.installationState == FeaturePackInstallationState.INVALID_PACK -> "Invalid Pack"
-                pack.installationState == FeaturePackInstallationState.INCOMPATIBLE -> "Incompatible"
-                item.runtimeState == FeaturePackRuntimeState.ENABLED -> "Enabled"
-                else -> "Disabled"
-            },
+            strings.text(
+                PreferencesText.STATUS,
+                strings.text(
+                    when {
+                        pack.installationState == FeaturePackInstallationState.MISSING_JAR -> PreferencesText.MISSING_PACK_JAR
+                        pack.installationState == FeaturePackInstallationState.INVALID_PACK -> PreferencesText.INVALID_PACK
+                        pack.installationState == FeaturePackInstallationState.INCOMPATIBLE -> PreferencesText.INCOMPATIBLE
+                        item.runtimeState == FeaturePackRuntimeState.ENABLED -> PreferencesText.ENABLED
+                        else -> PreferencesText.DISABLED
+                    },
+                ),
+            ),
         )
         pack.lastError?.let { Text(it, color = EveColors.Error) }
         controls.firstOrNull { it.packId == pack.packId }?.let { control ->
-            Text("Controls", style = MaterialTheme.typography.titleSmall)
+            Text(strings.text(PreferencesText.CONTROLS), style = MaterialTheme.typography.titleSmall)
             Text(
                 control.primaryText,
                 color = when (control.severity) {
@@ -1575,29 +1663,29 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (item.runtimeState == FeaturePackRuntimeState.ENABLED) {
-                TextButton(onClick = { viewModel.setEnabled(pack.packId, false) }) { Text("Disable") }
+                TextButton(onClick = { viewModel.setEnabled(pack.packId, false) }) { Text(strings.text(PreferencesText.DISABLE)) }
             } else {
                 TextButton(
                     enabled = pack.installationState == FeaturePackInstallationState.INSTALLED,
                     onClick = { viewModel.setEnabled(pack.packId, true) },
-                ) { Text("Enable") }
+                ) { Text(strings.text(PreferencesText.ENABLE)) }
             }
-            TextButton(onClick = { removePending = item }) { Text("Remove") }
+            TextButton(onClick = { removePending = item }) { Text(strings.text(PreferencesText.REMOVE)) }
         }
     }
 
     removePending?.let { item ->
         AlertDialog(
             onDismissRequest = { removePending = null },
-            title = { Text("Remove ${item.pack.displayName}?") },
-            text = { Text("This deletes the installed Pack directory. Pack-owned data is retained.") },
+            title = { Text(strings.text(PreferencesText.REMOVE_PACK_TITLE, item.pack.displayName)) },
+            text = { Text(strings.text(PreferencesText.REMOVE_PACK_HELP)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.remove(item.pack.packId)
                     removePending = null
-                }) { Text("Remove") }
+                }) { Text(strings.text(PreferencesText.REMOVE)) }
             },
-            dismissButton = { TextButton(onClick = { removePending = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { removePending = null }) { Text(LocalAppStrings.current.common.cancel) } },
         )
     }
 }
@@ -1627,13 +1715,14 @@ private fun MapDisplayPreferencesContent(
     onChange: (MapDisplayPreferences) -> Unit,
     onReset: () -> Unit,
 ) {
-    Text("Map Display", style = MaterialTheme.typography.titleMedium)
+    val strings = LocalAppStrings.current.preferences
+    Text(strings.text(PreferencesText.MAP_DISPLAY), style = MaterialTheme.typography.titleMedium)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Current Zoom", color = EveColors.SecondaryText)
+        Text(strings.text(PreferencesText.CURRENT_ZOOM), color = EveColors.SecondaryText)
         Text(currentZoom?.let { formatValue(it, 2) + "x" } ?: "—")
     }
     NumericPreferenceSlider(
-        "2D Constellation Zoom Threshold",
+        strings.text(PreferencesText.CONSTELLATION_2D_ZOOM_THRESHOLD),
         mapDisplay.constellationZoomThreshold,
         "x",
         2,
@@ -1641,7 +1730,7 @@ private fun MapDisplayPreferencesContent(
         isValid = { it >= THRESHOLD_MIN && it < mapDisplay.systemZoomThreshold },
     ) { onChange(mapDisplay.copy(constellationZoomThreshold = it)) }
     NumericPreferenceSlider(
-        "2D System Zoom Threshold",
+        strings.text(PreferencesText.SYSTEM_2D_ZOOM_THRESHOLD),
         mapDisplay.systemZoomThreshold,
         "x",
         2,
@@ -1649,7 +1738,7 @@ private fun MapDisplayPreferencesContent(
         isValid = { it > mapDisplay.constellationZoomThreshold && it <= THRESHOLD_MAX },
     ) { onChange(mapDisplay.copy(systemZoomThreshold = it)) }
     NumericPreferenceSlider(
-        "3D Constellation Zoom Threshold",
+        strings.text(PreferencesText.CONSTELLATION_3D_ZOOM_THRESHOLD),
         mapDisplay.real3DConstellationScaleThreshold,
         "x",
         2,
@@ -1657,7 +1746,7 @@ private fun MapDisplayPreferencesContent(
         isValid = { it >= THRESHOLD_MIN && it < mapDisplay.real3DSystemScaleThreshold },
     ) { onChange(mapDisplay.copy(real3DConstellationScaleThreshold = it)) }
     NumericPreferenceSlider(
-        "3D System Zoom Threshold",
+        strings.text(PreferencesText.SYSTEM_3D_ZOOM_THRESHOLD),
         mapDisplay.real3DSystemScaleThreshold,
         "x",
         2,
@@ -1666,29 +1755,30 @@ private fun MapDisplayPreferencesContent(
     ) { onChange(mapDisplay.copy(real3DSystemScaleThreshold = it)) }
     HorizontalDivider()
     FontPreferenceSliders(mapDisplay, onChange)
-    TextButton(onClick = onReset) { Text("Reset Map Display") }
+    TextButton(onClick = onReset) { Text(strings.text(PreferencesText.RESET_MAP_DISPLAY)) }
 }
 
 @Composable
 private fun FontPreferenceSliders(mapDisplay: MapDisplayPreferences, onChange: (MapDisplayPreferences) -> Unit) {
-    NumericPreferenceSlider("Region Primary Font Size", mapDisplay.regionPrimaryFontSizeSp.toDouble(), "sp", 0,
+    val strings = LocalAppStrings.current.preferences
+    NumericPreferenceSlider(strings.text(PreferencesText.REGION_PRIMARY_FONT_SIZE), mapDisplay.regionPrimaryFontSizeSp.toDouble(), "sp", 0,
         FONT_SIZE_MIN..FONT_SIZE_MAX, FONT_SIZE_STEPS, ::validFontSize) {
         onChange(mapDisplay.copy(regionPrimaryFontSizeSp = it.toFloat()))
     }
-    NumericPreferenceSlider("Region Background Font Size", mapDisplay.regionBackgroundFontSizeSp.toDouble(), "sp", 0,
+    NumericPreferenceSlider(strings.text(PreferencesText.REGION_BACKGROUND_FONT_SIZE), mapDisplay.regionBackgroundFontSizeSp.toDouble(), "sp", 0,
         FONT_SIZE_MIN..FONT_SIZE_MAX, FONT_SIZE_STEPS, ::validFontSize) {
         onChange(mapDisplay.copy(regionBackgroundFontSizeSp = it.toFloat()))
     }
-    NumericPreferenceSlider("Region Background Alpha", mapDisplay.regionBackgroundAlpha.toDouble(), decimals = 2,
+    NumericPreferenceSlider(strings.text(PreferencesText.REGION_BACKGROUND_ALPHA), mapDisplay.regionBackgroundAlpha.toDouble(), decimals = 2,
         sliderRange = BACKGROUND_ALPHA_MIN..BACKGROUND_ALPHA_MAX, steps = BACKGROUND_ALPHA_STEPS,
         isValid = { it in BACKGROUND_ALPHA_MIN..BACKGROUND_ALPHA_MAX }) {
         onChange(mapDisplay.copy(regionBackgroundAlpha = it.toFloat()))
     }
-    NumericPreferenceSlider("Constellation Font Size", mapDisplay.constellationFontSizeSp.toDouble(), "sp", 0,
+    NumericPreferenceSlider(strings.text(PreferencesText.CONSTELLATION_FONT_SIZE), mapDisplay.constellationFontSizeSp.toDouble(), "sp", 0,
         FONT_SIZE_MIN..FONT_SIZE_MAX, FONT_SIZE_STEPS, ::validFontSize) {
         onChange(mapDisplay.copy(constellationFontSizeSp = it.toFloat()))
     }
-    NumericPreferenceSlider("System Font Size", mapDisplay.systemFontSizeSp.toDouble(), "sp", 0,
+    NumericPreferenceSlider(strings.text(PreferencesText.SYSTEM_FONT_SIZE), mapDisplay.systemFontSizeSp.toDouble(), "sp", 0,
         FONT_SIZE_MIN..FONT_SIZE_MAX, FONT_SIZE_STEPS, ::validFontSize) {
         onChange(mapDisplay.copy(systemFontSizeSp = it.toFloat()))
     }
@@ -1700,21 +1790,22 @@ internal fun MarkerPreferencesContent(
     onChange: (MarkerPreferences) -> Unit,
     onReset: () -> Unit,
 ) {
-    Text("Marker Settings", style = MaterialTheme.typography.titleMedium)
-    PreferenceCheckbox("Show Local Markers", preferences.showMarkers) {
+    val strings = LocalAppStrings.current.preferences
+    Text(strings.text(PreferencesText.MARKER_SETTINGS), style = MaterialTheme.typography.titleMedium)
+    PreferenceCheckbox(strings.text(PreferencesText.SHOW_LOCAL_MARKERS), preferences.showMarkers) {
         onChange(preferences.copy(showMarkers = it))
     }
-    PreferenceCheckbox("Show Shared Markers", preferences.showSharedMarkers) {
+    PreferenceCheckbox(strings.text(PreferencesText.SHOW_SHARED_MARKERS), preferences.showSharedMarkers) {
         onChange(preferences.copy(showSharedMarkers = it))
     }
-    PreferenceCheckbox("Show Local Marker Names", preferences.showMarkerNames, preferences.showMarkers) {
+    PreferenceCheckbox(strings.text(PreferencesText.SHOW_LOCAL_MARKER_NAMES), preferences.showMarkerNames, preferences.showMarkers) {
         onChange(preferences.copy(showMarkerNames = it))
     }
     HorizontalDivider()
-    Text("Saved Marker Appearance", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.SAVED_MARKER_APPEARANCE), style = MaterialTheme.typography.titleSmall)
     val appearance = preferences.savedMarkerAppearance
     NumericPreferenceSlider(
-        label = "Outer Ring Radius",
+        label = strings.text(PreferencesText.OUTER_RING_RADIUS),
         value = appearance.ringRadiusDp.toDouble(),
         suffix = "dp",
         decimals = 1,
@@ -1723,7 +1814,7 @@ internal fun MarkerPreferencesContent(
         isValid = { it in MIN_SAVED_MARKER_RING_RADIUS_DP.toDouble()..MAX_SAVED_MARKER_RING_RADIUS_DP.toDouble() },
     ) { onChange(preferences.copy(savedMarkerAppearance = appearance.copy(ringRadiusDp = it.toFloat()))) }
     NumericPreferenceSlider(
-        label = "Outer Ring Line Width",
+        label = strings.text(PreferencesText.OUTER_RING_LINE_WIDTH),
         value = appearance.lineWidthDp.toDouble(),
         suffix = "dp",
         decimals = 1,
@@ -1731,11 +1822,11 @@ internal fun MarkerPreferencesContent(
         steps = 39,
         isValid = { it in MIN_SAVED_MARKER_LINE_WIDTH_DP.toDouble()..MAX_SAVED_MARKER_LINE_WIDTH_DP.toDouble() },
     ) { onChange(preferences.copy(savedMarkerAppearance = appearance.copy(lineWidthDp = it.toFloat()))) }
-    PreferenceCheckbox("Glow", appearance.glowEnabled) {
+    PreferenceCheckbox(strings.text(PreferencesText.GLOW), appearance.glowEnabled) {
         onChange(preferences.copy(savedMarkerAppearance = appearance.copy(glowEnabled = it)))
     }
     NumericPreferenceSlider(
-        label = "Glow Strength",
+        label = strings.text(PreferencesText.GLOW_STRENGTH),
         value = appearance.glowStrength.toDouble(),
         decimals = 2,
         sliderRange = MIN_SAVED_MARKER_GLOW_STRENGTH.toDouble()..MAX_SAVED_MARKER_GLOW_STRENGTH.toDouble(),
@@ -1743,7 +1834,7 @@ internal fun MarkerPreferencesContent(
         isValid = { it in MIN_SAVED_MARKER_GLOW_STRENGTH.toDouble()..MAX_SAVED_MARKER_GLOW_STRENGTH.toDouble() },
         enabled = appearance.glowEnabled,
     ) { onChange(preferences.copy(savedMarkerAppearance = appearance.copy(glowStrength = it.toFloat()))) }
-    TextButton(onClick = onReset) { Text("Reset Marker") }
+    TextButton(onClick = onReset) { Text(strings.text(PreferencesText.RESET_MARKER)) }
 }
 
 @Composable
@@ -1755,12 +1846,13 @@ internal fun MiniMapPreferencesContent(
     ),
     onReset: () -> Unit,
 ) {
-    Text("Mini-map Settings", style = MaterialTheme.typography.titleMedium)
+    val strings = LocalAppStrings.current.preferences
+    Text(strings.text(PreferencesText.MINI_MAP_SETTINGS), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Controls the compact character-following map. Changes apply immediately to an open Mini-map.",
+        strings.text(PreferencesText.MINI_MAP_HELP),
         color = EveColors.SecondaryText,
     )
-    Text("Visible range", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.VISIBLE_RANGE), style = MaterialTheme.typography.titleSmall)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         (1..5).forEach { hops ->
             TextButton(
@@ -1772,57 +1864,61 @@ internal fun MiniMapPreferencesContent(
         }
     }
     Text(
-        "${preferences.stargateHops} ${if (preferences.stargateHops == 1) "hop" else "hops"}",
+        strings.text(PreferencesText.HOP_COUNT, preferences.stargateHops),
         color = EveColors.SecondaryText,
         style = MaterialTheme.typography.bodySmall,
     )
     HorizontalDivider()
-    PreferenceCheckbox("Show Ansiblex connections", preferences.includeAnsiblexEdges) {
+    PreferenceCheckbox(strings.text(PreferencesText.SHOW_ANSIBLEX_CONNECTIONS), preferences.includeAnsiblexEdges) {
         onChange(preferences.copy(includeAnsiblexEdges = it))
     }
     Text(
-        "Shown on the Mini-map and counted as one hop in its visible range.",
+        strings.text(PreferencesText.MINI_MAP_ANSIBLEX_HELP),
         color = EveColors.SecondaryText,
         style = MaterialTheme.typography.bodySmall,
     )
     HorizontalDivider()
-    Text("Window style", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.WINDOW_STYLE), style = MaterialTheme.typography.titleSmall)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         MiniMapWindowStyle.entries.forEach { style ->
             TextButton(
                 onClick = { onChange(preferences.copy(windowStyle = style)) },
                 selected = preferences.windowStyle == style,
             ) {
-                Text(if (style == MiniMapWindowStyle.STANDARD) "Standard" else "HUD")
+                Text(strings.text(if (style == MiniMapWindowStyle.STANDARD) PreferencesText.STANDARD else PreferencesText.HUD))
             }
         }
     }
     Text(
-        "HUD uses a borderless translucent surface; Standard keeps the normal Planner window frame.",
+        strings.text(PreferencesText.WINDOW_STYLE_HELP),
         color = EveColors.SecondaryText,
         style = MaterialTheme.typography.bodySmall,
     )
-    Text("Interaction", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.INTERACTION), style = MaterialTheme.typography.titleSmall)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         TextButton(
             onClick = { onChange(preferences.copy(interactionMode = MiniMapInteractionMode.INTERACTIVE)) },
             selected = preferences.interactionMode == MiniMapInteractionMode.INTERACTIVE,
-        ) { Text("Interactive") }
+        ) { Text(strings.text(PreferencesText.INTERACTIVE)) }
         TextButton(
             onClick = { onChange(preferences.copy(interactionMode = MiniMapInteractionMode.HUD_LOCKED)) },
             selected = preferences.interactionMode == MiniMapInteractionMode.HUD_LOCKED,
             enabled = hudRuntimeState.canLock,
-        ) { Text("HUD Locked") }
+        ) { Text(strings.text(PreferencesText.HUD_LOCKED)) }
     }
     Text(
-        "Recovery hotkey: $MINI_MAP_RECOVERY_HOTKEY_LABEL · ${hotkeyStatusLabel(hudRuntimeState)}",
+        strings.text(
+            PreferencesText.RECOVERY_HOTKEY,
+            MINI_MAP_RECOVERY_HOTKEY_LABEL,
+            hotkeyStatusLabel(hudRuntimeState, strings),
+        ),
         color = if (hudRuntimeState.canLock) EveColors.SecondaryText else EveColors.Important,
         style = MaterialTheme.typography.bodySmall,
     )
     hudRuntimeState.diagnostic?.let {
         Text(it, color = EveColors.Important, style = MaterialTheme.typography.bodySmall)
     }
-    Text("HUD opacity: ${(preferences.hudOpacity * 100).toInt()}%", style = MaterialTheme.typography.titleSmall)
+    Text(strings.text(PreferencesText.HUD_OPACITY, (preferences.hudOpacity * 100).toInt()), style = MaterialTheme.typography.titleSmall)
     Slider(
         value = preferences.hudOpacity,
         onValueChange = { onChange(preferences.copy(hudOpacity = it.coerceIn(0.4f, 1f))) },
@@ -1830,18 +1926,18 @@ internal fun MiniMapPreferencesContent(
         steps = 5,
         enabled = preferences.windowStyle == MiniMapWindowStyle.HUD,
     )
-    PreferenceCheckbox("Snap to screen edges", preferences.snapToScreenEdges) {
+    PreferenceCheckbox(strings.text(PreferencesText.SNAP_TO_SCREEN_EDGES), preferences.snapToScreenEdges) {
         onChange(preferences.copy(snapToScreenEdges = it))
     }
-    TextButton(onClick = onReset) { Text("Reset Mini-map") }
+    TextButton(onClick = onReset) { Text(strings.text(PreferencesText.RESET_MINI_MAP)) }
 }
 
-private fun hotkeyStatusLabel(state: MiniMapHudRuntimeState): String = when (state.hotkeyStatus) {
-    MiniMapRecoveryHotkeyStatus.NOT_STARTED -> "starting"
-    MiniMapRecoveryHotkeyStatus.REGISTERED -> "ready"
-    MiniMapRecoveryHotkeyStatus.FAILED -> "unavailable"
-    MiniMapRecoveryHotkeyStatus.UNSUPPORTED -> "unsupported"
-    MiniMapRecoveryHotkeyStatus.CLOSED -> "stopped"
+private fun hotkeyStatusLabel(state: MiniMapHudRuntimeState, strings: PreferencesStrings): String = when (state.hotkeyStatus) {
+    MiniMapRecoveryHotkeyStatus.NOT_STARTED -> strings.text(PreferencesText.HOTKEY_STARTING)
+    MiniMapRecoveryHotkeyStatus.REGISTERED -> strings.text(PreferencesText.HOTKEY_READY)
+    MiniMapRecoveryHotkeyStatus.FAILED -> strings.text(PreferencesText.HOTKEY_UNAVAILABLE)
+    MiniMapRecoveryHotkeyStatus.UNSUPPORTED -> strings.text(PreferencesText.HOTKEY_UNSUPPORTED)
+    MiniMapRecoveryHotkeyStatus.CLOSED -> strings.text(PreferencesText.HOTKEY_STOPPED)
 }
 
 @Composable
@@ -1853,23 +1949,24 @@ private fun AiControlPreferencesContent(
     onSavedMarkerAccessChange: (Boolean) -> Unit,
     onReset: () -> Unit,
 ) {
-    Text("MCP Server & Permissions", style = MaterialTheme.typography.titleMedium)
-    PreferenceCheckbox("Enable MCP Integration", preferences.enabled, onCheckedChange = onChange)
+    val strings = LocalAppStrings.current.preferences
+    Text(strings.text(PreferencesText.MCP_SERVER_PERMISSIONS), style = MaterialTheme.typography.titleMedium)
+    PreferenceCheckbox(strings.text(PreferencesText.ENABLE_MCP_INTEGRATION), preferences.enabled, onCheckedChange = onChange)
     PreferenceCheckbox(
-        "Allow AI to access saved markers",
+        strings.text(PreferencesText.ALLOW_AI_SAVED_MARKERS),
         preferences.savedMarkerAccessEnabled,
         onCheckedChange = onSavedMarkerAccessChange,
     )
     Text(
-        "Allows AI tools to read and create saved markers. AI cannot modify or delete existing saved markers.",
+        strings.text(PreferencesText.AI_SAVED_MARKERS_HELP),
         color = EveColors.SecondaryText,
     )
     Text(
         when (status) {
-            AiControlStatus.Disabled -> "Disabled"
-            AiControlStatus.Starting -> "Starting…"
-            AiControlStatus.Listening -> "Listening on localhost"
-            AiControlStatus.AlreadyActive -> "Already Active in another app instance"
+            AiControlStatus.Disabled -> strings.text(PreferencesText.DISABLED)
+            AiControlStatus.Starting -> strings.text(PreferencesText.MCP_STARTING)
+            AiControlStatus.Listening -> strings.text(PreferencesText.MCP_LISTENING)
+            AiControlStatus.AlreadyActive -> strings.text(PreferencesText.MCP_ALREADY_ACTIVE)
             is AiControlStatus.Error -> status.message
         },
         color = when (status) {
@@ -1879,10 +1976,10 @@ private fun AiControlPreferencesContent(
     )
     if (preferenceError != null) Text(preferenceError, color = EveColors.Error)
     Text(
-        "When enabled, a new authenticated local-only control session starts after the map is ready.",
+        strings.text(PreferencesText.MCP_SESSION_HELP),
         color = EveColors.SecondaryText,
     )
-    TextButton(onClick = onReset) { Text("Reset MCP Integration") }
+    TextButton(onClick = onReset) { Text(strings.text(PreferencesText.RESET_MCP_INTEGRATION)) }
 }
 
 @Composable

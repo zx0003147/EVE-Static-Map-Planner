@@ -12,6 +12,8 @@ import dev.evestaticmapplanner.embeddedai.WebSearchRequest
 import dev.evestaticmapplanner.embeddedai.WebSearchResponse
 import dev.evestaticmapplanner.embeddedai.WebSearchSource
 import dev.evestaticmapplanner.shared.auth.SecretValue
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -69,7 +71,7 @@ class WebSearchSettingsControllerTest {
             advanceUntilIdle()
 
             assertFalse(secure.contains(config.credentialRef))
-            assertFalse(controller.state.value.errorMessage.orEmpty().contains("disk detail"))
+            assertFalse(controller.state.value.errorMessage?.resolve(ENGLISH).orEmpty().contains("disk detail"))
         } finally {
             controller.close()
             secure.close()
@@ -94,7 +96,7 @@ class WebSearchSettingsControllerTest {
             advanceUntilIdle()
 
             assertEquals(AiCredentialSource.SESSION_ONLY, controller.state.value.credentialSource)
-            assertTrue(controller.state.value.message.orEmpty().contains("session only"))
+            assertTrue(controller.state.value.message?.resolve(ENGLISH).orEmpty().contains("session only"))
             assertSecret("session-brave", session.load(config.credentialRef))
         } finally {
             controller.close()
@@ -135,6 +137,8 @@ class WebSearchSettingsControllerTest {
         }
     }
 }
+
+private val ENGLISH = AppStringsCatalog.forLocale(AppLocale.EN_US)
 
 private fun controller(
     secure: InMemoryAiCredentialStore,

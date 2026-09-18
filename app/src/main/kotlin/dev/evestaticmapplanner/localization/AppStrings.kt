@@ -13,6 +13,7 @@ interface AppStrings {
     val systemInfo: SystemInfoStrings
     val preferences: PreferencesStrings
     val route: RouteStrings
+    val staticData: StaticDataStrings
 }
 
 object AppStringsCatalog {
