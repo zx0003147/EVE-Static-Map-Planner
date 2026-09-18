@@ -192,6 +192,7 @@ fun StaticMapCanvas(
         textMeasurer,
         renderCache,
         visualEmphasis,
+        state.appPreferences.uiLocale,
     ) {
         MapLabelPresentationBuilder.build(
             scene = scene,
@@ -202,6 +203,7 @@ fun StaticMapCanvas(
                 MapSize(size.width.toDouble(), size.height.toDouble())
             },
             emphasizedSystemIds = visualEmphasis.prioritizedSystemIds,
+            locale = state.appPreferences.uiLocale,
         )
     }
     val routeOverlay = remember(scene, activeRoute) {

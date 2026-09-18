@@ -168,7 +168,7 @@ class WebPackExporterTest {
             StargateConnection.between(1, 2),
             StargateConnection.between(2, 3),
         ),
-        regions = listOf(Region(100, "Fixture Region", UniversePosition(0.0, 0.0, 0.0), null)),
+        regions = listOf(Region(100, "Fixture Region", UniversePosition(0.0, 0.0, 0.0), null, "测试星域")),
         constellations = listOf(Constellation(10, 100, "Fixture Constellation", UniversePosition(0.0, 0.0, 0.0), null)),
     )
 

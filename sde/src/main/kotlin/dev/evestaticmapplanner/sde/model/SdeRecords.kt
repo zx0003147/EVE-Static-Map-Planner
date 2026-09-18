@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class SdeLocalizedName(
     val en: String,
+    val zh: String? = null,
 )
 
 @Serializable
@@ -41,9 +42,10 @@ data class SdeRegionRecord(
 ) {
     fun toDomain() = Region(
         id = id.toDomainId("region"),
-        name = name.en,
+        nameEn = name.en,
         position = position.toDomain(),
         wormholeClassId = wormholeClassID?.toDomainId("wormhole class"),
+        nameZh = name.zh?.trim()?.takeIf(String::isNotEmpty),
     )
 }
 

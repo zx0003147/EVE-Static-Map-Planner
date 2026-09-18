@@ -21,8 +21,8 @@ class StaticDatabaseBuildSession private constructor(
 
     private val insertRegion = connection.prepareStatement(
         """
-        INSERT INTO regions(region_id, name_en, position_x, position_y, position_z, wormhole_class_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO regions(region_id, name_en, name_zh, position_x, position_y, position_z, wormhole_class_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
     )
     private val insertConstellation = connection.prepareStatement(
@@ -58,11 +58,12 @@ class StaticDatabaseBuildSession private constructor(
 
     fun insert(region: Region) {
         insertRegion.bindInt(1, region.id)
-        insertRegion.setString(2, region.name)
-        insertRegion.setDouble(3, region.position.x)
-        insertRegion.setDouble(4, region.position.y)
-        insertRegion.setDouble(5, region.position.z)
-        insertRegion.bindNullableInt(6, region.wormholeClassId)
+        insertRegion.setString(2, region.nameEn)
+        insertRegion.setString(3, region.nameZh?.trim()?.takeIf(String::isNotEmpty))
+        insertRegion.setDouble(4, region.position.x)
+        insertRegion.setDouble(5, region.position.y)
+        insertRegion.setDouble(6, region.position.z)
+        insertRegion.bindNullableInt(7, region.wormholeClassId)
         insertRegion.executeUpdate()
     }
 

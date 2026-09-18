@@ -25,8 +25,20 @@ interface StaticDataStrings {
     val downloadAndPrepare: String
     val cancel: String
     val discardPendingUpdate: String
+    val externalDatabaseErrorTitle: String
+    val fatalStaticDataErrorTitle: String
 
     fun comparison(value: SdeUpdateComparison?): String
     fun phase(value: SdeUpdaterPhase, pendingBuild: Long?): String
     fun updateFailed(technicalDetail: String?): String
+    fun startupError(issue: StaticDatabaseStartupIssue, expectedSchema: Int, actualSchema: Int? = null): String
+}
+
+enum class StaticDatabaseStartupIssue {
+    EXTERNAL_DATABASE_MISSING,
+    DATABASE_SCHEMA_OLDER,
+    DATABASE_SCHEMA_NEWER,
+    DATABASE_INVALID,
+    MANAGED_SCHEMA_UPGRADE_FAILED,
+    MANAGED_PATH_INVALID,
 }

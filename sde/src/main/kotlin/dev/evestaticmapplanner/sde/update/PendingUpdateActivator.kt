@@ -2,6 +2,8 @@ package dev.evestaticmapplanner.sde.update
 
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadata
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
+import dev.evestaticmapplanner.data.db.StaticDatabaseSchema
+import dev.evestaticmapplanner.data.db.StaticDatabaseSchemaRequirement
 import dev.evestaticmapplanner.data.db.StaticDatabaseValidator
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -79,7 +81,7 @@ class PendingUpdateActivator(
         val activeExists = Files.isRegularFile(paths.activeDatabase)
         val old = if (activeExists) {
             try {
-                validateDatabase(paths.activeDatabase)
+                validateDatabase(paths.activeDatabase, allowOlderSchema = true)
             } catch (error: Throwable) {
                 return ActivationOutcome.Fatal("Active static database is invalid; refusing replacement: ${error.message}")
             }
@@ -265,7 +267,7 @@ class PendingUpdateActivator(
             publishValidatedCopy(backup, recovering, old)
             if (Files.exists(paths.activeDatabase)) cleanupFile(paths.activeDatabase)
             moveForActivation(recovering, paths.activeDatabase)
-            val restored = validateDatabase(paths.activeDatabase)
+            val restored = validateDatabase(paths.activeDatabase, allowOlderSchema = true)
             check(restored.metadata.sdeBuild == old.metadata.sdeBuild && restored.sha256 == old.sha256) {
                 "Restored database does not match the previous active database"
             }
@@ -311,15 +313,22 @@ class PendingUpdateActivator(
         check(CandidateCounts.from(installed.report) == manifest.counts)
     }
 
-    private fun validateDatabase(path: Path): ValidatedDatabase = ValidatedDatabase(
+    private fun validateDatabase(path: Path, allowOlderSchema: Boolean = false): ValidatedDatabase = ValidatedDatabase(
         path = path,
         metadata = StaticDatabaseMetadataReader.read(path),
-        report = StaticDatabaseValidator.validate(path),
+        report = StaticDatabaseValidator.validate(
+            path,
+            if (allowOlderSchema) {
+                StaticDatabaseSchemaRequirement.CURRENT_OR_OLDER
+            } else {
+                StaticDatabaseSchemaRequirement.CURRENT
+            },
+        ),
         sha256 = FileIntegrity.sha256(path),
     )
 
     private fun validatedOrNull(path: Path): ValidatedDatabase? =
-        if (Files.isRegularFile(path)) runCatching { validateDatabase(path) }.getOrNull() else null
+        if (Files.isRegularFile(path)) runCatching { validateDatabase(path, allowOlderSchema = true) }.getOrNull() else null
 
     private fun publishValidatedCopy(source: Path, target: Path, expected: ValidatedDatabase) {
         Files.createDirectories(target.parent)
@@ -327,7 +336,10 @@ class PendingUpdateActivator(
         cleanupFile(part)
         Files.copy(source, part, StandardCopyOption.COPY_ATTRIBUTES)
         FileChannel.open(part, StandardOpenOption.WRITE).use { it.force(true) }
-        val copy = validateDatabase(part)
+        val copy = validateDatabase(
+            part,
+            allowOlderSchema = expected.metadata.schemaVersion < StaticDatabaseSchema.VERSION,
+        )
         check(copy.sha256 == expected.sha256 && copy.metadata.sdeBuild == expected.metadata.sdeBuild) {
             "Published database copy failed validation"
         }

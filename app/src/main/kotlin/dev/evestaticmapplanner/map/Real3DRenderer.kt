@@ -80,6 +80,8 @@ import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.shared.SharedMarkerContextAction
 import dev.evestaticmapplanner.shared.SharedMarkerContextPresentationBuilder
 import dev.evestaticmapplanner.shared.model.SharedMapState
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.RegionNameResolver
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -542,6 +544,7 @@ internal fun Real3DMapCanvas(
                 cache = renderCache,
                 preferences = state.appPreferences.mapDisplay,
                 emphasis = visualEmphasis,
+                locale = state.appPreferences.uiLocale,
             )
             missionRoutes.forEachIndexed { index, missionRoute ->
                 drawReal3DMissionRoute(missionRoute, MISSION_ROUTE_COLORS[index % MISSION_ROUTE_COLORS.size])
@@ -905,6 +908,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
     emphasis: MapVisualEmphasis,
+    locale: AppLocale,
 ) {
     val regionType = if (semanticMode == SemanticLabelMode.REGION_ONLY) {
         MapLabelType.REGION_PRIMARY
@@ -913,7 +917,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
     }
     frame.regions.forEach { projected ->
         drawCenteredReal3DLabel(
-            projected.anchor.name,
+            real3DRegionLabel(projected.anchor, locale),
             regionType,
             projected.screen,
             textMeasurer,
@@ -950,6 +954,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
         }
     }
 }
+
+internal fun real3DRegionLabel(
+    anchor: dev.evestaticmapplanner.core.map.Real3DHierarchyAnchor,
+    locale: AppLocale,
+): String = RegionNameResolver.resolve(anchor.nameEn, anchor.nameZh, locale)
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCenteredReal3DLabel(
     text: String,

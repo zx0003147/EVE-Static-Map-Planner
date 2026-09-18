@@ -11,11 +11,14 @@ data class ProjectedSystemNode(
 
 data class ProjectedRegion(
     val id: Int,
-    val name: String,
+    val nameEn: String,
+    val nameZh: String?,
     val canonicalAnchor: MapPoint,
     val bounds: MapBounds,
     val projectedMemberCount: Int,
-)
+) {
+    val name: String get() = nameEn
+}
 
 data class ProjectedConstellation(
     val id: Int,
@@ -102,7 +105,8 @@ class MapSceneBuilder {
             positions.takeIf(List<MapPoint>::isNotEmpty)?.let {
                 ProjectedRegion(
                     id = region.id,
-                    name = region.name,
+                    nameEn = region.nameEn,
+                    nameZh = region.nameZh,
                     canonicalAnchor = GeometricMedian.calculate(it),
                     bounds = MapBounds.fromPoints(it),
                     projectedMemberCount = it.size,

@@ -81,6 +81,9 @@ class AppLocalizationTest {
             })
             assertTrue(SdeUpdaterPhase.entries.all { strings.staticData.phase(it, 3_466_501).isNotBlank() })
             assertTrue(SdeUpdateComparison.entries.all { strings.staticData.comparison(it).isNotBlank() })
+            assertTrue(StaticDatabaseStartupIssue.entries.all {
+                strings.staticData.startupError(it, expectedSchema = 2, actualSchema = 1).isNotBlank()
+            })
         }
     }
 
@@ -198,7 +201,7 @@ class AppLocalizationTest {
                 setupTitle, noStaticDataInstalled, title, mode, managedDatabase, externalDatabase, database,
                 currentBuild, latestBuild, lastChecked, status, notInstalled, notChecked, never,
                 externalDatabaseWarning, unknownSize, checkForUpdates, installStaticData, downloadAndPrepare,
-                cancel, discardPendingUpdate,
+                cancel, discardPendingUpdate, externalDatabaseErrorTitle, fatalStaticDataErrorTitle,
             )
         },
         strings.mainShell.run {

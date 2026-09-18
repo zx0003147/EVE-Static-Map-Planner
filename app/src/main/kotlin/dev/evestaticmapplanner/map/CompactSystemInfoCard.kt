@@ -38,6 +38,7 @@ import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.localization.RegionNameResolver
 import dev.evestaticmapplanner.localization.SystemInfoStrings
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EvePanel
@@ -94,6 +95,7 @@ object CompactSystemInfoPresentationBuilder {
         sharedMarkerState: SharedMarkerPresentationState = SharedMarkerPresentationState.Empty,
         localTimeZone: ZoneId = ZoneId.systemDefault(),
         strings: SystemInfoStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).systemInfo,
+        locale: AppLocale = AppLocale.EN_US,
     ): CompactSystemInfoPresentation? {
         val selectedSystemId = state.selectedSystemId ?: return null
         val sharedMarker = sharedMarkerState
@@ -127,7 +129,8 @@ object CompactSystemInfoPresentationBuilder {
         return CompactSystemInfoPresentation(
             selectedSystemId = selectedSystemId,
             title = details.system.name,
-            subtitle = "${strings.regionValue(details.region.name)} · ${strings.constellationValue(details.constellation.name)}",
+            subtitle = "${strings.regionValue(RegionNameResolver.resolve(details.region, locale))} · " +
+                strings.constellationValue(details.constellation.name),
             isLoading = false,
             fields = listOf(
                 CompactInfoField(strings.systemId, details.system.id.toString()),

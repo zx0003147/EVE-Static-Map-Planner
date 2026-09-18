@@ -6,6 +6,8 @@ import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapTransform
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.ProjectedSystemNode
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.RegionNameResolver
 
 enum class MapLabelType {
     SYSTEM,
@@ -61,6 +63,7 @@ object MapLabelPresentationBuilder {
         semanticMode: SemanticLabelMode,
         metricsProvider: MapLabelMetricsProvider,
         emphasizedSystemIds: Collection<Int> = emptySet(),
+        locale: AppLocale = AppLocale.EN_US,
     ): MapLabelPresentation {
         val viewportBounds = transform.visibleWorldBounds()
         val contentBounds = transform.visibleWorldBounds(MAP_CONTENT_CULL_MARGIN_PX)
@@ -69,8 +72,8 @@ object MapLabelPresentationBuilder {
             .map(scene.nodesById::getValue)
             .toList()
         val regionLabels = when (semanticMode.regionLabelRole) {
-            RegionLabelRole.PRIMARY -> primaryRegionLabels(scene, transform, viewportBounds, metricsProvider)
-            RegionLabelRole.BACKGROUND -> backgroundRegionLabels(scene, transform, viewportNodes, metricsProvider)
+            RegionLabelRole.PRIMARY -> primaryRegionLabels(scene, transform, viewportBounds, metricsProvider, locale)
+            RegionLabelRole.BACKGROUND -> backgroundRegionLabels(scene, transform, viewportNodes, metricsProvider, locale)
         }
         val constellationLabels = if (semanticMode == SemanticLabelMode.CONSTELLATION) {
             constellationLabels(scene, transform, viewportBounds, metricsProvider)
@@ -138,13 +141,14 @@ object MapLabelPresentationBuilder {
         transform: MapTransform,
         viewportBounds: MapBounds,
         metricsProvider: MapLabelMetricsProvider,
+        locale: AppLocale,
     ): List<PresentedMapLabel> = scene.regions.asSequence()
         .filter { it.bounds.intersects(viewportBounds) }
         .mapNotNull { region ->
             centeredLabel(
                 type = MapLabelType.REGION_PRIMARY,
                 groupId = region.id,
-                text = region.name,
+                text = RegionNameResolver.resolve(region.nameEn, region.nameZh, locale),
                 worldAnchor = region.canonicalAnchor,
                 transform = transform,
                 metricsProvider = metricsProvider,
@@ -158,6 +162,7 @@ object MapLabelPresentationBuilder {
         transform: MapTransform,
         viewportNodes: List<ProjectedSystemNode>,
         metricsProvider: MapLabelMetricsProvider,
+        locale: AppLocale,
     ): List<PresentedMapLabel> {
         val viewportBounds = transform.visibleWorldBounds()
         val visibleMembersByRegion = viewportNodes.groupBy { it.system.regionId }
@@ -179,7 +184,7 @@ object MapLabelPresentationBuilder {
             centeredLabel(
                 type = MapLabelType.REGION_BACKGROUND,
                 groupId = region.id,
-                text = region.name,
+                text = RegionNameResolver.resolve(region.nameEn, region.nameZh, locale),
                 worldAnchor = anchor,
                 transform = transform,
                 metricsProvider = metricsProvider,

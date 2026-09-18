@@ -3,7 +3,7 @@ package dev.evestaticmapplanner.data.db
 import java.sql.Connection
 
 object StaticDatabaseSchema {
-    const val VERSION = 1
+    const val VERSION = 2
 
     private val createStatements = listOf(
         """
@@ -23,6 +23,7 @@ object StaticDatabaseSchema {
         CREATE TABLE regions (
             region_id INTEGER PRIMARY KEY,
             name_en TEXT NOT NULL CHECK(length(trim(name_en)) > 0),
+            name_zh TEXT CHECK(name_zh IS NULL OR length(trim(name_zh)) > 0),
             position_x REAL NOT NULL,
             position_y REAL NOT NULL,
             position_z REAL NOT NULL,

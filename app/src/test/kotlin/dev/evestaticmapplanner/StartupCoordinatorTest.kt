@@ -8,6 +8,10 @@ import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.data.db.SourceFileAudit
 import dev.evestaticmapplanner.data.db.StaticDatabaseBuildSession
 import dev.evestaticmapplanner.data.db.StaticDatabaseSchema
+import dev.evestaticmapplanner.data.db.SqliteConnectionFactory
+import dev.evestaticmapplanner.localization.AppLocale
+import dev.evestaticmapplanner.localization.AppStringsCatalog
+import dev.evestaticmapplanner.sde.update.ManagedSchemaUpgradeOutcome
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createTempDirectory
@@ -60,6 +64,92 @@ class StartupCoordinatorTest {
         assertEquals(database.toAbsolutePath().normalize(), ready.configuration.database.path)
     }
 
+    @Test
+    fun `external v1 is rejected before repository access and file is unchanged`() {
+        val database = createTempDirectory("external-v1").resolve("static.db")
+        buildFixtureDatabase(database, 42)
+        downgradeToV1(database)
+        val before = Files.readAllBytes(database)
+
+        val resolution = assertIs<StartupResolution.ExternalPathError>(
+            StartupCoordinator().resolve(AppArguments(databasePath = database)),
+        )
+
+        assertTrue(before.contentEquals(Files.readAllBytes(database)))
+        assertTrue(resolution.message.resolve(AppStringsCatalog.forLocale(AppLocale.EN_US)).contains("schema v2"))
+        assertTrue(resolution.message.resolve(AppStringsCatalog.forLocale(AppLocale.ZH_CN)).contains("schema v2"))
+    }
+
+    @Test
+    fun `external newer schema is rejected without mutation`() {
+        val database = createTempDirectory("external-v3").resolve("static.db")
+        buildFixtureDatabase(database, 42)
+        setSchemaVersion(database, 3)
+        val before = Files.readAllBytes(database)
+
+        val resolution = assertIs<StartupResolution.ExternalPathError>(
+            StartupCoordinator().resolve(AppArguments(databasePath = database)),
+        )
+
+        assertTrue(before.contentEquals(Files.readAllBytes(database)))
+        assertTrue(
+            resolution.message.resolve(AppStringsCatalog.forLocale(AppLocale.EN_US)).contains("newer application/schema"),
+        )
+    }
+
+    @Test
+    fun `managed schema mismatch triggers upgrade even when SDE build is unchanged`() {
+        val local = createTempDirectory("managed-v1")
+        val database = local.resolve("EVE Static Map Planner/data/static.db")
+        buildFixtureDatabase(database, 77)
+        setSchemaVersion(database, 1)
+        var upgradeCalls = 0
+        val coordinator = StartupCoordinator(schemaUpgrade = {
+            upgradeCalls++
+            setSchemaVersion(database, StaticDatabaseSchema.VERSION)
+            ManagedSchemaUpgradeOutcome.Upgraded(1, StaticDatabaseSchema.VERSION, 77, usedCachedArchive = true)
+        })
+
+        val ready = assertIs<StartupResolution.Ready>(
+            coordinator.resolve(
+                AppArguments(),
+                systemProperties = emptyMap(),
+                environment = mapOf("LOCALAPPDATA" to local.toString()),
+                osName = "Windows 11",
+                userHome = local,
+            ),
+        )
+
+        assertEquals(1, upgradeCalls)
+        assertTrue(ready.configuration.notice.orEmpty().contains("v1 to v2"))
+    }
+
+    @Test
+    fun `managed newer schema is refused without invoking rebuild`() {
+        val local = createTempDirectory("managed-v3")
+        val database = local.resolve("EVE Static Map Planner/data/static.db")
+        buildFixtureDatabase(database, 77)
+        setSchemaVersion(database, 3)
+        var upgradeCalls = 0
+        val coordinator = StartupCoordinator(schemaUpgrade = {
+            upgradeCalls++
+            error("must not rebuild a newer database")
+        })
+
+        val resolution = assertIs<StartupResolution.Fatal>(
+            coordinator.resolve(
+                AppArguments(),
+                systemProperties = emptyMap(),
+                environment = mapOf("LOCALAPPDATA" to local.toString()),
+                osName = "Windows 11",
+                userHome = local,
+            ),
+        )
+
+        assertEquals(0, upgradeCalls)
+        assertTrue(resolution.message.resolve(AppStringsCatalog.forLocale(AppLocale.EN_US)).contains("newer"))
+    }
+
     private fun resolveManaged(local: Path): StartupResolution = StartupCoordinator().resolve(
         AppArguments(),
         systemProperties = emptyMap(),
@@ -67,6 +157,24 @@ class StartupCoordinatorTest {
         osName = "Windows 11",
         userHome = local,
     )
+}
+
+private fun setSchemaVersion(path: Path, version: Int) {
+    SqliteConnectionFactory.open(path).use { connection ->
+        connection.prepareStatement("UPDATE metadata SET value = ? WHERE key = 'schema_version'").use { statement ->
+            statement.setString(1, version.toString())
+            statement.executeUpdate()
+        }
+    }
+}
+
+private fun downgradeToV1(path: Path) {
+    SqliteConnectionFactory.open(path).use { connection ->
+        connection.createStatement().use { statement ->
+            statement.execute("ALTER TABLE regions DROP COLUMN name_zh")
+        }
+    }
+    setSchemaVersion(path, 1)
 }
 
 private fun buildFixtureDatabase(path: Path, build: Long) {

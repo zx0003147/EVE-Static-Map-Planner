@@ -13,11 +13,41 @@ import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.UniversePosition
+import dev.evestaticmapplanner.localization.AppLocale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class MapLabelPresentationTest {
+    @Test
+    fun `region labels switch English Chinese English without changing identity or anchors`() {
+        val systems = listOf(
+            testSystem(SystemSpec(1, -1.0, 0.0, 1, 10)),
+            testSystem(SystemSpec(2, 1.0, 0.0, 1, 10)),
+        )
+        val scene = MapSceneBuilder().build(
+            StaticMapData(
+                systems = systems,
+                connections = emptyList(),
+                regions = listOf(region(1, "Delve", "绝地之域")),
+                constellations = listOf(constellation(10, 1)),
+            ),
+            OfficialPosition2DProjection,
+        )
+        val transform = transform(centerX = 0.0)
+
+        val english = present(scene, transform, SemanticLabelMode.REGION_ONLY, locale = AppLocale.EN_US)
+        val chinese = present(scene, transform, SemanticLabelMode.REGION_ONLY, locale = AppLocale.ZH_CN)
+        val englishAgain = present(scene, transform, SemanticLabelMode.REGION_ONLY, locale = AppLocale.EN_US)
+
+        assertEquals(listOf("Delve"), english.regionLabels.map { it.text })
+        assertEquals(listOf("绝地之域"), chinese.regionLabels.map { it.text })
+        assertEquals(listOf("Delve"), englishAgain.regionLabels.map { it.text })
+        assertEquals(english.regionLabels.map { it.groupId }, chinese.regionLabels.map { it.groupId })
+        assertEquals(english.regionLabels.map { it.worldAnchor }, chinese.regionLabels.map { it.worldAnchor })
+        assertEquals(1, chinese.regionLabels.size)
+    }
+
     @Test
     fun `semantic modes expose only their primary hierarchy labels`() {
         val scene = sceneOf(
@@ -248,7 +278,8 @@ class MapLabelPresentationTest {
         transform: MapTransform,
         mode: SemanticLabelMode,
         emphasizedSystemIds: Collection<Int> = emptySet(),
-    ) = MapLabelPresentationBuilder.build(scene, transform, mode, FIXED_METRICS, emphasizedSystemIds)
+        locale: AppLocale = AppLocale.EN_US,
+    ) = MapLabelPresentationBuilder.build(scene, transform, mode, FIXED_METRICS, emphasizedSystemIds, locale)
 
     private fun sceneOf(vararg specs: SystemSpec): dev.evestaticmapplanner.core.map.ProjectedMapScene {
         val systems = specs.map { testSystem(it) }
@@ -306,11 +337,12 @@ class MapLabelPresentationTest {
             wormholeClassId = null,
         )
 
-        private fun region(id: Int) = Region(
+        private fun region(id: Int, nameEn: String = "Region $id", nameZh: String? = null) = Region(
             id = id,
-            name = "Region $id",
+            nameEn = nameEn,
             position = UniversePosition(0.0, 0.0, 0.0),
             wormholeClassId = null,
+            nameZh = nameZh,
         )
 
         private fun constellation(id: Int, regionId: Int) = Constellation(

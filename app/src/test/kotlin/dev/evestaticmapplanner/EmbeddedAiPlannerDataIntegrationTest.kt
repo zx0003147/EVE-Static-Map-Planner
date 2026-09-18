@@ -546,7 +546,7 @@ private class RecordingMapControlService(
 
 private fun createJitaFixture(database: java.nio.file.Path) {
     StaticDatabaseBuildSession.create(database).use { session ->
-        session.insert(Region(THE_FORGE_REGION_ID, "The Forge", UniversePosition(0.0, 0.0, 0.0), null))
+        session.insert(Region(THE_FORGE_REGION_ID, "The Forge", UniversePosition(0.0, 0.0, 0.0), null, "伏尔戈"))
         session.insert(
             Constellation(
                 KIMOTORO_CONSTELLATION_ID,

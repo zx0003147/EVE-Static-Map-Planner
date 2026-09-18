@@ -69,13 +69,26 @@ class CompactSystemInfoCardTest {
                 RoutePlannerUiState(),
                 JumpOverlayUiState(),
                 strings = AppStringsCatalog.forLocale(AppLocale.ZH_CN).systemInfo,
+                locale = AppLocale.ZH_CN,
+            ),
+        )
+        val englishAgain = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state,
+                RoutePlannerUiState(),
+                JumpOverlayUiState(),
+                strings = AppStringsCatalog.forLocale(AppLocale.EN_US).systemInfo,
+                locale = AppLocale.EN_US,
             ),
         )
 
         assertEquals("1DQ1-A", english.title)
         assertEquals(english.title, chinese.title)
         assertEquals("Region: Delve · Constellation: 1-A81R", english.subtitle)
-        assertEquals("星域：Delve · 星座：1-A81R", chinese.subtitle)
+        assertEquals("星域：绝地之域 · 星座：1-A81R", chinese.subtitle)
+        assertEquals(english.subtitle, englishAgain.subtitle)
+        assertEquals(english.selectedSystemId, chinese.selectedSystemId)
+        assertEquals(english.selectedSystemId, englishAgain.selectedSystemId)
         assertEquals(listOf("System ID", "Security Status", "Stargates", "Ansiblex", "Jump Coverage"), english.fields.map { it.label })
         assertEquals(listOf("星系 ID", "安全等级", "星门", "Ansiblex", "跳跃覆盖"), chinese.fields.map { it.label })
         assertEquals(english.fields.map { it.value }, chinese.fields.map { it.value })
@@ -404,7 +417,7 @@ class CompactSystemInfoCardTest {
         wormholeClassId = null,
     )
 
-    private fun region() = Region(1, "Delve", UniversePosition(0.0, 0.0, 0.0), null)
+    private fun region() = Region(1, "Delve", UniversePosition(0.0, 0.0, 0.0), null, "绝地之域")
 
     private fun constellation() = Constellation(10, 1, "1-A81R", UniversePosition(0.0, 0.0, 0.0), null)
 

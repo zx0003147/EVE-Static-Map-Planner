@@ -78,9 +78,10 @@ class SqliteUniverseRepository(
 
 internal fun ResultSet.toRegion(): Region = Region(
     id = getInt("region_id"),
-    name = getString("name_en"),
+    nameEn = getString("name_en"),
     position = position(),
     wormholeClassId = nullableInt("wormhole_class_id"),
+    nameZh = getString("name_zh")?.trim()?.takeIf(String::isNotEmpty),
 )
 
 internal fun ResultSet.toConstellation(): Constellation = Constellation(

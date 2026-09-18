@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization.en
 
 import dev.evestaticmapplanner.localization.StaticDataStrings
+import dev.evestaticmapplanner.localization.StaticDatabaseStartupIssue
 import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
 import dev.evestaticmapplanner.sde.update.SdeUpdaterPhase
 
@@ -26,6 +27,8 @@ internal object EnglishStaticDataStrings : StaticDataStrings {
     override val downloadAndPrepare = "Download & Prepare"
     override val cancel = "Cancel"
     override val discardPendingUpdate = "Discard Pending Update"
+    override val externalDatabaseErrorTitle = "External static database error"
+    override val fatalStaticDataErrorTitle = "Fatal static-data error"
 
     override fun comparison(value: SdeUpdateComparison?): String = when (value) {
         SdeUpdateComparison.INSTALL_AVAILABLE -> "Install available"
@@ -57,4 +60,26 @@ internal object EnglishStaticDataStrings : StaticDataStrings {
     override fun updateFailed(technicalDetail: String?): String =
         technicalDetail?.takeIf(String::isNotBlank)?.let { "Static data update failed.\n$it" }
             ?: "Static data update failed."
+
+    override fun startupError(
+        issue: StaticDatabaseStartupIssue,
+        expectedSchema: Int,
+        actualSchema: Int?,
+    ): String = when (issue) {
+        StaticDatabaseStartupIssue.EXTERNAL_DATABASE_MISSING ->
+            "The external static database does not exist or is not a regular file."
+        StaticDatabaseStartupIssue.DATABASE_SCHEMA_OLDER ->
+            "Database version is incompatible. This application requires static DB schema v$expectedSchema" +
+                actualSchema?.let { ", but the database uses v$it" }.orEmpty() +
+                ". Rebuild the database with the current application."
+        StaticDatabaseStartupIssue.DATABASE_SCHEMA_NEWER ->
+            "This database was created by a newer application/schema and cannot be opened safely."
+        StaticDatabaseStartupIssue.DATABASE_INVALID ->
+            "The static database is invalid or incompatible."
+        StaticDatabaseStartupIssue.MANAGED_SCHEMA_UPGRADE_FAILED ->
+            "The managed static database requires an upgrade, but the rebuild failed. " +
+                "The previous database was preserved; check the SDE cache or network and restart to retry."
+        StaticDatabaseStartupIssue.MANAGED_PATH_INVALID ->
+            "The managed static database location is invalid."
+    }
 }

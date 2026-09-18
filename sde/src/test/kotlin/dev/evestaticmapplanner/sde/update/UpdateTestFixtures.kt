@@ -63,6 +63,19 @@ internal object UpdateTestFixtures {
         Files.move(temporary, paths.activeDatabase, StandardCopyOption.REPLACE_EXISTING)
     }
 
+    fun installLegacyV1(paths: ManagedStaticDataPaths, build: Long) {
+        installOld(paths, build)
+        dev.evestaticmapplanner.data.db.SqliteConnectionFactory.open(paths.activeDatabase).use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute("ALTER TABLE regions DROP COLUMN name_zh")
+                statement.execute(
+                    "UPDATE metadata SET value = '1' WHERE key = 'schema_version'",
+                )
+                statement.execute("PRAGMA user_version = 1")
+            }
+        }
+    }
+
     fun assertBuild(path: Path, build: Long) {
         check(StaticDatabaseMetadataReader.read(path).sdeBuild == build)
         StaticDatabaseValidator.validate(path)

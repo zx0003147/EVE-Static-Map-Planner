@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization.zhcn
 
 import dev.evestaticmapplanner.localization.StaticDataStrings
+import dev.evestaticmapplanner.localization.StaticDatabaseStartupIssue
 import dev.evestaticmapplanner.sde.update.SdeUpdateComparison
 import dev.evestaticmapplanner.sde.update.SdeUpdaterPhase
 
@@ -26,6 +27,8 @@ internal object SimplifiedChineseStaticDataStrings : StaticDataStrings {
     override val downloadAndPrepare = "下载并准备"
     override val cancel = "取消"
     override val discardPendingUpdate = "丢弃待启用更新"
+    override val externalDatabaseErrorTitle = "外部静态数据库错误"
+    override val fatalStaticDataErrorTitle = "严重静态数据错误"
 
     override fun comparison(value: SdeUpdateComparison?): String = when (value) {
         SdeUpdateComparison.INSTALL_AVAILABLE -> "可安装"
@@ -57,4 +60,22 @@ internal object SimplifiedChineseStaticDataStrings : StaticDataStrings {
     override fun updateFailed(technicalDetail: String?): String =
         technicalDetail?.takeIf(String::isNotBlank)?.let { "静态数据更新失败。\n$it" }
             ?: "静态数据更新失败。"
+
+    override fun startupError(
+        issue: StaticDatabaseStartupIssue,
+        expectedSchema: Int,
+        actualSchema: Int?,
+    ): String = when (issue) {
+        StaticDatabaseStartupIssue.EXTERNAL_DATABASE_MISSING -> "外部静态数据库不存在或不是常规文件。"
+        StaticDatabaseStartupIssue.DATABASE_SCHEMA_OLDER ->
+            "数据库版本不兼容。当前应用需要静态数据库 schema v$expectedSchema" +
+                actualSchema?.let { "，但该数据库为 v$it" }.orEmpty() +
+                "。请使用当前版本重新构建数据库。"
+        StaticDatabaseStartupIssue.DATABASE_SCHEMA_NEWER ->
+            "该数据库由更新版本的应用或 schema 创建，无法安全打开。"
+        StaticDatabaseStartupIssue.DATABASE_INVALID -> "静态数据库无效或不兼容。"
+        StaticDatabaseStartupIssue.MANAGED_SCHEMA_UPGRADE_FAILED ->
+            "托管静态数据库需要升级，但重建失败。原数据库已保留；请检查 SDE 缓存或网络后重启重试。"
+        StaticDatabaseStartupIssue.MANAGED_PATH_INVALID -> "托管静态数据库位置无效。"
+    }
 }

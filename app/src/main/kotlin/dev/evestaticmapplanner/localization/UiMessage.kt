@@ -93,3 +93,12 @@ data class VoiceFailureUiMessage(
 data class StaticDataUpdateFailedUiMessage(val technicalDetail: String? = null) : UiMessage {
     override fun resolve(strings: AppStrings): String = strings.staticData.updateFailed(technicalDetail)
 }
+
+data class StaticDatabaseStartupUiMessage(
+    val issue: StaticDatabaseStartupIssue,
+    val expectedSchema: Int,
+    val actualSchema: Int? = null,
+) : UiMessage {
+    override fun resolve(strings: AppStrings): String =
+        strings.staticData.startupError(issue, expectedSchema, actualSchema)
+}

@@ -20,10 +20,13 @@ data class Real3DWorldEdge(
 
 data class Real3DHierarchyAnchor(
     val id: Int,
-    val name: String,
+    val nameEn: String,
     val position: MapPoint3,
     val memberCount: Int,
-)
+    val nameZh: String? = null,
+) {
+    val name: String get() = nameEn
+}
 
 class Real3DStaticGeometry private constructor(
     val nodes: List<Real3DWorldNode>,
@@ -63,7 +66,13 @@ class Real3DStaticGeometry private constructor(
             )
             val regions = scene.regions.mapNotNull { region ->
                 positionsByRegion[region.id]?.takeIf(List<MapPoint3>::isNotEmpty)?.let { positions ->
-                    Real3DHierarchyAnchor(region.id, region.name, GeometricMedian3D.calculate(positions), positions.size)
+                    Real3DHierarchyAnchor(
+                        region.id,
+                        region.nameEn,
+                        GeometricMedian3D.calculate(positions),
+                        positions.size,
+                        region.nameZh,
+                    )
                 }
             }
             val constellations = scene.constellations.mapNotNull { constellation ->

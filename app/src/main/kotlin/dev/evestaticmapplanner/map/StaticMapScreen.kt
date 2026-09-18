@@ -253,6 +253,7 @@ internal fun StaticMapScreen(
                             systemInfoState,
                             sharedMarkerState,
                             strings = strings.systemInfo,
+                            locale = state.appPreferences.uiLocale,
                         ),
                         onCanvasSizeChanged = viewModel::onCanvasSizeChanged,
                         onZoom = viewModel::zoomAt,

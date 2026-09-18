@@ -39,11 +39,14 @@ class SdeImporterTest {
         val details = assertNotNull(repository.getSystemDetails(30000001))
         assertEquals("Fixture Alpha", details.system.name)
         assertEquals("Fixture Region One", details.region.name)
+        assertEquals("Fixture Region One", details.region.nameEn)
+        assertEquals("测试星域一", details.region.nameZh)
         assertEquals("Fixture Constellation One", details.constellation.name)
         assertEquals(1, details.stargateCount)
         assertEquals(30000002, details.stargates.single().toSystemId)
         assertEquals(50000002, details.stargates.single().destinationGateId)
         assertEquals(30000001, repository.findSystemByName("fixture alpha")?.id)
+        assertEquals(null, repository.getRegion(10000002)?.nameZh)
 
         SqliteConnectionFactory.open(output, queryOnly = true).use { connection ->
             connection.prepareStatement("SELECT value FROM metadata WHERE key = ?").use { statement ->
@@ -57,6 +60,13 @@ class SdeImporterTest {
                 statement.executeQuery("SELECT COUNT(*) FROM source_files").use { result ->
                     assertTrue(result.next())
                     assertEquals(4, result.getInt(1))
+                }
+            }
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT name_en, name_zh FROM regions WHERE region_id = 10000001").use { result ->
+                    assertTrue(result.next())
+                    assertEquals("Fixture Region One", result.getString("name_en"))
+                    assertEquals("测试星域一", result.getString("name_zh"))
                 }
             }
         }
@@ -74,6 +84,22 @@ class SdeImporterTest {
         }
         assertEquals("mapRegions.jsonl", error.sourceFile.fileName.toString())
         assertEquals(2, error.lineNumber)
+    }
+
+    @Test
+    fun `blank Chinese region name imports as null`() = withFixture { fixture, output ->
+        val regions = fixture.resolve("mapRegions.jsonl")
+        Files.writeString(
+            regions,
+            Files.readString(regions).replace(
+                "\"en\":\"Fixture Region Two\"",
+                "\"en\":\"Fixture Region Two\",\"zh\":\"   \"",
+            ),
+        )
+
+        SdeImporter(fixedClock).import(SdeImportRequest(fixture, output, "fixture-build"))
+
+        assertEquals(null, SqliteUniverseRepository(output).getRegion(10000002)?.nameZh)
     }
 
     @Test

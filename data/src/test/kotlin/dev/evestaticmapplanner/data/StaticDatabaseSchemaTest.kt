@@ -8,6 +8,8 @@ import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.data.db.SqliteConnectionFactory
 import dev.evestaticmapplanner.data.db.StaticDatabaseBuildSession
 import dev.evestaticmapplanner.data.db.StaticDatabaseSchema
+import dev.evestaticmapplanner.data.db.StaticDatabaseSchemaCompatibility
+import dev.evestaticmapplanner.data.db.StaticDatabaseSchemaCompatibilityInspector
 import dev.evestaticmapplanner.data.repository.SqliteUniverseRepository
 import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
 import dev.evestaticmapplanner.data.repository.SqliteSystemSearchRepository
@@ -63,8 +65,8 @@ class StaticDatabaseSchemaTest {
         SqliteConnectionFactory.open(database).use { connection ->
             StaticDatabaseSchema.create(connection)
             connection.createStatement().use { statement ->
-                statement.execute("INSERT INTO regions VALUES (1, 'One', 0.0, 0.0, 0.0, NULL)")
-                statement.execute("INSERT INTO regions VALUES (2, 'Two', 0.0, 0.0, 0.0, NULL)")
+                statement.execute("INSERT INTO regions VALUES (1, 'One', NULL, 0.0, 0.0, 0.0, NULL)")
+                statement.execute("INSERT INTO regions VALUES (2, 'Two', NULL, 0.0, 0.0, 0.0, NULL)")
                 statement.execute("INSERT INTO constellations VALUES (10, 1, 'C', 0.0, 0.0, 0.0, NULL)")
                 assertFailsWith<SQLException> {
                     statement.execute(
@@ -94,7 +96,7 @@ class StaticDatabaseSchemaTest {
     @Test
     fun `repository reads canonical system details`() = withTempDatabase { database ->
         StaticDatabaseBuildSession.create(database).use { session ->
-            session.insert(Region(1, "Region", UniversePosition(1.0, 2.0, 3.0), null))
+            session.insert(Region(1, "Region", UniversePosition(1.0, 2.0, 3.0), null, "星域"))
             session.insert(Constellation(10, 1, "Constellation", UniversePosition(4.0, 5.0, 6.0), null))
             session.insert(
                 SolarSystem(
@@ -117,6 +119,8 @@ class StaticDatabaseSchemaTest {
         val details = assertNotNull(SqliteUniverseRepository(database).getSystemDetails(100))
         assertEquals("System", details.system.name)
         assertEquals("Region", details.region.name)
+        assertEquals("Region", details.region.nameEn)
+        assertEquals("星域", details.region.nameZh)
         assertEquals("Constellation", details.constellation.name)
         assertEquals(0, details.stargateCount)
     }
@@ -158,7 +162,7 @@ class StaticDatabaseSchemaTest {
         assertEquals(1, map.connections.size)
         assertEquals(100, map.connections.single().firstSystemId)
         assertEquals(200, map.connections.single().secondSystemId)
-        assertEquals(1, StaticDatabaseSchema.VERSION)
+        assertEquals(2, StaticDatabaseSchema.VERSION)
     }
 
     @Test
@@ -169,6 +173,53 @@ class StaticDatabaseSchemaTest {
 
         assertTrue(error.message.orEmpty().contains(database.toAbsolutePath().toString()))
         assertTrue(!Files.exists(database))
+    }
+
+    @Test
+    fun `schema v2 keeps canonical English required and Chinese nullable`() = withTempDatabase { database ->
+        SqliteConnectionFactory.open(database).use { connection ->
+            StaticDatabaseSchema.create(connection)
+            val columns = connection.createStatement().use { statement ->
+                statement.executeQuery("PRAGMA table_info('regions')").use { result ->
+                    buildMap {
+                        while (result.next()) put(result.getString("name"), result.getInt("notnull"))
+                    }
+                }
+            }
+            assertEquals(1, columns["name_en"])
+            assertEquals(0, columns["name_zh"])
+        }
+    }
+
+    @Test
+    fun `schema compatibility distinguishes current older newer missing and invalid metadata`() = withTempDatabase { database ->
+        SqliteConnectionFactory.open(database).use { connection ->
+            StaticDatabaseSchema.create(connection)
+            connection.createStatement().use { statement ->
+                statement.execute("INSERT INTO metadata(key, value) VALUES ('schema_version', '2')")
+            }
+        }
+        assertTrue(StaticDatabaseSchemaCompatibilityInspector.inspect(database) is StaticDatabaseSchemaCompatibility.Compatible)
+
+        setSchemaVersion(database, "1")
+        assertTrue(StaticDatabaseSchemaCompatibilityInspector.inspect(database) is StaticDatabaseSchemaCompatibility.Older)
+        setSchemaVersion(database, "3")
+        assertTrue(StaticDatabaseSchemaCompatibilityInspector.inspect(database) is StaticDatabaseSchemaCompatibility.Newer)
+        setSchemaVersion(database, "invalid")
+        assertTrue(StaticDatabaseSchemaCompatibilityInspector.inspect(database) is StaticDatabaseSchemaCompatibility.Invalid)
+        SqliteConnectionFactory.open(database).use { connection ->
+            connection.createStatement().use { it.execute("DELETE FROM metadata WHERE key = 'schema_version'") }
+        }
+        assertTrue(StaticDatabaseSchemaCompatibilityInspector.inspect(database) is StaticDatabaseSchemaCompatibility.Invalid)
+    }
+}
+
+private fun setSchemaVersion(database: java.nio.file.Path, value: String) {
+    SqliteConnectionFactory.open(database).use { connection ->
+        connection.prepareStatement("UPDATE metadata SET value = ? WHERE key = 'schema_version'").use { statement ->
+            statement.setString(1, value)
+            statement.executeUpdate()
+        }
     }
 }
 

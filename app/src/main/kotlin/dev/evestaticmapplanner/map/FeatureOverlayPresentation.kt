@@ -736,7 +736,10 @@ private fun stableRegionLabelExclusions(
     StableRegionLabelExclusion(
         centerXCells = (region.canonicalAnchor.x - grid.origin.x) / grid.cellSize,
         centerYCells = (region.canonicalAnchor.y - grid.origin.y) / grid.cellSize,
-        halfWidthCells = (REGION_LABEL_BASE_HALF_WIDTH_CELLS + region.name.length * REGION_LABEL_CHARACTER_WIDTH_CELLS)
+        halfWidthCells = (
+            REGION_LABEL_BASE_HALF_WIDTH_CELLS +
+                maxOf(region.nameEn.length, region.nameZh?.length ?: 0) * REGION_LABEL_CHARACTER_WIDTH_CELLS
+            )
             .coerceIn(REGION_LABEL_MIN_HALF_WIDTH_CELLS, REGION_LABEL_MAX_HALF_WIDTH_CELLS),
         halfHeightCells = REGION_LABEL_HALF_HEIGHT_CELLS,
     )

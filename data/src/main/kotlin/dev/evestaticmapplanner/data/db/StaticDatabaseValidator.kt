@@ -16,6 +16,11 @@ data class DatabaseValidationReport(
     val counts: StaticDataCounts,
 )
 
+enum class StaticDatabaseSchemaRequirement {
+    CURRENT,
+    CURRENT_OR_OLDER,
+}
+
 object StaticDatabaseValidator {
     private val requiredMetadata = setOf(
         "schema_version",
@@ -33,10 +38,33 @@ object StaticDatabaseValidator {
         "idx_stargates_to_system",
     )
 
-    fun validate(databasePath: Path): DatabaseValidationReport =
-        SqliteConnectionFactory.open(databasePath, queryOnly = true).use(::validate)
+    fun validate(
+        databasePath: Path,
+        schemaRequirement: StaticDatabaseSchemaRequirement = StaticDatabaseSchemaRequirement.CURRENT,
+    ): DatabaseValidationReport =
+        SqliteConnectionFactory.open(databasePath, queryOnly = true).use { validate(it, schemaRequirement) }
 
-    fun validate(connection: Connection): DatabaseValidationReport {
+    fun validate(
+        connection: Connection,
+        schemaRequirement: StaticDatabaseSchemaRequirement = StaticDatabaseSchemaRequirement.CURRENT,
+    ): DatabaseValidationReport {
+        val compatibility = StaticDatabaseSchemaCompatibilityInspector.inspect(connection)
+        when (compatibility) {
+            is StaticDatabaseSchemaCompatibility.Compatible -> validateCurrentRegionColumns(connection)
+            is StaticDatabaseSchemaCompatibility.Older -> check(
+                schemaRequirement == StaticDatabaseSchemaRequirement.CURRENT_OR_OLDER,
+            ) {
+                "Static database schema ${compatibility.actualVersion} is older than required schema " +
+                    StaticDatabaseSchema.VERSION
+            }
+            is StaticDatabaseSchemaCompatibility.Newer -> error(
+                "Static database schema ${compatibility.actualVersion} is newer than supported schema " +
+                    StaticDatabaseSchema.VERSION,
+            )
+            is StaticDatabaseSchemaCompatibility.Invalid -> error(
+                "Static database schema metadata is invalid: ${compatibility.reason}",
+            )
+        }
         val integrity = connection.createStatement().use { statement ->
             statement.executeQuery("PRAGMA integrity_check").use { result ->
                 buildList {
@@ -105,6 +133,20 @@ object StaticDatabaseValidator {
         check(brokenGatePairs.isEmpty()) { "Broken reciprocal stargate pairs: $brokenGatePairs" }
 
         return DatabaseValidationReport(integrity, foreignKeyViolations, counts)
+    }
+
+    private fun validateCurrentRegionColumns(connection: Connection) {
+        val columns = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA table_info('regions')").use { result ->
+                buildMap {
+                    while (result.next()) put(result.getString("name"), result.getInt("notnull") != 0)
+                }
+            }
+        }
+        check(columns["name_en"] == true) { "regions.name_en must exist and be NOT NULL" }
+        check(columns.containsKey("name_zh") && columns["name_zh"] == false) {
+            "regions.name_zh must exist and be nullable"
+        }
     }
 }
 

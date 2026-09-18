@@ -62,6 +62,7 @@ import dev.evestaticmapplanner.feature.api.CharacterTrackingPriority
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
+import dev.evestaticmapplanner.data.db.StaticDatabaseSchema
 import dev.evestaticmapplanner.data.db.UserDatabase
 import dev.evestaticmapplanner.data.repository.SqliteAnsiblexRepository
 import dev.evestaticmapplanner.data.repository.SqliteStaticMapRepository
@@ -93,6 +94,8 @@ import dev.evestaticmapplanner.jump.JumpOverlayViewModel
 import dev.evestaticmapplanner.localization.AppLocalizationState
 import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.localization.ProvideAppLocalization
+import dev.evestaticmapplanner.localization.StaticDatabaseStartupIssue
+import dev.evestaticmapplanner.localization.StaticDatabaseStartupUiMessage
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.map.SharedMarkerPresentationAdapter
 import dev.evestaticmapplanner.map.SharedMarkerPresentationState
@@ -198,7 +201,13 @@ fun main(arguments: Array<String>) {
         StartupCoordinator().resolve(AppArguments.parse(arguments))
     }.getOrElse {
         AppDiagnostics.fatal("Startup configuration resolution failed", it)
-        StartupResolution.Fatal(it.message ?: "Unable to resolve startup configuration")
+        StartupResolution.Fatal(
+            StaticDatabaseStartupUiMessage(
+                StaticDatabaseStartupIssue.DATABASE_INVALID,
+                StaticDatabaseSchema.VERSION,
+            ),
+            it.message ?: "Unable to resolve startup configuration",
+        )
     }
     logStartupResolution(initial)
 
@@ -249,9 +258,12 @@ fun main(arguments: Array<String>) {
                             onInstalled = { startup = StartupResolution.Ready(resolution.configuration) },
                         )
                         is StartupResolution.ExternalPathError -> StartupError(
-                            "External static database error\n\n${resolution.message}\n\n${resolution.path}",
+                            "${strings.staticData.externalDatabaseErrorTitle}\n\n" +
+                                "${resolution.message.resolve(strings)}\n\n${resolution.path}",
                         )
-                        is StartupResolution.Fatal -> StartupError("Fatal static-data error\n\n${resolution.message}")
+                        is StartupResolution.Fatal -> StartupError(
+                            "${strings.staticData.fatalStaticDataErrorTitle}\n\n${resolution.message.resolve(strings)}",
+                        )
                     }
                 }
             }
@@ -1342,7 +1354,9 @@ private fun logStartupResolution(resolution: StartupResolution) {
                 "userSource=${resolution.configuration.userDatabase.source}",
         )
         is StartupResolution.Bootstrap -> AppDiagnostics.info("Startup requires managed static-data bootstrap")
-        is StartupResolution.ExternalPathError -> AppDiagnostics.warning("External static database validation failed: ${resolution.message}")
-        is StartupResolution.Fatal -> AppDiagnostics.fatal("Fatal startup state: ${resolution.message}")
+        is StartupResolution.ExternalPathError -> AppDiagnostics.warning(
+            "External static database validation failed: ${resolution.diagnostic}",
+        )
+        is StartupResolution.Fatal -> AppDiagnostics.fatal("Fatal startup state: ${resolution.diagnostic}")
     }
 }
