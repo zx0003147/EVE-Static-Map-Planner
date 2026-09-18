@@ -16,6 +16,9 @@ import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppLocaleDetector
 import dev.evestaticmapplanner.localization.SystemLocaleSource
+import dev.evestaticmapplanner.shortcut.KeyboardShortcut
+import dev.evestaticmapplanner.shortcut.ShortcutKey
+import dev.evestaticmapplanner.shortcut.ShortcutModifier
 import java.nio.file.Files
 import java.util.Locale
 import kotlin.io.path.createTempDirectory
@@ -96,7 +99,7 @@ class PreferencesStoreTest {
 
             store.save(migrated)
             val reloaded = store.load()
-            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=7" })
+            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=8" })
             assertEquals(AiCredentialRef("openrouter"), reloaded.aiProvider?.credentialRef)
             assertEquals(active, reloaded.aiProviderProfiles[AiProviderType.OPENROUTER])
         }
@@ -228,7 +231,7 @@ class PreferencesStoreTest {
     }
 
     @Test
-    fun `save writes version seven and a new store reloads all values`() = withTemporaryDirectory { root ->
+    fun `save writes version eight and a new store reloads all values`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val expected = AppPreferences(
             mapDisplay = MapDisplayPreferences(
@@ -267,7 +270,7 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=7" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=8" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
@@ -580,7 +583,7 @@ class PreferencesStoreTest {
         val savedText = Files.readString(path)
         val restarted = PropertiesPreferencesStore(path).load()
 
-        assertTrue(savedText.lineSequence().any { it == "settings.version=7" })
+        assertTrue(savedText.lineSequence().any { it == "settings.version=8" })
         assertTrue(savedText.lineSequence().any { it == "ui.locale=zh-CN" })
         assertEquals(expected, restarted)
     }
@@ -614,6 +617,53 @@ class PreferencesStoreTest {
 
         assertEquals(AppLocale.EN_US, loaded.uiLocale)
     }
+
+    @Test
+    fun `versions one through seven load with no Push-to-Talk shortcut`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        (1..7).forEach { version ->
+            Files.writeString(path, "settings.version=$version\nmapDisplay.systemZoomThreshold=8.0\n")
+            assertNull(PropertiesPreferencesStore(path).load().pushToTalkShortcut, "settings v$version")
+        }
+    }
+
+    @Test
+    fun `Push-to-Talk shortcut round trips in version eight and clear removes the property`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            val store = PropertiesPreferencesStore(path)
+            val shortcut = KeyboardShortcut(
+                ShortcutKey.SPACE,
+                setOf(ShortcutModifier.CTRL, ShortcutModifier.ALT),
+            )
+
+            store.save(AppPreferences.Defaults.copy(pushToTalkShortcut = shortcut))
+
+            assertEquals(shortcut, store.load().pushToTalkShortcut)
+            assertTrue(Files.readString(path).contains("voice.pushToTalkShortcut=kbd\\:v1\\:CTRL+ALT+SPACE"))
+
+            store.save(store.load().copy(pushToTalkShortcut = null))
+
+            assertNull(store.load().pushToTalkShortcut)
+            assertFalse(Files.readString(path).contains(KEY_VOICE_PUSH_TO_TALK_SHORTCUT))
+        }
+
+    @Test
+    fun `invalid Push-to-Talk shortcut falls back alone and reports a warning`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            val warnings = mutableListOf<String>()
+            Files.writeString(
+                path,
+                "settings.version=8\nvoice.pushToTalkShortcut=kbd:v2:UNKNOWN\nmarker.showMarkers=false\n",
+            )
+
+            val loaded = PropertiesPreferencesStore(path, warnings::add).load()
+
+            assertNull(loaded.pushToTalkShortcut)
+            assertFalse(loaded.marker.showMarkers)
+            assertEquals(listOf("Push-to-Talk shortcut is invalid and was ignored"), warnings)
+        }
 
     @Test
     fun `fresh install selects Simplified Chinese for Chinese system locales without global mutation`() =

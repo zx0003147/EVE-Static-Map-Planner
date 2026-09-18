@@ -42,10 +42,18 @@ internal data class VoiceUiState(
     val playingMessageId: String? = null,
     val errorCode: VoiceErrorCode? = null,
     val message: String? = null,
+    val pushToTalkRecording: Boolean = false,
 ) {
     val recording: Boolean get() = activity == VoiceActivity.RECORDING
     val transcribing: Boolean get() = activity == VoiceActivity.TRANSCRIBING
     val playing: Boolean get() = activity == VoiceActivity.PLAYING
+}
+
+internal class PushToTalkSession internal constructor(val id: Long)
+
+private sealed interface RecordingOwner {
+    data object Manual : RecordingOwner
+    data class PushToTalk(val session: PushToTalkSession) : RecordingOwner
 }
 
 internal class VoiceController(
@@ -63,6 +71,7 @@ internal class VoiceController(
     private val mutableState = MutableStateFlow(VoiceUiState())
     private var voiceJob: Job? = null
     private var activeRecording: Path? = null
+    private var recordingOwner: RecordingOwner? = null
     private val speechTracker = AssistantSpeechSubmissionTracker()
     private val speechLock = Any()
     private var speechRun = SpeechRun()
@@ -70,23 +79,51 @@ internal class VoiceController(
     private val synthesisRequestNumber = AtomicLong()
     private val enqueueNumber = AtomicLong()
     private val playOrdinal = AtomicLong()
+    private val pushToTalkSessionNumber = AtomicLong()
     val state: StateFlow<VoiceUiState> = mutableState.asStateFlow()
 
     fun microphonePressed(onTranscript: (String, Boolean) -> Unit) {
         if (closed.get()) return
         when (mutableState.value.activity) {
-            VoiceActivity.IDLE -> startRecording(onTranscript)
-            VoiceActivity.RECORDING -> finishRecording(onTranscript)
+            VoiceActivity.IDLE -> startRecording(RecordingOwner.Manual, onTranscript)
+            VoiceActivity.RECORDING -> if (recordingOwner == RecordingOwner.Manual) {
+                finishRecording(RecordingOwner.Manual, onTranscript)
+            }
             else -> Unit
         }
     }
 
+    fun beginPushToTalk(onTranscript: (String, Boolean) -> Unit): PushToTalkSession? {
+        if (closed.get()) return null
+        if (mutableState.value.activity !in setOf(
+                VoiceActivity.IDLE,
+                VoiceActivity.SYNTHESIZING,
+                VoiceActivity.PLAYING,
+            )
+        ) {
+            return null
+        }
+        val config = configSource()
+        if (!validateInput(config)) return null
+        interruptAssistantSpeech()
+        val session = PushToTalkSession(pushToTalkSessionNumber.incrementAndGet())
+        return session.takeIf { startRecording(RecordingOwner.PushToTalk(session), onTranscript, config) }
+    }
+
+    fun endPushToTalk(session: PushToTalkSession) {
+        val owner = RecordingOwner.PushToTalk(session)
+        if (recordingOwner == owner) finishRecording(owner, null)
+    }
+
+    fun cancelPushToTalk(session: PushToTalkSession) {
+        if (recordingOwner == RecordingOwner.PushToTalk(session)) {
+            cancelRecording()
+            mutableState.value = VoiceUiState(message = "Voice activity cancelled.")
+        }
+    }
+
     fun cancelVoiceActivity() {
-        voiceJob?.cancel()
-        voiceJob = null
-        if (recorder.isRecording) recorder.cancel()
-        activeRecording?.let { runCatching { Files.deleteIfExists(it) } }
-        activeRecording = null
+        cancelRecording()
         resetSpeechRun(clearTracker = false)
         mutableState.value = VoiceUiState(message = "Voice activity cancelled.")
     }
@@ -103,6 +140,14 @@ internal class VoiceController(
     }
 
     fun stopPlayback() {
+        resetSpeechRun(clearTracker = false)
+        if (mutableState.value.activity in setOf(VoiceActivity.SYNTHESIZING, VoiceActivity.PLAYING)) {
+            mutableState.value = VoiceUiState()
+        }
+    }
+
+    fun interruptAssistantSpeech() {
+        speechTracker.suppressIncomplete()
         resetSpeechRun(clearTracker = false)
         if (mutableState.value.activity in setOf(VoiceActivity.SYNTHESIZING, VoiceActivity.PLAYING)) {
             mutableState.value = VoiceUiState()
@@ -145,30 +190,43 @@ internal class VoiceController(
         scope.cancel()
     }
 
-    private fun startRecording(onTranscript: (String, Boolean) -> Unit) {
-        val config = configSource()
-        if (config.inputProvider == VoiceInputProvider.OFF) {
-            mutableState.value = VoiceUiState(
-                errorCode = VoiceErrorCode.MICROPHONE_UNAVAILABLE,
-                message = "Voice Input is off. Enable it in AI Features settings.",
-            )
-            return
-        }
+    private fun startRecording(
+        owner: RecordingOwner,
+        onTranscript: (String, Boolean) -> Unit,
+        config: VoiceConfig = configSource(),
+    ): Boolean {
+        if (!validateInput(config)) return false
         try {
             activeRecording = recorder.start()
-            mutableState.value = VoiceUiState(VoiceActivity.RECORDING, message = "Recording… click again to transcribe.")
+            recordingOwner = owner
+            currentTranscriptConsumer = onTranscript
+            mutableState.value = VoiceUiState(
+                activity = VoiceActivity.RECORDING,
+                message = "Recording… click again to transcribe.",
+                pushToTalkRecording = owner is RecordingOwner.PushToTalk,
+            )
             voiceJob = scope.launch {
                 delay(MAX_RECORDING_SECONDS * 1_000)
-                withContext(uiDispatcher) { finishRecording(onTranscript) }
+                withContext(uiDispatcher) { finishRecording(owner, onTranscript) }
             }
+            return true
         } catch (failure: Throwable) {
+            recordingOwner = null
             publishFailure(failure, VoiceErrorCode.MICROPHONE_UNAVAILABLE, "The microphone could not be opened.")
+            return false
         }
     }
 
-    private fun finishRecording(onTranscript: (String, Boolean) -> Unit) {
+    private fun finishRecording(
+        expectedOwner: RecordingOwner,
+        onTranscriptOverride: ((String, Boolean) -> Unit)?,
+    ) {
+        if (recordingOwner != expectedOwner) return
+        val onTranscript = onTranscriptOverride ?: currentTranscriptConsumer ?: return
+        currentTranscriptConsumer = null
         voiceJob?.cancel()
         voiceJob = null
+        recordingOwner = null
         val wav = try {
             recorder.stop()
         } catch (failure: Throwable) {
@@ -197,10 +255,33 @@ internal class VoiceController(
                 publishFailure(failure, VoiceErrorCode.TRANSCRIPTION_FAILED, "The recording could not be transcribed.")
             } finally {
                 runCatching { Files.deleteIfExists(wav) }
-                activeRecording = null
-                voiceJob = null
+                if (activeRecording == wav) {
+                    activeRecording = null
+                    voiceJob = null
+                }
             }
         }
+    }
+
+    private var currentTranscriptConsumer: ((String, Boolean) -> Unit)? = null
+
+    private fun validateInput(config: VoiceConfig): Boolean {
+        if (config.inputProvider != VoiceInputProvider.OFF) return true
+        mutableState.value = VoiceUiState(
+            errorCode = VoiceErrorCode.MICROPHONE_UNAVAILABLE,
+            message = "Voice Input is off. Enable it in AI Features settings.",
+        )
+        return false
+    }
+
+    private fun cancelRecording() {
+        voiceJob?.cancel()
+        voiceJob = null
+        recordingOwner = null
+        currentTranscriptConsumer = null
+        if (recorder.isRecording) recorder.cancel()
+        activeRecording?.let { runCatching { Files.deleteIfExists(it) } }
+        activeRecording = null
     }
 
     private fun validateOutput(config: VoiceConfig): Boolean {

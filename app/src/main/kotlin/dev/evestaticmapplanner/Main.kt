@@ -35,6 +35,7 @@ import dev.evestaticmapplanner.ai.MicrophoneWavRecorder
 import dev.evestaticmapplanner.ai.SpeechPackManager
 import dev.evestaticmapplanner.ai.defaultTtsDiagnosticCapture
 import dev.evestaticmapplanner.ai.VoiceController
+import dev.evestaticmapplanner.ai.GlobalPushToTalkCoordinator
 import dev.evestaticmapplanner.ai.VoiceSettingsController
 import dev.evestaticmapplanner.ai.WhisperCppTranscriber
 import dev.evestaticmapplanner.ai.WindowsSpeechSynthesizer
@@ -114,6 +115,7 @@ import dev.evestaticmapplanner.minimap.MiniMapHudController
 import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
 import dev.evestaticmapplanner.minimap.afterNativeHudFailure
 import dev.evestaticmapplanner.platform.windows.minimaphud.WindowsMiniMapGlobalHotkey
+import dev.evestaticmapplanner.platform.windows.shortcut.WindowsGlobalPushToTalkService
 import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
@@ -124,6 +126,7 @@ import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.PreferencesCategory
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
 import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
+import dev.evestaticmapplanner.shortcut.UnsupportedGlobalPushToTalkService
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import dev.evestaticmapplanner.sde.update.JdkSdeHttpTransport
 import dev.evestaticmapplanner.sde.update.LatestBuildCacheStore
@@ -636,6 +639,21 @@ private fun FrameWindowScope.ReadyApplication(
             ttsDiagnosticCapture = ttsDiagnosticCapture,
         )
     }
+    val globalPushToTalkService = remember(configuration) {
+        if (Platform.isWindows()) {
+            WindowsGlobalPushToTalkService(
+                diagnosticSink = { message, failure ->
+                    if (failure == null) AppDiagnostics.info(message)
+                    else AppDiagnostics.warning(message, failure)
+                },
+            )
+        } else {
+            UnsupportedGlobalPushToTalkService()
+        }
+    }
+    val globalPushToTalkCoordinator = remember(configuration, globalPushToTalkService, voiceController) {
+        GlobalPushToTalkCoordinator(globalPushToTalkService, voiceController)
+    }
     val voiceSettingsController = remember(
         configuration,
         aiSecureCredentialStore,
@@ -714,6 +732,7 @@ private fun FrameWindowScope.ReadyApplication(
         embeddedAiController,
         aiProviderSettingsController,
         webSearchSettingsController,
+        globalPushToTalkCoordinator,
         voiceController,
         voiceSettingsController,
         aiSessionCredentialStore,
@@ -741,6 +760,7 @@ private fun FrameWindowScope.ReadyApplication(
                 aiProviderSettingsController::close,
                 webSearchSettingsController::close,
                 voiceSettingsController::close,
+                globalPushToTalkCoordinator::close,
                 voiceController::close,
                 aiSessionCredentialStore::close,
             ),
@@ -767,6 +787,7 @@ private fun FrameWindowScope.ReadyApplication(
     val aiProviderSettingsState by aiProviderSettingsController.state.collectAsState()
     val webSearchSettingsState by webSearchSettingsController.state.collectAsState()
     val voiceSettingsState by voiceSettingsController.state.collectAsState()
+    val globalPushToTalkState by globalPushToTalkCoordinator.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
     val miniMapHudState by miniMapHudController.state.collectAsState()
@@ -1039,6 +1060,8 @@ private fun FrameWindowScope.ReadyApplication(
         EmbeddedAiAssistantWindow(
             controller = embeddedAiController,
             voiceController = voiceController,
+            pushToTalkCoordinator = globalPushToTalkCoordinator,
+            pushToTalkShortcut = mapState.appPreferences.pushToTalkShortcut,
             voiceInputEnabled = mapState.appPreferences.voice.inputProvider != VoiceInputProvider.OFF,
             providerStatus = AiAssistantProviderStatus(
                 providerType = effectiveAiConfig?.providerType,
@@ -1050,7 +1073,6 @@ private fun FrameWindowScope.ReadyApplication(
                 showPreferences = true
             },
             onDismiss = {
-                voiceController.onAssistantWindowClosed()
                 showEmbeddedAi = false
             },
         )
@@ -1067,6 +1089,14 @@ private fun FrameWindowScope.ReadyApplication(
             aiProviderSettingsState = aiProviderSettingsState,
             webSearchSettingsState = webSearchSettingsState,
             voiceSettingsState = voiceSettingsState,
+            pushToTalkState = globalPushToTalkState,
+            assistantOpen = showEmbeddedAi,
+            pushToTalkPlatformSupported = Platform.isWindows(),
+            onPushToTalkCaptureStateChanged = { capturing ->
+                if (capturing) globalPushToTalkCoordinator.suspendForShortcutCapture()
+                else globalPushToTalkCoordinator.resumeAfterShortcutCapture()
+            },
+            onPushToTalkShortcutChange = mapViewModel::updatePushToTalkShortcut,
             initialCategory = preferencesInitialCategory,
             onAiProviderViewed = aiProviderSettingsController::refresh,
             onAiProviderTest = aiProviderSettingsController::test,

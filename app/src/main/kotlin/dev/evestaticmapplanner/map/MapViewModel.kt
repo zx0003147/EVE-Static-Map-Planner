@@ -29,6 +29,7 @@ import dev.evestaticmapplanner.preferences.MiniMapPreferences
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SharedMapPreferences
+import dev.evestaticmapplanner.shortcut.KeyboardShortcut
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.FocusSwitchedToReal3DUiMessage
 import dev.evestaticmapplanner.localization.UiMessage
@@ -433,6 +434,20 @@ class MapViewModel(
             if (saved.isSuccess) {
                 mutableState.update { current ->
                     current.copy(appPreferences = current.appPreferences.copy(voice = config))
+                }
+            }
+            saved
+        }
+    }
+
+    suspend fun updatePushToTalkShortcut(shortcut: KeyboardShortcut?): Result<Unit> = withContext(NonCancellable) {
+        preferencesMutation.withLock {
+            settingsSaveJob?.cancel()
+            val next = mutableState.value.appPreferences.copy(pushToTalkShortcut = shortcut)
+            val saved = withContext(ioDispatcher) { runCatching { preferencesStore.save(next) } }
+            if (saved.isSuccess) {
+                mutableState.update { current ->
+                    current.copy(appPreferences = current.appPreferences.copy(pushToTalkShortcut = shortcut))
                 }
             }
             saved

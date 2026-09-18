@@ -39,6 +39,7 @@ import dev.evestaticmapplanner.ai.AiProviderSettingsUiState
 import dev.evestaticmapplanner.ai.WebSearchSettingsUiState
 import dev.evestaticmapplanner.ai.VoiceSettingsUiState
 import dev.evestaticmapplanner.ai.VoiceCredentialProvider
+import dev.evestaticmapplanner.ai.GlobalPushToTalkState
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheck
 import dev.evestaticmapplanner.embeddedai.AiConnectionCheckStatus
 import dev.evestaticmapplanner.embeddedai.AiCredentialRef
@@ -82,6 +83,7 @@ import dev.evestaticmapplanner.shared.SharedMapMembersDialog
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
+import dev.evestaticmapplanner.shortcut.KeyboardShortcut
 import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveDivider as HorizontalDivider
@@ -123,6 +125,11 @@ internal fun PreferencesWindow(
     onVoiceCredentialDelete: (VoiceCredentialProvider) -> Unit = {},
     onVoiceTestRecognition: (VoiceConfig) -> Unit = {},
     onVoiceTestVoice: (VoiceConfig) -> Unit = {},
+    pushToTalkState: GlobalPushToTalkState = GlobalPushToTalkState(),
+    assistantOpen: Boolean = false,
+    pushToTalkPlatformSupported: Boolean = false,
+    onPushToTalkCaptureStateChanged: (Boolean) -> Unit = {},
+    onPushToTalkShortcutChange: suspend (KeyboardShortcut?) -> Result<Unit> = { Result.success(Unit) },
     onSpeechPackInstall: () -> Unit = {},
     onSpeechPackRemove: () -> Unit = {},
     aiControlStatus: AiControlStatus,
@@ -215,6 +222,12 @@ internal fun PreferencesWindow(
                                 onVoiceCredentialDelete = onVoiceCredentialDelete,
                                 onVoiceTestRecognition = onVoiceTestRecognition,
                                 onVoiceTestVoice = onVoiceTestVoice,
+                                pushToTalkShortcut = preferences.pushToTalkShortcut,
+                                pushToTalkState = pushToTalkState,
+                                assistantOpen = assistantOpen,
+                                pushToTalkPlatformSupported = pushToTalkPlatformSupported,
+                                onPushToTalkCaptureStateChanged = onPushToTalkCaptureStateChanged,
+                                onPushToTalkShortcutChange = onPushToTalkShortcutChange,
                                 onSpeechPackInstall = onSpeechPackInstall,
                                 onSpeechPackRemove = onSpeechPackRemove,
                                 aiControlPreferences = preferences.aiControl,
@@ -371,6 +384,12 @@ internal fun AiFeaturesPreferencesContent(
     onVoiceCredentialDelete: (VoiceCredentialProvider) -> Unit = {},
     onVoiceTestRecognition: (VoiceConfig) -> Unit = {},
     onVoiceTestVoice: (VoiceConfig) -> Unit = {},
+    pushToTalkShortcut: KeyboardShortcut? = null,
+    pushToTalkState: GlobalPushToTalkState = GlobalPushToTalkState(),
+    assistantOpen: Boolean = false,
+    pushToTalkPlatformSupported: Boolean = false,
+    onPushToTalkCaptureStateChanged: (Boolean) -> Unit = {},
+    onPushToTalkShortcutChange: suspend (KeyboardShortcut?) -> Result<Unit> = { Result.success(Unit) },
     onSpeechPackInstall: () -> Unit = {},
     onSpeechPackRemove: () -> Unit = {},
 ) {
@@ -433,6 +452,12 @@ internal fun AiFeaturesPreferencesContent(
                 onDeleteCredential = onVoiceCredentialDelete,
                 onTestRecognition = onVoiceTestRecognition,
                 onTestVoice = onVoiceTestVoice,
+                pushToTalkShortcut = pushToTalkShortcut,
+                pushToTalkState = pushToTalkState,
+                assistantOpen = assistantOpen,
+                pushToTalkPlatformSupported = pushToTalkPlatformSupported,
+                onPushToTalkCaptureStateChanged = onPushToTalkCaptureStateChanged,
+                onPushToTalkShortcutChange = onPushToTalkShortcutChange,
                 onInstallSpeechPack = onSpeechPackInstall,
                 onRemoveSpeechPack = onSpeechPackRemove,
             )
@@ -465,6 +490,12 @@ internal fun VoicePreferencesContent(
     onDeleteCredential: (VoiceCredentialProvider) -> Unit,
     onTestRecognition: (VoiceConfig) -> Unit,
     onTestVoice: (VoiceConfig) -> Unit,
+    pushToTalkShortcut: KeyboardShortcut? = null,
+    pushToTalkState: GlobalPushToTalkState = GlobalPushToTalkState(),
+    assistantOpen: Boolean = false,
+    pushToTalkPlatformSupported: Boolean = false,
+    onPushToTalkCaptureStateChanged: (Boolean) -> Unit = {},
+    onPushToTalkShortcutChange: suspend (KeyboardShortcut?) -> Result<Unit> = { Result.success(Unit) },
     onInstallSpeechPack: () -> Unit,
     onRemoveSpeechPack: () -> Unit,
 ) {
@@ -550,6 +581,14 @@ internal fun VoicePreferencesContent(
         modifier = Modifier.fillMaxWidth().testTag(VOICE_INPUT_SECTION_TEST_TAG),
     ) {
         Text(strings.text(PreferencesText.VOICE_INPUT), style = MaterialTheme.typography.titleSmall)
+        PushToTalkShortcutPreference(
+            shortcut = pushToTalkShortcut,
+            globalState = pushToTalkState,
+            assistantOpen = assistantOpen,
+            platformSupported = pushToTalkPlatformSupported,
+            onCaptureStateChanged = onPushToTalkCaptureStateChanged,
+            onShortcutChange = onPushToTalkShortcutChange,
+        )
         EnumDropdown(strings.text(PreferencesText.INPUT_PROVIDER), strings.voiceInputProvider(inputProvider), inputExpanded, { inputExpanded = it }, !busy,
             Modifier.testTag(VOICE_INPUT_PROVIDER_TEST_TAG)) {
             VoiceInputProvider.entries.forEach { provider ->

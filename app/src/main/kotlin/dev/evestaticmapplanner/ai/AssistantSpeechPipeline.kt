@@ -34,6 +34,10 @@ internal class AssistantSpeechSubmissionTracker(
             return AssistantSpeechUpdate(emptyList(), "non-append-only-update")
         }
         progress.observedRawText = accumulatedRawText
+        if (progress.suppressed) {
+            if (complete) progress.complete = true
+            return AssistantSpeechUpdate(emptyList(), "message-suppressed")
+        }
         val eligibleEnd = if (complete) {
             accumulatedRawText.length
         } else {
@@ -67,6 +71,11 @@ internal class AssistantSpeechSubmissionTracker(
 
     @Synchronized
     fun clear() = messages.clear()
+
+    @Synchronized
+    fun suppressIncomplete() {
+        messages.values.filterNot(MessageProgress::complete).forEach { it.suppressed = true }
+    }
 
     private fun stableRawBoundary(text: String, start: Int): Int {
         var lastBoundary = start
@@ -167,6 +176,7 @@ internal class AssistantSpeechSubmissionTracker(
         var submittedRawEnd: Int = 0,
         var nextChunkSequence: Int = 1,
         var complete: Boolean = false,
+        var suppressed: Boolean = false,
     )
 
     private companion object {

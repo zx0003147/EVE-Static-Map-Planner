@@ -77,6 +77,26 @@ class VoiceControllerSpeechPipelineTest {
     }
 
     @Test
+    fun `suppressed streaming reply stays silent while the next message remains speakable`() {
+        val tracker = AssistantSpeechSubmissionTracker()
+
+        assertEquals(
+            listOf("第一句。"),
+            tracker.update("interrupted", "第一句。", complete = false).chunks.map { it.text },
+        )
+        tracker.suppressIncomplete()
+
+        val later = tracker.update("interrupted", "第一句。第二句。", complete = false)
+        val completed = tracker.update("interrupted", "第一句。第二句。第三句。", complete = true)
+        val next = tracker.update("next-message", "下一条回复。", complete = true)
+
+        assertTrue(later.chunks.isEmpty())
+        assertEquals("message-suppressed", later.ignoredReason)
+        assertTrue(completed.chunks.isEmpty())
+        assertEquals(listOf("下一条回复。"), next.chunks.map { it.text })
+    }
+
+    @Test
     fun `partial tokens wait for sentence boundaries and final tail flushes once`() {
         val tracker = AssistantSpeechSubmissionTracker()
 

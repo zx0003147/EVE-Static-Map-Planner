@@ -30,12 +30,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,17 +80,41 @@ import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.embeddedai.isEstablished
 import dev.evestaticmapplanner.localization.AiAssistantStrings
 import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.shortcut.KeyboardShortcut
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveWindowChrome
 import dev.evestaticmapplanner.ui.EveWindowSurface
+import java.util.UUID
+
+internal class AssistantComposerState {
+    var prompt by mutableStateOf(TextFieldValue())
+
+    fun acceptVoiceTranscript(
+        transcript: String,
+        autoSend: Boolean,
+        inputEnabled: Boolean,
+        onSend: (String) -> Unit,
+    ): Boolean {
+        return if (autoSend && inputEnabled) {
+            prompt = TextFieldValue()
+            onSend(transcript)
+            false
+        } else {
+            prompt = TextFieldValue(transcript)
+            true
+        }
+    }
+}
 
 @Composable
 internal fun EmbeddedAiAssistantWindow(
     controller: EmbeddedAiController,
     voiceController: VoiceController,
+    pushToTalkCoordinator: GlobalPushToTalkCoordinator,
+    pushToTalkShortcut: KeyboardShortcut?,
     voiceInputEnabled: Boolean,
     providerStatus: AiAssistantProviderStatus,
     onOpenSettings: () -> Unit,
@@ -98,6 +124,18 @@ internal fun EmbeddedAiAssistantWindow(
     val state by controller.state.collectAsState()
     val confirmation by controller.confirmation.collectAsState()
     val voiceState by voiceController.state.collectAsState()
+    val composerState = remember { AssistantComposerState() }
+    val generation = remember { UUID.randomUUID().toString() }
+    val inputEnabled = !state.isLoading && providerStatus.ready
+    val currentTranscriptConsumer by rememberUpdatedState<(String, Boolean) -> Unit> { transcript, autoSend ->
+        composerState.acceptVoiceTranscript(transcript, autoSend, inputEnabled, controller::send)
+    }
+    DisposableEffect(pushToTalkCoordinator, pushToTalkShortcut, generation) {
+        pushToTalkCoordinator.bind(generation, pushToTalkShortcut) { transcript, autoSend ->
+            currentTranscriptConsumer(transcript, autoSend)
+        }
+        onDispose { pushToTalkCoordinator.unbind(generation) }
+    }
     val readableAssistantMessage = state.chatSession.messages.lastOrNull {
         it.role == EmbeddedAiMessageRole.ASSISTANT && it.status != EmbeddedAiMessageStatus.ERROR
     }
@@ -117,7 +155,9 @@ internal fun EmbeddedAiAssistantWindow(
 
     Window(
         onCloseRequest = {
+            pushToTalkCoordinator.unbind(generation)
             controller.cancel()
+            voiceController.onAssistantWindowClosed()
             onDismiss()
         },
         title = strings.title,
@@ -130,6 +170,7 @@ internal fun EmbeddedAiAssistantWindow(
                 confirmation = confirmation,
                 providerStatus = providerStatus,
                 voiceState = voiceState,
+                composerState = composerState,
                 voiceInputEnabled = voiceInputEnabled,
                 onSend = controller::send,
                 onCancel = controller::cancel,
@@ -157,6 +198,7 @@ internal fun EmbeddedAiAssistantContent(
     confirmation: AiActionConfirmation?,
     providerStatus: AiAssistantProviderStatus,
     voiceState: VoiceUiState = VoiceUiState(),
+    composerState: AssistantComposerState? = null,
     voiceInputEnabled: Boolean = true,
     onSend: (String) -> Unit,
     onCancel: () -> Unit,
@@ -173,7 +215,7 @@ internal fun EmbeddedAiAssistantContent(
 ) {
     val appStrings = LocalAppStrings.current
     val strings = appStrings.aiAssistant
-    var prompt by remember { mutableStateOf(TextFieldValue()) }
+    val activeComposerState = composerState ?: remember { AssistantComposerState() }
     var sidebarVisible by remember { mutableStateOf(true) }
     val inputFocusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
@@ -266,15 +308,15 @@ internal fun EmbeddedAiAssistantContent(
 
                 val inputEnabled = !state.isLoading && providerStatus.ready
                 fun submitPrompt() {
-                    val submitted = prompt.text
+                    val submitted = activeComposerState.prompt.text
                     if (!inputEnabled || submitted.isBlank()) return
-                    prompt = TextFieldValue()
+                    activeComposerState.prompt = TextFieldValue()
                     onSend(submitted)
                     inputFocusRequester.requestFocus()
                 }
                 ChatComposer(
-                    prompt = prompt,
-                    onPromptChange = { prompt = it },
+                    prompt = activeComposerState.prompt,
+                    onPromptChange = { activeComposerState.prompt = it },
                     inputEnabled = inputEnabled,
                     agentRunning = state.isLoading,
                     voiceInputEnabled = voiceInputEnabled,
@@ -284,11 +326,13 @@ internal fun EmbeddedAiAssistantContent(
                     onStopAgent = onCancel,
                     onMicrophone = {
                         onMicrophone { transcript, autoSend ->
-                            if (autoSend && inputEnabled) {
-                                prompt = TextFieldValue()
-                                onSend(transcript)
-                            } else {
-                                prompt = TextFieldValue(transcript)
+                            val shouldFocus = activeComposerState.acceptVoiceTranscript(
+                                transcript,
+                                autoSend,
+                                inputEnabled,
+                                onSend,
+                            )
+                            if (shouldFocus) {
                                 inputFocusRequester.requestFocus()
                             }
                         }
@@ -417,7 +461,7 @@ private fun ChatComposer(
                 .testTag(AI_CHAT_COMPOSER_CONTROLS_TEST_TAG),
         ) {
             if (voiceInputEnabled) {
-                val microphoneEnabled = !agentRunning && voiceState.activity in setOf(
+                val microphoneEnabled = !agentRunning && !voiceState.pushToTalkRecording && voiceState.activity in setOf(
                     VoiceActivity.IDLE,
                     VoiceActivity.RECORDING,
                     VoiceActivity.TRANSCRIBING,

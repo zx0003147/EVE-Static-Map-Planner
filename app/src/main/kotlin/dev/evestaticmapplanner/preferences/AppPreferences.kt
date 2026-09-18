@@ -17,6 +17,8 @@ import dev.evestaticmapplanner.embeddedai.VoiceOutputProvider
 import dev.evestaticmapplanner.embeddedai.WebSearchConfig
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppLocaleDetector
+import dev.evestaticmapplanner.shortcut.KeyboardShortcut
+import dev.evestaticmapplanner.shortcut.KeyboardShortcutCodec
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,6 +36,7 @@ data class AppPreferences(
         .orEmpty(),
     val webSearch: WebSearchConfig = WebSearchConfig.Defaults,
     val voice: VoiceConfig = VoiceConfig.Defaults,
+    val pushToTalkShortcut: KeyboardShortcut? = null,
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
@@ -285,6 +288,11 @@ class PropertiesPreferencesStore(
             aiProviderProfiles = aiProviderProfiles,
             webSearch = properties.webSearchConfig(warningSink),
             voice = properties.voiceConfig(warningSink),
+            pushToTalkShortcut = properties.getProperty(KEY_VOICE_PUSH_TO_TALK_SHORTCUT)?.let { encoded ->
+                KeyboardShortcutCodec.decode(encoded).also { shortcut ->
+                    if (shortcut == null) warningSink("Push-to-Talk shortcut is invalid and was ignored")
+                }
+            },
             overlayVisibility = properties.overlayVisibilityPreferences(),
             sharedMap = SharedMapPreferences(
                 serverUrl = properties.getProperty(KEY_SHARED_MAP_SERVER_URL)
@@ -334,7 +342,7 @@ class PropertiesPreferencesStore(
                     snapToScreenEdges = properties.validBoolean(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, true),
                 )
             },
-            uiLocale = if (settingsVersion == SETTINGS_VERSION) {
+            uiLocale = if ((settingsVersion.toIntOrNull() ?: 0) >= 7) {
                 AppLocale.fromTagOrNull(properties.getProperty(KEY_UI_LOCALE)) ?: AppLocale.EN_US
             } else {
                 AppLocale.EN_US
@@ -430,6 +438,9 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_VOICE_ALIBABA_STT_TIMEOUT, voice.profiles.alibaba.sttTimeoutSeconds.toString())
                 setProperty(KEY_VOICE_ALIBABA_TTS_TIMEOUT, voice.profiles.alibaba.ttsTimeoutSeconds.toString())
                 setProperty(KEY_VOICE_ALIBABA_CREDENTIAL_REF, voice.profiles.alibaba.credentialRef.value)
+                preferences.pushToTalkShortcut?.let { shortcut ->
+                    setProperty(KEY_VOICE_PUSH_TO_TALK_SHORTCUT, KeyboardShortcutCodec.encode(shortcut))
+                }
                 setProperty(
                     KEY_OVERLAY_DISABLED_LAYERS,
                     overlayVisibility.disabledLayers.map(OverlayLayerKey::encode).sorted().joinToString(","),
@@ -631,8 +642,8 @@ private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromStrin
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "7"
-private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", "6", SETTINGS_VERSION)
+const val SETTINGS_VERSION = "8"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", "6", "7", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -711,6 +722,7 @@ private const val KEY_VOICE_ALIBABA_WORKSPACE_ID = "voice.alibaba.workspaceId"
 private const val KEY_VOICE_ALIBABA_STT_TIMEOUT = "voice.alibaba.sttTimeoutSeconds"
 private const val KEY_VOICE_ALIBABA_TTS_TIMEOUT = "voice.alibaba.ttsTimeoutSeconds"
 private const val KEY_VOICE_ALIBABA_CREDENTIAL_REF = "voice.alibaba.credentialRef"
+internal const val KEY_VOICE_PUSH_TO_TALK_SHORTCUT = "voice.pushToTalkShortcut"
 private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"
