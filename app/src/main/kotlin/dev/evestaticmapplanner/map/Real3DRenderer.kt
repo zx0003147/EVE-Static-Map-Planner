@@ -170,8 +170,10 @@ internal fun Real3DMapCanvas(
     val textMeasurer = rememberTextMeasurer()
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
     val density = LocalDensity.current
-    val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer) {
-        if (showAnsiblexLayer) ansiblexConnections.filter(AnsiblexConnection::enabled) else emptyList()
+    val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer, currentIdentityContext) {
+        ansiblexConnections.filter { connection ->
+            connection.enabled && (showAnsiblexLayer || AnsiblexAccessPolicy.isUsable(connection, currentIdentityContext))
+        }
     }
     val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentIdentityContext) {
         AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentIdentityContext)

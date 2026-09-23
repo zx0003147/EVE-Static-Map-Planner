@@ -31,7 +31,7 @@ See `docs/real-3d-performance.md` for the repeatable full-universe CPU projectio
 - `control-transport`: Transport-neutral control request and response contracts.
 - `core`: Pure Kotlin static-universe domain models and repository contracts. It does not depend on Compose, JSONL, or SQLite.
 - `data`: SQLite schemas, repositories, strict Ansiblex CSV/JSON import, Preview/Diff, and transactional Apply.
-- `feature-api`: Feature API compatibility family 2 contracts (current artifact `2.3.0`) and generic external Pack test fixture.
+- `feature-api`: Feature API compatibility family 2 contracts (current artifact `2.4.0`) and generic external Pack test fixture.
 - `mcp`: Core-owned MCP server and its fixed 34-tool catalog, including native multi-point route optimization, View control, session Wormhole read/create, permission-gated Saved Marker read/create, and explicit EVE navigation targeting.
 - `sde`: Streaming JSONL parsing, validation, importer, managed download/update pipeline, and verification CLI.
 - `shared-client`: Compose-independent Shared Map protocol, HTTPS client, Workspace session, polling, and secure credential contracts.
@@ -41,7 +41,7 @@ See `docs/real-3d-performance.md` for the repeatable full-universe CPU projectio
 Sovereignty and ESI are first-party external Feature Packs maintained in separate repositories. Core does not contain
 or bundle either production implementation.
 
-- Core owns Feature API runtime compatibility family 2, the current `2.3.0` artifact, and the Feature Pack Host/runtime.
+- Core owns Feature API runtime compatibility family 2, the current `2.4.0` artifact, and the Feature Pack Host/runtime.
 - On Windows, Packs are installed below
   `%LOCALAPPDATA%\EVE Static Map Planner\feature-packs\<pack-id>\pack.jar`.
 - Core validates manifest compatibility before creating a Pack ClassLoader.

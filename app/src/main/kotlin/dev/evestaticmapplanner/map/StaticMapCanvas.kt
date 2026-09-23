@@ -165,8 +165,10 @@ fun StaticMapCanvas(
     val density = LocalDensity.current
     val mapDisplayPreferences = state.appPreferences.mapDisplay
     val savedMarkerAppearance = state.appPreferences.marker.savedMarkerAppearance
-    val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer) {
-        if (showAnsiblexLayer) ansiblexConnections.filter(AnsiblexConnection::enabled) else emptyList()
+    val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer, currentIdentityContext) {
+        ansiblexConnections.filter { connection ->
+            connection.enabled && (showAnsiblexLayer || AnsiblexAccessPolicy.isUsable(connection, currentIdentityContext))
+        }
     }
     val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentIdentityContext) {
         AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentIdentityContext)

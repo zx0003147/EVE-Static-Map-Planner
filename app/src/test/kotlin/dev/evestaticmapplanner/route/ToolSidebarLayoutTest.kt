@@ -22,11 +22,12 @@ import kotlin.test.assertTrue
 
 class ToolSidebarLayoutTest {
     @Test
-    fun `sidebar contains only the three tools in requested order`() {
+    fun `sidebar contains the main tools with explicit Ansiblex entry in requested order`() {
         assertEquals(
             listOf(
                 ToolSidebarSection.SEARCH,
                 ToolSidebarSection.JUMP_RANGE,
+                ToolSidebarSection.ANSIBLEX,
                 ToolSidebarSection.NORMAL_ROUTE,
                 ToolSidebarSection.CAPITAL_ROUTE,
             ),

@@ -5,6 +5,12 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceDisplayName
 import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceTicker
+import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
+import dev.evestaticmapplanner.core.alliance.AllianceOwnerMatchMethod
+import dev.evestaticmapplanner.core.alliance.AllianceOwnerResolution
+import dev.evestaticmapplanner.core.alliance.AllianceOwnerResolver
+import dev.evestaticmapplanner.core.alliance.AllianceReference
+import dev.evestaticmapplanner.core.alliance.normalizeAllianceSearchText
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.data.db.UserDatabase
@@ -26,6 +32,7 @@ class AnsiblexImportService(
     private val clock: Clock = Clock.systemUTC(),
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val transactionHook: (Connection) -> Unit = {},
+    private val allianceDirectoryProvider: () -> AllianceDirectorySnapshot = { AllianceDirectorySnapshot() },
     initializeDatabase: Boolean = true,
 ) {
     init {
@@ -34,12 +41,16 @@ class AnsiblexImportService(
 
     fun preview(file: Path, mode: AnsiblexImportMode): AnsiblexImportPreview {
         val bytes = Files.readAllBytes(file)
-        val parsed = AnsiblexImportParsers.parse(file.fileName.toString(), bytes.toString(StandardCharsets.UTF_8))
+        val sourceText = bytes.toString(StandardCharsets.UTF_8)
+        val parsed = AnsiblexImportParsers.parse(file.fileName.toString(), sourceText)
         return createPreview(
             sourceFileName = file.fileName.toString(),
             sourceFileSha256 = sha256(bytes),
             mode = mode,
             parsed = parsed,
+            sourceText = sourceText,
+            sourceKind = AnsiblexImportSourceKind.FILE,
+            ownerMappings = emptyMap(),
         )
     }
 
@@ -52,7 +63,44 @@ class AnsiblexImportService(
         sourceFileSha256 = sha256(text.toByteArray(StandardCharsets.UTF_8)),
         mode = mode,
         parsed = AnsiblexImportParsers.parse(sourceFileName, text),
+        sourceText = text,
+        sourceKind = AnsiblexImportSourceKind.FILE,
+        ownerMappings = emptyMap(),
     )
+
+    fun previewWebwayText(
+        text: String,
+        mode: AnsiblexImportMode,
+    ): AnsiblexImportPreview = createPreview(
+        sourceFileName = "pasted-webway.txt",
+        sourceFileSha256 = sha256(text.toByteArray(StandardCharsets.UTF_8)),
+        mode = mode,
+        parsed = AnsiblexImportParsers.parseWebway(text),
+        sourceText = text,
+        sourceKind = AnsiblexImportSourceKind.WEBWAY,
+        ownerMappings = emptyMap(),
+    )
+
+    fun confirmOwner(
+        preview: AnsiblexImportPreview,
+        ownerRawText: String,
+        alliance: AllianceReference,
+    ): AnsiblexImportPreview {
+        val mappings = preview.ownerMappings + (normalizeAllianceSearchText(ownerRawText) to alliance)
+        val parsed = when (preview.sourceKind) {
+            AnsiblexImportSourceKind.FILE -> AnsiblexImportParsers.parse(preview.sourceFileName, preview.sourceText)
+            AnsiblexImportSourceKind.WEBWAY -> AnsiblexImportParsers.parseWebway(preview.sourceText)
+        }
+        return createPreview(
+            sourceFileName = preview.sourceFileName,
+            sourceFileSha256 = preview.sourceFileSha256,
+            mode = preview.mode,
+            parsed = parsed,
+            sourceText = preview.sourceText,
+            sourceKind = preview.sourceKind,
+            ownerMappings = mappings,
+        )
+    }
 
     fun apply(preview: AnsiblexImportPreview): AnsiblexImportApplyResult {
         if (!preview.canApply) throw InvalidImportPreviewException()
@@ -127,6 +175,9 @@ class AnsiblexImportService(
         sourceFileSha256: String,
         mode: AnsiblexImportMode,
         parsed: ParsedImport,
+        sourceText: String,
+        sourceKind: AnsiblexImportSourceKind,
+        ownerMappings: Map<String, AllianceReference>,
     ): AnsiblexImportPreview {
         val diagnostics = parsed.diagnostics.toMutableList()
         if (parsed.rows.isEmpty()) {
@@ -137,6 +188,10 @@ class AnsiblexImportService(
         val resolved = mutableListOf<ImportCandidate>()
         val systemById = mutableMapOf<Int, Int?>()
         val systemByName = mutableMapOf<String, Int?>()
+        val directory = allianceDirectoryProvider()
+        val ownerResolver = AllianceOwnerResolver(directory)
+        val ownerResolutionByKey = linkedMapOf<String, AllianceOwnerResolution>()
+        val ownerRowsByKey = linkedMapOf<String, MutableList<Long>>()
 
         fun resolve(endpoint: RawImportEndpoint, row: RawImportRow, field: String): Int? {
             if (endpoint.systemId == null && endpoint.systemName == null) {
@@ -206,6 +261,76 @@ class AnsiblexImportService(
                 invalidRows += row.rowNumber
                 null
             }
+            val resolvedOwner = if (ownerAllianceId != null) {
+                val current = directory.alliancesById[ownerAllianceId]
+                if (current?.name != null && ownerAllianceName != null && current.name != ownerAllianceName) {
+                    diagnostics += warning(
+                        "OWNER_ALLIANCE_NAME_MISMATCH",
+                        "Owner Alliance ID $ownerAllianceId is currently named ${current.name}; imported name is display metadata only",
+                        row.rowNumber,
+                        "owner_alliance_name",
+                    )
+                }
+                if (current?.ticker != null && ownerAllianceTicker != null && current.ticker != ownerAllianceTicker) {
+                    diagnostics += warning(
+                        "OWNER_ALLIANCE_TICKER_MISMATCH",
+                        "Owner Alliance ID $ownerAllianceId currently has ticker ${current.ticker}; imported ticker is display metadata only",
+                        row.rowNumber,
+                        "owner_alliance_ticker",
+                    )
+                }
+                AllianceReference(
+                    ownerAllianceId,
+                    ownerAllianceName ?: current?.name,
+                    ownerAllianceTicker ?: current?.ticker,
+                )
+            } else {
+                val rawOwner = row.ownerRawText ?: ownerAllianceTicker ?: ownerAllianceName
+                rawOwner?.let { raw ->
+                    val key = normalizeAllianceSearchText(raw)
+                    ownerRowsByKey.getOrPut(key) { mutableListOf() } += row.rowNumber
+                    val confirmed = ownerMappings[key]
+                    val resolution = if (confirmed != null) {
+                        AllianceOwnerResolution.ResolvedExact(raw, confirmed, AllianceOwnerMatchMethod.USER_CONFIRMED)
+                    } else {
+                        ownerResolver.resolve(raw)
+                    }
+                    ownerResolutionByKey.putIfAbsent(key, resolution)
+                    when (resolution) {
+                        is AllianceOwnerResolution.ResolvedExact -> resolution.alliance
+                        is AllianceOwnerResolution.NeedsConfirmation -> {
+                            invalidRows += row.rowNumber
+                            if (ownerRowsByKey.getValue(key).size == 1) diagnostics += error(
+                                "OWNER_CONFIRMATION_REQUIRED",
+                                "Owner '$raw' requires an explicit Alliance ID selection",
+                                row.rowNumber,
+                                "owner",
+                            )
+                            null
+                        }
+                        is AllianceOwnerResolution.AmbiguousExact -> {
+                            invalidRows += row.rowNumber
+                            if (ownerRowsByKey.getValue(key).size == 1) diagnostics += error(
+                                "OWNER_AMBIGUOUS",
+                                "Owner '$raw' matches multiple Alliance IDs",
+                                row.rowNumber,
+                                "owner",
+                            )
+                            null
+                        }
+                        is AllianceOwnerResolution.Unknown -> {
+                            invalidRows += row.rowNumber
+                            if (ownerRowsByKey.getValue(key).size == 1) diagnostics += error(
+                                "OWNER_UNKNOWN",
+                                "Owner '$raw' is not present in the Alliance Directory",
+                                row.rowNumber,
+                                "owner",
+                            )
+                            null
+                        }
+                    }
+                }
+            }
             val direction = when (row.direction?.uppercase() ?: "BIDIRECTIONAL") {
                 "BIDIRECTIONAL" -> AnsiblexDirection.BIDIRECTIONAL
                 "FORWARD" -> if (from != null && to != null && from > to) {
@@ -235,9 +360,9 @@ class AnsiblexImportService(
                     direction = direction,
                     displayName = row.displayName?.trim()?.takeIf(String::isNotEmpty),
                     notes = row.notes?.trim()?.takeIf(String::isNotEmpty),
-                    ownerAllianceId = ownerAllianceId,
-                    ownerAllianceName = ownerAllianceName,
-                    ownerAllianceTicker = ownerAllianceTicker,
+                    ownerAllianceId = resolvedOwner?.allianceId,
+                    ownerAllianceName = resolvedOwner?.name,
+                    ownerAllianceTicker = resolvedOwner?.ticker,
                     enabled = row.enabled ?: true,
                     rowNumber = row.rowNumber,
                 )
@@ -310,8 +435,18 @@ class AnsiblexImportService(
             unchanged = unchanged.filter { it.candidate.rowNumber !in invalidRows },
             removals = removals,
             diagnostics = diagnostics.sortedWith(compareBy({ it.rowNumber ?: 0L }, { it.severity.ordinal }, ImportDiagnostic::code)),
+            ownerResolutions = ownerResolutionByKey.map { (key, resolution) ->
+                ImportOwnerResolution(
+                    rawText = resolution.rawText,
+                    rowNumbers = ownerRowsByKey.getValue(key).toList(),
+                    resolution = resolution,
+                )
+            },
             candidates = unique.filter { it.rowNumber !in invalidRows },
             baseSnapshotFingerprint = snapshotFingerprint(existing),
+            sourceText = sourceText,
+            sourceKind = sourceKind,
+            ownerMappings = ownerMappings,
         )
     }
 
@@ -404,3 +539,6 @@ internal fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-2
 
 private fun error(code: String, message: String, rowNumber: Long? = null, field: String? = null) =
     ImportDiagnostic(ImportDiagnosticSeverity.ERROR, code, message, rowNumber, field)
+
+private fun warning(code: String, message: String, rowNumber: Long? = null, field: String? = null) =
+    ImportDiagnostic(ImportDiagnosticSeverity.WARNING, code, message, rowNumber, field)

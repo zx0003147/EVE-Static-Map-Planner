@@ -28,6 +28,7 @@ import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.wormhole.WormholeConnection
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
+import dev.evestaticmapplanner.core.alliance.AllianceReference
 import dev.evestaticmapplanner.localization.AdjacentNavigationStopsUiMessage
 import dev.evestaticmapplanner.localization.AnsiblexDataUnavailableUiMessage
 import dev.evestaticmapplanner.localization.InvalidNavigationStopUiMessage
@@ -470,6 +471,52 @@ class RoutePlannerViewModel(
 
     fun clearImported() = mutateConnections {
         AnsiblexUiMessage(AnsiblexMessage.CLEARED_IMPORTED, count = it.clearImported())
+    }
+
+    fun previewPastedImport(text: String) {
+        val service = importService ?: return
+        val mode = mutableState.value.importMode
+        mutableState.update { it.copy(isImportBusy = true, importPreview = null, importError = null) }
+        scope.launch {
+            runCatching { withContext(ioDispatcher) { service.previewWebwayText(text, mode) } }
+                .onSuccess { preview ->
+                    mutableState.update { it.copy(isImportBusy = false, importPreview = preview) }
+                }
+                .onFailure { error ->
+                    mutableState.update {
+                        it.copy(
+                            isImportBusy = false,
+                            importError = AnsiblexUiMessage(
+                                AnsiblexMessage.PREVIEW_FAILED,
+                                technicalDetail = error.message,
+                            ),
+                        )
+                    }
+                }
+        }
+    }
+
+    fun confirmImportOwner(ownerRawText: String, alliance: AllianceReference) {
+        val service = importService ?: return
+        val preview = mutableState.value.importPreview ?: return
+        mutableState.update { it.copy(isImportBusy = true, importError = null) }
+        scope.launch {
+            runCatching { withContext(ioDispatcher) { service.confirmOwner(preview, ownerRawText, alliance) } }
+                .onSuccess { updated ->
+                    mutableState.update { it.copy(isImportBusy = false, importPreview = updated) }
+                }
+                .onFailure { error ->
+                    mutableState.update {
+                        it.copy(
+                            isImportBusy = false,
+                            importError = AnsiblexUiMessage(
+                                AnsiblexMessage.PREVIEW_FAILED,
+                                technicalDetail = error.message,
+                            ),
+                        )
+                    }
+                }
+        }
     }
 
     fun clearAll() = mutateConnections {

@@ -98,6 +98,7 @@ internal object AnsiblexImportParsers {
                     ownerAllianceId = value("owner_alliance_id"),
                     ownerAllianceName = value("owner_alliance_name"),
                     ownerAllianceTicker = value("owner_alliance_ticker"),
+                    ownerRawText = null,
                     enabled = enabled(),
                     direction = value("direction"),
                 )
@@ -127,6 +128,7 @@ internal object AnsiblexImportParsers {
                     ownerAllianceId = row.ownerAllianceId?.toString(),
                     ownerAllianceName = row.ownerAllianceName?.trim()?.takeIf(String::isNotEmpty),
                     ownerAllianceTicker = row.ownerAllianceTicker?.trim()?.takeIf(String::isNotEmpty),
+                    ownerRawText = null,
                     enabled = row.enabled,
                     direction = row.direction,
                 )
@@ -143,6 +145,8 @@ internal object AnsiblexImportParsers {
         rowNumber: Long? = null,
         field: String? = null,
     ) = ImportDiagnostic(ImportDiagnosticSeverity.ERROR, code, message, rowNumber, field)
+
+    fun parseWebway(text: String): ParsedImport = WebwayAnsiblexParser.parse(text)
 }
 
 @Serializable

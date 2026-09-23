@@ -31,11 +31,12 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.ansiblex.MAX_ALLIANCE_NAME_LENGTH
 import dev.evestaticmapplanner.core.ansiblex.MAX_ALLIANCE_TICKER_LENGTH
-import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
+import dev.evestaticmapplanner.core.alliance.AllianceOwnerResolution
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
-import dev.evestaticmapplanner.preferences.AnsiblexIdentitySource
-import dev.evestaticmapplanner.preferences.AnsiblexPreferences
+import dev.evestaticmapplanner.search.AllianceSearchField
+import dev.evestaticmapplanner.search.displayLabel
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import dev.evestaticmapplanner.localization.LocalAppStrings
@@ -61,10 +62,8 @@ internal enum class ClearConfirmation { IMPORTED, ALL }
 fun AnsiblexManagerDialog(
     userDatabasePath: Path,
     state: RoutePlannerUiState,
-    esiIdentityContext: CurrentIdentityContext?,
-    identityPreferences: AnsiblexPreferences,
+    allianceDirectorySnapshot: AllianceDirectorySnapshot,
     viewModel: RoutePlannerViewModel,
-    onIdentityPreferencesChange: (AnsiblexPreferences) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val appStrings = LocalAppStrings.current
@@ -76,15 +75,9 @@ fun AnsiblexManagerDialog(
     var manualOwnerAllianceId by remember { mutableStateOf("") }
     var manualOwnerAllianceName by remember { mutableStateOf("") }
     var manualOwnerAllianceTicker by remember { mutableStateOf("") }
-    var currentAllianceInput by remember(identityPreferences.manualAllianceId) {
-        mutableStateOf(identityPreferences.manualAllianceId?.toString().orEmpty())
-    }
-    var currentAllianceNameInput by remember(identityPreferences.manualAllianceName) {
-        mutableStateOf(identityPreferences.manualAllianceName.orEmpty())
-    }
-    var currentAllianceTickerInput by remember(identityPreferences.manualAllianceTicker) {
-        mutableStateOf(identityPreferences.manualAllianceTicker.orEmpty())
-    }
+    var showPasteImport by remember { mutableStateOf(false) }
+    var pastedText by remember { mutableStateOf("") }
+    var resolvingOwnerRaw by remember { mutableStateOf<String?>(null) }
     var bidirectional by remember { mutableStateOf(true) }
     var confirmation by remember { mutableStateOf<ClearConfirmation?>(null) }
     var clearAllPhrase by remember { mutableStateOf("") }
@@ -137,94 +130,6 @@ fun AnsiblexManagerDialog(
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(strings.allianceIdentity, style = MaterialTheme.typography.titleMedium)
-                        val activeIdentity = state.currentIdentityContext
-                        Text(
-                            "${strings.currentCharacter}: ${activeIdentity?.character?.name ?: "—"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EveColors.SecondaryText,
-                        )
-                        Text(
-                            "${strings.currentAlliance}: ${activeIdentity.allianceDisplayLabel()}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EveColors.SecondaryText,
-                        )
-                        Text(
-                            "${strings.identitySource}: " + if (
-                                identityPreferences.identitySource == AnsiblexIdentitySource.ESI
-                            ) strings.esiIdentity else strings.manualIdentity,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EveColors.SecondaryText,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TextButton(
-                                onClick = {
-                                    onIdentityPreferencesChange(
-                                        identityPreferences.copy(identitySource = AnsiblexIdentitySource.ESI),
-                                    )
-                                },
-                                enabled = esiIdentityContext != null ||
-                                    identityPreferences.identitySource == AnsiblexIdentitySource.ESI,
-                                selected = identityPreferences.identitySource == AnsiblexIdentitySource.ESI,
-                            ) { Text(strings.esiIdentity) }
-                            TextButton(
-                                onClick = {
-                                    onIdentityPreferencesChange(
-                                        identityPreferences.copy(identitySource = AnsiblexIdentitySource.MANUAL),
-                                    )
-                                },
-                                selected = identityPreferences.identitySource == AnsiblexIdentitySource.MANUAL,
-                            ) { Text(strings.manualIdentity) }
-                        }
-                        OutlinedTextField(
-                            currentAllianceInput,
-                            { currentAllianceInput = it },
-                            label = { Text(strings.currentAllianceId) },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            currentAllianceNameInput,
-                            { currentAllianceNameInput = it },
-                            label = { Text(strings.ownerAllianceName) },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            currentAllianceTickerInput,
-                            { currentAllianceTickerInput = it },
-                            label = { Text(strings.ownerAllianceTicker) },
-                            singleLine = true,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(
-                                onClick = {
-                                    onIdentityPreferencesChange(
-                                        AnsiblexPreferences(
-                                            identitySource = AnsiblexIdentitySource.MANUAL,
-                                            manualAllianceId = currentAllianceInput.trim().toLong(),
-                                            manualAllianceName = currentAllianceNameInput.trim().takeIf(String::isNotEmpty),
-                                            manualAllianceTicker = currentAllianceTickerInput.trim().takeIf(String::isNotEmpty),
-                                        ),
-                                    )
-                                },
-                                enabled = currentAllianceInput.trim().toLongOrNull()?.let { it > 0 } == true &&
-                                    currentAllianceNameInput.trim().length <= MAX_ALLIANCE_NAME_LENGTH &&
-                                    currentAllianceTickerInput.trim().length <= MAX_ALLIANCE_TICKER_LENGTH,
-                            ) { Text(strings.applyAllianceIdentity) }
-                            TextButton(onClick = {
-                                currentAllianceInput = ""
-                                currentAllianceNameInput = ""
-                                currentAllianceTickerInput = ""
-                                onIdentityPreferencesChange(
-                                    AnsiblexPreferences(identitySource = AnsiblexIdentitySource.MANUAL),
-                                )
-                            }) { Text(strings.clearAllianceIdentity) }
-                        }
-                        Text(
-                            strings.permissionSummary(state.usableAnsiblexCount, state.enabledAnsiblexCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = EveColors.SecondaryText,
-                        )
-                        EveDivider()
                         Text(strings.importCsvJson, style = MaterialTheme.typography.titleMedium)
                         Row {
                             AnsiblexImportMode.entries.forEach { mode ->
@@ -235,13 +140,14 @@ fun AnsiblexManagerDialog(
                                 ) { Text(strings.importMode(mode)) }
                             }
                         }
-                        Button(
-                            onClick = {
+                        AnsiblexImportEntryButtons(
+                            busy = state.isImportBusy,
+                            onFileImport = {
                                 chooseImportFile(strings.fileChooserTitle, strings.fileChooserFilter)
                                     ?.let(viewModel::previewImport)
                             },
-                            enabled = !state.isImportBusy,
-                        ) { Text(if (state.isImportBusy) strings.working else strings.importAndPreview) }
+                            onPasteImport = { showPasteImport = true },
+                        )
                         state.importPreview?.let { preview ->
                             Text(
                                 strings.previewCounts(
@@ -267,6 +173,46 @@ fun AnsiblexManagerDialog(
                                     color = if (diagnostic.severity == ImportDiagnosticSeverity.ERROR) EveColors.Error else EveColors.Warning,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
+                            }
+                            if (preview.ownerResolutions.isNotEmpty()) {
+                                Text(strings.ownerResolution, style = MaterialTheme.typography.titleSmall)
+                                preview.ownerResolutions.forEach { owner ->
+                                    val resolved = owner.resolution as? AllianceOwnerResolution.ResolvedExact
+                                    Text(
+                                        if (resolved != null) {
+                                            "${owner.rawText} ✓ ${resolved.alliance.displayLabel()} · #${resolved.alliance.allianceId}"
+                                        } else {
+                                            "${owner.rawText} ⚠ ${strings.needsConfirmation}"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (resolved != null) EveColors.Success else EveColors.Warning,
+                                    )
+                                    val candidates = when (val resolution = owner.resolution) {
+                                        is AllianceOwnerResolution.AmbiguousExact -> resolution.candidates
+                                        is AllianceOwnerResolution.NeedsConfirmation -> resolution.candidates
+                                        else -> emptyList()
+                                    }
+                                    candidates.take(4).forEach { candidate ->
+                                        TextButton(onClick = { viewModel.confirmImportOwner(owner.rawText, candidate) }) {
+                                            Text("${candidate.displayLabel()} · #${candidate.allianceId}")
+                                        }
+                                    }
+                                    if (resolved == null) {
+                                        TextButton(onClick = { resolvingOwnerRaw = owner.rawText }) {
+                                            Text(strings.searchAlliance)
+                                        }
+                                        if (resolvingOwnerRaw == owner.rawText) {
+                                            AllianceSearchField(
+                                                snapshot = allianceDirectorySnapshot,
+                                                label = strings.searchAlliance,
+                                                onSelect = { alliance ->
+                                                    viewModel.confirmImportOwner(owner.rawText, alliance)
+                                                    resolvingOwnerRaw = null
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                             Row {
                                 Button(
@@ -366,6 +312,31 @@ fun AnsiblexManagerDialog(
             )
         }
     }
+    if (showPasteImport) {
+        AlertDialog(
+            onDismissRequest = { showPasteImport = false },
+            title = { Text(strings.pasteTitle) },
+            text = {
+                OutlinedTextField(
+                    value = pastedText,
+                    onValueChange = { pastedText = it },
+                    label = { Text(strings.pasteHint) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 12,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.previewPastedImport(pastedText)
+                        showPasteImport = false
+                    },
+                    enabled = pastedText.isNotBlank(),
+                ) { Text(strings.parse) }
+            },
+            dismissButton = { TextButton(onClick = { showPasteImport = false }) { Text(appStrings.common.cancel) } },
+        )
+    }
 }
 
 @Composable
@@ -374,6 +345,21 @@ internal fun AnsiblexManagerRoot(content: @Composable () -> Unit) {
         modifier = Modifier.fillMaxSize().testTag(ANSIBLEX_MANAGER_ROOT_TEST_TAG),
         content = content,
     )
+}
+
+@Composable
+internal fun AnsiblexImportEntryButtons(
+    busy: Boolean,
+    onFileImport: () -> Unit,
+    onPasteImport: () -> Unit,
+) {
+    val strings = LocalAppStrings.current.ansiblex
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Button(onClick = onFileImport, enabled = !busy) {
+            Text(if (busy) strings.working else strings.fileImport)
+        }
+        Button(onClick = onPasteImport, enabled = !busy) { Text(strings.pasteImport) }
+    }
 }
 
 internal val ANSIBLEX_MANAGER_DEFAULT_SIZE = DpSize(960.dp, 760.dp)
@@ -451,13 +437,6 @@ private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlanne
             TextButton(onClick = { viewModel.deleteConnection(connection.id) }) { Text(appStrings.common.delete) }
         }
     }
-}
-
-private fun CurrentIdentityContext?.allianceDisplayLabel(): String {
-    if (this == null) return "—"
-    val display = listOfNotNull(allianceName, allianceTicker?.let { "[$it]" }).joinToString(" ")
-    return listOfNotNull(display.takeIf(String::isNotEmpty), allianceId?.let { "#$it" }).joinToString(" · ")
-        .ifEmpty { "—" }
 }
 
 private fun AnsiblexConnection.ownerDisplayLabel(): String {

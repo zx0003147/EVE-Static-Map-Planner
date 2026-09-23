@@ -2,6 +2,8 @@ package dev.evestaticmapplanner.data.ansiblex
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.alliance.AllianceOwnerResolution
+import dev.evestaticmapplanner.core.alliance.AllianceReference
 
 enum class AnsiblexImportMode {
     MERGE,
@@ -52,10 +54,25 @@ data class AnsiblexImportPreview(
     val unchanged: List<ImportChange>,
     val removals: List<AnsiblexConnection>,
     val diagnostics: List<ImportDiagnostic>,
+    val ownerResolutions: List<ImportOwnerResolution> = emptyList(),
     internal val candidates: List<ImportCandidate>,
     internal val baseSnapshotFingerprint: String,
+    internal val sourceText: String,
+    internal val sourceKind: AnsiblexImportSourceKind,
+    internal val ownerMappings: Map<String, AllianceReference>,
 ) {
     val canApply: Boolean get() = diagnostics.none { it.severity == ImportDiagnosticSeverity.ERROR }
+}
+
+data class ImportOwnerResolution(
+    val rawText: String,
+    val rowNumbers: List<Long>,
+    val resolution: AllianceOwnerResolution,
+)
+
+enum class AnsiblexImportSourceKind {
+    FILE,
+    WEBWAY,
 }
 
 data class AnsiblexImportApplyResult(
@@ -88,6 +105,7 @@ internal data class RawImportRow(
     val ownerAllianceId: String?,
     val ownerAllianceName: String?,
     val ownerAllianceTicker: String?,
+    val ownerRawText: String? = null,
     val enabled: Boolean?,
     val direction: String?,
 )

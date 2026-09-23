@@ -56,6 +56,8 @@ import dev.evestaticmapplanner.control.transport.LocalControlServer
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.core.identity.toCurrentIdentityContext
+import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
+import dev.evestaticmapplanner.alliance.PublicAllianceMetadataService
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidation
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
@@ -324,12 +326,13 @@ private fun FrameWindowScope.ReadyApplication(
             preferencesStore = preferencesStore,
         )
     }
-    val userComponents = remember(configuration) {
+    val userComponents = remember(configuration, featurePackRuntime) {
         runCatching {
             createUserComponents(
                 userDatabasePath = configuration.userDatabase.path,
                 universeRepository = universeRepository,
                 searchRepository = searchRepository,
+                allianceDirectoryProvider = { featurePackRuntime.allianceDirectoryHost.state.value.snapshot },
             )
         }.also { result ->
             result.exceptionOrNull()?.let { AppDiagnostics.warning("User database initialization failed", it) }
@@ -799,6 +802,7 @@ private fun FrameWindowScope.ReadyApplication(
     val globalPushToTalkState by globalPushToTalkCoordinator.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val eveIdentityState by featurePackRuntime.eveIdentityHost.state.collectAsState()
+    val allianceDirectoryState by featurePackRuntime.allianceDirectoryHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
     val miniMapHudState by miniMapHudController.state.collectAsState()
     LaunchedEffect(miniMapHudState.hotkeyStatus) {
@@ -858,6 +862,32 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val routeState by routeViewModel.state.collectAsState()
     val esiIdentityContext = eveIdentityState.currentIdentity?.toCurrentIdentityContext()
+    LaunchedEffect(eveIdentityState.currentIdentity, featurePackRuntime.allianceDirectoryHost) {
+        featurePackRuntime.allianceDirectoryHost.updateCurrentIdentity(eveIdentityState.currentIdentity)
+    }
+    val allianceMetadataService = remember(configuration) {
+        PublicAllianceMetadataService(
+            configuration.userDatabase.path.toAbsolutePath().normalize().parent.resolve("alliance-metadata-cache"),
+        )
+    }
+    val allianceDirectoryIds = allianceDirectoryState.snapshot.alliancesById.keys
+    LaunchedEffect(allianceDirectoryIds, allianceMetadataService, featurePackRuntime.allianceDirectoryHost) {
+        val missingMetadata = allianceDirectoryState.snapshot.alliancesById.values
+            .filter { it.name == null || it.ticker == null }
+            .take(256)
+        withContext(Dispatchers.IO) {
+            missingMetadata.mapNotNull { alliance -> allianceMetadataService.resolve(alliance.allianceId) }
+        }.forEach(featurePackRuntime.allianceDirectoryHost::addVerifiedPublicMetadata)
+    }
+    LaunchedEffect(
+        mapState.appPreferences.ansiblex.manualAllianceId,
+        allianceMetadataService,
+        featurePackRuntime.allianceDirectoryHost,
+    ) {
+        val allianceId = mapState.appPreferences.ansiblex.manualAllianceId ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) { allianceMetadataService.resolve(allianceId) }
+            ?.let(featurePackRuntime.allianceDirectoryHost::addVerifiedPublicMetadata)
+    }
     LaunchedEffect(
         mapState.isLoading,
         mapState.appPreferences.eveIdentity.selectedCharacterId,
@@ -1043,6 +1073,10 @@ private fun FrameWindowScope.ReadyApplication(
             state = mapState,
             routeState = routeState,
             esiIdentityContext = esiIdentityContext,
+            esiIdentity = eveIdentityState.currentIdentity,
+            allianceDirectorySnapshot = allianceDirectoryState.snapshot,
+            allianceMetadataService = allianceMetadataService,
+            onVerifiedAlliance = featurePackRuntime.allianceDirectoryHost::addVerifiedPublicMetadata,
             wormholeState = wormholeState,
             jumpState = jumpState,
             capitalState = capitalState,
@@ -1374,6 +1408,7 @@ internal fun createUserComponents(
     userDatabasePath: Path,
     universeRepository: UniverseRepository,
     searchRepository: SystemSearchRepository,
+    allianceDirectoryProvider: () -> AllianceDirectorySnapshot = { AllianceDirectorySnapshot() },
     databaseInitializer: (Path) -> Unit = UserDatabase::initialize,
 ): UserComponents {
     databaseInitializer(userDatabasePath)
@@ -1386,6 +1421,7 @@ internal fun createUserComponents(
             userDatabasePath = userDatabasePath,
             universeRepository = universeRepository,
             searchRepository = searchRepository,
+            allianceDirectoryProvider = allianceDirectoryProvider,
             initializeDatabase = false,
         ),
         savedMarkerRepository = SqliteSavedMarkerRepository(

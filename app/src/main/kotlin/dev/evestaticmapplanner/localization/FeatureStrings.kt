@@ -274,6 +274,7 @@ data class WormholeUiMessage(
 }
 
 interface AnsiblexStrings {
+    val sectionTitle: String
     val managerTitle: String
     val importCsvJson: String
     val working: String
@@ -311,6 +312,21 @@ interface AnsiblexStrings {
     val deleteEverything: String
     val fileChooserTitle: String
     val fileChooserFilter: String
+    val switchIdentity: String
+    val showUnavailable: String
+    val esiUnavailable: String
+    val simulateOtherAlliance: String
+    val searchAlliance: String
+    val advancedAllianceId: String
+    val verifyAllianceId: String
+    val verificationFailed: String
+    val fileImport: String
+    val pasteImport: String
+    val pasteTitle: String
+    val pasteHint: String
+    val parse: String
+    val ownerResolution: String
+    val needsConfirmation: String
 
     fun importMode(mode: AnsiblexImportMode): String
     fun summary(enabled: Int, total: Int, databasePath: String): String

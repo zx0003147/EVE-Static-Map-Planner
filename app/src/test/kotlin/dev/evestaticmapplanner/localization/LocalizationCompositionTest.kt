@@ -68,7 +68,7 @@ class LocalizationCompositionTest {
                             onOpenEmbeddedAi = {},
                             onToggleSidebar = {},
                         )
-                        NormalRouteConnectionOptions(RoutePlannerUiState(), {}, {}, {})
+                        NormalRouteConnectionOptions(RoutePlannerUiState(), {}, {})
                         Row(Modifier.height(40.dp)) {
                             EveAlwaysOnTopButton(isAlwaysOnTop = false, onClick = {})
                         }

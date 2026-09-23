@@ -14,6 +14,7 @@ kotlin {
             kotlin.srcDir("src/main/kotlin")
             kotlin.exclude(
                 "dev/evestaticmapplanner/core/ansiblex/**",
+                "dev/evestaticmapplanner/core/alliance/**",
                 "dev/evestaticmapplanner/core/marker/**",
                 "dev/evestaticmapplanner/core/repository/AnsiblexRepository.kt",
                 "dev/evestaticmapplanner/core/repository/CachingStaticMapRepository.kt",
@@ -27,6 +28,7 @@ kotlin {
             kotlin.srcDir("src/main/kotlin")
             kotlin.include(
                 "dev/evestaticmapplanner/core/ansiblex/**",
+                "dev/evestaticmapplanner/core/alliance/**",
                 "dev/evestaticmapplanner/core/marker/**",
                 "dev/evestaticmapplanner/core/repository/AnsiblexRepository.kt",
                 "dev/evestaticmapplanner/core/repository/CachingStaticMapRepository.kt",

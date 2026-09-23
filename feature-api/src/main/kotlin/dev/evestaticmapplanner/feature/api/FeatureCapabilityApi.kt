@@ -79,6 +79,11 @@ object StandardFeatureCapabilities {
         FeatureCapabilityId("eve-identity"),
         EveIdentityCapability::class.java,
     )
+
+    val ALLIANCE_DIRECTORY = FeatureCapabilityKey(
+        FeatureCapabilityId("alliance-directory"),
+        AllianceDirectoryCapability::class.java,
+    )
 }
 
 private object EmptyFeatureCapabilityLookup : FeatureCapabilityLookup {

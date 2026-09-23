@@ -360,6 +360,7 @@ internal object SimplifiedChineseWormholeStrings : WormholeStrings {
 }
 
 internal object SimplifiedChineseAnsiblexStrings : AnsiblexStrings {
+    override val sectionTitle = "Ansiblex"
     override val managerTitle = "Ansiblex 管理"
     override val importCsvJson = "导入 CSV / JSON"
     override val working = "正在处理……"
@@ -397,6 +398,21 @@ internal object SimplifiedChineseAnsiblexStrings : AnsiblexStrings {
     override val deleteEverything = "全部删除"
     override val fileChooserTitle = "选择模拟或用户维护的 Ansiblex CSV/JSON"
     override val fileChooserFilter = "Ansiblex CSV 或 JSON"
+    override val switchIdentity = "切换"
+    override val showUnavailable = "显示不可用 Ansiblex"
+    override val esiUnavailable = "ESI 身份不可用"
+    override val simulateOtherAlliance = "模拟其他联盟"
+    override val searchAlliance = "搜索联盟……"
+    override val advancedAllianceId = "高级 Alliance ID"
+    override val verifyAllianceId = "验证 ID"
+    override val verificationFailed = "ESI 无法确认此 Alliance ID"
+    override val fileImport = "文件导入"
+    override val pasteImport = "粘贴文本导入"
+    override val pasteTitle = "粘贴 Ansiblex 数据"
+    override val pasteHint = "在此粘贴 The Webway 表格"
+    override val parse = "解析"
+    override val ownerResolution = "Owner 解析"
+    override val needsConfirmation = "需要确认"
 
     override fun importMode(mode: AnsiblexImportMode) = when (mode) {
         AnsiblexImportMode.MERGE -> "合并（MERGE）"

@@ -67,6 +67,7 @@ import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.jump.EligibilityVerdict
+import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
 import dev.evestaticmapplanner.search.CompactOutlinedTextField
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
@@ -91,6 +92,7 @@ internal enum class SidebarToolIcon {
     JUMP_RANGE,
     NORMAL_ROUTE,
     CAPITAL_ROUTE,
+    ANSIBLEX,
 }
 
 internal enum class ToolSidebarSection(val icon: SidebarToolIcon) {
@@ -98,11 +100,13 @@ internal enum class ToolSidebarSection(val icon: SidebarToolIcon) {
     JUMP_RANGE(SidebarToolIcon.JUMP_RANGE),
     NORMAL_ROUTE(SidebarToolIcon.NORMAL_ROUTE),
     CAPITAL_ROUTE(SidebarToolIcon.CAPITAL_ROUTE),
+    ANSIBLEX(SidebarToolIcon.ANSIBLEX),
 }
 
 internal val TOOL_SIDEBAR_SECTION_ORDER = listOf(
     ToolSidebarSection.SEARCH,
     ToolSidebarSection.JUMP_RANGE,
+    ToolSidebarSection.ANSIBLEX,
     ToolSidebarSection.NORMAL_ROUTE,
     ToolSidebarSection.CAPITAL_ROUTE,
 )
@@ -112,6 +116,7 @@ internal fun sidebarSectionLabel(section: ToolSidebarSection, strings: AppString
     ToolSidebarSection.JUMP_RANGE -> strings.route.jumpRangeOverlays
     ToolSidebarSection.NORMAL_ROUTE -> strings.route.normalRoute
     ToolSidebarSection.CAPITAL_ROUTE -> strings.route.capitalRoute
+    ToolSidebarSection.ANSIBLEX -> strings.ansiblex.sectionTitle
 }
 
 internal data class ToolSidebarExpansionState(
@@ -150,6 +155,7 @@ internal fun RouteToolsPanel(
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onInvokeNavigationAction: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
     onOpenAnsiblexManager: () -> Unit,
+    onSwitchAnsiblexIdentity: () -> Unit,
     onOpenWormholeManager: () -> Unit,
     onFocusSystem: (Int) -> Unit,
     sharedMapState: SharedMapState,
@@ -229,7 +235,6 @@ internal fun RouteToolsPanel(
                                     onSelectRouteActionTarget,
                                     onInvokeRouteAction,
                                     onInvokeNavigationAction,
-                                    onOpenAnsiblexManager,
                                     onOpenWormholeManager,
                                     sharedMapState,
                                     routeHandoffPublishState,
@@ -254,6 +259,20 @@ internal fun RouteToolsPanel(
                                     sharedMapState,
                                     routeHandoffPublishState,
                                     onPublishCapitalRoute,
+                                )
+                            }
+                            ToolSidebarSection.ANSIBLEX -> CollapsibleToolSection(
+                                title = sectionTitle,
+                                icon = section.icon,
+                                summary = state.currentIdentityContext?.allianceTicker?.let { "[$it]" },
+                                expanded = sectionExpanded,
+                                onToggle = { expansionState = expansionState.toggle(section) },
+                            ) {
+                                AnsiblexSectionContent(
+                                    state = state,
+                                    onSwitchIdentity = onSwitchAnsiblexIdentity,
+                                    onShowUnavailableChanged = viewModel::setShowAnsiblexLayer,
+                                    onOpenManager = onOpenAnsiblexManager,
                                 )
                             }
                         }
@@ -675,6 +694,13 @@ private fun SidebarToolIcon(
                 )
                 drawRouteArrowHead(color, end, strokeWidth)
             }
+            SidebarToolIcon.ANSIBLEX -> {
+                val first = Offset(size.width * 0.28f, size.height * 0.70f)
+                val second = Offset(size.width * 0.72f, size.height * 0.30f)
+                drawLine(color, first, second, strokeWidth, cap = StrokeCap.Round)
+                drawCircle(color, size.minDimension * 0.12f, first, style = stroke)
+                drawCircle(color, size.minDimension * 0.12f, second, style = stroke)
+            }
             SidebarToolIcon.CAPITAL_ROUTE -> {
                 val viewport = 24f
                 fun point(x: Float, y: Float) = Offset(
@@ -787,7 +813,6 @@ private fun NormalRouteSectionContent(
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onInvokeNavigationAction: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
-    onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
     sharedMapState: SharedMapState,
     routeHandoffPublishState: RouteHandoffPublishUiState,
@@ -820,7 +845,6 @@ private fun NormalRouteSectionContent(
             state = state,
             onUseAnsiblexChanged = viewModel::setUseAnsiblex,
             onUseWormholesChanged = viewModel::setUseWormholes,
-            onShowAnsiblexLayerChanged = viewModel::setShowAnsiblexLayer,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -865,7 +889,7 @@ private fun NormalRouteSectionContent(
             onInvokeRouteAction,
             onInvokeNavigationAction,
         )
-        RouteManagerButtons(state, onOpenAnsiblexManager, onOpenWormholeManager)
+        RouteManagerButtons(state, onOpenWormholeManager)
         state.userDatabaseError?.let {
             Text(it.resolve(strings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
             Text(
@@ -880,13 +904,9 @@ private fun NormalRouteSectionContent(
 @Composable
 internal fun RouteManagerButtons(
     state: RoutePlannerUiState,
-    onOpenAnsiblexManager: () -> Unit,
     onOpenWormholeManager: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
-    TextButton(onClick = onOpenAnsiblexManager, enabled = state.isAnsiblexAvailable) {
-        Text(strings.route.ansiblexManager(state.enabledAnsiblexCount, state.ansiblexConnections.size))
-    }
     TextButton(onClick = onOpenWormholeManager) {
         Text(strings.route.wormholeManager(state.wormholeConnections.size))
     }
@@ -897,7 +917,6 @@ internal fun NormalRouteConnectionOptions(
     state: RoutePlannerUiState,
     onUseAnsiblexChanged: (Boolean) -> Unit,
     onUseWormholesChanged: (Boolean) -> Unit,
-    onShowAnsiblexLayerChanged: (Boolean) -> Unit,
 ) {
     val strings = LocalAppStrings.current
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -917,16 +936,56 @@ internal fun NormalRouteConnectionOptions(
         )
         Text(strings.route.useWormholes)
     }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(
-            checked = state.showAnsiblexLayer,
-            onCheckedChange = onShowAnsiblexLayerChanged,
-            enabled = state.isAnsiblexAvailable,
-            modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE),
+}
+
+@Composable
+internal fun AnsiblexSectionContent(
+    state: RoutePlannerUiState,
+    onSwitchIdentity: () -> Unit,
+    onShowUnavailableChanged: (Boolean) -> Unit,
+    onOpenManager: () -> Unit,
+) {
+    val strings = LocalAppStrings.current
+    val identity = state.currentIdentityContext
+    Column(
+        Modifier.fillMaxWidth().testTag(ANSIBLEX_SECTION_CONTENT_TAG),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(strings.ansiblex.currentCharacter, color = EveColors.SecondaryText, style = MaterialTheme.typography.labelSmall)
+        Text(
+            when (identity?.source) {
+                CurrentIdentitySource.ESI -> "ESI · ${identity.character?.name ?: strings.ansiblex.esiUnavailable}"
+                CurrentIdentitySource.MANUAL -> strings.ansiblex.manualIdentity
+                null -> strings.ansiblex.esiUnavailable
+            },
+            style = MaterialTheme.typography.bodySmall,
         )
-        Text(strings.route.showAnsiblexLayer)
+        Text(identity.allianceDisplayLabel(), color = EveColors.Important, style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = onSwitchIdentity) { Text(strings.ansiblex.switchIdentity) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.showAnsiblexLayer,
+                onCheckedChange = onShowUnavailableChanged,
+                enabled = state.isAnsiblexAvailable,
+                modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE).testTag(SHOW_UNAVAILABLE_ANSIBLEX_TAG),
+            )
+            Text(strings.ansiblex.showUnavailable)
+        }
+        Button(onClick = onOpenManager, enabled = state.isAnsiblexAvailable) {
+            Text(strings.ansiblex.managerTitle)
+        }
     }
 }
+
+private fun dev.evestaticmapplanner.core.identity.CurrentIdentityContext?.allianceDisplayLabel(): String {
+    if (this == null) return "—"
+    return listOfNotNull(allianceTicker?.let { "[$it]" }, allianceName, allianceId?.let { "#$it" })
+        .joinToString(" ")
+        .ifEmpty { "—" }
+}
+
+internal const val ANSIBLEX_SECTION_CONTENT_TAG = "ansiblex-section-content"
+internal const val SHOW_UNAVAILABLE_ANSIBLEX_TAG = "show-unavailable-ansiblex"
 
 @Composable
 private fun CapitalRouteSectionContent(

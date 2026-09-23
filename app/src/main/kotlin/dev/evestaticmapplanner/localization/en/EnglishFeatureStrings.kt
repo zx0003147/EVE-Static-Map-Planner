@@ -307,6 +307,7 @@ internal object EnglishWormholeStrings : WormholeStrings {
 }
 
 internal object EnglishAnsiblexStrings : AnsiblexStrings {
+    override val sectionTitle = "Ansiblex"
     override val managerTitle = "Ansiblex Manager"
     override val importCsvJson = "Import CSV / JSON"
     override val working = "Working…"
@@ -344,6 +345,21 @@ internal object EnglishAnsiblexStrings : AnsiblexStrings {
     override val deleteEverything = "Delete Everything"
     override val fileChooserTitle = "Select synthetic or user-maintained Ansiblex CSV/JSON"
     override val fileChooserFilter = "Ansiblex CSV or JSON"
+    override val switchIdentity = "Switch"
+    override val showUnavailable = "Show unavailable Ansiblex"
+    override val esiUnavailable = "ESI Identity unavailable"
+    override val simulateOtherAlliance = "Simulate another alliance"
+    override val searchAlliance = "Search alliance…"
+    override val advancedAllianceId = "Advanced Alliance ID"
+    override val verifyAllianceId = "Verify ID"
+    override val verificationFailed = "ESI could not verify this Alliance ID"
+    override val fileImport = "File Import"
+    override val pasteImport = "Paste Text Import"
+    override val pasteTitle = "Paste Ansiblex Data"
+    override val pasteHint = "Paste a The Webway table here"
+    override val parse = "Parse"
+    override val ownerResolution = "Owner resolution"
+    override val needsConfirmation = "Needs confirmation"
 
     override fun importMode(mode: AnsiblexImportMode) = mode.name
     override fun summary(enabled: Int, total: Int, databasePath: String) = "$enabled enabled / $total total · $databasePath"

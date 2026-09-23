@@ -120,4 +120,24 @@ class AnsiblexManagerDialogTest {
         onNodeWithText("Delete Everything").assertIsEnabled().performClick()
         assertEquals(1, confirmCount)
     }
+
+    @Test
+    fun `manager exposes file and paste imports as separate entry points`() = runComposeUiTest {
+        var fileClicks = 0
+        var pasteClicks = 0
+        setContent {
+            MaterialTheme {
+                AnsiblexImportEntryButtons(
+                    busy = false,
+                    onFileImport = { fileClicks++ },
+                    onPasteImport = { pasteClicks++ },
+                )
+            }
+        }
+
+        onNodeWithText("File Import").performClick()
+        onNodeWithText("Paste Text Import").performClick()
+        assertEquals(1, fileClicks)
+        assertEquals(1, pasteClicks)
+    }
 }

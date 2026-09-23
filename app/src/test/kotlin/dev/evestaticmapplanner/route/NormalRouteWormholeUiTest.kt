@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.route
 
 import dev.evestaticmapplanner.localization.AnsiblexDataUnavailableUiMessage
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -39,7 +40,6 @@ class NormalRouteWormholeUiTest {
                             ),
                             onUseAnsiblexChanged = {},
                             onUseWormholesChanged = { toggled = it },
-                            onShowAnsiblexLayerChanged = {},
                         )
                     }
                 }
@@ -52,9 +52,7 @@ class NormalRouteWormholeUiTest {
 
             val useAnsiblex = onNodeWithText("Use Ansiblex").fetchSemanticsNode().boundsInRoot
             val useWormholes = onNodeWithText("Use Wormholes").fetchSemanticsNode().boundsInRoot
-            val showAnsiblex = onNodeWithText("Show Ansiblex layer").fetchSemanticsNode().boundsInRoot
             assertTrue(useAnsiblex.bottom <= useWormholes.top)
-            assertTrue(useWormholes.bottom <= showAnsiblex.top)
         }
 
     @Test
@@ -80,16 +78,44 @@ class NormalRouteWormholeUiTest {
                             userDatabaseError = AnsiblexDataUnavailableUiMessage,
                             useWormholes = false,
                         ),
-                        onOpenAnsiblexManager = {},
                         onOpenWormholeManager = { openCount++ },
                     )
                 }
             }
         }
 
-        onNodeWithText("Ansiblex Manager (0/0)").assertIsNotEnabled()
         onNodeWithText("Wormhole Manager (0)").assertIsEnabled().performClick()
         assertEquals(1, openCount)
+    }
+
+    @Test
+    fun `Ansiblex section exposes identity existing visibility preference and manager`() = runComposeUiTest {
+        var showUnavailable: Boolean? = null
+        var switchCount = 0
+        var managerCount = 0
+        setContent {
+            MaterialTheme {
+                AnsiblexSectionContent(
+                    state = RoutePlannerUiState(
+                        isLoading = false,
+                        showAnsiblexLayer = true,
+                        currentIdentityContext = CurrentIdentityContext.manual(99, "Selected Alliance", "SEL"),
+                    ),
+                    onSwitchIdentity = { switchCount++ },
+                    onShowUnavailableChanged = { showUnavailable = it },
+                    onOpenManager = { managerCount++ },
+                )
+            }
+        }
+
+        onNodeWithText("Manual alliance simulation").assertIsDisplayed()
+        onNodeWithText("[SEL] Selected Alliance #99").assertIsDisplayed()
+        onNodeWithText("Switch").performClick()
+        onNodeWithTag(SHOW_UNAVAILABLE_ANSIBLEX_TAG).assertIsOn().performClick()
+        onNodeWithText("Ansiblex Manager").performClick()
+        assertEquals(1, switchCount)
+        assertEquals(false, showUnavailable)
+        assertEquals(1, managerCount)
     }
 
     private fun route(types: List<RouteEdgeType>): RouteResult {

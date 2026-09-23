@@ -2,6 +2,11 @@ package dev.evestaticmapplanner.data
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.alliance.AllianceDirectoryMerger
+import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
+import dev.evestaticmapplanner.core.alliance.AllianceDirectorySourceSnapshot
+import dev.evestaticmapplanner.core.alliance.AllianceOwnerResolution
+import dev.evestaticmapplanner.core.alliance.AllianceReference
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SolarSystem
@@ -259,6 +264,76 @@ class AnsiblexImportServiceTest {
             }
         }
     }
+
+    @Test
+    fun `Webway paste parses systems POS suffix owner and physical row numbers`() {
+        val directory = directory(
+            AllianceReference(10, "Fun Network", "FNT"),
+            AllianceReference(20, "Sigma Alliance", "5IGMA"),
+        )
+        val preview = Fixture().service(directory = directory).previewWebwayText(
+            """
+            The Webway
+            Region	System / POS	System / POS	Status	Owner	Password	Dist (ly)	Route	Friendly
+            Cache	C-6YHJ @ 1-1	P7-45V @ 1-1	Online	FNT	-	4.45	Grey	Yes
+            Catch	GE-8JV @ 1-1	E3-SDZ @ 1-1	Online	5IGMA	-	4.36	Red	Yes
+            """.trimIndent(),
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertTrue(preview.canApply)
+        assertEquals(2, preview.additions.size)
+        assertEquals(setOf(3L, 4L), preview.additions.map { it.candidate.rowNumber }.toSet())
+        assertEquals(setOf(10L, 20L), preview.additions.mapNotNull { it.candidate.ownerAllianceId }.toSet())
+        assertEquals(2, preview.ownerResolutions.size)
+    }
+
+    @Test
+    fun `unresolved owner blocks apply and one confirmation updates every matching row`() {
+        val fixture = Fixture()
+        val alliance = AllianceReference(10, "Fun Network", "FN7")
+        val service = fixture.service(directory = directory(alliance))
+        val initial = service.previewWebwayText(
+            """
+            Region	System / POS	System / POS	Status	Owner	Password	Dist (ly)	Route	Friendly
+            Cache	C-6YHJ @ 1-1	P7-45V @ 1-1	Online	FNT	-	4.45	Grey	Yes
+            Catch	GE-8JV @ 1-1	E3-SDZ @ 1-1	Online	FNT	-	4.36	Red	Yes
+            """.trimIndent(),
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertFalse(initial.canApply)
+        assertEquals(2, initial.ownerResolutions.single().rowNumbers.size)
+        assertTrue(initial.ownerResolutions.single().resolution is AllianceOwnerResolution.NeedsConfirmation)
+
+        val confirmed = service.confirmOwner(initial, "FNT", alliance)
+        assertTrue(confirmed.canApply)
+        assertEquals(listOf(10L, 10L), confirmed.additions.map { it.candidate.ownerAllianceId })
+        service.apply(confirmed)
+        assertEquals(2, fixture.repository().getAll().size)
+    }
+
+    @Test
+    fun `file owner text uses resolver and unknown owner blocks apply`() {
+        val service = Fixture().service(
+            directory = directory(AllianceReference(10, "Goonswarm Federation", "CONDI")),
+        )
+        val resolved = service.previewText(
+            "owners.csv",
+            "from_system_id,to_system_id,owner_alliance_ticker\n1,2,CONDI",
+            AnsiblexImportMode.MERGE,
+        )
+        val unknown = service.previewText(
+            "owners.csv",
+            "from_system_id,to_system_id,owner_alliance_name\n1,2,Unknown Alliance",
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertTrue(resolved.canApply)
+        assertEquals(10L, resolved.additions.single().candidate.ownerAllianceId)
+        assertFalse(unknown.canApply)
+        assertTrue(unknown.diagnostics.any { it.code == "OWNER_UNKNOWN" })
+    }
 }
 
 private class Fixture {
@@ -268,6 +343,10 @@ private class Fixture {
         system(2, "Bravo"),
         system(3, "Charlie"),
         system(4, "Delta"),
+        system(5, "C-6YHJ"),
+        system(6, "P7-45V"),
+        system(7, "GE-8JV"),
+        system(8, "E3-SDZ"),
     )
     private val clock = Clock.fixed(Instant.parse("2026-08-17T00:00:00Z"), ZoneOffset.UTC)
     private val ids = AtomicInteger()
@@ -276,15 +355,23 @@ private class Fixture {
 
     fun repository() = SqliteAnsiblexRepository(userDb, clock) { "manual-${ids.incrementAndGet()}" }
 
-    fun service(transactionHook: (java.sql.Connection) -> Unit = {}) = AnsiblexImportService(
+    fun service(
+        transactionHook: (java.sql.Connection) -> Unit = {},
+        directory: AllianceDirectorySnapshot = AllianceDirectorySnapshot(),
+    ) = AnsiblexImportService(
         userDatabasePath = userDb,
         universeRepository = universe,
         searchRepository = search,
         clock = clock,
         idGenerator = { "generated-${ids.incrementAndGet()}" },
         transactionHook = transactionHook,
+        allianceDirectoryProvider = { directory },
     )
 }
+
+private fun directory(vararg alliances: AllianceReference) = AllianceDirectoryMerger.merge(
+    listOf(AllianceDirectorySourceSnapshot("test", alliances.toList())),
+)
 
 private class FakeUniverseRepository(systems: List<SolarSystem>) : UniverseRepository {
     private val systems = systems.associateBy(SolarSystem::id)

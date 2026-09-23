@@ -43,6 +43,11 @@ import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.ansiblex.AnsiblexManagerDialog
+import dev.evestaticmapplanner.ansiblex.AnsiblexIdentityDialog
+import dev.evestaticmapplanner.alliance.PublicAllianceMetadataService
+import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
+import dev.evestaticmapplanner.core.alliance.AllianceReference
+import dev.evestaticmapplanner.core.identity.EveIdentity
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import dev.evestaticmapplanner.route.RouteToolsPanel
@@ -108,6 +113,10 @@ internal fun StaticMapScreen(
     state: MapUiState,
     routeState: RoutePlannerUiState,
     esiIdentityContext: CurrentIdentityContext?,
+    esiIdentity: EveIdentity?,
+    allianceDirectorySnapshot: AllianceDirectorySnapshot,
+    allianceMetadataService: PublicAllianceMetadataService,
+    onVerifiedAlliance: (AllianceReference) -> Unit,
     wormholeState: WormholeUiState,
     jumpState: JumpOverlayUiState,
     capitalState: CapitalRouteUiState,
@@ -141,6 +150,7 @@ internal fun StaticMapScreen(
 ) {
     val strings = LocalAppStrings.current
     var showAnsiblexManager by remember { mutableStateOf(false) }
+    var showAnsiblexIdentity by remember { mutableStateOf(false) }
     var showWormholeManager by remember { mutableStateOf(false) }
     var wormholeConnectionsSystemId by remember { mutableStateOf<Int?>(null) }
     var markerEditor by remember { mutableStateOf<MarkerEditorRequest?>(null) }
@@ -206,6 +216,7 @@ internal fun StaticMapScreen(
             onInvokeRouteAction = onInvokeRouteAction,
             onInvokeNavigationAction = onInvokeNavigationAction,
             onOpenAnsiblexManager = { showAnsiblexManager = true },
+            onSwitchAnsiblexIdentity = { showAnsiblexIdentity = true },
             onOpenWormholeManager = { showWormholeManager = true },
             onFocusSystem = viewModel::selectAndFocusSystem,
             sharedMapState = sharedMapState,
@@ -430,14 +441,23 @@ internal fun StaticMapScreen(
         AnsiblexManagerDialog(
             userDatabasePath = userDatabasePath,
             state = routeState,
-            esiIdentityContext = esiIdentityContext,
-            identityPreferences = state.appPreferences.ansiblex,
+            allianceDirectorySnapshot = allianceDirectorySnapshot,
             viewModel = routeViewModel,
-            onIdentityPreferencesChange = { preferences ->
+            onDismiss = { showAnsiblexManager = false },
+        )
+    }
+    if (showAnsiblexIdentity) {
+        AnsiblexIdentityDialog(
+            esiIdentity = esiIdentity,
+            directorySnapshot = allianceDirectorySnapshot,
+            preferences = state.appPreferences.ansiblex,
+            metadataService = allianceMetadataService,
+            onVerifiedAlliance = onVerifiedAlliance,
+            onPreferencesChange = { preferences ->
                 routeViewModel.setCurrentIdentityContext(preferences.currentIdentityContext(esiIdentityContext))
                 viewModel.updateAnsiblexPreferences(preferences)
             },
-            onDismiss = { showAnsiblexManager = false },
+            onDismiss = { showAnsiblexIdentity = false },
         )
     }
     if (showWormholeManager) {
