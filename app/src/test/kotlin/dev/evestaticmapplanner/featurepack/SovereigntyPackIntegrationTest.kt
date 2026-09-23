@@ -87,6 +87,10 @@ class SovereigntyPackIntegrationTest {
             )
             cache.parent.createDirectories()
             Files.writeString(cache, VALID_PUBLIC_ESI_CACHE)
+            Files.writeString(
+                cache.parent.resolve("alliance-metadata-lkg.json"),
+                VALID_ALLIANCE_METADATA_CACHE,
+            )
             PropertiesFeaturePackManagerStateStore(root.resolve("feature-pack-manager.properties")).save(
                 mapOf(PackId("sovereignty.pack") to StoredFeaturePackState(enabled = true)),
             )
@@ -123,6 +127,16 @@ class SovereigntyPackIntegrationTest {
                 val fields = systemInfo.sections.single().fields.associate { it.key to it.value }
                 assertEquals("Cached Alliance", fields["owner"])
                 assertEquals("Claimed", fields["status"])
+
+                val directory = runtime.allianceDirectoryHost.state.value
+                assertTrue(directory.providerAvailable)
+                val alliance = directory.snapshot.alliancesById.getValue(99000001L)
+                assertEquals("Cached Alliance", alliance.name)
+                assertEquals("CACHE", alliance.ticker)
+                assertEquals(
+                    setOf("feature-pack:sovereignty.pack"),
+                    directory.snapshot.entriesById.getValue(99000001L).sources,
+                )
                 assertTrue(events.contains("INFO:sovereignty.pack:Using fresh cached PUBLIC_ESI sovereignty snapshot"))
                 assertFalse(events.any { it.contains("attempting one startup refresh", ignoreCase = true) })
                 assertFalse(events.any { it.contains("startup refresh succeeded", ignoreCase = true) })
@@ -132,6 +146,8 @@ class SovereigntyPackIntegrationTest {
             assertTrue(events.contains("INFO:sovereignty.pack:Sovereignty Pack stopped"))
             assertTrue(runtime.overlayHost.state.value.layers.isEmpty())
             assertTrue(runtime.systemInfoHost.request(30004759).sections.isEmpty())
+            assertFalse(runtime.allianceDirectoryHost.state.value.providerAvailable)
+            assertTrue(runtime.allianceDirectoryHost.state.value.snapshot.alliancesById.isEmpty())
         }
 
     private inline fun withTempDirectory(block: (Path) -> Unit) {
@@ -164,6 +180,25 @@ class SovereigntyPackIntegrationTest {
               "source": "PUBLIC_ESI",
               "records": [
                 {"systemId": 30004759, "allianceId": 99000001, "allianceName": "Cached Alliance", "corporationName": null, "sovereigntyStatus": "Claimed"}
+              ]
+            }
+        """.trimIndent()
+        val VALID_ALLIANCE_METADATA_CACHE = """
+            {
+              "formatVersion": 1,
+              "source": "PUBLIC_ESI_ALLIANCE_METADATA",
+              "records": [
+                {
+                  "allianceId": 99000001,
+                  "name": "Cached Alliance",
+                  "ticker": "CACHE",
+                  "observedSovereigntyName": "Cached Alliance",
+                  "etag": "fixture-etag",
+                  "lastModified": "Wed, 23 Sep 2026 10:00:00 GMT",
+                  "cacheControl": "max-age=315360000",
+                  "freshUntilEpochMillis": 4102444800000,
+                  "lastSuccessfulAtEpochMillis": 1790164800000
+                }
               ]
             }
         """.trimIndent()

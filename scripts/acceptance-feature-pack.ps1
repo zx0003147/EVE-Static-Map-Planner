@@ -9,10 +9,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:StageNumber = 0
-$script:StageCount = 8
+$script:StageCount = 9
 $script:GradleInvocationCount = 0
 $script:StartedAt = [System.Diagnostics.Stopwatch]::StartNew()
-$featureApiArtifactVersion = "2.2.0"
+$featureApiArtifactVersion = "2.4.0"
+$legacyFeatureApi20Revision = "v1.0.0"
+$legacyFeatureApi23Revision = "c679f64aced1f64f76a892e9d059ff25bf2a73d7"
 
 function Write-Stage {
     param([Parameter(Mandatory = $true)][string]$Message)
@@ -217,6 +219,48 @@ function Get-TestSummary {
     }
 }
 
+function Invoke-LegacyHostSmoke {
+    param(
+        [Parameter(Mandatory = $true)][string]$CoreRepository,
+        [Parameter(Mandatory = $true)][string]$Revision,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string]$PackJar
+    )
+
+    $systemTemp = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $temporaryRoot = Join-Path $systemTemp ("eve-feature-pack-legacy-" + [guid]::NewGuid().ToString("N"))
+    $checkout = Join-Path $temporaryRoot "checkout"
+    $archive = Join-Path $temporaryRoot "host.zip"
+    New-Item -ItemType Directory -Path $checkout -Force | Out-Null
+    try {
+        Invoke-Native -FilePath "git.exe" -Arguments @(
+            "-C", $CoreRepository, "archive", "--format=zip", "--output=$archive", $Revision
+        ) | Out-Host
+        Expand-Archive -LiteralPath $archive -DestinationPath $checkout
+        Invoke-Gradle -Repository $checkout -Arguments @(
+            ":app:test",
+            "-PsovereigntyPackJar=$PackJar",
+            "--tests", "dev.evestaticmapplanner.featurepack.SovereigntyPackIntegrationTest"
+        ) | Out-Host
+        return Get-TestSummary -Label $Label -ResultDirectories @(
+            (Join-Path $checkout "app\build\test-results\test")
+        )
+    }
+    finally {
+        $resolvedRoot = [System.IO.Path]::GetFullPath($temporaryRoot)
+        $requiredPrefix = $systemTemp + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $resolvedRoot.StartsWith($requiredPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to remove legacy Host smoke directory outside the system temp directory: $resolvedRoot"
+        }
+        if (Test-Path -LiteralPath $resolvedRoot) {
+            Remove-Item -LiteralPath $resolvedRoot -Recurse -Force
+        }
+    }
+}
+
 try {
     Write-Stage "Verify repository inputs, clean baselines, and source independence"
     $coreRepo = (Resolve-Path -LiteralPath (Split-Path -Parent $PSScriptRoot)).Path
@@ -301,6 +345,8 @@ try {
         "dev.evestaticmapplanner.featurepack.FeaturePackManagerTest",
         "dev.evestaticmapplanner.featurepack.FeatureOverlayHostTest",
         "dev.evestaticmapplanner.featurepack.SystemInfoHostTest",
+        "dev.evestaticmapplanner.featurepack.AllianceDirectoryHostTest",
+        "dev.evestaticmapplanner.featurepack.ProductionCapabilityLookupTest",
         "dev.evestaticmapplanner.map.FeatureOverlayPresentationTest",
         "dev.evestaticmapplanner.map.FeatureOverlayPresentationCacheTest",
         "dev.evestaticmapplanner.map.FeatureOverlayEmblemCandidateTest",
@@ -330,6 +376,18 @@ try {
         (Join-Path $coreRepo "app\build\test-results\test")
     )
 
+    Write-Stage "Run the new Pack on real Feature API 2.0.0 and 2.3.0 Host source trees"
+    $legacy20Tests = Invoke-LegacyHostSmoke `
+        -CoreRepository $coreRepo `
+        -Revision $legacyFeatureApi20Revision `
+        -Label "Feature API 2.0.0 Host compatibility" `
+        -PackJar $packJar
+    $legacy23Tests = Invoke-LegacyHostSmoke `
+        -CoreRepository $coreRepo `
+        -Revision $legacyFeatureApi23Revision `
+        -Label "Feature API 2.3.0 Host compatibility" `
+        -PackJar $packJar
+
     Write-Stage "Verify the Core-owned MCP catalog remains exactly 34 tools"
     Invoke-Gradle -Repository $coreRepo -Arguments @(
         ":mcp:test",
@@ -353,12 +411,14 @@ try {
     Write-Host ""
     Write-Host "PASS - repeatable cross-repository Feature Pack acceptance" -ForegroundColor Green
     Write-Host "Feature API: dev.evestaticmapplanner:feature-api:$featureApiArtifactVersion (runtime compatibility family 2)"
-    Write-Host "Pack: sovereignty.pack 0.2.1; required API 2; publisher/name verified"
-    Write-Host "Host integration: API 2; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info registered and unregistered"
+    Write-Host "Pack: sovereignty.pack 0.3.0; required API 2; publisher/name verified"
+    Write-Host "Host integration: API 2; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info/Alliance Directory registered and unregistered"
+    Write-Host "Legacy Hosts: Feature API 2.0.0 and 2.3.0 loaded the same Pack without linkage errors"
     Write-Host "No-Pack: no ClassLoader, storage, Public ESI, or worker"
     Write-Host "MCP catalog: exactly 34 tools"
-    Write-Host ("Tests: Feature API {0}, Sovereignty {1}, Core build {2}, focused {3}, integration {4}, MCP {5}" -f `
-        $featureApiTests.Tests, $sovTests.Tests, $coreTests.Tests, $focusedTestSummary.Tests, $integrationTests.Tests, $mcpTests.Tests)
+    Write-Host ("Tests: Feature API {0}, Sovereignty {1}, Core build {2}, focused {3}, integration {4}, legacy 2.0 {5}, legacy 2.3 {6}, MCP {7}" -f `
+        $featureApiTests.Tests, $sovTests.Tests, $coreTests.Tests, $focusedTestSummary.Tests, $integrationTests.Tests, `
+        $legacy20Tests.Tests, $legacy23Tests.Tests, $mcpTests.Tests)
     Write-Host ("Gradle invocations: {0}; duration: {1:c}" -f $script:GradleInvocationCount, $script:StartedAt.Elapsed)
     exit 0
 }
