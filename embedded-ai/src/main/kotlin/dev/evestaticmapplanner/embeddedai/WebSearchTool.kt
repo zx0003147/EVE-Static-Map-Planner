@@ -24,7 +24,7 @@ class WebSearchTool(
     )
 
     override suspend fun execute(args: Args): String {
-        diagnostics(toolCallDiagnostic(NAME))
+        diagnostics.plannerToolStarted(NAME)
         return try {
             val response = gateway.search(
                 WebSearchRequest(
@@ -35,16 +35,16 @@ class WebSearchTool(
                 ),
             )
             sourceAccumulator.record(response.results)
-            diagnostics(toolSuccessDiagnostic())
+            diagnostics.plannerToolSucceeded(NAME)
             response.toToolResult()
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            diagnostics(toolFailureDiagnostic())
+            diagnostics.plannerToolFailed(NAME)
             throw cancelled
         } catch (failure: WebSearchException) {
-            diagnostics(toolFailureDiagnostic())
+            diagnostics.plannerToolFailed(NAME)
             throw EmbeddedAiToolException("${failure.code}: ${failure.safeMessage}")
         } catch (failure: IllegalArgumentException) {
-            diagnostics(toolFailureDiagnostic())
+            diagnostics.plannerToolFailed(NAME)
             throw EmbeddedAiToolException("INVALID_ARGUMENT: ${failure.message ?: "Invalid web search request"}")
         }
     }

@@ -123,6 +123,7 @@ internal object SimplifiedChineseMarkerStrings : MarkerStrings {
     override val name = "名称"
     override val notes = "备注"
     override val color = "颜色"
+    override val addTemporaryMarker = "添加临时标记"
     override val addSavedMarker = "添加已保存标记"
     override val editMarker = "编辑标记"
     override val searchSystem = "搜索星系"

@@ -296,7 +296,11 @@ internal fun StaticMapScreen(
                             val systemName = state.scene.nodesById[systemId]?.system?.name ?: strings.map.fallbackSystem(systemId)
                             val marker = markerState.markersBySystemId[systemId]
                             when (action) {
-                                MarkerContextAction.ADD_TEMPORARY -> markerViewModel.addTemporary(systemId)
+                                MarkerContextAction.ADD_TEMPORARY -> markerEditor = MarkerEditorRequest(
+                                    MarkerEditorMode.CREATE_TEMPORARY,
+                                    systemId,
+                                    systemName,
+                                )
                                 MarkerContextAction.ADD_SAVED -> markerEditor = MarkerEditorRequest(
                                     MarkerEditorMode.CREATE_SAVED,
                                     systemId,
@@ -461,6 +465,10 @@ internal fun StaticMapScreen(
             onRemoveChild = { childId -> request.systemId?.let { markerViewModel.removeChild(it, childId) } },
             onSave = { systemId, draft, initialTags ->
                 when (request.mode) {
+                    MarkerEditorMode.CREATE_TEMPORARY -> if (markerViewModel.addTemporary(systemId, draft)) {
+                        markerEditor = null
+                        expectedMarkerDraft = null
+                    }
                     MarkerEditorMode.EDIT_TEMPORARY -> if (markerViewModel.updateTemporary(systemId, draft)) {
                         markerEditor = null
                         expectedMarkerDraft = null

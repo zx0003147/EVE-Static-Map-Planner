@@ -8,16 +8,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
 import dev.evestaticmapplanner.core.marker.Marker
+import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
 import dev.evestaticmapplanner.core.marker.SavedMarkerChild
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
@@ -29,6 +32,35 @@ import kotlin.test.assertEquals
 
 @OptIn(ExperimentalTestApi::class)
 class MarkerEditorDialogTest {
+    @Test
+    fun `temporary marker editor defaults yellow exposes seven colors and submits selection without saved tags`() =
+        runComposeUiTest {
+            var submittedDraft: MarkerDraft? = null
+            setContent {
+                MaterialTheme {
+                    MarkerEditorDialog(
+                        request = MarkerEditorRequest(MarkerEditorMode.CREATE_TEMPORARY, 1, "Jita"),
+                        isBusy = false,
+                        error = null,
+                        onSave = { _, draft, _ -> submittedDraft = draft },
+                        onDismiss = {},
+                    )
+                }
+            }
+
+            onNodeWithText("Add Temporary Marker").assertIsDisplayed()
+            MarkerColor.entries.forEach { color ->
+                onNodeWithTag("$MARKER_COLOR_TEST_TAG_PREFIX-${color.name}").assertIsDisplayed()
+            }
+            onNodeWithTag("$MARKER_COLOR_TEST_TAG_PREFIX-YELLOW").assertIsSelected()
+            onNodeWithText("+ Add Tag").assertDoesNotExist()
+
+            onNodeWithTag("$MARKER_COLOR_TEST_TAG_PREFIX-RED").performClick().assertIsSelected()
+            onNodeWithText("Save").performClick()
+
+            assertEquals(MarkerColor.RED, checkNotNull(submittedDraft).color)
+        }
+
     @Test
     fun `AI-created saved marker editor shows immutable provenance metadata`() = runComposeUiTest {
         val marker = Marker.saved(

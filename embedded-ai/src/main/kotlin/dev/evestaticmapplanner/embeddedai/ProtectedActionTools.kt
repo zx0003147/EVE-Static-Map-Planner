@@ -304,7 +304,7 @@ class SendMissionNavigationToEveTool(
                     put("targetCount", receipt.targetSystemIds.size)
                     if (receipt.message == null) put("message", JsonNull) else put("message", receipt.message)
                 }.toString()
-            })
+            }, resultSucceeded = { receipt -> receipt.status == NavigationActionExecutionStatus.SUCCEEDED })
         }
     }
 

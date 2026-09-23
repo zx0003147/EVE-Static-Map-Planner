@@ -29,6 +29,7 @@ data class EmbeddedAiUiState(
     val runtimeInfo: EmbeddedAiRuntimeInfo? = null,
     val scrollRequest: Long = 0,
     val contextNotice: String? = null,
+    val lastTurnExecution: AgentTurnExecution = AgentTurnExecution(),
 )
 
 class EmbeddedAiController(
@@ -90,6 +91,7 @@ class EmbeddedAiController(
                 response = "",
                 errorMessage = null,
                 isLoading = true,
+                lastTurnExecution = AgentTurnExecution(),
                 scrollRequest = mutableState.value.scrollRequest + 1,
                 contextNotice = null,
             ),
@@ -109,15 +111,33 @@ class EmbeddedAiController(
                         agentRevision = currentRevision
                     }
                 }
-                val response = currentAgent.run(contextualPrompt).boundedAssistantMessage()
+                var response = currentAgent.run(contextualPrompt).boundedAssistantMessage()
+                var execution = currentAgent.lastTurnExecution
+                val mutationExpectation = if (execution.successfulMutationCount == 0) {
+                    currentAgent.mutationExpectation(contextualPrompt)
+                } else {
+                    AgentMutationExpectation.NOT_REQUIRED
+                }
+                var status = EmbeddedAiMessageStatus.COMPLETE
+                if (mutationExpectation == AgentMutationExpectation.REQUIRED && execution.successfulMutationCount == 0) {
+                    response = currentAgent.run(
+                        buildMutationRecoveryPrompt(contextualPrompt, response),
+                    ).boundedAssistantMessage()
+                    execution += currentAgent.lastTurnExecution
+                    if (execution.successfulMutationCount == 0) {
+                        response = MAP_ACTION_INCOMPLETE_MESSAGE
+                        status = EmbeddedAiMessageStatus.INCOMPLETE
+                    }
+                }
                 withContext(uiDispatcher) {
                     updateIfCurrent(requestGeneration) { current ->
                         recordHistoryIfCurrent(requestHistoryRevision, userMessage.content, response)
-                        current.completeAssistant(assistantMessage.id, response, now = now()).copy(
+                        current.completeAssistant(assistantMessage.id, response, status, now = now()).copy(
                             response = response,
                             errorMessage = null,
                             isLoading = false,
                             runtimeInfo = currentAgent.runtimeInfo,
+                            lastTurnExecution = execution,
                         )
                     }
                 }
@@ -138,6 +158,7 @@ class EmbeddedAiController(
                             errorMessage = safeMessage,
                             isLoading = false,
                             runtimeInfo = agent?.runtimeInfo,
+                            lastTurnExecution = agent?.lastTurnExecution ?: AgentTurnExecution(),
                         )
                     }
                 }
@@ -409,3 +430,21 @@ private fun Throwable.safeUiMessage(): String = when (this) {
     is EmbeddedAiToolException -> "Planner tool failed: $message"
     else -> toSafeProviderException().safeMessage
 }
+
+internal fun buildMutationRecoveryPrompt(originalPrompt: String, previousResponse: String): String = """
+    The current user turn explicitly requires a Planner mutation, but the previous attempt completed with zero
+    successful mutation-tool results. This is the only recovery attempt. Execute the required registered tools now.
+    If execution is impossible because a tool is unavailable, arguments are unresolved, or a tool fails, clearly say
+    that the map action was not completed and give the reason. Do not make another future-action promise.
+
+    Original turn:
+    ${originalPrompt.take(MAX_RECOVERY_ORIGINAL_PROMPT_CHARACTERS)}
+
+    Previous response:
+    ${previousResponse.take(MAX_RECOVERY_RESPONSE_CHARACTERS)}
+""".trimIndent()
+
+internal const val MAP_ACTION_INCOMPLETE_MESSAGE =
+    "The requested map action was not completed because no map-modifying tool returned a successful result."
+private const val MAX_RECOVERY_ORIGINAL_PROMPT_CHARACTERS = 16_000
+private const val MAX_RECOVERY_RESPONSE_CHARACTERS = 4_000

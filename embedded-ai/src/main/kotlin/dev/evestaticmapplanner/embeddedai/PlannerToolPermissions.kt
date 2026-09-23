@@ -65,6 +65,14 @@ internal object PlannerToolPermissions {
             "Every registered high-risk tool must have an explicit confirmation-gateway implementation"
         }
     }
+
+    private val byName = registered.associateBy(PlannerToolPermission::name)
+
+    val mutationToolNames: List<String> = registered
+        .filterNot { it.risk == PlannerToolRisk.READ_ONLY }
+        .map(PlannerToolPermission::name)
+
+    fun riskOf(toolName: String): PlannerToolRisk? = byName[toolName]?.risk
 }
 
 internal object EmbeddedAiToolCatalog {

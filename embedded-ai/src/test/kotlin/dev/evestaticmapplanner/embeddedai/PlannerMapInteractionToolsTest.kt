@@ -30,6 +30,7 @@ import dev.evestaticmapplanner.control.mission.MissionJumpRangeId
 import dev.evestaticmapplanner.control.mission.MissionMarkerId
 import dev.evestaticmapplanner.control.mission.MissionMarkerRole
 import dev.evestaticmapplanner.control.mission.MissionRouteId
+import dev.evestaticmapplanner.core.marker.MarkerColor
 import java.lang.reflect.Proxy
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -43,6 +44,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PlannerMapInteractionToolsTest {
@@ -76,6 +78,7 @@ class PlannerMapInteractionToolsTest {
         assertEquals(6.0, calls.capital.single().effectiveRangeLy)
         assertEquals(6.0, calls.jumpRange.single().effectiveRangeLy)
         assertEquals(MissionMarkerRole.RALLY, calls.marker.single().role)
+        assertNull(calls.marker.single().colorOverride)
         assertEquals(listOf(MISSION_ID), calls.fit.map(FitMissionCommand::missionId))
 
         assertTrue(focused.contains("\"name\":\"Jita\""))
@@ -86,6 +89,7 @@ class PlannerMapInteractionToolsTest {
         assertTrue(capital.contains("\"totalDistanceLy\":9.75"))
         assertTrue(range.contains("\"reachableSystemCount\":42"))
         assertTrue(marker.contains("\"role\":\"RALLY\""))
+        assertTrue(marker.contains("\"effectiveColor\":\"GREEN\""))
         assertEquals("{\"success\":true,\"missionId\":\"mission-1\"}", fitted)
     }
 
@@ -286,12 +290,82 @@ class PlannerMapInteractionToolsTest {
                 tools.addMissionMarker,
                 AddMissionMarkerTool.Args(MISSION_ID.value, JITA.systemId, label = "Rally"),
             ) onRequestContains "\"title\":\"Jita rally point\""
-            mockLLMAnswer("Added a temporary rally marker at Jita.") onRequestContains "\"role\":\"RALLY\""
+            mockLLMToolCall(tools.fitMission, FitMissionTool.Args(MISSION_ID.value)) onRequestContains "\"effectiveColor\":\"GREEN\""
+            mockLLMAnswer("Added a temporary rally marker at Jita.") onRequestContains "\"success\":true"
         }
         try {
             createKoogAgent(tools, executor).run(question)
             assertEquals(MissionMarkerRole.RALLY, calls.marker.single().role)
+            assertNull(calls.marker.single().colorOverride)
             assertEquals(1, calls.begin.size)
+            assertEquals(1, calls.fit.size)
+        } finally {
+            executor.close()
+        }
+    }
+
+    @Test
+    fun `Koog preserves an explicitly requested red Mission marker color`() = runBlocking {
+        val calls = MapCalls()
+        val tools = PlannerToolSet(recordingMapService(calls))
+        val question = "在 Jita 创建红色标记。"
+        val executor = getMockExecutor {
+            mockLLMToolCall(tools.searchSystem, SearchSystemTool.Args("Jita")) onRequestEquals question
+            mockLLMToolCall(tools.beginMission, BeginMissionTool.Args("Jita red marker")) onRequestContains "\"name\":\"Jita\""
+            mockLLMToolCall(
+                tools.addMissionMarker,
+                AddMissionMarkerTool.Args(
+                    MISSION_ID.value,
+                    JITA.systemId,
+                    label = "Red marker",
+                    color = AddMissionMarkerTool.Color.RED,
+                ),
+            ) onRequestContains "\"title\":\"Jita red marker\""
+            mockLLMToolCall(tools.fitMission, FitMissionTool.Args(MISSION_ID.value)) onRequestContains "\"effectiveColor\":\"RED\""
+            mockLLMAnswer("已在 Jita 创建红色临时标记。") onRequestContains "\"success\":true"
+        }
+        try {
+            assertEquals("已在 Jita 创建红色临时标记。", createKoogAgent(tools, executor).run(question))
+            assertEquals(MarkerColor.RED, calls.marker.single().colorOverride)
+            assertEquals(1, calls.fit.size)
+        } finally {
+            executor.close()
+        }
+    }
+
+    @Test
+    fun `Koog creates all three requested Mission markers before fitting the map`() = runBlocking {
+        val calls = MapCalls()
+        val tools = PlannerToolSet(recordingMapService(calls))
+        val question = "在 Jita、Amarr、1DQ1-A 各创建一个临时标记。"
+        val executor = getMockExecutor {
+            mockLLMToolCall(tools.searchSystem, SearchSystemTool.Args("Jita")) onRequestEquals question
+            mockLLMToolCall(tools.searchSystem, SearchSystemTool.Args("Amarr")) onRequestContains "\"name\":\"Jita\""
+            mockLLMToolCall(tools.searchSystem, SearchSystemTool.Args("1DQ1-A")) onRequestContains "\"name\":\"Amarr\""
+            mockLLMToolCall(tools.beginMission, BeginMissionTool.Args("Three temporary markers")) onRequestContains "\"name\":\"1DQ1-A\""
+            mockLLMToolCall(
+                tools.addMissionMarker,
+                AddMissionMarkerTool.Args(MISSION_ID.value, JITA.systemId, label = "Jita"),
+            ) onRequestContains "\"title\":\"Three temporary markers\""
+            mockLLMToolCall(
+                tools.addMissionMarker,
+                AddMissionMarkerTool.Args(MISSION_ID.value, AMARR.systemId, label = "Amarr"),
+            ) onRequestContains "\"systemId\":${JITA.systemId}"
+            mockLLMToolCall(
+                tools.addMissionMarker,
+                AddMissionMarkerTool.Args(MISSION_ID.value, ONE_DQ.systemId, label = "1DQ1-A"),
+            ) onRequestContains "\"systemId\":${AMARR.systemId}"
+            mockLLMToolCall(tools.fitMission, FitMissionTool.Args(MISSION_ID.value)) onRequestContains
+                "\"systemId\":${ONE_DQ.systemId}"
+            mockLLMAnswer("已创建并显示三个临时标记。") onRequestContains "\"success\":true"
+        }
+        try {
+            assertEquals("已创建并显示三个临时标记。", createKoogAgent(tools, executor).run(question))
+            assertEquals(
+                listOf(JITA.systemId, AMARR.systemId, ONE_DQ.systemId),
+                calls.marker.map(AddMissionMarkerCommand::systemId),
+            )
+            assertEquals(1, calls.fit.size)
         } finally {
             executor.close()
         }

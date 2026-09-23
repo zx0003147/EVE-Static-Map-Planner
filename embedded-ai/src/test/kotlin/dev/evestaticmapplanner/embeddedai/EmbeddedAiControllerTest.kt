@@ -20,6 +20,154 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmbeddedAiControllerTest {
     @Test
+    fun `explicit mutation promise receives one recovery and completes only after mutation success`() = runTest {
+        val agent = ScriptedExecutionAgent(
+            attempts = listOf(
+                ScriptedAttempt("好的，我马上创建。", AgentTurnExecution()),
+                ScriptedAttempt(
+                    "已创建 Jita 临时标记。",
+                    AgentTurnExecution(toolCallCount = 2, mutationCallCount = 1, successfulMutationCount = 1),
+                ),
+            ),
+            expectation = AgentMutationExpectation.REQUIRED,
+        )
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory { agent },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("帮我在 Jita 创建一个临时标记")
+        advanceUntilIdle()
+
+        assertEquals(2, agent.prompts.size)
+        assertTrue(agent.prompts.last().contains("only recovery attempt"))
+        assertEquals("已创建 Jita 临时标记。", controller.state.value.response)
+        assertEquals(EmbeddedAiMessageStatus.COMPLETE, controller.state.value.chatSession.messages.last().status)
+        assertEquals(1, controller.state.value.lastTurnExecution.successfulMutationCount)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `explicit mutation with two promise-only attempts becomes incomplete without looping`() = runTest {
+        val agent = ScriptedExecutionAgent(
+            attempts = listOf(
+                ScriptedAttempt("我马上创建。", AgentTurnExecution()),
+                ScriptedAttempt("我现在就添加。", AgentTurnExecution()),
+            ),
+            expectation = AgentMutationExpectation.REQUIRED,
+        )
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory { agent },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("创建红色标记")
+        advanceUntilIdle()
+
+        assertEquals(2, agent.prompts.size)
+        assertEquals(MAP_ACTION_INCOMPLETE_MESSAGE, controller.state.value.response)
+        assertEquals(EmbeddedAiMessageStatus.INCOMPLETE, controller.state.value.chatSession.messages.last().status)
+        assertEquals(0, controller.state.value.lastTurnExecution.successfulMutationCount)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `ordinary knowledge answer does not require a mutation or recovery`() = runTest {
+        val agent = ScriptedExecutionAgent(
+            attempts = listOf(ScriptedAttempt("Jita 位于 The Forge。", AgentTurnExecution())),
+            expectation = AgentMutationExpectation.NOT_REQUIRED,
+        )
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory { agent },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("Jita 位于哪个区域？")
+        advanceUntilIdle()
+
+        assertEquals(1, agent.prompts.size)
+        assertEquals(1, agent.expectationPrompts.size)
+        assertEquals(EmbeddedAiMessageStatus.COMPLETE, controller.state.value.chatSession.messages.last().status)
+        assertEquals("Jita 位于 The Forge。", controller.state.value.response)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `read-only route calculation remains complete without mutation`() = runTest {
+        val agent = ScriptedExecutionAgent(
+            attempts = listOf(
+                ScriptedAttempt("Jita 到 Amarr 共 11 跳。", AgentTurnExecution(toolCallCount = 3)),
+            ),
+            expectation = AgentMutationExpectation.NOT_REQUIRED,
+        )
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory { agent },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("Jita 到 Amarr 的路线有几跳？")
+        advanceUntilIdle()
+
+        assertEquals(1, agent.prompts.size)
+        assertEquals(3, controller.state.value.lastTurnExecution.toolCallCount)
+        assertEquals(0, controller.state.value.lastTurnExecution.mutationCallCount)
+        assertEquals(EmbeddedAiMessageStatus.COMPLETE, controller.state.value.chatSession.messages.last().status)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `display route recovers after read-only first attempt and records mutation success`() = runTest {
+        val agent = ScriptedExecutionAgent(
+            attempts = listOf(
+                ScriptedAttempt("路线已计算，我马上显示。", AgentTurnExecution(toolCallCount = 3)),
+                ScriptedAttempt(
+                    "路线已显示。",
+                    AgentTurnExecution(toolCallCount = 3, mutationCallCount = 3, successfulMutationCount = 3),
+                ),
+            ),
+            expectation = AgentMutationExpectation.REQUIRED,
+        )
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory { agent },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("帮我规划路线并显示在地图上")
+        advanceUntilIdle()
+
+        assertEquals(2, agent.prompts.size)
+        assertEquals("路线已显示。", controller.state.value.response)
+        assertEquals(6, controller.state.value.lastTurnExecution.toolCallCount)
+        assertEquals(3, controller.state.value.lastTurnExecution.successfulMutationCount)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `failed mutation recovery cannot be reported as complete`() = runTest {
+        val failed = AgentTurnExecution(toolCallCount = 1, mutationCallCount = 1, failedMutationCount = 1)
+        val agent = ScriptedExecutionAgent(
+            attempts = listOf(
+                ScriptedAttempt("创建失败。", failed),
+                ScriptedAttempt("仍然无法创建。", failed),
+            ),
+            expectation = AgentMutationExpectation.REQUIRED,
+        )
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory { agent },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("在 Jita 创建一个标记")
+        advanceUntilIdle()
+
+        assertEquals(MAP_ACTION_INCOMPLETE_MESSAGE, controller.state.value.response)
+        assertEquals(EmbeddedAiMessageStatus.INCOMPLETE, controller.state.value.chatSession.messages.last().status)
+        assertEquals(2, controller.state.value.lastTurnExecution.failedMutationCount)
+        assertEquals(0, controller.state.value.lastTurnExecution.successfulMutationCount)
+        controller.shutdown()
+    }
+
+    @Test
     fun `default OpenRouter model remains DeepSeek V4 Flash 0731`() {
         assertEquals(LLMProvider.OpenRouter, OPENROUTER_MODEL.provider)
         assertEquals("deepseek/deepseek-v4-flash-0731", OPENROUTER_MODEL.id)
@@ -597,6 +745,38 @@ private fun testConfirmationRequest() = AiActionRequest(
 
 private fun testAgent(run: suspend (String) -> String) = object : EmbeddedAiAgent {
     override suspend fun run(prompt: String): String = run(prompt)
+    override suspend fun close() = Unit
+}
+
+private data class ScriptedAttempt(
+    val response: String,
+    val execution: AgentTurnExecution,
+)
+
+private class ScriptedExecutionAgent(
+    private val attempts: List<ScriptedAttempt>,
+    private val expectation: AgentMutationExpectation,
+) : EmbeddedAiAgent {
+    val prompts = mutableListOf<String>()
+    val expectationPrompts = mutableListOf<String>()
+    private var attemptIndex = 0
+    private var execution = AgentTurnExecution()
+
+    override val lastTurnExecution: AgentTurnExecution get() = execution
+
+    override suspend fun run(prompt: String): String {
+        prompts += prompt
+        val attempt = attempts.getOrElse(attemptIndex) { error("Unexpected recovery attempt") }
+        attemptIndex++
+        execution = attempt.execution
+        return attempt.response
+    }
+
+    override suspend fun mutationExpectation(prompt: String): AgentMutationExpectation {
+        expectationPrompts += prompt
+        return expectation
+    }
+
     override suspend fun close() = Unit
 }
 

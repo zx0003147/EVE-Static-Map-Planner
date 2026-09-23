@@ -1,7 +1,6 @@
 package dev.evestaticmapplanner.marker
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
@@ -45,6 +47,7 @@ import dev.evestaticmapplanner.ui.EvePanel
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 
 enum class MarkerEditorMode {
+    CREATE_TEMPORARY,
     CREATE_SAVED,
     EDIT_TEMPORARY,
     EDIT_SAVED,
@@ -86,7 +89,17 @@ fun MarkerEditorDialog(
     var initialTags by remember(request) { mutableStateOf(emptyList<SavedMarkerChildType>()) }
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
-        title = { Text(if (request.mode == MarkerEditorMode.CREATE_SAVED) strings.addSavedMarker else strings.editMarker) },
+        title = {
+            Text(
+                when (request.mode) {
+                    MarkerEditorMode.CREATE_TEMPORARY -> strings.addTemporaryMarker
+                    MarkerEditorMode.CREATE_SAVED -> strings.addSavedMarker
+                    MarkerEditorMode.EDIT_TEMPORARY,
+                    MarkerEditorMode.EDIT_SAVED,
+                    -> strings.editMarker
+                },
+            )
+        },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -265,8 +278,17 @@ private fun MarkerColorPalette(selected: MarkerColor, onSelected: (MarkerColor) 
                 shape = CircleShape,
                 color = markerColor(option),
                 border = if (option == selected) BorderStroke(3.dp, Color.White) else null,
-                modifier = Modifier.size(30.dp).clickable { onSelected(option) },
+                modifier = Modifier
+                    .size(30.dp)
+                    .testTag("$MARKER_COLOR_TEST_TAG_PREFIX-${option.name}")
+                    .selectable(
+                        selected = option == selected,
+                        role = Role.RadioButton,
+                        onClick = { onSelected(option) },
+                    ),
             ) { Box(Modifier.padding(2.dp)) }
         }
     }
 }
+
+internal const val MARKER_COLOR_TEST_TAG_PREFIX = "marker-color"

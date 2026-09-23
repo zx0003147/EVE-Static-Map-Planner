@@ -279,6 +279,10 @@ class ProtectedActionToolsTest {
         assertTrue(prompt.contains("must call send_mission_navigation_to_eve"))
         assertTrue(prompt.contains("never merely promise that a confirmation dialog will appear"))
         assertTrue(prompt.contains("Never claim a denied, cancelled, rejected, or failed action succeeded"))
+        assertTrue(prompt.contains("execute the required"))
+        assertTrue(prompt.contains("corresponding tool returns success"))
+        assertTrue(prompt.contains("answer-only requests do not require a mutation tool"))
+        assertTrue(prompt.contains("Preserve an explicitly requested supported marker color"))
         assertFalse(prompt.contains("get_normal_route_graph"))
     }
 }

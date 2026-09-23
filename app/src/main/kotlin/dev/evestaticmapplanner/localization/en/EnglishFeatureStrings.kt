@@ -109,6 +109,7 @@ internal object EnglishMarkerStrings : MarkerStrings {
     override val name = "Name"
     override val notes = "Notes"
     override val color = "Color"
+    override val addTemporaryMarker = "Add Temporary Marker"
     override val addSavedMarker = "Add Saved Marker"
     override val editMarker = "Edit Marker"
     override val searchSystem = "Search system"

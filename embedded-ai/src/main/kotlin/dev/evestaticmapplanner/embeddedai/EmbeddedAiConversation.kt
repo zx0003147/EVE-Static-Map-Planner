@@ -8,7 +8,7 @@ import kotlinx.serialization.json.put
 
 enum class EmbeddedAiMessageRole { USER, ASSISTANT }
 
-enum class EmbeddedAiMessageStatus { COMPLETE, THINKING, CANCELLED, ERROR }
+enum class EmbeddedAiMessageStatus { COMPLETE, THINKING, INCOMPLETE, CANCELLED, ERROR }
 
 data class EmbeddedAiMessage(
     val id: String,

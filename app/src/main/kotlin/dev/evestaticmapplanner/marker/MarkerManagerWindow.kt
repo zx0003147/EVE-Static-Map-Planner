@@ -262,6 +262,7 @@ fun MarkerManagerWindow(
                         editorLocalError = conflict
                     } else {
                         val accepted = when (request.mode) {
+                            MarkerEditorMode.CREATE_TEMPORARY -> false
                             MarkerEditorMode.CREATE_SAVED -> markerViewModel.createSaved(systemId, draft, initialTags)
                             MarkerEditorMode.EDIT_SAVED -> markerViewModel.updateSaved(systemId, draft)
                             MarkerEditorMode.EDIT_TEMPORARY -> false

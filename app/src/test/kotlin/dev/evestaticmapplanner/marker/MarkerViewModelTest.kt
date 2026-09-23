@@ -134,6 +134,29 @@ class MarkerViewModelTest {
     }
 
     @Test
+    fun `temporary creation preserves independent selected colors and deletion remains session-only`() = runTest {
+        val repository = FakeSavedMarkerRepository()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = MarkerViewModel(
+            SavedMarkerService(repository, null, this, dispatcher),
+            CoroutineScope(SupervisorJob() + dispatcher),
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.addTemporary(10, MarkerDraft.create(color = MarkerColor.RED)))
+        assertTrue(viewModel.addTemporary(11, MarkerDraft.create(color = MarkerColor.BLUE)))
+        assertEquals(MarkerColor.RED, viewModel.state.value.markersBySystemId[10]?.color)
+        assertEquals(MarkerColor.BLUE, viewModel.state.value.markersBySystemId[11]?.color)
+
+        assertTrue(viewModel.removeTemporary(10))
+        assertFalse(10 in viewModel.state.value.markersBySystemId)
+        assertEquals(MarkerColor.BLUE, viewModel.state.value.markersBySystemId[11]?.color)
+        assertEquals(0, repository.createCalls)
+        assertEquals(0, repository.updateCalls)
+        assertEquals(0, repository.deleteCalls)
+    }
+
+    @Test
     fun `clear removes only temporary markers and preserves loaded saved markers`() = runTest {
         val saved = savedMarker(20, "Saved")
         val repository = FakeSavedMarkerRepository(listOf(saved))

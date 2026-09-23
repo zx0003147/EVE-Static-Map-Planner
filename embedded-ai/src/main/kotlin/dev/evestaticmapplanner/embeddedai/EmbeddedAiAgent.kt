@@ -16,7 +16,9 @@ data class EmbeddedAiRuntimeInfo(
 
 interface EmbeddedAiAgent {
     val runtimeInfo: EmbeddedAiRuntimeInfo? get() = null
+    val lastTurnExecution: AgentTurnExecution get() = AgentTurnExecution()
     suspend fun run(prompt: String): String
+    suspend fun mutationExpectation(prompt: String): AgentMutationExpectation = AgentMutationExpectation.NOT_REQUIRED
     suspend fun close()
 }
 
@@ -49,10 +51,15 @@ class ConfiguredKoogAgentFactory(
         } finally {
             credential.close()
         }
+        val executionTracker = AgentTurnExecutionTracker(diagnostics)
+        val mutationExpectationClassifier = KoogMutationExpectationClassifier(
+            promptExecutor = managedClient.promptExecutor,
+            model = managedClient.model,
+        )
         val koogAgent = try {
             val searchSources = WebSearchSourceAccumulator()
             createKoogAgent(
-                tools = PlannerToolSet(mapControlService, diagnostics, actionConfirmationService),
+                tools = PlannerToolSet(mapControlService, executionTracker, actionConfirmationService),
                 webSearch = WebSearchTool(
                     gateway = ConfiguredWebSearchGateway(
                         configSource = webSearchConfigSource,
@@ -60,7 +67,7 @@ class ConfiguredKoogAgentFactory(
                         client = webSearchClient,
                     ),
                     sourceAccumulator = searchSources,
-                    diagnostics = diagnostics,
+                    diagnostics = executionTracker,
                 ),
                 promptExecutor = managedClient.promptExecutor,
                 model = managedClient.model,
@@ -77,6 +84,8 @@ class ConfiguredKoogAgentFactory(
             koogAgent = koogAgent.first,
             managedClient = managedClient,
             searchSources = koogAgent.second,
+            executionTracker = executionTracker,
+            mutationExpectationClassifier = mutationExpectationClassifier,
             runtimeInfo = EmbeddedAiRuntimeInfo(config.providerType, config.modelId, source),
         )
     }
@@ -90,15 +99,29 @@ private class ManagedKoogEmbeddedAiAgent(
     private val koogAgent: AIAgent<String, String>,
     private val managedClient: ManagedAiClient,
     private val searchSources: WebSearchSourceAccumulator,
+    private val executionTracker: AgentTurnExecutionTracker,
+    private val mutationExpectationClassifier: KoogMutationExpectationClassifier,
     override val runtimeInfo: EmbeddedAiRuntimeInfo,
 ) : EmbeddedAiAgent {
     private val closed = AtomicBoolean()
+    @Volatile
+    private var execution = AgentTurnExecution()
+
+    override val lastTurnExecution: AgentTurnExecution get() = execution
 
     override suspend fun run(prompt: String): String {
+        executionTracker.reset()
         searchSources.reset()
-        val answer = koogAgent.run(prompt)
-        return appendRequiredSources(answer, searchSources.snapshot())
+        return try {
+            val answer = koogAgent.run(prompt)
+            appendRequiredSources(answer, searchSources.snapshot())
+        } finally {
+            execution = executionTracker.snapshot()
+        }
     }
+
+    override suspend fun mutationExpectation(prompt: String): AgentMutationExpectation =
+        mutationExpectationClassifier.classify(prompt)
 
     override suspend fun close() {
         if (closed.compareAndSet(false, true)) managedClient.close()
@@ -308,6 +331,13 @@ private val PLANNER_SYSTEM_PROMPT = """
 
     Map-changing tools may be used only when the user explicitly asks to display, focus, locate, mark, show, draw, visualize, or otherwise modify the temporary Mission view.
     If the user asks only for information or how to travel, use the read-only tools and do not change the map.
+    When the user explicitly requests a map or Planner action supported by a registered tool, execute the required
+    tool in the current turn. Never stop at a promise such as saying that you will create, add, show, modify, send,
+    or execute something later. Report an action as created, displayed, modified, sent, or completed only after the
+    corresponding tool returns success. If a tool is unavailable, required arguments cannot be resolved, or execution
+    fails, state that the requested action was not completed and explain why; do not imply that it is about to happen.
+    These execution requirements apply only to explicit action requests. Facts, explanations, system information,
+    usage questions, and other answer-only requests do not require a mutation tool.
     Use focus_system alone when the user asks only to locate or focus one system.
     For an explicit display task involving routes, jump ranges, or temporary markers, call begin_mission once and reuse the returned missionId for every action in that same task.
     Never invent or reconstruct a missionId, routeId, overlayId, or markerId. IDs must come from a prior Planner tool result, get_active_missions, get_mission, or controlled request/session state. If more than one object could match, ask the user to clarify.
@@ -315,7 +345,7 @@ private val PLANNER_SYSTEM_PROMPT = """
     Use show_normal_route instead of calculate_normal_route when the user explicitly asks to display the route. Its default is Stargates only; enable Ansiblex or temporary Wormholes only when the user requests them.
     Use show_capital_route only when the user explicitly asks to display a capital route and supplies effectiveRangeLy.
     Use show_jump_range only when the user explicitly asks to display a jump range and supplies effectiveRangeLy. Never infer jump range from a ship name.
-    add_mission_marker creates a temporary Mission marker only, never a Saved Marker. Use its RALLY default unless the user clearly requests another supported role.
+    add_mission_marker creates a temporary Mission marker only, never a Saved Marker. Use its RALLY default unless the user clearly requests another supported role. Preserve an explicitly requested supported marker color; when no color is requested, leave color unset so the role's existing default color applies.
     For fine-grained edits, change only the requested Mission content. Use remove_mission_route or clear_mission_routes for routes, remove_jump_range or clear_mission_jump_ranges for jump ranges, and remove_mission_marker or clear_mission_markers for temporary Mission markers. Preserve every unrequested route, jump range, and marker. Never use clear_mission merely as a shortcut for one of these narrower requests.
     Mission-marker deletion tools can remove only temporary Mission markers and must never be treated as Saved Marker deletion tools. There is no embedded tool for deleting a Saved Marker.
     After adding all requested Mission visual content, use fit_mission so the result of that explicit display request is visible in the viewport.

@@ -254,7 +254,10 @@ class AppLocalizationTest {
             listOf(title, chats, newChat, chatLifetimeHelper, startConversation, messagePlaceholder, readAloud)
         },
         strings.marker.run {
-            listOf(managerTitle, addSavedMarker, editMarker, removeSavedMarkerTitle, clearTemporaryTitle, noSavedMarkers)
+            listOf(
+                managerTitle, addTemporaryMarker, addSavedMarker, editMarker, removeSavedMarkerTitle,
+                clearTemporaryTitle, noSavedMarkers,
+            )
         },
         strings.sharedMap.run {
             listOf(sharedMarkerManager, sharedMarker, membersTitle, role, invite, removeMemberTitle, noMarkers)

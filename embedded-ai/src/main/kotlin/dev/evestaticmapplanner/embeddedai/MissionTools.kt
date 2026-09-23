@@ -10,6 +10,7 @@ import dev.evestaticmapplanner.control.mission.Mission
 import dev.evestaticmapplanner.control.mission.MissionId
 import dev.evestaticmapplanner.control.mission.MissionMarkerRole
 import dev.evestaticmapplanner.control.mission.MissionRoute
+import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNull
@@ -84,7 +85,9 @@ class AddMissionMarkerTool(
     argsType = typeToken<Args>(),
     name = NAME,
     description = "Add a temporary marker to a Mission at one canonical solar-system ID. " +
-        "This never creates a Saved Marker and the marker exists only with its Mission.",
+        "This never creates a Saved Marker and the marker exists only with its Mission. " +
+        "Optionally preserve an explicitly requested color: RED, ORANGE, YELLOW, GREEN, BLUE, PURPLE, or WHITE. " +
+        "Leave color unset when the user did not request one so the marker role keeps its default color.",
 ) {
     @Serializable
     enum class Role {
@@ -97,12 +100,24 @@ class AddMissionMarkerTool(
     }
 
     @Serializable
+    enum class Color {
+        RED,
+        ORANGE,
+        YELLOW,
+        GREEN,
+        BLUE,
+        PURPLE,
+        WHITE,
+    }
+
+    @Serializable
     data class Args(
         val missionId: String,
         val systemId: Int,
         val role: Role = Role.RALLY,
         val label: String? = null,
         val notes: String? = null,
+        val color: Color? = null,
     )
 
     override suspend fun execute(args: Args): String = executePlannerQuery(NAME, diagnostics, query = {
@@ -115,6 +130,7 @@ class AddMissionMarkerTool(
                 role = MissionMarkerRole.valueOf(args.role.name),
                 label = args.label,
                 notes = args.notes,
+                colorOverride = args.color?.let { MarkerColor.valueOf(it.name) },
             ),
         )
     }, serialize = { marker ->
@@ -123,6 +139,7 @@ class AddMissionMarkerTool(
             put("markerId", marker.markerId.value)
             put("systemId", marker.systemId)
             put("role", marker.role.name)
+            put("effectiveColor", args.color?.name ?: marker.role.defaultColor.name)
         }.toString()
     }, mapErrorCode = ::mapMarkerToolError)
 

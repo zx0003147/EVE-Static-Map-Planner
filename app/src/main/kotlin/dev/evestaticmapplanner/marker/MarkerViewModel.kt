@@ -41,13 +41,13 @@ class MarkerViewModel(
         }
     }
 
-    fun addTemporary(systemId: Int): Boolean = synchronized(stateLock) {
+    fun addTemporary(systemId: Int, draft: MarkerDraft = MarkerDraft.create()): Boolean = synchronized(stateLock) {
         val current = currentState()
         creationError(current, systemId)?.let {
             updateTransient { state -> state.copy(operationError = it) }
             return@synchronized false
         }
-        val marker = runCatching { Marker.temporary(systemId) }.getOrElse { error ->
+        val marker = runCatching { Marker.temporary(systemId, draft) }.getOrElse { error ->
             updateTransient { state ->
                 state.copy(
                     operationError = MarkerUiMessage(

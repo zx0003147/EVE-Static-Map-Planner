@@ -15,25 +15,30 @@ internal suspend fun <T> executePlannerQuery(
     diagnostics: (String) -> Unit,
     query: suspend () -> ControlResult<T>,
     serialize: (T) -> String,
+    resultSucceeded: (T) -> Boolean = { true },
     mapErrorCode: (ControlError) -> String = { it.code.name },
 ): String {
-    diagnostics(toolCallDiagnostic(toolName))
+    diagnostics.plannerToolStarted(toolName)
     val result = try {
         query()
     } catch (cancelled: CancellationException) {
-        diagnostics(toolFailureDiagnostic())
+        diagnostics.plannerToolFailed(toolName)
         throw cancelled
     } catch (failure: Throwable) {
-        diagnostics(toolFailureDiagnostic())
+        diagnostics.plannerToolFailed(toolName)
         throw failure
     }
     return when (result) {
         is ControlResult.Success -> {
-            diagnostics(toolSuccessDiagnostic())
+            if (resultSucceeded(result.value)) {
+                diagnostics.plannerToolSucceeded(toolName)
+            } else {
+                diagnostics.plannerToolFailed(toolName)
+            }
             serialize(result.value).boundedToolResult()
         }
         is ControlResult.Failure -> {
-            diagnostics(toolFailureDiagnostic())
+            diagnostics.plannerToolFailed(toolName)
             throw EmbeddedAiToolException("${mapErrorCode(result.error)}: ${result.error.message}")
         }
     }

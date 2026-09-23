@@ -86,6 +86,7 @@ interface MarkerStrings {
     val name: String
     val notes: String
     val color: String
+    val addTemporaryMarker: String
     val addSavedMarker: String
     val editMarker: String
     val searchSystem: String
