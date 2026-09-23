@@ -24,7 +24,8 @@ class EveIdentityHostTest {
 
         assertEquals(2, host.state.value.selectedCharacterId)
         assertEquals("Bravo", host.state.value.currentIdentity?.character?.name)
-        assertEquals("A2", host.state.value.currentIdentity?.currentAllianceIdentifier)
+        assertEquals(202L, host.state.value.currentIdentity?.currentAllianceId)
+        assertEquals(202L, host.state.value.currentAllianceId)
 
         registration.close()
         assertTrue(host.state.value.identities.isEmpty())

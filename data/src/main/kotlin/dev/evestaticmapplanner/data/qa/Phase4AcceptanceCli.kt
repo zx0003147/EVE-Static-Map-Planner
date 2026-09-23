@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.data.qa
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
@@ -56,7 +57,10 @@ fun main(arguments: Array<String>) {
     ): RouteResult {
         val graph = buildDesktopRouteGraph(
             data,
-            AnsiblexAccessPolicy.usableConnections(ansiblex.getAll(), currentAllianceId = "QA"),
+            AnsiblexAccessPolicy.usableConnections(
+                ansiblex.getAll(),
+                CurrentIdentityContext.manual(99_000_001),
+            ),
         )
         val outcome = engine.calculate(graph, system(from).id, system(to).id, RouteOptions(useAnsiblex))
         return when (outcome) {

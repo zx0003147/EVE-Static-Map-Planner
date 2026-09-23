@@ -215,11 +215,11 @@ Developer License Agreement.
 CSV accepts only these columns (unknown columns are errors):
 
 ```csv
-from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note,owner_alliance_id,enabled,direction
+from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note,owner_alliance_id,owner_alliance_name,owner_alliance_ticker,enabled,direction
 30004759,1DQ1-A,30004712,NOL-M9,Example,User-maintained,CONDI,true,BIDIRECTIONAL
 ```
 
-Each endpoint needs an ID, an exact case-insensitive name, or both matching values. `owner_alliance_id` is a case-insensitive alliance identifier or ticker; it is normalized to uppercase. A connection with no owner remains importable for compatibility but is unavailable to routing until its owner is supplied. `direction` is `BIDIRECTIONAL` (default) or `FORWARD`. JSON uses `format_version: 1`, the equivalent nested `from`/`to` endpoint objects, and `owner_alliance_id` on each connection object.
+Each endpoint needs an ID, an exact case-insensitive name, or both matching values. `owner_alliance_id` is the positive, stable EVE Alliance ID used for access decisions. `owner_alliance_name` and `owner_alliance_ticker` are optional display-only metadata and never grant access. A connection with no owner ID remains importable for compatibility but is unavailable to routing until its stable owner ID is supplied. `direction` is `BIDIRECTIONAL` (default) or `FORWARD`. JSON uses `format_version: 1`, the equivalent nested `from`/`to` endpoint objects, and the same owner fields on each connection object.
 
 The database stores one normalized **logical route connection** per unordered system pair. This is a V1 routing-data constraint; it is not a claim about how many physical EVE structures can exist for that pair. Future data sources may preserve multiple physical structures while folding them into one RouteGraph connection.
 

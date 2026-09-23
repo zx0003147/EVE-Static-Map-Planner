@@ -4,7 +4,9 @@ import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
-import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceId
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceDisplayName
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceTicker
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
@@ -219,10 +221,9 @@ class RoutePlannerViewModel(
         mutableState.update { it.copy(showAnsiblexLayer = show) }
     }
 
-    fun setCurrentAllianceId(value: String?) {
-        val normalized = normalizeAllianceId(value)
-        if (mutableState.value.currentAllianceId == normalized) return
-        mutableState.update { current -> current.copy(currentAllianceId = normalized) }
+    fun setCurrentIdentityContext(context: CurrentIdentityContext?) {
+        if (mutableState.value.currentIdentityContext == context) return
+        mutableState.update { current -> current.copy(currentIdentityContext = context) }
         if (staticData == null) return
         val graphResult = runCatching {
             rebuildGraph().getOrThrow()
@@ -419,7 +420,9 @@ class RoutePlannerViewModel(
         bidirectional: Boolean,
         displayName: String?,
         notes: String?,
-        ownerAllianceId: String? = null,
+        ownerAllianceId: Long? = null,
+        ownerAllianceName: String? = null,
+        ownerAllianceTicker: String? = null,
     ) {
         val repository = ansiblexRepository ?: return
         scope.launch {
@@ -435,6 +438,8 @@ class RoutePlannerViewModel(
                             displayName = displayName,
                             notes = notes,
                             ownerAllianceId = ownerAllianceId,
+                            ownerAllianceName = normalizeAllianceDisplayName(ownerAllianceName),
+                            ownerAllianceTicker = normalizeAllianceTicker(ownerAllianceTicker),
                         ),
                     )
                 }
@@ -564,7 +569,7 @@ class RoutePlannerViewModel(
     private fun usesOnlyCurrentlyAccessibleAnsiblex(route: RouteResult): Boolean {
         val accessibleConnectionIds = AnsiblexAccessPolicy.usableConnections(
             currentAnsiblexConnections,
-            mutableState.value.currentAllianceId,
+            mutableState.value.currentIdentityContext,
         ).mapTo(hashSetOf()) { "ansiblex:${it.id}" }
         return route.edges.asSequence()
             .filter { it.type == RouteEdgeType.ANSIBLEX }
@@ -735,7 +740,7 @@ class RoutePlannerViewModel(
                 data,
                 AnsiblexAccessPolicy.usableConnections(
                     currentAnsiblexConnections,
-                    mutableState.value.currentAllianceId,
+                    mutableState.value.currentIdentityContext,
                 ),
                 currentWormholeConnections,
             )

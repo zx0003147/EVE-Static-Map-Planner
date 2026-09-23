@@ -6,6 +6,9 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
+import dev.evestaticmapplanner.core.identity.EveCharacterIdentity
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StargateConnection
 import dev.evestaticmapplanner.core.model.StaticMapData
@@ -34,7 +37,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoutePlannerViewModelTest {
     @Test
-    fun `Ansiblex route is unavailable without a matching alliance identity`() = runTest {
+    fun `ESI identity filters Ansiblex and manual simulation can switch the result`() = runTest {
         val fixture = Fixture(withShortcut = true)
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = fixture.viewModel(dispatcher, selectAlliance = false)
@@ -47,11 +50,19 @@ class RoutePlannerViewModelTest {
         assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
         assertEquals(0, viewModel.state.value.usableAnsiblexCount)
 
-        viewModel.setCurrentAllianceId(TEST_ALLIANCE_ID.lowercase())
+        viewModel.setCurrentIdentityContext(
+            CurrentIdentityContext(
+                source = CurrentIdentitySource.ESI,
+                character = EveCharacterIdentity(90_000_001, "Pilot"),
+                allianceId = TEST_ALLIANCE_ID,
+                allianceName = "Example Alliance",
+                allianceTicker = "EX",
+            ),
+        )
         viewModel.calculateRoute()
         assertEquals(1, viewModel.state.value.activeRoute?.ansiblexJumps)
 
-        viewModel.setCurrentAllianceId("OTHER")
+        viewModel.setCurrentIdentityContext(CurrentIdentityContext.manual(OTHER_ALLIANCE_ID))
         assertNull(viewModel.state.value.activeRoute)
         viewModel.calculateRoute()
         assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
@@ -174,7 +185,7 @@ class RoutePlannerViewModelTest {
         val snapshot = viewModel.planningSnapshot()
         assertEquals(1, snapshot.activeRoute?.ansiblexJumps)
 
-        viewModel.setCurrentAllianceId("OTHER")
+        viewModel.setCurrentIdentityContext(CurrentIdentityContext.manual(OTHER_ALLIANCE_ID))
         viewModel.restorePlanningSnapshot(snapshot)
 
         assertNull(viewModel.state.value.activeRoute)
@@ -604,7 +615,9 @@ private class Fixture(
         scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + dispatcher),
         ioDispatcher = dispatcher,
         searchDebounceMillis = debounce,
-    ).also { if (selectAlliance) it.setCurrentAllianceId(TEST_ALLIANCE_ID) }
+    ).also {
+        if (selectAlliance) it.setCurrentIdentityContext(CurrentIdentityContext.manual(TEST_ALLIANCE_ID))
+    }
 
     fun wormholeUi(dispatcher: kotlinx.coroutines.CoroutineDispatcher) = WormholeViewModel(
         store = wormholes,
@@ -665,7 +678,8 @@ private fun connection(id: String, first: Int, second: Int) = AnsiblexConnection
     TEST_ALLIANCE_ID,
 )
 
-private const val TEST_ALLIANCE_ID = "CONDI"
+private const val TEST_ALLIANCE_ID = 99_000_001L
+private const val OTHER_ALLIANCE_ID = 99_000_002L
 
 private fun system(id: Int, name: String) = SolarSystem(
     id = id,

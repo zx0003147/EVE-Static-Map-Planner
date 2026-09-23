@@ -21,6 +21,7 @@ import dev.evestaticmapplanner.control.ViewportControlPort
 import dev.evestaticmapplanner.control.ViewportOperationOutcome
 import dev.evestaticmapplanner.core.model.Constellation
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.model.Region
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.Stargate
@@ -148,7 +149,11 @@ class EmbeddedAiPlannerDataIntegrationTest {
                     ),
                 )
             }
-            val service = plannerService(database, ansiblex, currentAllianceId = PHASE2_ALLIANCE_ID)
+            val service = plannerService(
+                database,
+                ansiblex,
+                currentIdentityContext = CurrentIdentityContext.manual(PHASE2_ALLIANCE_ID),
+            )
             try {
                 val search = SearchSystemTool(service).execute(SearchSystemTool.Args("Fixture 02"))
                 val normal = CalculateNormalRouteTool(service).execute(
@@ -497,13 +502,13 @@ class EmbeddedAiPlannerDataIntegrationTest {
     private fun kotlinx.coroutines.CoroutineScope.plannerService(
         database: Path,
         ansiblexRepository: AnsiblexRepository? = null,
-        currentAllianceId: String? = null,
+        currentIdentityContext: CurrentIdentityContext? = null,
     ): DefaultMapControlService {
         val planning = ExistingPlanningPorts(
             staticMapRepository = SqliteStaticMapRepository(database),
             ansiblexRepository = ansiblexRepository,
             wormholeSessionStore = WormholeSessionStore(),
-            currentAllianceIdProvider = { currentAllianceId },
+            currentIdentityContextProvider = { currentIdentityContext },
         )
         return DefaultMapControlService(
             systemReadPort = RepositorySystemReadPort(
@@ -519,7 +524,7 @@ class EmbeddedAiPlannerDataIntegrationTest {
     }
 }
 
-private const val PHASE2_ALLIANCE_ID = "QA"
+private const val PHASE2_ALLIANCE_ID = 99_000_001L
 
 private class RecordingMapControlService(
     private val delegate: MapControlService,

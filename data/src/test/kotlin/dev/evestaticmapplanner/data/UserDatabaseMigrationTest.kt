@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 class UserDatabaseMigrationTest {
     @Test
     fun `fresh database creates complete strict current schema`() {
-        val path = createTempDirectory("user-db-v5-fresh").resolve("user.db")
+        val path = createTempDirectory("user-db-v6-fresh").resolve("user.db")
 
         UserDatabase.initialize(path)
 
@@ -109,7 +109,7 @@ class UserDatabaseMigrationTest {
 
         UserDatabase.initialize(path)
         UserDatabase.open(path).use { connection ->
-            assertEquals(5, connection.userVersion())
+            assertEquals(6, connection.userVersion())
             assertFalse("planning_views" in connection.applicationTables())
             assertFalse("ai_missions" in connection.applicationTables())
         }
@@ -215,7 +215,7 @@ class UserDatabaseMigrationTest {
     }
 
     @Test
-    fun `version four migration preserves data and adds nullable Ansiblex owner alliance`() {
+    fun `version four migration preserves data and reaches stable owner alliance schema`() {
         val path = createTempDirectory("user-db-v4-migrate").resolve("user.db")
         SqliteConnectionFactory.open(path).use { connection ->
             createVersionFourFixture(connection)
@@ -227,6 +227,73 @@ class UserDatabaseMigrationTest {
 
         assertEquals(before, snapshotAnsiblex(path))
         UserDatabase.open(path).use { connection ->
+            assertEquals(6, connection.userVersion())
+            assertEquals(
+                listOf(
+                    "owner_alliance_id" to "INTEGER",
+                    "owner_alliance_name" to "TEXT",
+                    "owner_alliance_ticker" to "TEXT",
+                ),
+                connection.rows("PRAGMA table_info(ansiblex_connections)")
+                    .filter { it[1]?.startsWith("owner_alliance_") == true }
+                    .map { it[1] to it[2] },
+            )
+            assertEquals(
+                listOf(listOf(null, null, null), listOf(null, null, null)),
+                connection.rows(
+                    "SELECT owner_alliance_id, owner_alliance_name, owner_alliance_ticker " +
+                        "FROM ansiblex_connections ORDER BY id",
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `version five migration preserves bridges and keeps legacy text as display-only owner name`() {
+        val path = createTempDirectory("user-db-v5-migrate").resolve("user.db")
+        SqliteConnectionFactory.open(path).use { connection ->
+            createVersionFiveFixture(connection)
+            connection.createStatement().execute(
+                "UPDATE ansiblex_connections SET owner_alliance_id = 'CONDI' WHERE id = 'imported-1'",
+            )
+        }
+        val before = snapshotAnsiblex(path)
+
+        UserDatabase.initialize(path)
+
+        assertEquals(before, snapshotAnsiblex(path))
+        UserDatabase.open(path).use { connection ->
+            assertEquals(6, connection.userVersion())
+            assertEquals(
+                listOf(
+                    listOf(null, "CONDI", null),
+                    listOf(null, null, null),
+                ),
+                connection.rows(
+                    "SELECT owner_alliance_id, owner_alliance_name, owner_alliance_ticker " +
+                        "FROM ansiblex_connections ORDER BY id",
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `version five migration failure restores legacy schema and data`() {
+        val path = createTempDirectory("user-db-v5-rollback").resolve("user.db")
+        SqliteConnectionFactory.open(path).use { connection ->
+            createVersionFiveFixture(connection)
+            connection.createStatement().execute(
+                "UPDATE ansiblex_connections SET owner_alliance_id = 'CONDI' WHERE id = 'imported-1'",
+            )
+        }
+        val before = snapshotAnsiblex(path)
+
+        assertFailsWith<UserDatabaseException> {
+            UserDatabase.initialize(path) { error("forced version six migration failure") }
+        }
+
+        assertEquals(before, snapshotAnsiblex(path))
+        UserDatabase.open(path).use { connection ->
             assertEquals(5, connection.userVersion())
             assertEquals(
                 listOf("owner_alliance_id" to "TEXT"),
@@ -235,7 +302,7 @@ class UserDatabaseMigrationTest {
                     .map { it[1] to it[2] },
             )
             assertEquals(
-                listOf(listOf(null), listOf(null)),
+                listOf(listOf("CONDI"), listOf(null)),
                 connection.rows("SELECT owner_alliance_id FROM ansiblex_connections ORDER BY id"),
             )
         }
@@ -319,12 +386,12 @@ class UserDatabaseMigrationTest {
     }
 
     @Test
-    fun `newer schema six fixture is rejected byte-for-byte`() {
+    fun `newer schema seven fixture is rejected byte-for-byte`() {
         val path = createTempDirectory("user-db-too-new").resolve("user.db")
         SqliteConnectionFactory.open(path).use { connection ->
             connection.createStatement().execute("CREATE TABLE planning_views(value TEXT) STRICT")
             connection.createStatement().execute("INSERT INTO planning_views VALUES('keep')")
-            connection.createStatement().execute("PRAGMA user_version = 6")
+            connection.createStatement().execute("PRAGMA user_version = 7")
         }
         val before = Files.readAllBytes(path)
 
@@ -478,6 +545,15 @@ private fun createVersionFourFixture(connection: Connection) {
     UserDatabaseSchema.addSavedMarkerProvenance(connection)
     connection.createStatement().use { statement ->
         statement.execute("PRAGMA user_version = 4")
+    }
+}
+
+private fun createVersionFiveFixture(connection: Connection) {
+    createVersionFourFixture(connection)
+    insertVersionOneRows(connection)
+    UserDatabaseSchema.addAnsiblexOwnerAlliance(connection)
+    connection.createStatement().use { statement ->
+        statement.execute("PRAGMA user_version = 5")
     }
 }
 

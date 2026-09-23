@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.jump.UniverseDistanceCalculator
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.SchematicPosition
@@ -36,7 +37,7 @@ class ExistingPlanningPortsTest {
             StaticMapRepository { snapshotStaticData() },
             ansiblex,
             wormholes,
-            currentAllianceIdProvider = { TEST_ALLIANCE_ID },
+            currentIdentityContextProvider = { CurrentIdentityContext.manual(TEST_ALLIANCE_ID) },
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -84,7 +85,7 @@ class ExistingPlanningPortsTest {
             StaticMapRepository { staticData() },
             repository,
             WormholeSessionStore(),
-            currentAllianceIdProvider = { TEST_ALLIANCE_ID },
+            currentIdentityContextProvider = { CurrentIdentityContext.manual(TEST_ALLIANCE_ID) },
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -105,7 +106,7 @@ class ExistingPlanningPortsTest {
             StaticMapRepository { staticData() },
             repository,
             WormholeSessionStore(),
-            currentAllianceIdProvider = { TEST_ALLIANCE_ID },
+            currentIdentityContextProvider = { CurrentIdentityContext.manual(TEST_ALLIANCE_ID) },
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -132,7 +133,7 @@ class ExistingPlanningPortsTest {
             StaticMapRepository { staticData() },
             ReadOnlyProofAnsiblexRepository(),
             WormholeSessionStore(),
-            currentAllianceIdProvider = { "OTHER" },
+            currentIdentityContextProvider = { CurrentIdentityContext.manual(OTHER_ALLIANCE_ID) },
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -265,7 +266,8 @@ private fun ansiblex(
     TEST_ALLIANCE_ID,
 )
 
-private const val TEST_ALLIANCE_ID = "CONDI"
+private const val TEST_ALLIANCE_ID = 99_000_001L
+private const val OTHER_ALLIANCE_ID = 99_000_002L
 
 private fun staticData() = StaticMapData(
     systems = listOf(

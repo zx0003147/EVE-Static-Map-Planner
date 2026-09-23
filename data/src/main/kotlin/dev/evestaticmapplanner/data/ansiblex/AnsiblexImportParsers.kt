@@ -15,6 +15,8 @@ internal object AnsiblexImportParsers {
         "connection_name",
         "note",
         "owner_alliance_id",
+        "owner_alliance_name",
+        "owner_alliance_ticker",
         "enabled",
         "direction",
     )
@@ -94,6 +96,8 @@ internal object AnsiblexImportParsers {
                     displayName = value("connection_name"),
                     notes = value("note"),
                     ownerAllianceId = value("owner_alliance_id"),
+                    ownerAllianceName = value("owner_alliance_name"),
+                    ownerAllianceTicker = value("owner_alliance_ticker"),
                     enabled = enabled(),
                     direction = value("direction"),
                 )
@@ -120,7 +124,9 @@ internal object AnsiblexImportParsers {
                     to = RawImportEndpoint(row.to.systemId, row.to.systemName?.trim()?.takeIf(String::isNotEmpty)),
                     displayName = row.connectionName?.trim()?.takeIf(String::isNotEmpty),
                     notes = row.note?.trim()?.takeIf(String::isNotEmpty),
-                    ownerAllianceId = row.ownerAllianceId?.trim()?.takeIf(String::isNotEmpty),
+                    ownerAllianceId = row.ownerAllianceId?.toString(),
+                    ownerAllianceName = row.ownerAllianceName?.trim()?.takeIf(String::isNotEmpty),
+                    ownerAllianceTicker = row.ownerAllianceTicker?.trim()?.takeIf(String::isNotEmpty),
                     enabled = row.enabled,
                     direction = row.direction,
                 )
@@ -151,7 +157,9 @@ private data class JsonConnection(
     val to: JsonEndpoint,
     @SerialName("connection_name") val connectionName: String? = null,
     val note: String? = null,
-    @SerialName("owner_alliance_id") val ownerAllianceId: String? = null,
+    @SerialName("owner_alliance_id") val ownerAllianceId: Long? = null,
+    @SerialName("owner_alliance_name") val ownerAllianceName: String? = null,
+    @SerialName("owner_alliance_ticker") val ownerAllianceTicker: String? = null,
     val enabled: Boolean? = null,
     val direction: String? = null,
 )

@@ -7,14 +7,15 @@ import kotlin.test.assertNull
 
 class EveIdentityTest {
     @Test
-    fun `single identity is selected automatically and exposes canonical alliance ticker`() {
+    fun `single identity is selected automatically and exposes stable alliance ID`() {
         val identity = identity(2, "Pilot", "condi")
 
         val state = CurrentIdentitySelection.reconcile(listOf(identity), selectedCharacterId = null)
 
         assertEquals(2, state.selectedCharacterId)
         assertEquals(identity, state.currentIdentity)
-        assertEquals("CONDI", state.currentIdentity?.currentAllianceIdentifier)
+        assertEquals(22L, state.currentAllianceId)
+        assertEquals(22L, state.currentIdentity?.currentAllianceId)
     }
 
     @Test

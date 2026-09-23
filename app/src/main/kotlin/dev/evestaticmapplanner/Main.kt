@@ -55,6 +55,7 @@ import dev.evestaticmapplanner.control.RepositorySystemReadPort
 import dev.evestaticmapplanner.control.transport.LocalControlServer
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
+import dev.evestaticmapplanner.core.identity.toCurrentIdentityContext
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidation
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
@@ -482,7 +483,7 @@ private fun FrameWindowScope.ReadyApplication(
             staticMapRepository = staticRepository,
             ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
             wormholeSessionStore = wormholeSessionStore,
-            currentAllianceIdProvider = { routeViewModel.state.value.currentAllianceId },
+            currentIdentityContextProvider = { routeViewModel.state.value.currentIdentityContext },
         )
     }
     val systemReadPort = remember(configuration) {
@@ -856,6 +857,7 @@ private fun FrameWindowScope.ReadyApplication(
         }
     }
     val routeState by routeViewModel.state.collectAsState()
+    val esiIdentityContext = eveIdentityState.currentIdentity?.toCurrentIdentityContext()
     LaunchedEffect(
         mapState.isLoading,
         mapState.appPreferences.eveIdentity.selectedCharacterId,
@@ -880,18 +882,13 @@ private fun FrameWindowScope.ReadyApplication(
     }
     LaunchedEffect(
         mapState.isLoading,
-        mapState.appPreferences.ansiblex.currentAllianceId,
-        eveIdentityState.currentIdentity,
+        mapState.appPreferences.ansiblex,
+        esiIdentityContext,
         routeViewModel,
     ) {
         if (!mapState.isLoading) {
-            val currentIdentity = eveIdentityState.currentIdentity
-            routeViewModel.setCurrentAllianceId(
-                if (currentIdentity != null) {
-                    currentIdentity.currentAllianceIdentifier
-                } else {
-                    mapState.appPreferences.ansiblex.currentAllianceId
-                },
+            routeViewModel.setCurrentIdentityContext(
+                mapState.appPreferences.ansiblex.currentIdentityContext(esiIdentityContext),
             )
         }
     }
@@ -1045,6 +1042,7 @@ private fun FrameWindowScope.ReadyApplication(
             userDatabasePath = configuration.userDatabase.path,
             state = mapState,
             routeState = routeState,
+            esiIdentityContext = esiIdentityContext,
             wormholeState = wormholeState,
             jumpState = jumpState,
             capitalState = capitalState,

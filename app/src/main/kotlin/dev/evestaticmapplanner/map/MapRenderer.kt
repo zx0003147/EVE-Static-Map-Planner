@@ -30,6 +30,7 @@ import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
@@ -338,11 +339,11 @@ object MapRenderer {
         transform: MapTransform,
         connections: List<AnsiblexConnection>,
         emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
-        currentAllianceId: String? = null,
+        currentIdentityContext: CurrentIdentityContext? = null,
     ) {
         val path = Path()
         connections.asSequence().filter(AnsiblexConnection::enabled).forEach { connection ->
-            val style = ansiblexNetworkRenderStyle(AnsiblexAccessPolicy.status(connection, currentAllianceId))
+            val style = ansiblexNetworkRenderStyle(AnsiblexAccessPolicy.status(connection, currentIdentityContext))
             val first = scene.nodesById[connection.firstSystemId]?.position ?: return@forEach
             val second = scene.nodesById[connection.secondSystemId]?.position ?: return@forEach
             val geometry = ansiblexConnectionGeometry(

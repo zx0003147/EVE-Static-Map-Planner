@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.map.MapPoint
@@ -110,7 +111,7 @@ class CompactSystemInfoCardTest {
         val state = selectedState(system(2, "1DQ1-A"), hoveredSystemId = 99)
         val routeState = RoutePlannerUiState(
             ansiblexConnections = (3..8).map { other -> connection(other) },
-            currentAllianceId = "CONDI",
+            currentIdentityContext = CurrentIdentityContext.manual(99_000_001),
         )
         val jumpState = JumpOverlayUiState(
             overlays = listOf(
@@ -138,7 +139,7 @@ class CompactSystemInfoCardTest {
             presentation.fields.associate { it.label to it.value },
         )
         assertEquals(5, presentation.ansiblexConnections.size)
-        assertTrue(presentation.ansiblexConnections.all { "CONDI · Available" in it })
+        assertTrue(presentation.ansiblexConnections.all { "EX · Available" in it })
         assertEquals(listOf("Bridge Range", "second"), presentation.jumpOverlayLabels)
         assertTrue(presentation.isInJumpIntersection)
         assertFalse(presentation.isLoading)
@@ -435,7 +436,8 @@ class CompactSystemInfoCardTest {
         enabled = true,
         createdAt = Instant.EPOCH,
         updatedAt = Instant.EPOCH,
-        ownerAllianceId = "CONDI",
+        ownerAllianceId = 99_000_001,
+        ownerAllianceTicker = "EX",
     )
 
     private fun overlay(id: String, label: String?, enabled: Boolean) = JumpRangeOverlay(

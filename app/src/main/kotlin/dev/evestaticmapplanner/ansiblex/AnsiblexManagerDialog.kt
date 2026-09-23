@@ -29,9 +29,13 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
-import dev.evestaticmapplanner.core.ansiblex.MAX_ALLIANCE_ID_LENGTH
+import dev.evestaticmapplanner.core.ansiblex.MAX_ALLIANCE_NAME_LENGTH
+import dev.evestaticmapplanner.core.ansiblex.MAX_ALLIANCE_TICKER_LENGTH
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
+import dev.evestaticmapplanner.preferences.AnsiblexIdentitySource
+import dev.evestaticmapplanner.preferences.AnsiblexPreferences
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
 import dev.evestaticmapplanner.localization.LocalAppStrings
@@ -57,8 +61,10 @@ internal enum class ClearConfirmation { IMPORTED, ALL }
 fun AnsiblexManagerDialog(
     userDatabasePath: Path,
     state: RoutePlannerUiState,
+    esiIdentityContext: CurrentIdentityContext?,
+    identityPreferences: AnsiblexPreferences,
     viewModel: RoutePlannerViewModel,
-    onCurrentAllianceIdChange: (String?) -> Unit,
+    onIdentityPreferencesChange: (AnsiblexPreferences) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val appStrings = LocalAppStrings.current
@@ -68,7 +74,17 @@ fun AnsiblexManagerDialog(
     var manualName by remember { mutableStateOf("") }
     var manualNotes by remember { mutableStateOf("") }
     var manualOwnerAllianceId by remember { mutableStateOf("") }
-    var currentAllianceInput by remember(state.currentAllianceId) { mutableStateOf(state.currentAllianceId.orEmpty()) }
+    var manualOwnerAllianceName by remember { mutableStateOf("") }
+    var manualOwnerAllianceTicker by remember { mutableStateOf("") }
+    var currentAllianceInput by remember(identityPreferences.manualAllianceId) {
+        mutableStateOf(identityPreferences.manualAllianceId?.toString().orEmpty())
+    }
+    var currentAllianceNameInput by remember(identityPreferences.manualAllianceName) {
+        mutableStateOf(identityPreferences.manualAllianceName.orEmpty())
+    }
+    var currentAllianceTickerInput by remember(identityPreferences.manualAllianceTicker) {
+        mutableStateOf(identityPreferences.manualAllianceTicker.orEmpty())
+    }
     var bidirectional by remember { mutableStateOf(true) }
     var confirmation by remember { mutableStateOf<ClearConfirmation?>(null) }
     var clearAllPhrase by remember { mutableStateOf("") }
@@ -122,21 +138,85 @@ fun AnsiblexManagerDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(strings.allianceIdentity, style = MaterialTheme.typography.titleMedium)
+                        val activeIdentity = state.currentIdentityContext
+                        Text(
+                            "${strings.currentCharacter}: ${activeIdentity?.character?.name ?: "—"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EveColors.SecondaryText,
+                        )
+                        Text(
+                            "${strings.currentAlliance}: ${activeIdentity.allianceDisplayLabel()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EveColors.SecondaryText,
+                        )
+                        Text(
+                            "${strings.identitySource}: " + if (
+                                identityPreferences.identitySource == AnsiblexIdentitySource.ESI
+                            ) strings.esiIdentity else strings.manualIdentity,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EveColors.SecondaryText,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TextButton(
+                                onClick = {
+                                    onIdentityPreferencesChange(
+                                        identityPreferences.copy(identitySource = AnsiblexIdentitySource.ESI),
+                                    )
+                                },
+                                enabled = esiIdentityContext != null ||
+                                    identityPreferences.identitySource == AnsiblexIdentitySource.ESI,
+                                selected = identityPreferences.identitySource == AnsiblexIdentitySource.ESI,
+                            ) { Text(strings.esiIdentity) }
+                            TextButton(
+                                onClick = {
+                                    onIdentityPreferencesChange(
+                                        identityPreferences.copy(identitySource = AnsiblexIdentitySource.MANUAL),
+                                    )
+                                },
+                                selected = identityPreferences.identitySource == AnsiblexIdentitySource.MANUAL,
+                            ) { Text(strings.manualIdentity) }
+                        }
                         OutlinedTextField(
                             currentAllianceInput,
                             { currentAllianceInput = it },
                             label = { Text(strings.currentAllianceId) },
                             singleLine = true,
                         )
+                        OutlinedTextField(
+                            currentAllianceNameInput,
+                            { currentAllianceNameInput = it },
+                            label = { Text(strings.ownerAllianceName) },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            currentAllianceTickerInput,
+                            { currentAllianceTickerInput = it },
+                            label = { Text(strings.ownerAllianceTicker) },
+                            singleLine = true,
+                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Button(
-                                onClick = { onCurrentAllianceIdChange(currentAllianceInput) },
-                                enabled = currentAllianceInput.isNotBlank() &&
-                                    currentAllianceInput.trim().length <= MAX_ALLIANCE_ID_LENGTH,
+                                onClick = {
+                                    onIdentityPreferencesChange(
+                                        AnsiblexPreferences(
+                                            identitySource = AnsiblexIdentitySource.MANUAL,
+                                            manualAllianceId = currentAllianceInput.trim().toLong(),
+                                            manualAllianceName = currentAllianceNameInput.trim().takeIf(String::isNotEmpty),
+                                            manualAllianceTicker = currentAllianceTickerInput.trim().takeIf(String::isNotEmpty),
+                                        ),
+                                    )
+                                },
+                                enabled = currentAllianceInput.trim().toLongOrNull()?.let { it > 0 } == true &&
+                                    currentAllianceNameInput.trim().length <= MAX_ALLIANCE_NAME_LENGTH &&
+                                    currentAllianceTickerInput.trim().length <= MAX_ALLIANCE_TICKER_LENGTH,
                             ) { Text(strings.applyAllianceIdentity) }
                             TextButton(onClick = {
                                 currentAllianceInput = ""
-                                onCurrentAllianceIdChange(null)
+                                currentAllianceNameInput = ""
+                                currentAllianceTickerInput = ""
+                                onIdentityPreferencesChange(
+                                    AnsiblexPreferences(identitySource = AnsiblexIdentitySource.MANUAL),
+                                )
                             }) { Text(strings.clearAllianceIdentity) }
                         }
                         Text(
@@ -210,6 +290,18 @@ fun AnsiblexManagerDialog(
                             label = { Text(strings.ownerAllianceId) },
                             singleLine = true,
                         )
+                        OutlinedTextField(
+                            manualOwnerAllianceName,
+                            { manualOwnerAllianceName = it },
+                            label = { Text(strings.ownerAllianceName) },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            manualOwnerAllianceTicker,
+                            { manualOwnerAllianceTicker = it },
+                            label = { Text(strings.ownerAllianceTicker) },
+                            singleLine = true,
+                        )
                         OutlinedTextField(manualNotes, { manualNotes = it }, label = { Text(strings.notesOptional) })
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(bidirectional, { bidirectional = it })
@@ -223,12 +315,16 @@ fun AnsiblexManagerDialog(
                                     bidirectional,
                                     manualName,
                                     manualNotes,
-                                    manualOwnerAllianceId,
+                                    manualOwnerAllianceId.trim().toLongOrNull(),
+                                    manualOwnerAllianceName,
+                                    manualOwnerAllianceTicker,
                                 )
                             },
                             enabled = manualFrom.isNotBlank() && manualTo.isNotBlank() &&
-                                manualOwnerAllianceId.isNotBlank() &&
-                                manualOwnerAllianceId.trim().length <= MAX_ALLIANCE_ID_LENGTH,
+                                (manualOwnerAllianceId.isBlank() ||
+                                    manualOwnerAllianceId.trim().toLongOrNull()?.let { it > 0 } == true) &&
+                                manualOwnerAllianceName.trim().length <= MAX_ALLIANCE_NAME_LENGTH &&
+                                manualOwnerAllianceTicker.trim().length <= MAX_ALLIANCE_TICKER_LENGTH,
                         ) { Text(strings.addConnection) }
                     }
                     Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -330,7 +426,7 @@ internal fun AnsiblexClearConfirmationDialog(
 private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlannerViewModel) {
     val appStrings = LocalAppStrings.current
     val strings = appStrings.ansiblex
-    val accessStatus = AnsiblexAccessPolicy.status(connection, viewModel.state.value.currentAllianceId)
+    val accessStatus = AnsiblexAccessPolicy.status(connection, viewModel.state.value.currentIdentityContext)
     EvePanel(secondary = true, bordered = false) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(connection.enabled, { viewModel.setConnectionEnabled(connection.id, it) })
@@ -343,7 +439,7 @@ private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlanne
                     color = EveColors.SecondaryText,
                 )
                 Text(
-                    "${strings.ownerAllianceId}: ${connection.ownerAllianceId ?: "—"} · ${strings.accessStatus(accessStatus)}",
+                    "Owner: ${connection.ownerDisplayLabel()} · ${strings.accessStatus(accessStatus)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (accessStatus == dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus.AVAILABLE) {
                         EveColors.Important
@@ -355,6 +451,19 @@ private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlanne
             TextButton(onClick = { viewModel.deleteConnection(connection.id) }) { Text(appStrings.common.delete) }
         }
     }
+}
+
+private fun CurrentIdentityContext?.allianceDisplayLabel(): String {
+    if (this == null) return "—"
+    val display = listOfNotNull(allianceName, allianceTicker?.let { "[$it]" }).joinToString(" ")
+    return listOfNotNull(display.takeIf(String::isNotEmpty), allianceId?.let { "#$it" }).joinToString(" · ")
+        .ifEmpty { "—" }
+}
+
+private fun AnsiblexConnection.ownerDisplayLabel(): String {
+    val display = listOfNotNull(ownerAllianceName, ownerAllianceTicker?.let { "[$it]" }).joinToString(" ")
+    return listOfNotNull(display.takeIf(String::isNotEmpty), ownerAllianceId?.let { "#$it" }).joinToString(" · ")
+        .ifEmpty { "—" }
 }
 
 private fun chooseImportFile(dialogTitle: String, filterDescription: String): Path? {

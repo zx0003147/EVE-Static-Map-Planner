@@ -1,7 +1,7 @@
 package dev.evestaticmapplanner.core.ansiblex
 
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import java.time.Instant
-import java.util.Locale
 
 enum class AnsiblexDirection {
     BIDIRECTIONAL,
@@ -26,7 +26,9 @@ data class AnsiblexConnection(
     val enabled: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
-    val ownerAllianceId: String? = null,
+    val ownerAllianceId: Long? = null,
+    val ownerAllianceName: String? = null,
+    val ownerAllianceTicker: String? = null,
 ) {
     init {
         require(id.isNotBlank()) { "Ansiblex connection ID must not be blank" }
@@ -40,9 +42,9 @@ data class AnsiblexConnection(
         require(source != AnsiblexSource.MANUAL || sourceBatchId == null) {
             "Manual Ansiblex connections cannot reference an import batch"
         }
-        require(ownerAllianceId == null || ownerAllianceId == normalizeAllianceId(ownerAllianceId)) {
-            "Ansiblex owner alliance ID must be canonical"
-        }
+        require(ownerAllianceId == null || ownerAllianceId > 0) { "Ansiblex owner alliance ID must be positive" }
+        requireAllianceDisplayText("Ansiblex owner alliance name", ownerAllianceName, MAX_ALLIANCE_NAME_LENGTH)
+        requireAllianceDisplayText("Ansiblex owner alliance ticker", ownerAllianceTicker, MAX_ALLIANCE_TICKER_LENGTH)
     }
 
     fun logicalFromSystemId(): Int = when (direction) {
@@ -63,7 +65,9 @@ data class AnsiblexDraft(
     val displayName: String? = null,
     val notes: String? = null,
     val enabled: Boolean = true,
-    val ownerAllianceId: String? = null,
+    val ownerAllianceId: Long? = null,
+    val ownerAllianceName: String? = null,
+    val ownerAllianceTicker: String? = null,
 ) {
     init {
         require(fromSystemId > 0 && toSystemId > 0) { "Solar system IDs must be positive" }
@@ -88,11 +92,10 @@ enum class AnsiblexAccessStatus {
 }
 
 object AnsiblexAccessPolicy {
-    fun status(connection: AnsiblexConnection, currentAllianceId: String?): AnsiblexAccessStatus {
+    fun status(connection: AnsiblexConnection, identity: CurrentIdentityContext?): AnsiblexAccessStatus {
         if (!connection.enabled) return AnsiblexAccessStatus.DISABLED
-        val selected = normalizeAllianceId(currentAllianceId)
-            ?: return AnsiblexAccessStatus.ALLIANCE_NOT_SELECTED
         val owner = connection.ownerAllianceId ?: return AnsiblexAccessStatus.OWNER_UNKNOWN
+        val selected = identity?.allianceId ?: return AnsiblexAccessStatus.ALLIANCE_NOT_SELECTED
         return if (owner == selected) {
             AnsiblexAccessStatus.AVAILABLE
         } else {
@@ -100,19 +103,35 @@ object AnsiblexAccessPolicy {
         }
     }
 
-    fun isUsable(connection: AnsiblexConnection, currentAllianceId: String?): Boolean =
-        status(connection, currentAllianceId) == AnsiblexAccessStatus.AVAILABLE
+    fun isUsable(connection: AnsiblexConnection, identity: CurrentIdentityContext?): Boolean =
+        status(connection, identity) == AnsiblexAccessStatus.AVAILABLE
 
     fun usableConnections(
         connections: Iterable<AnsiblexConnection>,
-        currentAllianceId: String?,
-    ): List<AnsiblexConnection> = connections.filter { isUsable(it, currentAllianceId) }
+        identity: CurrentIdentityContext?,
+    ): List<AnsiblexConnection> = connections.filter { isUsable(it, identity) }
 }
 
-fun normalizeAllianceId(value: String?): String? = value
+fun normalizeAllianceDisplayName(value: String?): String? = normalizeAllianceDisplayText(
+    value,
+    "Alliance name",
+    MAX_ALLIANCE_NAME_LENGTH,
+)
+
+fun normalizeAllianceTicker(value: String?): String? = normalizeAllianceDisplayText(
+    value,
+    "Alliance ticker",
+    MAX_ALLIANCE_TICKER_LENGTH,
+)
+
+private fun normalizeAllianceDisplayText(value: String?, label: String, maximumLength: Int): String? = value
     ?.trim()
     ?.takeIf(String::isNotEmpty)
-    ?.uppercase(Locale.ROOT)
-    ?.also { require(it.length <= MAX_ALLIANCE_ID_LENGTH) { "Alliance ID must not exceed $MAX_ALLIANCE_ID_LENGTH characters" } }
+    ?.also { require(it.length <= maximumLength) { "$label must not exceed $maximumLength characters" } }
 
-const val MAX_ALLIANCE_ID_LENGTH = 64
+private fun requireAllianceDisplayText(label: String, value: String?, maximumLength: Int) {
+    require(value == normalizeAllianceDisplayText(value, label, maximumLength)) { "$label must be canonical" }
+}
+
+const val MAX_ALLIANCE_NAME_LENGTH = 128
+const val MAX_ALLIANCE_TICKER_LENGTH = 32

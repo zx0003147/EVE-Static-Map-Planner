@@ -19,7 +19,9 @@ import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppLocaleDetector
 import dev.evestaticmapplanner.shortcut.KeyboardShortcut
 import dev.evestaticmapplanner.shortcut.KeyboardShortcutCodec
-import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceId
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceDisplayName
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceTicker
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -62,9 +64,36 @@ data class EveIdentityPreferences(
     }
 }
 
+enum class AnsiblexIdentitySource {
+    ESI,
+    MANUAL,
+}
+
 data class AnsiblexPreferences(
-    val currentAllianceId: String? = null,
+    val identitySource: AnsiblexIdentitySource = AnsiblexIdentitySource.ESI,
+    val manualAllianceId: Long? = null,
+    val manualAllianceName: String? = null,
+    val manualAllianceTicker: String? = null,
 ) {
+    init {
+        require(manualAllianceId == null || manualAllianceId > 0) { "Alliance ID must be positive" }
+        require(manualAllianceName == normalizeAllianceDisplayName(manualAllianceName)) {
+            "Manual alliance name must be canonical"
+        }
+        require(manualAllianceTicker == normalizeAllianceTicker(manualAllianceTicker)) {
+            "Manual alliance ticker must be canonical"
+        }
+    }
+
+    fun currentIdentityContext(esiIdentity: CurrentIdentityContext?): CurrentIdentityContext? = when (identitySource) {
+        AnsiblexIdentitySource.ESI -> esiIdentity
+        AnsiblexIdentitySource.MANUAL -> CurrentIdentityContext.manual(
+            allianceId = manualAllianceId,
+            allianceName = manualAllianceName,
+            allianceTicker = manualAllianceTicker,
+        )
+    }
+
     companion object {
         val Defaults = AnsiblexPreferences()
     }
@@ -365,11 +394,28 @@ class PropertiesPreferencesStore(
                     snapToScreenEdges = properties.validBoolean(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, true),
                 )
             },
-            ansiblex = AnsiblexPreferences(
-                currentAllianceId = runCatching {
-                    normalizeAllianceId(properties.getProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID))
-                }.getOrNull(),
-            ),
+            ansiblex = run {
+                val legacyAllianceName = runCatching {
+                    normalizeAllianceDisplayName(properties.getProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID))
+                }.getOrNull()
+                val source = properties.getProperty(KEY_ANSIBLEX_IDENTITY_SOURCE)
+                    ?.let { runCatching { AnsiblexIdentitySource.valueOf(it) }.getOrNull() }
+                    ?: if (legacyAllianceName != null) AnsiblexIdentitySource.MANUAL else AnsiblexIdentitySource.ESI
+                AnsiblexPreferences(
+                    identitySource = source,
+                    manualAllianceId = properties.getProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_ID)
+                        ?.toLongOrNull()
+                        ?.takeIf { it > 0 },
+                    manualAllianceName = runCatching {
+                        normalizeAllianceDisplayName(
+                            properties.getProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_NAME) ?: legacyAllianceName,
+                        )
+                    }.getOrNull(),
+                    manualAllianceTicker = runCatching {
+                        normalizeAllianceTicker(properties.getProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_TICKER))
+                    }.getOrNull(),
+                )
+            },
             eveIdentity = EveIdentityPreferences(
                 selectedCharacterId = properties.getProperty(KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID)
                     ?.toLongOrNull()
@@ -496,8 +542,13 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_MINI_MAP_INTERACTION_MODE, miniMap.interactionMode.name)
                 setProperty(KEY_MINI_MAP_HUD_OPACITY, miniMap.hudOpacity.toString())
                 setProperty(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, miniMap.snapToScreenEdges.toString())
-                normalizeAllianceId(ansiblex.currentAllianceId)?.let {
-                    setProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID, it)
+                setProperty(KEY_ANSIBLEX_IDENTITY_SOURCE, ansiblex.identitySource.name)
+                ansiblex.manualAllianceId?.let { setProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_ID, it.toString()) }
+                normalizeAllianceDisplayName(ansiblex.manualAllianceName)?.let {
+                    setProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_NAME, it)
+                }
+                normalizeAllianceTicker(ansiblex.manualAllianceTicker)?.let {
+                    setProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_TICKER, it)
                 }
                 eveIdentity.selectedCharacterId?.let {
                     setProperty(KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID, it.toString())
@@ -782,4 +833,8 @@ private const val KEY_MINI_MAP_INTERACTION_MODE = "miniMap.interaction.mode"
 private const val KEY_MINI_MAP_HUD_OPACITY = "miniMap.hud.opacity"
 private const val KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES = "miniMap.snapToScreenEdges"
 private const val KEY_ANSIBLEX_CURRENT_ALLIANCE_ID = "ansiblex.currentAllianceId"
+private const val KEY_ANSIBLEX_IDENTITY_SOURCE = "ansiblex.identitySource"
+private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_ID = "ansiblex.manualAllianceId"
+private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_NAME = "ansiblex.manualAllianceName"
+private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_TICKER = "ansiblex.manualAllianceTicker"
 private const val KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID = "eveIdentity.selectedCharacterId"

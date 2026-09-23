@@ -25,6 +25,7 @@ data class EveIdentityHostState(
     val identities: List<EveIdentity> get() = selection.identities
     val selectedCharacterId: Long? get() = selection.selectedCharacterId
     val currentIdentity: EveIdentity? get() = selection.currentIdentity
+    val currentAllianceId: Long? get() = selection.currentAllianceId
 }
 
 /** Aggregates credential-free identities and owns the application-wide current identity choice. */

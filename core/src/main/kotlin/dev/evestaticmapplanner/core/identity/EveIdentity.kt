@@ -45,10 +45,59 @@ data class EveIdentity(
         require(fetchedAtEpochMillis >= 0) { "Identity fetch time must not be negative" }
     }
 
-    /** Phase 1 stores alliance identifiers canonically as upper-case text (normally the alliance ticker). */
-    val currentAllianceIdentifier: String?
-        get() = alliance?.ticker?.uppercase()
+    val currentAllianceId: Long?
+        get() = alliance?.id
 }
+
+enum class CurrentIdentitySource {
+    ESI,
+    MANUAL,
+}
+
+/**
+ * The identity snapshot used by access-control decisions.
+ *
+ * Alliance names and tickers are display metadata only. Callers must use [allianceId] for equality.
+ */
+data class CurrentIdentityContext(
+    val source: CurrentIdentitySource,
+    val character: EveCharacterIdentity? = null,
+    val allianceId: Long? = null,
+    val allianceName: String? = null,
+    val allianceTicker: String? = null,
+) {
+    init {
+        require(allianceId == null || allianceId > 0) { "Alliance ID must be positive" }
+        requireOptionalIdentityText("Alliance name", allianceName, MAX_NAME_LENGTH)
+        requireOptionalIdentityText("Alliance ticker", allianceTicker, MAX_TICKER_LENGTH)
+        require(source != CurrentIdentitySource.MANUAL || character == null) {
+            "Manual alliance simulation cannot claim an ESI character"
+        }
+    }
+
+    companion object {
+        fun esi(identity: EveIdentity): CurrentIdentityContext = CurrentIdentityContext(
+            source = CurrentIdentitySource.ESI,
+            character = identity.character,
+            allianceId = identity.alliance?.id,
+            allianceName = identity.alliance?.name,
+            allianceTicker = identity.alliance?.ticker,
+        )
+
+        fun manual(
+            allianceId: Long?,
+            allianceName: String? = null,
+            allianceTicker: String? = null,
+        ): CurrentIdentityContext = CurrentIdentityContext(
+            source = CurrentIdentitySource.MANUAL,
+            allianceId = allianceId,
+            allianceName = allianceName,
+            allianceTicker = allianceTicker,
+        )
+    }
+}
+
+fun EveIdentity.toCurrentIdentityContext(): CurrentIdentityContext = CurrentIdentityContext.esi(this)
 
 data class CurrentIdentityState(
     val identities: List<EveIdentity> = emptyList(),
@@ -65,6 +114,9 @@ data class CurrentIdentityState(
 
     val currentIdentity: EveIdentity?
         get() = selectedCharacterId?.let { id -> identities.firstOrNull { it.character.id == id } }
+
+    val currentAllianceId: Long?
+        get() = currentIdentity?.currentAllianceId
 }
 
 /** Pure reconciliation rules for retaining or choosing the current identity as ESI data changes. */
@@ -100,6 +152,10 @@ private fun requireValidIdentityText(label: String, value: String, maximumLength
     require(value.isNotBlank() && value == value.trim()) { "$label must be non-blank and trimmed" }
     require(value.length <= maximumLength) { "$label must not exceed $maximumLength characters" }
     require(value.none(Char::isISOControl)) { "$label must not contain control characters" }
+}
+
+private fun requireOptionalIdentityText(label: String, value: String?, maximumLength: Int) {
+    if (value != null) requireValidIdentityText(label, value, maximumLength)
 }
 
 private const val MAX_NAME_LENGTH = 128

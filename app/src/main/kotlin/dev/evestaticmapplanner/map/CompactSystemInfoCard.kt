@@ -153,13 +153,16 @@ object CompactSystemInfoPresentationBuilder {
                     connection.logicalFromSystemId() == selectedSystemId -> strings.outbound
                     else -> strings.inbound
                 }
-                val accessStatus = AnsiblexAccessPolicy.status(connection, routeState.currentAllianceId)
+                val accessStatus = AnsiblexAccessPolicy.status(connection, routeState.currentIdentityContext)
                 val accessLabel = if (accessStatus == AnsiblexAccessStatus.AVAILABLE) {
                     strings.available
                 } else {
                     strings.unavailable
                 }
-                val owner = connection.ownerAllianceId ?: strings.ownerUnknown
+                val owner = connection.ownerAllianceName
+                    ?: connection.ownerAllianceTicker
+                    ?: connection.ownerAllianceId?.toString()
+                    ?: strings.ownerUnknown
                 "→ $other · $direction · $owner · $accessLabel"
             },
             jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },

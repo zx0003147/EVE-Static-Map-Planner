@@ -281,10 +281,17 @@ interface AnsiblexStrings {
     val discard: String
     val manualAdd: String
     val allianceIdentity: String
+    val identitySource: String
+    val esiIdentity: String
+    val manualIdentity: String
+    val currentCharacter: String
+    val currentAlliance: String
     val currentAllianceId: String
     val applyAllianceIdentity: String
     val clearAllianceIdentity: String
     val ownerAllianceId: String
+    val ownerAllianceName: String
+    val ownerAllianceTicker: String
     val fromNameOrId: String
     val toNameOrId: String
     val connectionNameOptional: String

@@ -7,6 +7,7 @@ import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
@@ -61,7 +62,7 @@ class ExistingPlanningPorts(
     private val staticMapRepository: StaticMapRepository,
     private val ansiblexRepository: AnsiblexRepository?,
     private val wormholeSessionStore: WormholeSessionStore,
-    private val currentAllianceIdProvider: () -> String? = { null },
+    private val currentIdentityContextProvider: () -> CurrentIdentityContext? = { null },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val calculationDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : RoutePlanningPort, JumpPlanningPort {
@@ -286,7 +287,7 @@ class ExistingPlanningPorts(
 
     private fun accessibleAnsiblexSnapshot() = AnsiblexAccessPolicy.usableConnections(
         ansiblexRepository?.getAll().orEmpty(),
-        currentAllianceIdProvider(),
+        currentIdentityContextProvider(),
     )
 }
 

@@ -40,13 +40,13 @@ class AnsiblexImportServiceTest {
     }
 
     @Test
-    fun `valid CSV resolves IDs names and owner alliance and persists canonical owner`() {
+    fun `valid CSV resolves systems and persists stable owner alliance identity`() {
         val fixture = Fixture()
         val preview = fixture.service().previewText(
             "qa.csv",
             """
-            from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note,owner_alliance_id
-            1,Alpha,,Bravo,QA Link,Synthetic, condi
+            from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note,owner_alliance_id,owner_alliance_name,owner_alliance_ticker
+            1,Alpha,,Bravo,QA Link,Synthetic,99000001,Example Alliance,EX
             """.trimIndent(),
             AnsiblexImportMode.MERGE,
         )
@@ -54,10 +54,12 @@ class AnsiblexImportServiceTest {
         assertTrue(preview.canApply)
         assertEquals(1, preview.validRowCount)
         assertEquals(1, preview.additions.size)
-        assertEquals("CONDI", preview.additions.single().candidate.ownerAllianceId)
+        assertEquals(99_000_001L, preview.additions.single().candidate.ownerAllianceId)
+        assertEquals("Example Alliance", preview.additions.single().candidate.ownerAllianceName)
         assertEquals(0, preview.invalidRowCount)
         fixture.service().apply(preview)
-        assertEquals("CONDI", fixture.repository().getAll().single().ownerAllianceId)
+        assertEquals(99_000_001L, fixture.repository().getAll().single().ownerAllianceId)
+        assertEquals("EX", fixture.repository().getAll().single().ownerAllianceTicker)
     }
 
     @Test
@@ -65,7 +67,7 @@ class AnsiblexImportServiceTest {
         val fixture = Fixture()
         val valid = fixture.service().previewText(
             "qa.json",
-            """{"format_version":1,"connections":[{"from":{"system_name":"Alpha"},"to":{"system_id":2},"direction":"FORWARD","owner_alliance_id":"5IGMA"}]}""",
+            """{"format_version":1,"connections":[{"from":{"system_name":"Alpha"},"to":{"system_id":2},"direction":"FORWARD","owner_alliance_id":99000002,"owner_alliance_name":"JSON Alliance","owner_alliance_ticker":"JSON"}]}""",
             AnsiblexImportMode.MERGE,
         )
         val unknown = fixture.service().previewText(
@@ -76,10 +78,43 @@ class AnsiblexImportServiceTest {
         val malformed = fixture.service().previewText("qa.json", "{", AnsiblexImportMode.MERGE)
 
         assertTrue(valid.canApply)
-        assertEquals("5IGMA", valid.additions.single().candidate.ownerAllianceId)
+        assertEquals(99_000_002L, valid.additions.single().candidate.ownerAllianceId)
         assertFalse(unknown.canApply)
         assertFalse(malformed.canApply)
         assertTrue(unknown.diagnostics.any { it.code == "BAD_JSON" })
+    }
+
+    @Test
+    fun `owner diff uses stable ID rather than display name or ticker`() {
+        val fixture = Fixture()
+        val service = fixture.service()
+        service.apply(
+            service.previewText(
+                "first.csv",
+                "from_system_id,to_system_id,owner_alliance_id,owner_alliance_name,owner_alliance_ticker\n" +
+                    "1,2,99000001,Old Name,OLD",
+                AnsiblexImportMode.MERGE,
+            ),
+        )
+
+        val renamed = service.previewText(
+            "renamed.csv",
+            "from_system_id,to_system_id,owner_alliance_id,owner_alliance_name,owner_alliance_ticker\n" +
+                "1,2,99000001,New Name,NEW",
+            AnsiblexImportMode.MERGE,
+        )
+        val changedId = service.previewText(
+            "changed.csv",
+            "from_system_id,to_system_id,owner_alliance_id,owner_alliance_name,owner_alliance_ticker\n" +
+                "1,2,99000002,Old Name,OLD",
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertEquals(1, renamed.unchanged.size)
+        assertEquals(0, renamed.updates.size)
+        assertEquals(1, changedId.updates.size)
+        service.apply(changedId)
+        assertEquals(99_000_002L, fixture.repository().getAll().single().ownerAllianceId)
     }
 
     @Test

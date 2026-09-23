@@ -3,7 +3,8 @@ package dev.evestaticmapplanner.data.ansiblex
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
-import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceId
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceDisplayName
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceTicker
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.data.db.UserDatabase
@@ -77,6 +78,7 @@ class AnsiblexImportService(
                         """
                         UPDATE ansiblex_connections
                         SET direction = ?, display_name = ?, notes = ?, owner_alliance_id = ?,
+                            owner_alliance_name = ?, owner_alliance_ticker = ?,
                             source_batch_id = ?, enabled = ?, updated_at = ?
                         WHERE id = ? AND source = 'IMPORT'
                         """.trimIndent(),
@@ -84,11 +86,18 @@ class AnsiblexImportService(
                         statement.setString(1, change.candidate.direction.name)
                         statement.setString(2, change.candidate.displayName)
                         statement.setString(3, change.candidate.notes)
-                        statement.setString(4, change.candidate.ownerAllianceId)
-                        statement.setString(5, batchId)
-                        statement.setInt(6, if (change.candidate.enabled) 1 else 0)
-                        statement.setString(7, now.toString())
-                        statement.setString(8, existing.id)
+                        val ownerAllianceId = change.candidate.ownerAllianceId
+                        if (ownerAllianceId == null) {
+                            statement.setObject(4, null)
+                        } else {
+                            statement.setLong(4, ownerAllianceId)
+                        }
+                        statement.setString(5, change.candidate.ownerAllianceName)
+                        statement.setString(6, change.candidate.ownerAllianceTicker)
+                        statement.setString(7, batchId)
+                        statement.setInt(8, if (change.candidate.enabled) 1 else 0)
+                        statement.setString(9, now.toString())
+                        statement.setString(10, existing.id)
                         check(statement.executeUpdate() == 1) { "Expected imported connection ${existing.id} to be updated" }
                     }
                 }
@@ -165,12 +174,34 @@ class AnsiblexImportService(
         parsed.rows.forEach { row ->
             val from = resolve(row.from, row, "from")
             val to = resolve(row.to, row, "to")
-            val ownerAllianceId = runCatching { normalizeAllianceId(row.ownerAllianceId) }.getOrElse { cause ->
+            val ownerAllianceId = row.ownerAllianceId?.let { raw ->
+                raw.toLongOrNull()?.takeIf { it > 0 } ?: run {
+                    diagnostics += error(
+                        "INVALID_OWNER_ALLIANCE_ID",
+                        "Owner alliance ID must be a positive integer: $raw",
+                        row.rowNumber,
+                        "owner_alliance_id",
+                    )
+                    invalidRows += row.rowNumber
+                    null
+                }
+            }
+            val ownerAllianceName = runCatching { normalizeAllianceDisplayName(row.ownerAllianceName) }.getOrElse { cause ->
                 diagnostics += error(
-                    "INVALID_OWNER_ALLIANCE_ID",
-                    cause.message ?: "Owner alliance ID is invalid",
+                    "INVALID_OWNER_ALLIANCE_NAME",
+                    cause.message ?: "Owner alliance name is invalid",
                     row.rowNumber,
-                    "owner_alliance_id",
+                    "owner_alliance_name",
+                )
+                invalidRows += row.rowNumber
+                null
+            }
+            val ownerAllianceTicker = runCatching { normalizeAllianceTicker(row.ownerAllianceTicker) }.getOrElse { cause ->
+                diagnostics += error(
+                    "INVALID_OWNER_ALLIANCE_TICKER",
+                    cause.message ?: "Owner alliance ticker is invalid",
+                    row.rowNumber,
+                    "owner_alliance_ticker",
                 )
                 invalidRows += row.rowNumber
                 null
@@ -205,6 +236,8 @@ class AnsiblexImportService(
                     displayName = row.displayName?.trim()?.takeIf(String::isNotEmpty),
                     notes = row.notes?.trim()?.takeIf(String::isNotEmpty),
                     ownerAllianceId = ownerAllianceId,
+                    ownerAllianceName = ownerAllianceName,
+                    ownerAllianceTicker = ownerAllianceTicker,
                     enabled = row.enabled ?: true,
                     rowNumber = row.rowNumber,
                 )
@@ -317,6 +350,8 @@ class AnsiblexImportService(
         displayName = displayName,
         notes = notes,
         ownerAllianceId = ownerAllianceId,
+        ownerAllianceName = ownerAllianceName,
+        ownerAllianceTicker = ownerAllianceTicker,
         source = AnsiblexSource.IMPORT,
         sourceBatchId = batchId,
         enabled = enabled,
@@ -352,6 +387,8 @@ internal fun snapshotFingerprint(connections: List<AnsiblexConnection>): String 
                 it.displayName,
                 it.notes,
                 it.ownerAllianceId,
+                it.ownerAllianceName,
+                it.ownerAllianceTicker,
                 it.source,
                 it.sourceBatchId,
                 it.enabled,

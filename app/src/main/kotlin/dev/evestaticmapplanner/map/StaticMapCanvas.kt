@@ -45,6 +45,7 @@ import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
@@ -77,7 +78,7 @@ fun StaticMapCanvas(
     jumpOverlays: List<JumpRangeOverlay>,
     intersectionSystemIds: Set<Int>,
     ansiblexConnections: List<AnsiblexConnection>,
-    currentAllianceId: String?,
+    currentIdentityContext: CurrentIdentityContext?,
     wormholeConnections: List<WormholeConnection>,
     showAnsiblexLayer: Boolean,
     markerState: MarkerUiState,
@@ -124,7 +125,7 @@ fun StaticMapCanvas(
             capitalExplicitDestinationSystemId = capitalExplicitDestinationSystemId,
             jumpOverlays = jumpOverlays,
             ansiblexConnections = ansiblexConnections,
-            currentAllianceId = currentAllianceId,
+            currentIdentityContext = currentIdentityContext,
             showAnsiblexLayer = showAnsiblexLayer,
             missionState = missionState,
             featureOverlayState = featureOverlayState,
@@ -167,8 +168,8 @@ fun StaticMapCanvas(
     val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer) {
         if (showAnsiblexLayer) ansiblexConnections.filter(AnsiblexConnection::enabled) else emptyList()
     }
-    val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentAllianceId) {
-        AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentAllianceId)
+    val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentIdentityContext) {
+        AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentIdentityContext)
     }
     val visualEmphasis = remember(
         activeRoute,
@@ -678,7 +679,7 @@ fun StaticMapCanvas(
                         transform,
                         ansiblexConnections,
                         visualEmphasis,
-                        currentAllianceId,
+                        currentIdentityContext,
                     )
                 }
             }

@@ -27,7 +27,9 @@ data class ImportCandidate(
     val direction: AnsiblexDirection,
     val displayName: String?,
     val notes: String?,
-    val ownerAllianceId: String?,
+    val ownerAllianceId: Long?,
+    val ownerAllianceName: String?,
+    val ownerAllianceTicker: String?,
     val enabled: Boolean,
     val rowNumber: Long,
 )
@@ -84,6 +86,8 @@ internal data class RawImportRow(
     val displayName: String?,
     val notes: String?,
     val ownerAllianceId: String?,
+    val ownerAllianceName: String?,
+    val ownerAllianceTicker: String?,
     val enabled: Boolean?,
     val direction: String?,
 )

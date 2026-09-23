@@ -33,8 +33,29 @@ import kotlin.test.assertTrue
 import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.preferences.MiniMapPreferences
 import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
 
 class PreferencesStoreTest {
+    @Test
+    fun `Ansiblex identity selection defaults to ESI and can explicitly switch to manual`() {
+        val esi = CurrentIdentityContext(
+            source = CurrentIdentitySource.ESI,
+            allianceId = 99_000_001,
+            allianceName = "ESI Alliance",
+        )
+
+        assertEquals(esi, AnsiblexPreferences.Defaults.currentIdentityContext(esi))
+        assertEquals(
+            99_000_002L,
+            AnsiblexPreferences(
+                identitySource = AnsiblexIdentitySource.MANUAL,
+                manualAllianceId = 99_000_002,
+                manualAllianceName = "Simulated Alliance",
+            ).currentIdentityContext(esi)?.allianceId,
+        )
+    }
+
     @Test
     fun `selected EVE identity round trips independently from manual Ansiblex alliance`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
@@ -43,13 +64,19 @@ class PreferencesStoreTest {
         store.save(
             AppPreferences(
                 eveIdentity = EveIdentityPreferences(90_000_001),
-                ansiblex = AnsiblexPreferences("CONDI"),
+                ansiblex = AnsiblexPreferences(
+                    identitySource = AnsiblexIdentitySource.MANUAL,
+                    manualAllianceId = 99_000_001,
+                    manualAllianceName = "Example Alliance",
+                    manualAllianceTicker = "EX",
+                ),
             ),
         )
 
         val loaded = store.load()
         assertEquals(90_000_001, loaded.eveIdentity.selectedCharacterId)
-        assertEquals("CONDI", loaded.ansiblex.currentAllianceId)
+        assertEquals(99_000_001L, loaded.ansiblex.manualAllianceId)
+        assertEquals(AnsiblexIdentitySource.MANUAL, loaded.ansiblex.identitySource)
         assertTrue(Files.readString(path).contains("eveIdentity.selectedCharacterId=90000001"))
     }
 
@@ -58,11 +85,34 @@ class PreferencesStoreTest {
         val path = root.resolve("settings.properties")
         val store = PropertiesPreferencesStore(path)
 
-        store.save(AppPreferences(ansiblex = AnsiblexPreferences("CONDI")))
+        store.save(
+            AppPreferences(
+                ansiblex = AnsiblexPreferences(
+                    identitySource = AnsiblexIdentitySource.MANUAL,
+                    manualAllianceId = 99_000_001,
+                    manualAllianceName = "Example Alliance",
+                    manualAllianceTicker = "EX",
+                ),
+            ),
+        )
 
-        assertEquals("CONDI", store.load().ansiblex.currentAllianceId)
-        assertTrue(Files.readString(path).contains("ansiblex.currentAllianceId=CONDI"))
+        assertEquals(99_000_001L, store.load().ansiblex.manualAllianceId)
+        assertTrue(Files.readString(path).contains("ansiblex.manualAllianceId=99000001"))
     }
+
+    @Test
+    fun `legacy manual alliance string is retained as display-only data without guessing an ID`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            Files.writeString(path, "settings.version=8\nansiblex.currentAllianceId=CONDI\n")
+
+            val loaded = PropertiesPreferencesStore(path).load().ansiblex
+
+            assertEquals(AnsiblexIdentitySource.MANUAL, loaded.identitySource)
+            assertNull(loaded.manualAllianceId)
+            assertEquals("CONDI", loaded.manualAllianceName)
+            assertNull(loaded.currentIdentityContext(null)?.allianceId)
+        }
 
     @Test
     fun `AI provider settings round trip without writing an API Key`() = withTemporaryDirectory { root ->

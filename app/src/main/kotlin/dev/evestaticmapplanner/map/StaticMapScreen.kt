@@ -97,6 +97,7 @@ import dev.evestaticmapplanner.ui.EveTab
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.preferences.AnsiblexPreferences
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import java.nio.file.Path
 
 @Composable
@@ -106,6 +107,7 @@ internal fun StaticMapScreen(
     userDatabasePath: Path,
     state: MapUiState,
     routeState: RoutePlannerUiState,
+    esiIdentityContext: CurrentIdentityContext?,
     wormholeState: WormholeUiState,
     jumpState: JumpOverlayUiState,
     capitalState: CapitalRouteUiState,
@@ -239,7 +241,7 @@ internal fun StaticMapScreen(
                         jumpOverlays = jumpState.overlays,
                         intersectionSystemIds = jumpState.intersectionSystemIds,
                         ansiblexConnections = routeState.ansiblexConnections,
-                        currentAllianceId = routeState.currentAllianceId,
+                        currentIdentityContext = routeState.currentIdentityContext,
                         wormholeConnections = routeState.wormholeConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
                         markerState = markerState,
@@ -428,12 +430,12 @@ internal fun StaticMapScreen(
         AnsiblexManagerDialog(
             userDatabasePath = userDatabasePath,
             state = routeState,
+            esiIdentityContext = esiIdentityContext,
+            identityPreferences = state.appPreferences.ansiblex,
             viewModel = routeViewModel,
-            onCurrentAllianceIdChange = { value ->
-                routeViewModel.setCurrentAllianceId(value)
-                viewModel.updateAnsiblexPreferences(
-                    AnsiblexPreferences(routeViewModel.state.value.currentAllianceId),
-                )
+            onIdentityPreferencesChange = { preferences ->
+                routeViewModel.setCurrentIdentityContext(preferences.currentIdentityContext(esiIdentityContext))
+                viewModel.updateAnsiblexPreferences(preferences)
             },
             onDismiss = { showAnsiblexManager = false },
         )

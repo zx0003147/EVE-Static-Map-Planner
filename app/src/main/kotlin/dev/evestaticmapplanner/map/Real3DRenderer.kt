@@ -66,6 +66,7 @@ import dev.evestaticmapplanner.core.map.Real3DJumpSphereProjector
 import dev.evestaticmapplanner.core.map.Real3DProjectedJumpSphere
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteEdgeType
@@ -96,7 +97,7 @@ internal fun Real3DMapCanvas(
     capitalExplicitDestinationSystemId: Int?,
     jumpOverlays: List<JumpRangeOverlay>,
     ansiblexConnections: List<AnsiblexConnection>,
-    currentAllianceId: String?,
+    currentIdentityContext: CurrentIdentityContext?,
     showAnsiblexLayer: Boolean,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
@@ -172,8 +173,8 @@ internal fun Real3DMapCanvas(
     val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer) {
         if (showAnsiblexLayer) ansiblexConnections.filter(AnsiblexConnection::enabled) else emptyList()
     }
-    val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentAllianceId) {
-        AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentAllianceId)
+    val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentIdentityContext) {
+        AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentIdentityContext)
     }
     val visualEmphasis = remember(
         activeRoute,
@@ -539,7 +540,7 @@ internal fun Real3DMapCanvas(
                     state.canvasSize,
                     visibleAnsiblexConnections,
                     visualEmphasis,
-                    currentAllianceId,
+                    currentIdentityContext,
                 )
             }
             drawReal3DWormholes(geometry, camera, state.canvasSize, wormholeConnections, visualEmphasis)
@@ -1054,12 +1055,12 @@ private fun DrawScope.drawReal3DAnsiblexLayer(
     viewportSize: MapSize,
     connections: List<AnsiblexConnection>,
     emphasis: MapVisualEmphasis,
-    currentAllianceId: String?,
+    currentIdentityContext: CurrentIdentityContext?,
 ) {
     val projector = dev.evestaticmapplanner.core.map.Real3DProjector(camera, viewportSize)
     val path = Path()
     connections.asSequence().filter(AnsiblexConnection::enabled).forEach { connection ->
-        val style = ansiblexNetworkRenderStyle(AnsiblexAccessPolicy.status(connection, currentAllianceId))
+        val style = ansiblexNetworkRenderStyle(AnsiblexAccessPolicy.status(connection, currentIdentityContext))
         val first = geometry.nodesById[connection.firstSystemId]?.position ?: return@forEach
         val second = geometry.nodesById[connection.secondSystemId]?.position ?: return@forEach
         val segment = projector.projectSegment(first, second) ?: return@forEach

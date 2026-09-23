@@ -3,7 +3,7 @@ package dev.evestaticmapplanner.data.db
 import java.sql.Connection
 
 object UserDatabaseSchema {
-    const val VERSION = 5
+    const val VERSION = 6
 
     private val savedMarkersVersionTwoCreateStatement =
         """
@@ -50,6 +50,45 @@ object UserDatabaseSchema {
         """.trimIndent(),
     )
 
+    internal val ansiblexConnectionsCreateStatement =
+        """
+        CREATE TABLE ansiblex_connections (
+            id TEXT PRIMARY KEY CHECK(length(trim(id)) > 0),
+            first_system_id INTEGER NOT NULL CHECK(first_system_id > 0),
+            second_system_id INTEGER NOT NULL CHECK(second_system_id > 0),
+            direction TEXT NOT NULL CHECK(direction IN ('BIDIRECTIONAL', 'FIRST_TO_SECOND', 'SECOND_TO_FIRST')),
+            display_name TEXT,
+            notes TEXT,
+            source TEXT NOT NULL CHECK(source IN ('IMPORT', 'MANUAL')),
+            source_batch_id TEXT,
+            enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
+            created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
+            updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0),
+            owner_alliance_id INTEGER CHECK(owner_alliance_id IS NULL OR owner_alliance_id > 0),
+            owner_alliance_name TEXT CHECK(
+                owner_alliance_name IS NULL OR
+                (length(trim(owner_alliance_name)) BETWEEN 1 AND 128 AND owner_alliance_name = trim(owner_alliance_name))
+            ),
+            owner_alliance_ticker TEXT CHECK(
+                owner_alliance_ticker IS NULL OR
+                (length(trim(owner_alliance_ticker)) BETWEEN 1 AND 32 AND owner_alliance_ticker = trim(owner_alliance_ticker))
+            ),
+            CONSTRAINT ck_ansiblex_ordered_pair CHECK(first_system_id < second_system_id),
+            CONSTRAINT ck_ansiblex_source_batch CHECK(
+                (source = 'IMPORT' AND source_batch_id IS NOT NULL) OR
+                (source = 'MANUAL' AND source_batch_id IS NULL)
+            ),
+            CONSTRAINT uq_ansiblex_logical_pair UNIQUE(first_system_id, second_system_id),
+            CONSTRAINT fk_ansiblex_source_batch
+                FOREIGN KEY(source_batch_id) REFERENCES ansiblex_import_batches(batch_id)
+        ) STRICT
+        """.trimIndent()
+
+    internal val ansiblexIndexCreateStatements = listOf(
+        "CREATE INDEX idx_ansiblex_enabled ON ansiblex_connections(enabled)",
+        "CREATE INDEX idx_ansiblex_source ON ansiblex_connections(source)",
+    )
+
     private val createStatements = listOf(
         """
         CREATE TABLE ansiblex_import_batches (
@@ -65,35 +104,8 @@ object UserDatabaseSchema {
             error_count INTEGER NOT NULL CHECK(error_count >= 0)
         ) STRICT
         """.trimIndent(),
-        """
-        CREATE TABLE ansiblex_connections (
-            id TEXT PRIMARY KEY CHECK(length(trim(id)) > 0),
-            first_system_id INTEGER NOT NULL CHECK(first_system_id > 0),
-            second_system_id INTEGER NOT NULL CHECK(second_system_id > 0),
-            direction TEXT NOT NULL CHECK(direction IN ('BIDIRECTIONAL', 'FIRST_TO_SECOND', 'SECOND_TO_FIRST')),
-            display_name TEXT,
-            notes TEXT,
-            source TEXT NOT NULL CHECK(source IN ('IMPORT', 'MANUAL')),
-            source_batch_id TEXT,
-            enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
-            created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
-            updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0),
-            owner_alliance_id TEXT CHECK(
-                owner_alliance_id IS NULL OR
-                (length(trim(owner_alliance_id)) BETWEEN 1 AND 64 AND owner_alliance_id = upper(owner_alliance_id))
-            ),
-            CONSTRAINT ck_ansiblex_ordered_pair CHECK(first_system_id < second_system_id),
-            CONSTRAINT ck_ansiblex_source_batch CHECK(
-                (source = 'IMPORT' AND source_batch_id IS NOT NULL) OR
-                (source = 'MANUAL' AND source_batch_id IS NULL)
-            ),
-            CONSTRAINT uq_ansiblex_logical_pair UNIQUE(first_system_id, second_system_id),
-            CONSTRAINT fk_ansiblex_source_batch
-                FOREIGN KEY(source_batch_id) REFERENCES ansiblex_import_batches(batch_id)
-        ) STRICT
-        """.trimIndent(),
-        "CREATE INDEX idx_ansiblex_enabled ON ansiblex_connections(enabled)",
-        "CREATE INDEX idx_ansiblex_source ON ansiblex_connections(source)",
+        ansiblexConnectionsCreateStatement,
+        *ansiblexIndexCreateStatements.toTypedArray(),
         savedMarkersCreateStatement,
     ) + savedMarkerChildrenCreateStatements
 
@@ -137,6 +149,31 @@ object UserDatabaseSchema {
                 )
                 """.trimIndent(),
             )
+        }
+    }
+
+    internal fun migrateAnsiblexOwnerAllianceToStableId(connection: Connection) {
+        connection.createStatement().use { statement ->
+            statement.execute("DROP INDEX idx_ansiblex_enabled")
+            statement.execute("DROP INDEX idx_ansiblex_source")
+            statement.execute("ALTER TABLE ansiblex_connections RENAME TO ansiblex_connections_v5")
+            statement.execute(ansiblexConnectionsCreateStatement)
+            statement.execute(
+                """
+                INSERT INTO ansiblex_connections(
+                    id, first_system_id, second_system_id, direction, display_name, notes,
+                    source, source_batch_id, enabled, created_at, updated_at,
+                    owner_alliance_id, owner_alliance_name, owner_alliance_ticker
+                )
+                SELECT
+                    id, first_system_id, second_system_id, direction, display_name, notes,
+                    source, source_batch_id, enabled, created_at, updated_at,
+                    NULL, owner_alliance_id, NULL
+                FROM ansiblex_connections_v5
+                """.trimIndent(),
+            )
+            statement.execute("DROP TABLE ansiblex_connections_v5")
+            ansiblexIndexCreateStatements.forEach(statement::execute)
         }
     }
 }
