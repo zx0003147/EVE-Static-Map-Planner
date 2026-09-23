@@ -397,6 +397,111 @@ class EmbeddedAiAssistantWindowTest {
     }
 
     @Test
+    fun `chat Enter and NumPad Enter send once and clear the composer`() = runComposeUiTest {
+        val sent = mutableListOf<String>()
+        setContent {
+            EveTheme {
+                Box(Modifier.requiredSize(680.dp, 640.dp)) {
+                    TestContent(EmbeddedAiUiState(), onSend = sent::add)
+                }
+            }
+        }
+        val input = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG)
+
+        input.performTextReplacement("hello")
+        input.performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+        assertEquals(listOf("hello"), sent)
+        assertEquals("", input.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+
+        input.performTextReplacement("hello")
+        input.performKeyInput { pressKey(Key.NumPadEnter) }
+        waitForIdle()
+        assertEquals(listOf("hello", "hello"), sent)
+        assertEquals("", input.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
+    @Test
+    fun `chat Shift Enter and Shift NumPad Enter insert newline without sending`() = runComposeUiTest {
+        val sent = mutableListOf<String>()
+        setContent {
+            EveTheme {
+                Box(Modifier.requiredSize(680.dp, 640.dp)) {
+                    TestContent(EmbeddedAiUiState(), onSend = sent::add)
+                }
+            }
+        }
+        val input = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG)
+
+        input.performTextReplacement("hello")
+        input.performKeyInput {
+            keyDown(Key.ShiftLeft)
+            pressKey(Key.Enter)
+            keyUp(Key.ShiftLeft)
+        }
+        waitForIdle()
+        assertTrue(sent.isEmpty())
+        assertEquals("hello\n", input.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+
+        input.performTextReplacement("hello")
+        input.performKeyInput {
+            keyDown(Key.ShiftLeft)
+            pressKey(Key.NumPadEnter)
+            keyUp(Key.ShiftLeft)
+        }
+        waitForIdle()
+        assertTrue(sent.isEmpty())
+        assertEquals("hello\n", input.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+    }
+
+    @Test
+    fun `chat Enter and NumPad Enter leave active IME composition to the input method`() = runComposeUiTest {
+        val sent = mutableListOf<String>()
+        val composerState = AssistantComposerState().apply {
+            prompt = TextFieldValue("nihao", selection = TextRange(5), composition = TextRange(0, 5))
+        }
+        setContent {
+            EveTheme {
+                Box(Modifier.requiredSize(680.dp, 640.dp)) {
+                    TestContent(
+                        state = EmbeddedAiUiState(),
+                        composerState = composerState,
+                        onSend = sent::add,
+                    )
+                }
+            }
+        }
+        val input = onNodeWithTag(AI_CHAT_INPUT_TEST_TAG)
+
+        input.performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+        assertTrue(sent.isEmpty())
+
+        runOnIdle {
+            composerState.prompt = TextFieldValue(
+                "nihao",
+                selection = TextRange(5),
+                composition = TextRange(0, 5),
+            )
+        }
+        input.performKeyInput { pressKey(Key.NumPadEnter) }
+        waitForIdle()
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun `explicit newline replaces the current selection and moves the cursor after it`() {
+        val updated = TextFieldValue(
+            text = "hello world",
+            selection = TextRange(11, 5),
+        ).insertNewLineAtSelection()
+
+        assertEquals("hello\n", updated.text)
+        assertEquals(TextRange(6), updated.selection)
+        assertEquals(null, updated.composition)
+    }
+
+    @Test
     fun `short bubbles wrap content while long bubbles stop at the maximum width`() = runComposeUiTest {
         setAssistantContent(
             chatState(
@@ -587,6 +692,8 @@ class EmbeddedAiAssistantWindowTest {
 private fun TestContent(
     state: EmbeddedAiUiState,
     confirmation: AiActionConfirmation? = null,
+    composerState: AssistantComposerState? = null,
+    onSend: (String) -> Unit = {},
     onNewChat: () -> Unit = {},
     onRenameChat: (String, String) -> Boolean = { _, _ -> false },
     onDeny: (String) -> Boolean = { true },
@@ -595,7 +702,8 @@ private fun TestContent(
         state = state,
         confirmation = confirmation,
         providerStatus = READY_PROVIDER,
-        onSend = {},
+        composerState = composerState,
+        onSend = onSend,
         onCancel = {},
         onNewChat = onNewChat,
         onRenameChat = onRenameChat,

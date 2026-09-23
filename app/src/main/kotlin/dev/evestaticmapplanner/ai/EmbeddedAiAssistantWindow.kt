@@ -61,6 +61,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -438,13 +439,19 @@ private fun ChatComposer(
                             onCancelVoice()
                             return@onPreviewKeyEvent true
                         }
-                        if (event.key != Key.Enter) return@onPreviewKeyEvent false
+                        if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
+                            return@onPreviewKeyEvent false
+                        }
                         when (chatEnterAction(prompt, event.isShiftPressed, inputEnabled)) {
                             ChatEnterAction.SEND -> {
                                 onSubmit()
                                 true
                             }
-                            ChatEnterAction.NEW_LINE, ChatEnterAction.IME_COMPOSITION -> false
+                            ChatEnterAction.NEW_LINE -> {
+                                onPromptChange(prompt.insertNewLineAtSelection())
+                                true
+                            }
+                            ChatEnterAction.IME_COMPOSITION -> false
                             ChatEnterAction.IGNORE -> true
                         }
                     }
@@ -851,6 +858,16 @@ internal fun chatEnterAction(
     shiftPressed -> ChatEnterAction.NEW_LINE
     !inputEnabled || value.text.isBlank() -> ChatEnterAction.IGNORE
     else -> ChatEnterAction.SEND
+}
+
+internal fun TextFieldValue.insertNewLineAtSelection(): TextFieldValue {
+    val selectionStart = minOf(selection.start, selection.end)
+    val selectionEnd = maxOf(selection.start, selection.end)
+    return copy(
+        text = text.replaceRange(selectionStart, selectionEnd, "\n"),
+        selection = TextRange(selectionStart + 1),
+        composition = null,
+    )
 }
 
 @Composable
