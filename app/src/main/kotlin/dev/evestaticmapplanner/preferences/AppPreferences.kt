@@ -19,6 +19,7 @@ import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppLocaleDetector
 import dev.evestaticmapplanner.shortcut.KeyboardShortcut
 import dev.evestaticmapplanner.shortcut.KeyboardShortcutCodec
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceId
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -40,10 +41,19 @@ data class AppPreferences(
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
+    val ansiblex: AnsiblexPreferences = AnsiblexPreferences.Defaults,
     val uiLocale: AppLocale = AppLocale.EN_US,
 ) {
     companion object {
         val Defaults = AppPreferences()
+    }
+}
+
+data class AnsiblexPreferences(
+    val currentAllianceId: String? = null,
+) {
+    companion object {
+        val Defaults = AnsiblexPreferences()
     }
 }
 
@@ -342,6 +352,11 @@ class PropertiesPreferencesStore(
                     snapToScreenEdges = properties.validBoolean(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, true),
                 )
             },
+            ansiblex = AnsiblexPreferences(
+                currentAllianceId = runCatching {
+                    normalizeAllianceId(properties.getProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID))
+                }.getOrNull(),
+            ),
             uiLocale = if ((settingsVersion.toIntOrNull() ?: 0) >= 7) {
                 AppLocale.fromTagOrNull(properties.getProperty(KEY_UI_LOCALE)) ?: AppLocale.EN_US
             } else {
@@ -370,6 +385,7 @@ class PropertiesPreferencesStore(
             val overlayVisibility = preferences.overlayVisibility
             val sharedMap = preferences.sharedMap
             val miniMap = preferences.miniMap
+            val ansiblex = preferences.ansiblex
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_UI_LOCALE, preferences.uiLocale.tag)
@@ -461,6 +477,9 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_MINI_MAP_INTERACTION_MODE, miniMap.interactionMode.name)
                 setProperty(KEY_MINI_MAP_HUD_OPACITY, miniMap.hudOpacity.toString())
                 setProperty(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, miniMap.snapToScreenEdges.toString())
+                normalizeAllianceId(ansiblex.currentAllianceId)?.let {
+                    setProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID, it)
+                }
             }
             Files.newOutputStream(temporary).use {
                 properties.store(it, "EVE Static Map Planner preferences")
@@ -740,3 +759,4 @@ private const val KEY_MINI_MAP_WINDOW_STYLE = "miniMap.window.style"
 private const val KEY_MINI_MAP_INTERACTION_MODE = "miniMap.interaction.mode"
 private const val KEY_MINI_MAP_HUD_OPACITY = "miniMap.hud.opacity"
 private const val KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES = "miniMap.snapToScreenEdges"
+private const val KEY_ANSIBLEX_CURRENT_ALLIANCE_ID = "ansiblex.currentAllianceId"

@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
@@ -279,6 +280,11 @@ interface AnsiblexStrings {
     val importAndPreview: String
     val discard: String
     val manualAdd: String
+    val allianceIdentity: String
+    val currentAllianceId: String
+    val applyAllianceIdentity: String
+    val clearAllianceIdentity: String
+    val ownerAllianceId: String
     val fromNameOrId: String
     val toNameOrId: String
     val connectionNameOptional: String
@@ -306,6 +312,8 @@ interface AnsiblexStrings {
     fun diagnostic(diagnostic: ImportDiagnostic): String
     fun direction(direction: AnsiblexDirection): String
     fun source(source: AnsiblexSource): String
+    fun accessStatus(status: AnsiblexAccessStatus): String
+    fun permissionSummary(usable: Int, enabled: Int): String
     fun message(
         id: AnsiblexMessage,
         count: Int? = null,

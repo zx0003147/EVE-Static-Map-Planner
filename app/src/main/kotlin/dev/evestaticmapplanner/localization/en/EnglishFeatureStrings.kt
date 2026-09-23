@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization.en
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
@@ -312,6 +313,11 @@ internal object EnglishAnsiblexStrings : AnsiblexStrings {
     override val importAndPreview = "Import and Preview"
     override val discard = "Discard"
     override val manualAdd = "Manual Add"
+    override val allianceIdentity = "Alliance access"
+    override val currentAllianceId = "Current alliance ID"
+    override val applyAllianceIdentity = "Use Alliance"
+    override val clearAllianceIdentity = "Clear Identity"
+    override val ownerAllianceId = "Owner alliance ID"
     override val fromNameOrId = "From name or ID"
     override val toNameOrId = "To name or ID"
     override val connectionNameOptional = "Connection name (optional)"
@@ -349,6 +355,14 @@ internal object EnglishAnsiblexStrings : AnsiblexStrings {
         AnsiblexSource.IMPORT -> "Import"
         AnsiblexSource.MANUAL -> "Manual"
     }
+    override fun accessStatus(status: AnsiblexAccessStatus) = when (status) {
+        AnsiblexAccessStatus.AVAILABLE -> "Available"
+        AnsiblexAccessStatus.DISABLED -> "Disabled"
+        AnsiblexAccessStatus.ALLIANCE_NOT_SELECTED -> "Unavailable · select an alliance"
+        AnsiblexAccessStatus.OWNER_UNKNOWN -> "Unavailable · owner unknown"
+        AnsiblexAccessStatus.ALLIANCE_MISMATCH -> "Unavailable · alliance mismatch"
+    }
+    override fun permissionSummary(usable: Int, enabled: Int) = "$usable usable / $enabled enabled"
     override fun message(
         id: AnsiblexMessage,
         count: Int?,

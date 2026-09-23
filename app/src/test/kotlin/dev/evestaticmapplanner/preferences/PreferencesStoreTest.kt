@@ -36,6 +36,17 @@ import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
 
 class PreferencesStoreTest {
     @Test
+    fun `Ansiblex alliance identity round trips without ESI identity data`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val store = PropertiesPreferencesStore(path)
+
+        store.save(AppPreferences(ansiblex = AnsiblexPreferences("CONDI")))
+
+        assertEquals("CONDI", store.load().ansiblex.currentAllianceId)
+        assertTrue(Files.readString(path).contains("ansiblex.currentAllianceId=CONDI"))
+    }
+
+    @Test
     fun `AI provider settings round trip without writing an API Key`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val secretMarker = "SECRET_SHOULD_NEVER_APPEAR_12345"

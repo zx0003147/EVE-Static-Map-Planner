@@ -215,11 +215,11 @@ Developer License Agreement.
 CSV accepts only these columns (unknown columns are errors):
 
 ```csv
-from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note,enabled,direction
-30004759,1DQ1-A,30004712,NOL-M9,Example,User-maintained,true,BIDIRECTIONAL
+from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note,owner_alliance_id,enabled,direction
+30004759,1DQ1-A,30004712,NOL-M9,Example,User-maintained,CONDI,true,BIDIRECTIONAL
 ```
 
-Each endpoint needs an ID, an exact case-insensitive name, or both matching values. `direction` is `BIDIRECTIONAL` (default) or `FORWARD`. JSON uses `format_version: 1` and the equivalent nested `from`/`to` endpoint objects.
+Each endpoint needs an ID, an exact case-insensitive name, or both matching values. `owner_alliance_id` is a case-insensitive alliance identifier or ticker; it is normalized to uppercase. A connection with no owner remains importable for compatibility but is unavailable to routing until its owner is supplied. `direction` is `BIDIRECTIONAL` (default) or `FORWARD`. JSON uses `format_version: 1`, the equivalent nested `from`/`to` endpoint objects, and `owner_alliance_id` on each connection object.
 
 The database stores one normalized **logical route connection** per unordered system pair. This is a V1 routing-data constraint; it is not a claim about how many physical EVE structures can exist for that pair. Future data sources may preserve multiple physical structures while folding them into one RouteGraph connection.
 
@@ -227,8 +227,8 @@ Import always follows Parse → Validate → Preview → user confirmation → t
 
 Files under `qa/` are explicitly synthetic acceptance fixtures and are not a real alliance Jump Bridge network.
 
-The Web Ansiblex tab accepts the same CSV columns and Desktop `format_version: 1` JSON semantics for browser-local
-Personal Ansiblex. These records are Previewed before Apply, persisted in that browser, available offline, and merged
+The Web Ansiblex tab retains its browser-local Personal Ansiblex import contract; alliance identity and permission
+filtering in this phase apply to the Desktop application. Web records are Previewed before Apply, persisted in that browser, available offline, and merged
 with—but never written into or substituted for—the default enabled Ansiblex exported in Web Pack. Pack links win on
 duplicate endpoint pairs.
 

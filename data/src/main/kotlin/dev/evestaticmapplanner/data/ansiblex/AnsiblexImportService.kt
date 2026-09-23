@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.data.ansiblex
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceId
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.data.db.UserDatabase
@@ -75,17 +76,19 @@ class AnsiblexImportService(
                     connection.prepareStatement(
                         """
                         UPDATE ansiblex_connections
-                        SET direction = ?, display_name = ?, notes = ?, source_batch_id = ?, enabled = ?, updated_at = ?
+                        SET direction = ?, display_name = ?, notes = ?, owner_alliance_id = ?,
+                            source_batch_id = ?, enabled = ?, updated_at = ?
                         WHERE id = ? AND source = 'IMPORT'
                         """.trimIndent(),
                     ).use { statement ->
                         statement.setString(1, change.candidate.direction.name)
                         statement.setString(2, change.candidate.displayName)
                         statement.setString(3, change.candidate.notes)
-                        statement.setString(4, batchId)
-                        statement.setInt(5, if (change.candidate.enabled) 1 else 0)
-                        statement.setString(6, now.toString())
-                        statement.setString(7, existing.id)
+                        statement.setString(4, change.candidate.ownerAllianceId)
+                        statement.setString(5, batchId)
+                        statement.setInt(6, if (change.candidate.enabled) 1 else 0)
+                        statement.setString(7, now.toString())
+                        statement.setString(8, existing.id)
                         check(statement.executeUpdate() == 1) { "Expected imported connection ${existing.id} to be updated" }
                     }
                 }
@@ -162,6 +165,16 @@ class AnsiblexImportService(
         parsed.rows.forEach { row ->
             val from = resolve(row.from, row, "from")
             val to = resolve(row.to, row, "to")
+            val ownerAllianceId = runCatching { normalizeAllianceId(row.ownerAllianceId) }.getOrElse { cause ->
+                diagnostics += error(
+                    "INVALID_OWNER_ALLIANCE_ID",
+                    cause.message ?: "Owner alliance ID is invalid",
+                    row.rowNumber,
+                    "owner_alliance_id",
+                )
+                invalidRows += row.rowNumber
+                null
+            }
             val direction = when (row.direction?.uppercase() ?: "BIDIRECTIONAL") {
                 "BIDIRECTIONAL" -> AnsiblexDirection.BIDIRECTIONAL
                 "FORWARD" -> if (from != null && to != null && from > to) {
@@ -191,6 +204,7 @@ class AnsiblexImportService(
                     direction = direction,
                     displayName = row.displayName?.trim()?.takeIf(String::isNotEmpty),
                     notes = row.notes?.trim()?.takeIf(String::isNotEmpty),
+                    ownerAllianceId = ownerAllianceId,
                     enabled = row.enabled ?: true,
                     rowNumber = row.rowNumber,
                 )
@@ -302,6 +316,7 @@ class AnsiblexImportService(
         direction = direction,
         displayName = displayName,
         notes = notes,
+        ownerAllianceId = ownerAllianceId,
         source = AnsiblexSource.IMPORT,
         sourceBatchId = batchId,
         enabled = enabled,
@@ -313,6 +328,7 @@ class AnsiblexImportService(
         direction == connection.direction &&
             displayName == connection.displayName &&
             notes == connection.notes &&
+            ownerAllianceId == connection.ownerAllianceId &&
             enabled == connection.enabled
 
     private fun ImportCandidate.sameContent(other: ImportCandidate): Boolean =
@@ -321,6 +337,7 @@ class AnsiblexImportService(
             direction == other.direction &&
             displayName == other.displayName &&
             notes == other.notes &&
+            ownerAllianceId == other.ownerAllianceId &&
             enabled == other.enabled
 }
 
@@ -334,6 +351,7 @@ internal fun snapshotFingerprint(connections: List<AnsiblexConnection>): String 
                 it.direction,
                 it.displayName,
                 it.notes,
+                it.ownerAllianceId,
                 it.source,
                 it.sourceBatchId,
                 it.enabled,

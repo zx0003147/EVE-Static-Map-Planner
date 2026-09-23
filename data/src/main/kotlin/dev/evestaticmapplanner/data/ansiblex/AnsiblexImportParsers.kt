@@ -14,6 +14,7 @@ internal object AnsiblexImportParsers {
         "to_system_name",
         "connection_name",
         "note",
+        "owner_alliance_id",
         "enabled",
         "direction",
     )
@@ -92,6 +93,7 @@ internal object AnsiblexImportParsers {
                     to = RawImportEndpoint(id("to_system_id"), value("to_system_name")),
                     displayName = value("connection_name"),
                     notes = value("note"),
+                    ownerAllianceId = value("owner_alliance_id"),
                     enabled = enabled(),
                     direction = value("direction"),
                 )
@@ -118,6 +120,7 @@ internal object AnsiblexImportParsers {
                     to = RawImportEndpoint(row.to.systemId, row.to.systemName?.trim()?.takeIf(String::isNotEmpty)),
                     displayName = row.connectionName?.trim()?.takeIf(String::isNotEmpty),
                     notes = row.note?.trim()?.takeIf(String::isNotEmpty),
+                    ownerAllianceId = row.ownerAllianceId?.trim()?.takeIf(String::isNotEmpty),
                     enabled = row.enabled,
                     direction = row.direction,
                 )
@@ -148,6 +151,7 @@ private data class JsonConnection(
     val to: JsonEndpoint,
     @SerialName("connection_name") val connectionName: String? = null,
     val note: String? = null,
+    @SerialName("owner_alliance_id") val ownerAllianceId: String? = null,
     val enabled: Boolean? = null,
     val direction: String? = null,
 )

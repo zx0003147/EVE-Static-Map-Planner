@@ -29,6 +29,8 @@ import dev.evestaticmapplanner.core.map.PrimarySystemNodeShape
 import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlay
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
@@ -336,9 +338,11 @@ object MapRenderer {
         transform: MapTransform,
         connections: List<AnsiblexConnection>,
         emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
+        currentAllianceId: String? = null,
     ) {
         val path = Path()
         connections.asSequence().filter(AnsiblexConnection::enabled).forEach { connection ->
+            val style = ansiblexNetworkRenderStyle(AnsiblexAccessPolicy.status(connection, currentAllianceId))
             val first = scene.nodesById[connection.firstSystemId]?.position ?: return@forEach
             val second = scene.nodesById[connection.secondSystemId]?.position ?: return@forEach
             val geometry = ansiblexConnectionGeometry(
@@ -357,7 +361,9 @@ object MapRenderer {
             )
             drawPath(
                 path = path,
-                color = ANSIBLEX_NETWORK_COLOR.multiplyAlpha(emphasis.ansiblexAlphaMultiplier(connection.id)),
+                color = style.color.multiplyAlpha(
+                    style.alphaMultiplier * emphasis.ansiblexAlphaMultiplier(connection.id),
+                ),
                 style = Stroke(width = 1.5f, pathEffect = ANSIBLEX_NETWORK_DASH_EFFECT),
             )
         }
@@ -1065,8 +1071,18 @@ private val REGION_LABEL_BASE_COLOR = Color(0xFFE8F2FA)
 private val REGION_BACKGROUND_LABEL_BASE_COLOR = Color(0xFFD7E6F2)
 private val CONSTELLATION_LABEL_BASE_COLOR = Color(0xFFC4D9EA)
 internal val ANSIBLEX_NETWORK_COLOR = Color(MapVisualSemantics.ansiblexNetwork.argb)
+internal val ANSIBLEX_UNAVAILABLE_NETWORK_COLOR = Color(0xFF9A6872)
 internal val ANSIBLEX_NETWORK_DASH_PATTERN = MapVisualSemantics.ansiblexNetwork.dashPatternPx.map { it.toFloat() }.toFloatArray()
 private val ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(ANSIBLEX_NETWORK_DASH_PATTERN)
+internal data class AnsiblexNetworkRenderStyle(val color: Color, val alphaMultiplier: Float)
+
+internal fun ansiblexNetworkRenderStyle(status: AnsiblexAccessStatus): AnsiblexNetworkRenderStyle = when (status) {
+    AnsiblexAccessStatus.AVAILABLE -> AnsiblexNetworkRenderStyle(ANSIBLEX_NETWORK_COLOR, 1f)
+    AnsiblexAccessStatus.DISABLED -> AnsiblexNetworkRenderStyle(ANSIBLEX_UNAVAILABLE_NETWORK_COLOR, 0f)
+    AnsiblexAccessStatus.ALLIANCE_NOT_SELECTED,
+    AnsiblexAccessStatus.OWNER_UNKNOWN,
+    AnsiblexAccessStatus.ALLIANCE_MISMATCH -> AnsiblexNetworkRenderStyle(ANSIBLEX_UNAVAILABLE_NETWORK_COLOR, 0.58f)
+}
 internal val ROUTE_STARGATE_COLOR = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.STARGATE).argb)
 internal val ROUTE_ANSIBLEX_COLOR = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.ANSIBLEX).argb)
 internal val WORMHOLE_PEACOCK_TEAL = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.WORMHOLE).argb)

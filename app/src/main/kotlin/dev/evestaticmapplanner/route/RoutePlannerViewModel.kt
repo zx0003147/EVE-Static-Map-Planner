@@ -3,6 +3,8 @@ package dev.evestaticmapplanner.route
 import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceId
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
@@ -217,6 +219,37 @@ class RoutePlannerViewModel(
         mutableState.update { it.copy(showAnsiblexLayer = show) }
     }
 
+    fun setCurrentAllianceId(value: String?) {
+        val normalized = normalizeAllianceId(value)
+        if (mutableState.value.currentAllianceId == normalized) return
+        mutableState.update { current -> current.copy(currentAllianceId = normalized) }
+        if (staticData == null) return
+        val graphResult = runCatching {
+            rebuildGraph().getOrThrow()
+        }
+        if (graphResult.isFailure) {
+            graphResult.exceptionOrNull()?.let { AppDiagnostics.warning("Ansiblex access graph rebuild failed", it) }
+            handleAnsiblexUnavailable()
+            return
+        }
+        mutableState.update { current ->
+            val invalidatesRoute = current.activeRoute?.edges?.any { it.type == RouteEdgeType.ANSIBLEX } == true
+            current.copy(
+                routeOutcome = if (invalidatesRoute) null else current.routeOutcome,
+                activeRoute = if (invalidatesRoute) null else current.activeRoute,
+                routeSystemNames = if (invalidatesRoute) emptyList() else current.routeSystemNames,
+                calculatedWaypointSystemIds = if (invalidatesRoute) emptyList() else current.calculatedWaypointSystemIds,
+                calculatedExplicitDestinationSystemId = if (invalidatesRoute) {
+                    null
+                } else {
+                    current.calculatedExplicitDestinationSystemId
+                },
+                isRouteStale = if (invalidatesRoute) false else current.isRouteStale,
+                navigationMessage = null,
+            )
+        }
+    }
+
     fun calculateRoute() {
         val current = mutableState.value
         val start = current.selectedFrom ?: return
@@ -386,6 +419,7 @@ class RoutePlannerViewModel(
         bidirectional: Boolean,
         displayName: String?,
         notes: String?,
+        ownerAllianceId: String? = null,
     ) {
         val repository = ansiblexRepository ?: return
         scope.launch {
@@ -400,6 +434,7 @@ class RoutePlannerViewModel(
                             bidirectional = bidirectional,
                             displayName = displayName,
                             notes = notes,
+                            ownerAllianceId = ownerAllianceId,
                         ),
                     )
                 }
@@ -498,6 +533,8 @@ class RoutePlannerViewModel(
         val from = snapshot.fromSystemId?.let(systemsById::get)
         val to = snapshot.toSystemId?.let(systemsById::get)
         val waypoints = snapshot.waypointSystemIds.mapNotNull(systemsById::get)
+        val restorableRoute = snapshot.activeRoute?.takeIf(::usesOnlyCurrentlyAccessibleAnsiblex)
+        val routeRejected = snapshot.activeRoute != null && restorableRoute == null
         mutableState.update {
             it.copy(
                 fromQuery = from?.name.orEmpty(),
@@ -509,15 +546,29 @@ class RoutePlannerViewModel(
                 toResults = emptyList(),
                 useAnsiblex = snapshot.useAnsiblex && it.isAnsiblexAvailable,
                 useWormholes = snapshot.useWormholes,
-                routeOutcome = snapshot.routeOutcome,
-                activeRoute = snapshot.activeRoute,
-                routeSystemNames = snapshot.routeSystemNames,
-                calculatedWaypointSystemIds = snapshot.calculatedWaypointSystemIds,
-                calculatedExplicitDestinationSystemId = snapshot.calculatedExplicitDestinationSystemId,
-                isRouteStale = snapshot.isRouteStale,
-                navigationMessage = snapshot.navigationMessage,
+                routeOutcome = if (routeRejected) null else snapshot.routeOutcome,
+                activeRoute = restorableRoute,
+                routeSystemNames = if (routeRejected) emptyList() else snapshot.routeSystemNames,
+                calculatedWaypointSystemIds = if (routeRejected) emptyList() else snapshot.calculatedWaypointSystemIds,
+                calculatedExplicitDestinationSystemId = if (routeRejected) {
+                    null
+                } else {
+                    snapshot.calculatedExplicitDestinationSystemId
+                },
+                isRouteStale = if (routeRejected) false else snapshot.isRouteStale,
+                navigationMessage = if (routeRejected) null else snapshot.navigationMessage,
             )
         }
+    }
+
+    private fun usesOnlyCurrentlyAccessibleAnsiblex(route: RouteResult): Boolean {
+        val accessibleConnectionIds = AnsiblexAccessPolicy.usableConnections(
+            currentAnsiblexConnections,
+            mutableState.value.currentAllianceId,
+        ).mapTo(hashSetOf()) { "ansiblex:${it.id}" }
+        return route.edges.asSequence()
+            .filter { it.type == RouteEdgeType.ANSIBLEX }
+            .all { it.connectionId.value in accessibleConnectionIds }
     }
 
     private fun updateDraft(transform: (RoutePlannerUiState) -> RoutePlannerUiState) {
@@ -680,7 +731,14 @@ class RoutePlannerViewModel(
     private fun rebuildGraph(): Result<RouteGraph> {
         val data = staticData ?: return Result.failure(IllegalStateException("Static map data is not loaded"))
         return runCatching {
-            buildDesktopRouteGraph(data, currentAnsiblexConnections, currentWormholeConnections)
+            buildDesktopRouteGraph(
+                data,
+                AnsiblexAccessPolicy.usableConnections(
+                    currentAnsiblexConnections,
+                    mutableState.value.currentAllianceId,
+                ),
+                currentWormholeConnections,
+            )
         }.onSuccess { graph = it }
     }
 }

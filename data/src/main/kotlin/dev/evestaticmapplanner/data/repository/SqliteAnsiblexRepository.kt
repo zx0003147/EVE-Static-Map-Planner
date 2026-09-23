@@ -4,6 +4,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceId
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
 import dev.evestaticmapplanner.data.db.UserDatabase
 import java.nio.file.Path
@@ -36,6 +37,7 @@ class SqliteAnsiblexRepository(
             direction = draft.direction,
             displayName = draft.displayName?.trim()?.takeIf(String::isNotEmpty),
             notes = draft.notes?.trim()?.takeIf(String::isNotEmpty),
+            ownerAllianceId = normalizeAllianceId(draft.ownerAllianceId),
             source = AnsiblexSource.MANUAL,
             sourceBatchId = null,
             enabled = draft.enabled,
@@ -80,8 +82,8 @@ internal fun Connection.insertAnsiblex(connection: AnsiblexConnection) {
         """
         INSERT INTO ansiblex_connections(
             id, first_system_id, second_system_id, direction, display_name, notes,
-            source, source_batch_id, enabled, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            source, source_batch_id, enabled, created_at, updated_at, owner_alliance_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
     ).use { statement ->
         statement.setString(1, connection.id)
@@ -95,6 +97,7 @@ internal fun Connection.insertAnsiblex(connection: AnsiblexConnection) {
         statement.setInt(9, if (connection.enabled) 1 else 0)
         statement.setString(10, connection.createdAt.toString())
         statement.setString(11, connection.updatedAt.toString())
+        statement.setString(12, connection.ownerAllianceId)
         statement.executeUpdate()
     }
 }
@@ -112,6 +115,7 @@ internal fun ResultSet.toAnsiblex(): AnsiblexConnection = AnsiblexConnection(
     direction = AnsiblexDirection.valueOf(getString("direction")),
     displayName = getString("display_name"),
     notes = getString("notes"),
+    ownerAllianceId = getString("owner_alliance_id"),
     source = AnsiblexSource.valueOf(getString("source")),
     sourceBatchId = getString("source_batch_id"),
     enabled = getInt("enabled") == 1,

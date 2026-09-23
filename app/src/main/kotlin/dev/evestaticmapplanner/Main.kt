@@ -475,6 +475,7 @@ private fun FrameWindowScope.ReadyApplication(
             staticMapRepository = staticRepository,
             ansiblexRepository = userComponents.getOrNull()?.ansiblexRepository,
             wormholeSessionStore = wormholeSessionStore,
+            currentAllianceIdProvider = { routeViewModel.state.value.currentAllianceId },
         )
     }
     val systemReadPort = remember(configuration) {
@@ -847,8 +848,13 @@ private fun FrameWindowScope.ReadyApplication(
         }
     }
     val routeState by routeViewModel.state.collectAsState()
-    LaunchedEffect(routeState.ansiblexConnections, miniMapViewModel) {
-        miniMapViewModel.updateAnsiblexConnections(routeState.ansiblexConnections)
+    LaunchedEffect(mapState.isLoading, mapState.appPreferences.ansiblex.currentAllianceId, routeViewModel) {
+        if (!mapState.isLoading) {
+            routeViewModel.setCurrentAllianceId(mapState.appPreferences.ansiblex.currentAllianceId)
+        }
+    }
+    LaunchedEffect(routeState.usableAnsiblexConnections, miniMapViewModel) {
+        miniMapViewModel.updateAnsiblexConnections(routeState.usableAnsiblexConnections)
     }
     LaunchedEffect(routeState.activeRoute, miniMapViewModel) {
         miniMapViewModel.updateActiveRoute(routeState.activeRoute)

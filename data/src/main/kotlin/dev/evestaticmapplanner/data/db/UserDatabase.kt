@@ -72,11 +72,33 @@ object UserDatabase {
                 1 -> migrateVersionOneToTwo(connection, path, migrationHook)
                 2 -> migrateVersionTwoToThree(connection, path, migrationHook)
                 3 -> migrateVersionThreeToFour(connection, path, migrationHook)
+                4 -> migrateVersionFourToFive(connection, path, migrationHook)
                 else -> throw UserDatabaseException(
                     "No migration is available from user database schema $version to ${UserDatabaseSchema.VERSION}",
                 )
             }
             version++
+        }
+    }
+
+    private fun migrateVersionFourToFive(
+        connection: Connection,
+        path: Path,
+        migrationHook: (Connection) -> Unit,
+    ) {
+        connection.autoCommit = false
+        try {
+            UserDatabaseSchema.addAnsiblexOwnerAlliance(connection)
+            validateContents(connection, path, 5, requiredTables(5), requiredIndexes(5))
+            migrationHook(connection)
+            connection.createStatement().use { it.execute("PRAGMA user_version = 5") }
+            validate(connection, path, expectedVersion = 5)
+            connection.commit()
+        } catch (error: Throwable) {
+            connection.rollback()
+            throw error
+        } finally {
+            connection.autoCommit = true
         }
     }
 
@@ -190,10 +212,45 @@ object UserDatabase {
         }
         if ("saved_markers" in requiredTables) validateSavedMarkersSchema(connection, schemaVersion)
         if ("saved_marker_children" in requiredTables) validateSavedMarkerChildrenSchema(connection)
+        if (schemaVersion >= 5) validateAnsiblexOwnerAllianceSchema(connection)
         val foreignKeyErrors = connection.createStatement().use { statement ->
             statement.executeQuery("PRAGMA foreign_key_check").use { result -> result.next() }
         }
         if (foreignKeyErrors) throw UserDatabaseException("User database contains invalid foreign key references: $path")
+    }
+
+    private fun validateAnsiblexOwnerAllianceSchema(connection: Connection) {
+        val ownerColumn = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA table_info(ansiblex_connections)").use { result ->
+                buildList {
+                    while (result.next()) {
+                        if (result.getString("name") == "owner_alliance_id") {
+                            add(result.getString("type") to (result.getInt("notnull") == 1))
+                        }
+                    }
+                }
+            }
+        }
+        if (ownerColumn != listOf("TEXT" to false)) {
+            throw UserDatabaseException("User database ansiblex_connections owner alliance schema is invalid")
+        }
+        val createSql = connection.createStatement().use { statement ->
+            statement.executeQuery(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ansiblex_connections'",
+            ).use { result ->
+                if (!result.next()) throw UserDatabaseException("User database ansiblex_connections table has no schema SQL")
+                result.getString(1).uppercase().replace(Regex("\\s+"), " ")
+            }
+        }
+        val requiredFragments = setOf(
+            "OWNER_ALLIANCE_ID",
+            "LENGTH(TRIM(OWNER_ALLIANCE_ID)) BETWEEN 1 AND 64",
+            "OWNER_ALLIANCE_ID = UPPER(OWNER_ALLIANCE_ID)",
+        )
+        val missing = requiredFragments.filterNot(createSql::contains)
+        if (missing.isNotEmpty()) {
+            throw UserDatabaseException("User database Ansiblex owner alliance constraints are incomplete: missing $missing")
+        }
     }
 
     private fun validateSavedMarkersSchema(connection: Connection, schemaVersion: Int) {

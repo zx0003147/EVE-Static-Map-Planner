@@ -3,7 +3,7 @@ package dev.evestaticmapplanner.data.db
 import java.sql.Connection
 
 object UserDatabaseSchema {
-    const val VERSION = 4
+    const val VERSION = 5
 
     private val savedMarkersVersionTwoCreateStatement =
         """
@@ -78,6 +78,10 @@ object UserDatabaseSchema {
             enabled INTEGER NOT NULL CHECK(enabled IN (0, 1)),
             created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
             updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0),
+            owner_alliance_id TEXT CHECK(
+                owner_alliance_id IS NULL OR
+                (length(trim(owner_alliance_id)) BETWEEN 1 AND 64 AND owner_alliance_id = upper(owner_alliance_id))
+            ),
             CONSTRAINT ck_ansiblex_ordered_pair CHECK(first_system_id < second_system_id),
             CONSTRAINT ck_ansiblex_source_batch CHECK(
                 (source = 'IMPORT' AND source_batch_id IS NOT NULL) OR
@@ -117,6 +121,20 @@ object UserDatabaseSchema {
                 ALTER TABLE saved_markers
                 ADD COLUMN created_by TEXT NOT NULL DEFAULT 'USER'
                     CHECK(created_by IN ('USER', 'AI'))
+                """.trimIndent(),
+            )
+        }
+    }
+
+    internal fun addAnsiblexOwnerAlliance(connection: Connection) {
+        connection.createStatement().use { statement ->
+            statement.execute(
+                """
+                ALTER TABLE ansiblex_connections
+                ADD COLUMN owner_alliance_id TEXT CHECK(
+                    owner_alliance_id IS NULL OR
+                    (length(trim(owner_alliance_id)) BETWEEN 1 AND 64 AND owner_alliance_id = upper(owner_alliance_id))
+                )
                 """.trimIndent(),
             )
         }

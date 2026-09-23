@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.ansiblex.MAX_ALLIANCE_ID_LENGTH
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
 import dev.evestaticmapplanner.route.RoutePlannerUiState
@@ -56,6 +58,7 @@ fun AnsiblexManagerDialog(
     userDatabasePath: Path,
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
+    onCurrentAllianceIdChange: (String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val appStrings = LocalAppStrings.current
@@ -64,6 +67,8 @@ fun AnsiblexManagerDialog(
     var manualTo by remember { mutableStateOf("") }
     var manualName by remember { mutableStateOf("") }
     var manualNotes by remember { mutableStateOf("") }
+    var manualOwnerAllianceId by remember { mutableStateOf("") }
+    var currentAllianceInput by remember(state.currentAllianceId) { mutableStateOf(state.currentAllianceId.orEmpty()) }
     var bidirectional by remember { mutableStateOf(true) }
     var confirmation by remember { mutableStateOf<ClearConfirmation?>(null) }
     var clearAllPhrase by remember { mutableStateOf("") }
@@ -116,6 +121,30 @@ fun AnsiblexManagerDialog(
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        Text(strings.allianceIdentity, style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(
+                            currentAllianceInput,
+                            { currentAllianceInput = it },
+                            label = { Text(strings.currentAllianceId) },
+                            singleLine = true,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { onCurrentAllianceIdChange(currentAllianceInput) },
+                                enabled = currentAllianceInput.isNotBlank() &&
+                                    currentAllianceInput.trim().length <= MAX_ALLIANCE_ID_LENGTH,
+                            ) { Text(strings.applyAllianceIdentity) }
+                            TextButton(onClick = {
+                                currentAllianceInput = ""
+                                onCurrentAllianceIdChange(null)
+                            }) { Text(strings.clearAllianceIdentity) }
+                        }
+                        Text(
+                            strings.permissionSummary(state.usableAnsiblexCount, state.enabledAnsiblexCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = EveColors.SecondaryText,
+                        )
+                        EveDivider()
                         Text(strings.importCsvJson, style = MaterialTheme.typography.titleMedium)
                         Row {
                             AnsiblexImportMode.entries.forEach { mode ->
@@ -175,6 +204,12 @@ fun AnsiblexManagerDialog(
                         OutlinedTextField(manualFrom, { manualFrom = it }, label = { Text(strings.fromNameOrId) }, singleLine = true)
                         OutlinedTextField(manualTo, { manualTo = it }, label = { Text(strings.toNameOrId) }, singleLine = true)
                         OutlinedTextField(manualName, { manualName = it }, label = { Text(strings.connectionNameOptional) }, singleLine = true)
+                        OutlinedTextField(
+                            manualOwnerAllianceId,
+                            { manualOwnerAllianceId = it },
+                            label = { Text(strings.ownerAllianceId) },
+                            singleLine = true,
+                        )
                         OutlinedTextField(manualNotes, { manualNotes = it }, label = { Text(strings.notesOptional) })
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(bidirectional, { bidirectional = it })
@@ -182,9 +217,18 @@ fun AnsiblexManagerDialog(
                         }
                         Button(
                             onClick = {
-                                viewModel.addManual(manualFrom, manualTo, bidirectional, manualName, manualNotes)
+                                viewModel.addManual(
+                                    manualFrom,
+                                    manualTo,
+                                    bidirectional,
+                                    manualName,
+                                    manualNotes,
+                                    manualOwnerAllianceId,
+                                )
                             },
-                            enabled = manualFrom.isNotBlank() && manualTo.isNotBlank(),
+                            enabled = manualFrom.isNotBlank() && manualTo.isNotBlank() &&
+                                manualOwnerAllianceId.isNotBlank() &&
+                                manualOwnerAllianceId.trim().length <= MAX_ALLIANCE_ID_LENGTH,
                         ) { Text(strings.addConnection) }
                     }
                     Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -286,6 +330,7 @@ internal fun AnsiblexClearConfirmationDialog(
 private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlannerViewModel) {
     val appStrings = LocalAppStrings.current
     val strings = appStrings.ansiblex
+    val accessStatus = AnsiblexAccessPolicy.status(connection, viewModel.state.value.currentAllianceId)
     EvePanel(secondary = true, bordered = false) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(connection.enabled, { viewModel.setConnectionEnabled(connection.id, it) })
@@ -296,6 +341,15 @@ private fun ConnectionRow(connection: AnsiblexConnection, viewModel: RoutePlanne
                         "${strings.direction(connection.direction)} · ${strings.source(connection.source)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = EveColors.SecondaryText,
+                )
+                Text(
+                    "${strings.ownerAllianceId}: ${connection.ownerAllianceId ?: "—"} · ${strings.accessStatus(accessStatus)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (accessStatus == dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus.AVAILABLE) {
+                        EveColors.Important
+                    } else {
+                        EveColors.Warning
+                    },
                 )
             }
             TextButton(onClick = { viewModel.deleteConnection(connection.id) }) { Text(appStrings.common.delete) }

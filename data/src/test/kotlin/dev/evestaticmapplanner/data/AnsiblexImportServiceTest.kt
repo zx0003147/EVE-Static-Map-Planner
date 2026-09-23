@@ -40,13 +40,13 @@ class AnsiblexImportServiceTest {
     }
 
     @Test
-    fun `valid CSV resolves IDs and names and defaults to bidirectional enabled`() {
+    fun `valid CSV resolves IDs names and owner alliance and persists canonical owner`() {
         val fixture = Fixture()
         val preview = fixture.service().previewText(
             "qa.csv",
             """
-            from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note
-            1,Alpha,,Bravo,QA Link,Synthetic
+            from_system_id,from_system_name,to_system_id,to_system_name,connection_name,note,owner_alliance_id
+            1,Alpha,,Bravo,QA Link,Synthetic, condi
             """.trimIndent(),
             AnsiblexImportMode.MERGE,
         )
@@ -54,7 +54,10 @@ class AnsiblexImportServiceTest {
         assertTrue(preview.canApply)
         assertEquals(1, preview.validRowCount)
         assertEquals(1, preview.additions.size)
+        assertEquals("CONDI", preview.additions.single().candidate.ownerAllianceId)
         assertEquals(0, preview.invalidRowCount)
+        fixture.service().apply(preview)
+        assertEquals("CONDI", fixture.repository().getAll().single().ownerAllianceId)
     }
 
     @Test
@@ -62,7 +65,7 @@ class AnsiblexImportServiceTest {
         val fixture = Fixture()
         val valid = fixture.service().previewText(
             "qa.json",
-            """{"format_version":1,"connections":[{"from":{"system_name":"Alpha"},"to":{"system_id":2},"direction":"FORWARD"}]}""",
+            """{"format_version":1,"connections":[{"from":{"system_name":"Alpha"},"to":{"system_id":2},"direction":"FORWARD","owner_alliance_id":"5IGMA"}]}""",
             AnsiblexImportMode.MERGE,
         )
         val unknown = fixture.service().previewText(
@@ -73,6 +76,7 @@ class AnsiblexImportServiceTest {
         val malformed = fixture.service().previewText("qa.json", "{", AnsiblexImportMode.MERGE)
 
         assertTrue(valid.canApply)
+        assertEquals("5IGMA", valid.additions.single().candidate.ownerAllianceId)
         assertFalse(unknown.canApply)
         assertFalse(malformed.canApply)
         assertTrue(unknown.diagnostics.any { it.code == "BAD_JSON" })

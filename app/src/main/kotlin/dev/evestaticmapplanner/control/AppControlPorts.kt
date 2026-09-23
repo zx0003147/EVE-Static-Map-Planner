@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.core.jump.UniformGridSystemPositionIndex
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
@@ -60,6 +61,7 @@ class ExistingPlanningPorts(
     private val staticMapRepository: StaticMapRepository,
     private val ansiblexRepository: AnsiblexRepository?,
     private val wormholeSessionStore: WormholeSessionStore,
+    private val currentAllianceIdProvider: () -> String? = { null },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val calculationDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : RoutePlanningPort, JumpPlanningPort {
@@ -69,7 +71,7 @@ class ExistingPlanningPorts(
     override suspend fun getNormalRouteGraph(useAnsiblex: Boolean): NormalRouteGraphSnapshotDto {
         val (data, enabledSnapshot) = withContext(ioDispatcher) {
             staticMapRepository.load() to if (useAnsiblex) {
-                ansiblexRepository?.getAll()?.filter { it.enabled }.orEmpty()
+                accessibleAnsiblexSnapshot()
             } else {
                 emptyList()
             }
@@ -115,7 +117,7 @@ class ExistingPlanningPorts(
     ): MultiPointRouteOptimizationDto {
         val (data, enabledSnapshot) = withContext(ioDispatcher) {
             staticMapRepository.load() to if (useAnsiblex) {
-                ansiblexRepository?.getAll()?.filter { it.enabled }.orEmpty()
+                accessibleAnsiblexSnapshot()
             } else {
                 emptyList()
             }
@@ -205,7 +207,7 @@ class ExistingPlanningPorts(
     ): RouteCalculationOutcome {
         val (data, enabledSnapshot) = withContext(ioDispatcher) {
             staticMapRepository.load() to if (useAnsiblex) {
-                ansiblexRepository?.getAll()?.filter { it.enabled }.orEmpty()
+                accessibleAnsiblexSnapshot()
             } else {
                 emptyList()
             }
@@ -240,7 +242,7 @@ class ExistingPlanningPorts(
     ): NormalNavigationOutcome {
         val (data, enabledSnapshot) = withContext(ioDispatcher) {
             staticMapRepository.load() to if (useAnsiblex) {
-                ansiblexRepository?.getAll()?.filter { it.enabled }.orEmpty()
+                accessibleAnsiblexSnapshot()
             } else {
                 emptyList()
             }
@@ -281,6 +283,11 @@ class ExistingPlanningPorts(
             }.also { candidateProvider = it }
         }
     }
+
+    private fun accessibleAnsiblexSnapshot() = AnsiblexAccessPolicy.usableConnections(
+        ansiblexRepository?.getAll().orEmpty(),
+        currentAllianceIdProvider(),
+    )
 }
 
 class AppWormholeControlAdapter(

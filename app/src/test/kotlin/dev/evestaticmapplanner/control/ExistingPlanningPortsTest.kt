@@ -36,6 +36,7 @@ class ExistingPlanningPortsTest {
             StaticMapRepository { snapshotStaticData() },
             ansiblex,
             wormholes,
+            currentAllianceIdProvider = { TEST_ALLIANCE_ID },
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -83,6 +84,7 @@ class ExistingPlanningPortsTest {
             StaticMapRepository { staticData() },
             repository,
             WormholeSessionStore(),
+            currentAllianceIdProvider = { TEST_ALLIANCE_ID },
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -103,6 +105,7 @@ class ExistingPlanningPortsTest {
             StaticMapRepository { staticData() },
             repository,
             WormholeSessionStore(),
+            currentAllianceIdProvider = { TEST_ALLIANCE_ID },
             ioDispatcher = dispatcher,
             calculationDispatcher = dispatcher,
         )
@@ -120,6 +123,21 @@ class ExistingPlanningPortsTest {
         assertEquals("System $SECOND", withAnsiblex.orderedTargets.single().systemName)
         assertEquals(1, repository.readCount)
         assertEquals(0, repository.mutationCount)
+    }
+
+    @Test
+    fun `control routing rejects enabled Ansiblex owned by another alliance`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val ports = ExistingPlanningPorts(
+            StaticMapRepository { staticData() },
+            ReadOnlyProofAnsiblexRepository(),
+            WormholeSessionStore(),
+            currentAllianceIdProvider = { "OTHER" },
+            ioDispatcher = dispatcher,
+            calculationDispatcher = dispatcher,
+        )
+
+        assertIs<RouteCalculationOutcome.Unreachable>(ports.calculateNormalRoute(FIRST, SECOND, true))
     }
 
     @Test
@@ -187,6 +205,7 @@ private class ReadOnlyProofAnsiblexRepository : AnsiblexRepository {
                 true,
                 Instant.EPOCH,
                 Instant.EPOCH,
+                TEST_ALLIANCE_ID,
             ),
         )
     }
@@ -243,7 +262,10 @@ private fun ansiblex(
     enabled,
     Instant.EPOCH,
     Instant.EPOCH,
+    TEST_ALLIANCE_ID,
 )
+
+private const val TEST_ALLIANCE_ID = "CONDI"
 
 private fun staticData() = StaticMapData(
     systems = listOf(

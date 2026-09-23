@@ -4,7 +4,7 @@
 
 View state is session-only. While the application is running, switching Views restores each View's routes, AI Mission overlays, and selected Route Action targets. Exiting discards every View and planning draft; the next startup is exactly one blank `View 1` with no routes, Missions, or selected target. Deleting a View removes its in-session AI Missions but does not affect external character sessions.
 
-`user.db` remains schema 4 and contains no View or AI Mission tables. Saved Markers, Ansiblex data, settings, Feature Packs, and external character pools keep their existing persistence behavior.
+`user.db` is schema 5 and contains no View or AI Mission tables. Schema 5 adds the nullable Ansiblex owner-alliance field; Saved Markers, settings, Feature Packs, and external character pools keep their existing persistence behavior.
 
 All Views observe the same application-session Wormhole network; switching Views never restores an older topology.
 If UI removal or Clear All deletes a Wormhole used by a Mission Normal Route, that route is removed in every View,

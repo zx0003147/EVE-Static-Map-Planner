@@ -6,6 +6,7 @@
       "to": { "system_id": 30004712, "system_name": "NOL-M9" },
       "connection_name": "QA 1DQ-NOL",
       "note": "Synthetic acceptance link - not a real alliance network",
+      "owner_alliance_id": "QA",
       "enabled": true,
       "direction": "BIDIRECTIONAL"
     },
@@ -14,6 +15,7 @@
       "to": { "system_id": 30004608, "system_name": "6VDT-H" },
       "connection_name": "QA VFK-6VDT",
       "note": "Synthetic replacement fixture - not a real alliance network",
+      "owner_alliance_id": "QA",
       "enabled": true,
       "direction": "BIDIRECTIONAL"
     }

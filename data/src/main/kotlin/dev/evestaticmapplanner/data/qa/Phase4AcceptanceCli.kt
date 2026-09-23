@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.data.qa
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.map.MapSceneBuilder
 import dev.evestaticmapplanner.core.map.OfficialPosition2DProjection
@@ -53,7 +54,10 @@ fun main(arguments: Array<String>) {
         useAnsiblex: Boolean,
         data: StaticMapData = map,
     ): RouteResult {
-        val graph = buildDesktopRouteGraph(data, ansiblex.getAll())
+        val graph = buildDesktopRouteGraph(
+            data,
+            AnsiblexAccessPolicy.usableConnections(ansiblex.getAll(), currentAllianceId = "QA"),
+        )
         val outcome = engine.calculate(graph, system(from).id, system(to).id, RouteOptions(useAnsiblex))
         return when (outcome) {
             is RouteCalculationOutcome.Found -> outcome.route

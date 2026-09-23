@@ -140,9 +140,15 @@ class EmbeddedAiPlannerDataIntegrationTest {
         try {
             createPhase2RouteFixture(database)
             val ansiblex = SqliteAnsiblexRepository(userDatabase).apply {
-                addManual(AnsiblexDraft(PHASE2_FIRST_SYSTEM_ID, PHASE2_FIRST_SYSTEM_ID + 4))
+                addManual(
+                    AnsiblexDraft(
+                        PHASE2_FIRST_SYSTEM_ID,
+                        PHASE2_FIRST_SYSTEM_ID + 4,
+                        ownerAllianceId = PHASE2_ALLIANCE_ID,
+                    ),
+                )
             }
-            val service = plannerService(database, ansiblex)
+            val service = plannerService(database, ansiblex, currentAllianceId = PHASE2_ALLIANCE_ID)
             try {
                 val search = SearchSystemTool(service).execute(SearchSystemTool.Args("Fixture 02"))
                 val normal = CalculateNormalRouteTool(service).execute(
@@ -491,11 +497,13 @@ class EmbeddedAiPlannerDataIntegrationTest {
     private fun kotlinx.coroutines.CoroutineScope.plannerService(
         database: Path,
         ansiblexRepository: AnsiblexRepository? = null,
+        currentAllianceId: String? = null,
     ): DefaultMapControlService {
         val planning = ExistingPlanningPorts(
             staticMapRepository = SqliteStaticMapRepository(database),
             ansiblexRepository = ansiblexRepository,
             wormholeSessionStore = WormholeSessionStore(),
+            currentAllianceIdProvider = { currentAllianceId },
         )
         return DefaultMapControlService(
             systemReadPort = RepositorySystemReadPort(
@@ -510,6 +518,8 @@ class EmbeddedAiPlannerDataIntegrationTest {
         )
     }
 }
+
+private const val PHASE2_ALLIANCE_ID = "QA"
 
 private class RecordingMapControlService(
     private val delegate: MapControlService,

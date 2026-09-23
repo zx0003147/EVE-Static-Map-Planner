@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.route.RoutePlannerUiState
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
@@ -151,7 +153,14 @@ object CompactSystemInfoPresentationBuilder {
                     connection.logicalFromSystemId() == selectedSystemId -> strings.outbound
                     else -> strings.inbound
                 }
-                "→ $other · $direction"
+                val accessStatus = AnsiblexAccessPolicy.status(connection, routeState.currentAllianceId)
+                val accessLabel = if (accessStatus == AnsiblexAccessStatus.AVAILABLE) {
+                    strings.available
+                } else {
+                    strings.unavailable
+                }
+                val owner = connection.ownerAllianceId ?: strings.ownerUnknown
+                "→ $other · $direction · $owner · $accessLabel"
             },
             jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },
             isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,

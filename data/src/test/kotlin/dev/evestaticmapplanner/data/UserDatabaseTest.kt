@@ -56,10 +56,14 @@ class UserDatabaseTest {
             idGenerator = { "manual-1" },
         )
 
-        val added = repository.addManual(AnsiblexDraft(20, 10, bidirectional = false, displayName = "QA"))
+        val added = repository.addManual(
+            AnsiblexDraft(20, 10, bidirectional = false, displayName = "QA", ownerAllianceId = " condi "),
+        )
         assertEquals(10, added.firstSystemId)
         assertEquals(20, added.secondSystemId)
         assertEquals(20, added.logicalFromSystemId())
+        assertEquals("CONDI", added.ownerAllianceId)
+        assertEquals("CONDI", repository.getAll().single().ownerAllianceId)
         assertTrue(repository.setEnabled("manual-1", false))
         assertFalse(repository.getAll().single().enabled)
         assertTrue(repository.delete("manual-1"))
@@ -75,7 +79,7 @@ class UserDatabaseTest {
                 """
                 INSERT INTO ansiblex_connections VALUES(
                     'one', 10, 20, 'BIDIRECTIONAL', NULL, NULL, 'MANUAL', NULL, 1,
-                    '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z'
+                    '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z', 'CONDI'
                 )
                 """.trimIndent(),
             )
@@ -84,7 +88,7 @@ class UserDatabaseTest {
                     """
                     INSERT INTO ansiblex_connections VALUES(
                         'reverse', 10, 20, 'SECOND_TO_FIRST', NULL, NULL, 'MANUAL', NULL, 1,
-                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z'
+                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z', 'CONDI'
                     )
                     """.trimIndent(),
                 )
@@ -94,7 +98,7 @@ class UserDatabaseTest {
                     """
                     INSERT INTO ansiblex_connections VALUES(
                         'loop', 10, 10, 'BIDIRECTIONAL', NULL, NULL, 'MANUAL', NULL, 1,
-                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z'
+                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z', 'CONDI'
                     )
                     """.trimIndent(),
                 )
@@ -104,7 +108,17 @@ class UserDatabaseTest {
                     """
                     INSERT INTO ansiblex_connections VALUES(
                         'enabled', 30, 40, 'BIDIRECTIONAL', NULL, NULL, 'MANUAL', NULL, 2,
-                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z'
+                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z', 'CONDI'
+                    )
+                    """.trimIndent(),
+                )
+            }
+            assertFailsWith<SQLException> {
+                connection.createStatement().execute(
+                    """
+                    INSERT INTO ansiblex_connections VALUES(
+                        'bad-owner', 30, 40, 'BIDIRECTIONAL', NULL, NULL, 'MANUAL', NULL, 1,
+                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z', 'condi'
                     )
                     """.trimIndent(),
                 )

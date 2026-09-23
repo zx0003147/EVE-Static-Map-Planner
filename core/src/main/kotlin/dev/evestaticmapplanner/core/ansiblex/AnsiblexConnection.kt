@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.core.ansiblex
 
 import java.time.Instant
+import java.util.Locale
 
 enum class AnsiblexDirection {
     BIDIRECTIONAL,
@@ -25,6 +26,7 @@ data class AnsiblexConnection(
     val enabled: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
+    val ownerAllianceId: String? = null,
 ) {
     init {
         require(id.isNotBlank()) { "Ansiblex connection ID must not be blank" }
@@ -37,6 +39,9 @@ data class AnsiblexConnection(
         }
         require(source != AnsiblexSource.MANUAL || sourceBatchId == null) {
             "Manual Ansiblex connections cannot reference an import batch"
+        }
+        require(ownerAllianceId == null || ownerAllianceId == normalizeAllianceId(ownerAllianceId)) {
+            "Ansiblex owner alliance ID must be canonical"
         }
     }
 
@@ -58,6 +63,7 @@ data class AnsiblexDraft(
     val displayName: String? = null,
     val notes: String? = null,
     val enabled: Boolean = true,
+    val ownerAllianceId: String? = null,
 ) {
     init {
         require(fromSystemId > 0 && toSystemId > 0) { "Solar system IDs must be positive" }
@@ -72,3 +78,41 @@ data class AnsiblexDraft(
         else -> AnsiblexDirection.SECOND_TO_FIRST
     }
 }
+
+enum class AnsiblexAccessStatus {
+    AVAILABLE,
+    DISABLED,
+    ALLIANCE_NOT_SELECTED,
+    OWNER_UNKNOWN,
+    ALLIANCE_MISMATCH,
+}
+
+object AnsiblexAccessPolicy {
+    fun status(connection: AnsiblexConnection, currentAllianceId: String?): AnsiblexAccessStatus {
+        if (!connection.enabled) return AnsiblexAccessStatus.DISABLED
+        val selected = normalizeAllianceId(currentAllianceId)
+            ?: return AnsiblexAccessStatus.ALLIANCE_NOT_SELECTED
+        val owner = connection.ownerAllianceId ?: return AnsiblexAccessStatus.OWNER_UNKNOWN
+        return if (owner == selected) {
+            AnsiblexAccessStatus.AVAILABLE
+        } else {
+            AnsiblexAccessStatus.ALLIANCE_MISMATCH
+        }
+    }
+
+    fun isUsable(connection: AnsiblexConnection, currentAllianceId: String?): Boolean =
+        status(connection, currentAllianceId) == AnsiblexAccessStatus.AVAILABLE
+
+    fun usableConnections(
+        connections: Iterable<AnsiblexConnection>,
+        currentAllianceId: String?,
+    ): List<AnsiblexConnection> = connections.filter { isUsable(it, currentAllianceId) }
+}
+
+fun normalizeAllianceId(value: String?): String? = value
+    ?.trim()
+    ?.takeIf(String::isNotEmpty)
+    ?.uppercase(Locale.ROOT)
+    ?.also { require(it.length <= MAX_ALLIANCE_ID_LENGTH) { "Alliance ID must not exceed $MAX_ALLIANCE_ID_LENGTH characters" } }
+
+const val MAX_ALLIANCE_ID_LENGTH = 64

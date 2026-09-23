@@ -34,6 +34,30 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoutePlannerViewModelTest {
     @Test
+    fun `Ansiblex route is unavailable without a matching alliance identity`() = runTest {
+        val fixture = Fixture(withShortcut = true)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(dispatcher, selectAlliance = false)
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.setUseAnsiblex(true)
+
+        viewModel.calculateRoute()
+        assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
+        assertEquals(0, viewModel.state.value.usableAnsiblexCount)
+
+        viewModel.setCurrentAllianceId(TEST_ALLIANCE_ID.lowercase())
+        viewModel.calculateRoute()
+        assertEquals(1, viewModel.state.value.activeRoute?.ansiblexJumps)
+
+        viewModel.setCurrentAllianceId("OTHER")
+        assertNull(viewModel.state.value.activeRoute)
+        viewModel.calculateRoute()
+        assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
+    }
+
+    @Test
     fun `search is debounced supports exact prefix and numeric IDs`() = runTest {
         val fixture = Fixture()
         val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler), debounce = 100)
@@ -136,6 +160,25 @@ class RoutePlannerViewModelTest {
         assertFalse(viewModel.state.value.useAnsiblex)
         assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
         assertIs<RouteCalculationOutcome.Found>(viewModel.state.value.routeOutcome)
+    }
+
+    @Test
+    fun `planning snapshot cannot restore Ansiblex route after alliance access changes`() = runTest {
+        val fixture = Fixture(withShortcut = true)
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.setUseAnsiblex(true)
+        viewModel.calculateRoute()
+        val snapshot = viewModel.planningSnapshot()
+        assertEquals(1, snapshot.activeRoute?.ansiblexJumps)
+
+        viewModel.setCurrentAllianceId("OTHER")
+        viewModel.restorePlanningSnapshot(snapshot)
+
+        assertNull(viewModel.state.value.activeRoute)
+        assertNull(viewModel.state.value.routeOutcome)
     }
 
     @Test
@@ -550,6 +593,7 @@ private class Fixture(
         ansiblexRepository: AnsiblexRepository? = ansiblex,
         userDatabaseError: String? = null,
         wormholeSessionStore: WormholeSessionStore = wormholes,
+        selectAlliance: Boolean = true,
     ) = RoutePlannerViewModel(
         staticMapRepository = StaticMapRepository { data },
         searchRepository = search,
@@ -560,7 +604,7 @@ private class Fixture(
         scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + dispatcher),
         ioDispatcher = dispatcher,
         searchDebounceMillis = debounce,
-    )
+    ).also { if (selectAlliance) it.setCurrentAllianceId(TEST_ALLIANCE_ID) }
 
     fun wormholeUi(dispatcher: kotlinx.coroutines.CoroutineDispatcher) = WormholeViewModel(
         store = wormholes,
@@ -618,7 +662,10 @@ private fun connection(id: String, first: Int, second: Int) = AnsiblexConnection
     true,
     Instant.EPOCH,
     Instant.EPOCH,
+    TEST_ALLIANCE_ID,
 )
+
+private const val TEST_ALLIANCE_ID = "CONDI"
 
 private fun system(id: Int, name: String) = SolarSystem(
     id = id,

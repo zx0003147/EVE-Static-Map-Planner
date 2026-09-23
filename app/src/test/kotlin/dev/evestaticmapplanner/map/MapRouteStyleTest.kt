@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.map
 
 import androidx.compose.ui.graphics.Color
 import dev.evestaticmapplanner.core.route.RouteEdgeType
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -42,5 +43,16 @@ class MapRouteStyleTest {
         assertEquals(WORMHOLE_PEACOCK_TEAL, wormhole.color)
         assertEquals(4f, wormhole.strokeWidth)
         assertNull(wormhole.dashPattern)
+    }
+
+    @Test
+    fun `available and permission denied Ansiblex links have distinct map styles`() {
+        val available = ansiblexNetworkRenderStyle(AnsiblexAccessStatus.AVAILABLE)
+        val unavailable = ansiblexNetworkRenderStyle(AnsiblexAccessStatus.ALLIANCE_MISMATCH)
+
+        assertEquals(ANSIBLEX_NETWORK_COLOR, available.color)
+        assertEquals(1f, available.alphaMultiplier)
+        assertEquals(ANSIBLEX_UNAVAILABLE_NETWORK_COLOR, unavailable.color)
+        assertEquals(0.58f, unavailable.alphaMultiplier)
     }
 }

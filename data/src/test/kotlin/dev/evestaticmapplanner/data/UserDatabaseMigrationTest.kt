@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 class UserDatabaseMigrationTest {
     @Test
     fun `fresh database creates complete strict current schema`() {
-        val path = createTempDirectory("user-db-v4-fresh").resolve("user.db")
+        val path = createTempDirectory("user-db-v5-fresh").resolve("user.db")
 
         UserDatabase.initialize(path)
 
@@ -109,7 +109,7 @@ class UserDatabaseMigrationTest {
 
         UserDatabase.initialize(path)
         UserDatabase.open(path).use { connection ->
-            assertEquals(4, connection.userVersion())
+            assertEquals(5, connection.userVersion())
             assertFalse("planning_views" in connection.applicationTables())
             assertFalse("ai_missions" in connection.applicationTables())
         }
@@ -215,6 +215,53 @@ class UserDatabaseMigrationTest {
     }
 
     @Test
+    fun `version four migration preserves data and adds nullable Ansiblex owner alliance`() {
+        val path = createTempDirectory("user-db-v4-migrate").resolve("user.db")
+        SqliteConnectionFactory.open(path).use { connection ->
+            createVersionFourFixture(connection)
+            insertVersionOneRows(connection)
+        }
+        val before = snapshotAnsiblex(path)
+
+        UserDatabase.initialize(path)
+
+        assertEquals(before, snapshotAnsiblex(path))
+        UserDatabase.open(path).use { connection ->
+            assertEquals(5, connection.userVersion())
+            assertEquals(
+                listOf("owner_alliance_id" to "TEXT"),
+                connection.rows("PRAGMA table_info(ansiblex_connections)")
+                    .filter { it[1] == "owner_alliance_id" }
+                    .map { it[1] to it[2] },
+            )
+            assertEquals(
+                listOf(listOf(null), listOf(null)),
+                connection.rows("SELECT owner_alliance_id FROM ansiblex_connections ORDER BY id"),
+            )
+        }
+    }
+
+    @Test
+    fun `version four migration failure rolls back owner column and version`() {
+        val path = createTempDirectory("user-db-v4-rollback").resolve("user.db")
+        SqliteConnectionFactory.open(path).use { connection ->
+            createVersionFourFixture(connection)
+            insertVersionOneRows(connection)
+        }
+        val before = snapshotAnsiblex(path)
+
+        assertFailsWith<UserDatabaseException> {
+            UserDatabase.initialize(path) { error("forced version five migration failure") }
+        }
+
+        UserDatabase.open(path).use { connection ->
+            assertEquals(4, connection.userVersion())
+            assertFalse(connection.rows("PRAGMA table_info(ansiblex_connections)").any { it[1] == "owner_alliance_id" })
+        }
+        assertEquals(before, snapshotAnsiblex(path))
+    }
+
+    @Test
     fun `version three migration failure rolls back provenance column version and marker graph`() {
         val path = createTempDirectory("user-db-v3-rollback").resolve("user.db")
         SqliteConnectionFactory.open(path).use(::createVersionThreeFixture)
@@ -272,12 +319,12 @@ class UserDatabaseMigrationTest {
     }
 
     @Test
-    fun `RC-only schema five fixture is rejected byte-for-byte without becoming a release migration`() {
+    fun `newer schema six fixture is rejected byte-for-byte`() {
         val path = createTempDirectory("user-db-too-new").resolve("user.db")
         SqliteConnectionFactory.open(path).use { connection ->
             connection.createStatement().execute("CREATE TABLE planning_views(value TEXT) STRICT")
             connection.createStatement().execute("INSERT INTO planning_views VALUES('keep')")
-            connection.createStatement().execute("PRAGMA user_version = 5")
+            connection.createStatement().execute("PRAGMA user_version = 6")
         }
         val before = Files.readAllBytes(path)
 
@@ -320,7 +367,13 @@ private data class AnsiblexSnapshot(
 private fun snapshotAnsiblex(path: java.nio.file.Path): AnsiblexSnapshot = SqliteConnectionFactory.open(path).use { connection ->
     AnsiblexSnapshot(
         batches = connection.rows("SELECT * FROM ansiblex_import_batches ORDER BY batch_id"),
-        connections = connection.rows("SELECT * FROM ansiblex_connections ORDER BY id"),
+        connections = connection.rows(
+            """
+            SELECT id, first_system_id, second_system_id, direction, display_name, notes,
+                   source, source_batch_id, enabled, created_at, updated_at
+            FROM ansiblex_connections ORDER BY id
+            """.trimIndent(),
+        ),
     )
 }
 
@@ -417,6 +470,14 @@ private fun createVersionThreeFixture(connection: Connection) {
             "INSERT INTO saved_marker_children VALUES('child-b', 30000002, 'logistics', 0)",
         )
         statement.execute("PRAGMA user_version = 3")
+    }
+}
+
+private fun createVersionFourFixture(connection: Connection) {
+    createVersionThreeFixture(connection)
+    UserDatabaseSchema.addSavedMarkerProvenance(connection)
+    connection.createStatement().use { statement ->
+        statement.execute("PRAGMA user_version = 4")
     }
 }
 

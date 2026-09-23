@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.route
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.NavigationIntent
@@ -34,6 +35,7 @@ data class RoutePlannerUiState(
     val isRouteStale: Boolean = false,
     val navigationMessage: UiMessage? = null,
     val ansiblexConnections: List<AnsiblexConnection> = emptyList(),
+    val currentAllianceId: String? = null,
     val wormholeConnections: List<WormholeConnection> = emptyList(),
     val importMode: AnsiblexImportMode = AnsiblexImportMode.MERGE,
     val importPreview: AnsiblexImportPreview? = null,
@@ -43,6 +45,9 @@ data class RoutePlannerUiState(
 ) {
     val isAnsiblexAvailable: Boolean get() = userDatabaseError == null
     val enabledAnsiblexCount: Int get() = ansiblexConnections.count(AnsiblexConnection::enabled)
+    val usableAnsiblexConnections: List<AnsiblexConnection>
+        get() = AnsiblexAccessPolicy.usableConnections(ansiblexConnections, currentAllianceId)
+    val usableAnsiblexCount: Int get() = usableAnsiblexConnections.size
     val navigationIntent: NavigationIntent?
         get() = selectedFrom?.let { start ->
             NavigationIntent(start.id, waypoints.map(SolarSystem::id), selectedTo?.id)

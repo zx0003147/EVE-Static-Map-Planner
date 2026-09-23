@@ -26,6 +26,9 @@ interface SystemInfoStrings {
     val bidirectional: String
     val outbound: String
     val inbound: String
+    val available: String
+    val unavailable: String
+    val ownerUnknown: String
 
     fun regionValue(value: String): String
     fun constellationValue(value: String): String

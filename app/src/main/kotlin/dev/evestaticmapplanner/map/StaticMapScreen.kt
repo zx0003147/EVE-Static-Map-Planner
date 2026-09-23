@@ -96,6 +96,7 @@ import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EveTab
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.localization.LocalAppStrings
+import dev.evestaticmapplanner.preferences.AnsiblexPreferences
 import java.nio.file.Path
 
 @Composable
@@ -238,6 +239,7 @@ internal fun StaticMapScreen(
                         jumpOverlays = jumpState.overlays,
                         intersectionSystemIds = jumpState.intersectionSystemIds,
                         ansiblexConnections = routeState.ansiblexConnections,
+                        currentAllianceId = routeState.currentAllianceId,
                         wormholeConnections = routeState.wormholeConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,
                         markerState = markerState,
@@ -427,6 +429,12 @@ internal fun StaticMapScreen(
             userDatabasePath = userDatabasePath,
             state = routeState,
             viewModel = routeViewModel,
+            onCurrentAllianceIdChange = { value ->
+                routeViewModel.setCurrentAllianceId(value)
+                viewModel.updateAnsiblexPreferences(
+                    AnsiblexPreferences(routeViewModel.state.value.currentAllianceId),
+                )
+            },
             onDismiss = { showAnsiblexManager = false },
         )
     }

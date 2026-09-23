@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization.zhcn
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
@@ -365,6 +366,11 @@ internal object SimplifiedChineseAnsiblexStrings : AnsiblexStrings {
     override val importAndPreview = "导入并预览"
     override val discard = "丢弃"
     override val manualAdd = "手动添加"
+    override val allianceIdentity = "联盟权限"
+    override val currentAllianceId = "当前联盟 ID"
+    override val applyAllianceIdentity = "使用该联盟"
+    override val clearAllianceIdentity = "清除身份"
+    override val ownerAllianceId = "所属联盟 ID"
     override val fromNameOrId = "起点名称或 ID"
     override val toNameOrId = "终点名称或 ID"
     override val connectionNameOptional = "连接名称（可选）"
@@ -402,6 +408,7 @@ internal object SimplifiedChineseAnsiblexStrings : AnsiblexStrings {
             "MISSING_TO_COLUMN" -> "CSV 需要 to_system_id 或 to_system_name。"
             "INVALID_SYSTEM_ID" -> "星系 ID 必须是正整数。"
             "INVALID_ENABLED" -> "enabled 必须为 true 或 false。"
+            "INVALID_OWNER_ALLIANCE_ID" -> "Owner Alliance ID 无效或过长。"
             "BAD_CSV" -> "无法解析 CSV。"
             "UNSUPPORTED_FORMAT_VERSION" -> "不支持此 JSON format_version。"
             "BAD_JSON" -> "无法解析 JSON。"
@@ -428,6 +435,14 @@ internal object SimplifiedChineseAnsiblexStrings : AnsiblexStrings {
         AnsiblexSource.IMPORT -> "导入"
         AnsiblexSource.MANUAL -> "手动"
     }
+    override fun accessStatus(status: AnsiblexAccessStatus) = when (status) {
+        AnsiblexAccessStatus.AVAILABLE -> "可用"
+        AnsiblexAccessStatus.DISABLED -> "已禁用"
+        AnsiblexAccessStatus.ALLIANCE_NOT_SELECTED -> "不可用 · 尚未选择联盟"
+        AnsiblexAccessStatus.OWNER_UNKNOWN -> "不可用 · Owner 未知"
+        AnsiblexAccessStatus.ALLIANCE_MISMATCH -> "不可用 · 联盟不匹配"
+    }
+    override fun permissionSummary(usable: Int, enabled: Int) = "$usable 个可用 / $enabled 个已启用"
     override fun message(
         id: AnsiblexMessage,
         count: Int?,

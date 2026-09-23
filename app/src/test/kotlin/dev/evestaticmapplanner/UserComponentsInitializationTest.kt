@@ -29,7 +29,7 @@ class UserComponentsInitializationTest {
         assertTrue(components.ansiblexRepository.getAll().isEmpty())
         assertTrue(components.savedMarkerRepository.getAll().isEmpty())
         UserDatabase.open(database).use { connection ->
-            assertEquals(4, connection.createStatement().use { statement ->
+            assertEquals(dev.evestaticmapplanner.data.db.UserDatabaseSchema.VERSION, connection.createStatement().use { statement ->
                 statement.executeQuery("PRAGMA user_version").use { result ->
                     check(result.next())
                     result.getInt(1)
