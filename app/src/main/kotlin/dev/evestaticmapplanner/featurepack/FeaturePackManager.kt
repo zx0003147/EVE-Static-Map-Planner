@@ -189,10 +189,14 @@ class FeaturePackManager(
 class FeaturePackManagerViewModel(
     private val manager: FeaturePackManager,
     private val packControlHost: PackControlHost? = null,
+    private val eveIdentityHost: EveIdentityHost? = null,
+    private val onIdentitySelected: (Long) -> Unit = {},
 ) {
     val state: StateFlow<FeaturePackManagerState> = manager.state
     internal val controlsState: StateFlow<List<PackControlUiState>> =
         packControlHost?.state ?: MutableStateFlow(emptyList())
+    internal val identityState: StateFlow<EveIdentityHostState> =
+        eveIdentityHost?.state ?: MutableStateFlow(EveIdentityHostState())
 
     fun refresh() = manager.refresh()
 
@@ -201,6 +205,12 @@ class FeaturePackManagerViewModel(
     fun remove(packId: PackId): Result<Unit> = manager.remove(packId)
 
     internal fun invokeControl(key: PackControlActionKey): Boolean = packControlHost?.invoke(key) == true
+
+    internal fun selectIdentity(characterId: Long): Boolean = eveIdentityHost?.select(characterId)?.also { selected ->
+        if (selected) onIdentitySelected(characterId)
+    } == true
+
+    internal fun refreshIdentities(): Boolean = eveIdentityHost?.requestRefresh() == true
 }
 
 private class FeaturePackOperationException(val failure: FeaturePackFailure) : Exception(failure.message, failure.cause)

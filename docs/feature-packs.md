@@ -14,14 +14,14 @@ Feature API runtime compatibility and build-time artifact identity are deliberat
 ```text
 Runtime compatibility contract: EVE-Feature-API-Version: 2
 Compatibility family frozen: true
-Current Maven artifact: dev.evestaticmapplanner:feature-api:2.2.0
+Current Maven artifact: dev.evestaticmapplanner:feature-api:2.3.0
 Desktop application version: independent
 ```
 
 `FeatureApiVersions.current()` is the sole runtime compatibility authority and returns
 `FeatureApiVersion("2", true)`. A Pack should consume the Maven artifact as `compileOnly` and use the same coordinate
 for tests. The Host remains the only runtime owner of Feature API classes. Artifact `2.0.0` is the immutable release
-baseline; additive, backward-compatible navigation and character-tracking contracts are published through `2.2.0`. The frozen flag applies to the
+baseline; additive, backward-compatible navigation, character-tracking, and EVE identity contracts are published through `2.3.0`. The frozen flag applies to the
 runtime compatibility-family identity, not to the Maven artifact's minor version.
 
 Feature API v2 is restart-only. The Host discovers one `FeaturePackEntrypoint`, calls `start(context)`, and closes the
@@ -30,7 +30,7 @@ and background-worker lifecycle contracts are not part of v2.
 
 ## Build artifact verification
 
-Core's normal verification publishes Feature API `2.2.0` only to the generated, ignored
+Core's normal verification publishes Feature API `2.3.0` only to the generated, ignored
 `feature-api/build/test-maven-repository`. The verification tasks inspect the artifact and compile an independent thin
 fixture Pack by Maven coordinate:
 
@@ -112,14 +112,16 @@ Feature API v2 adds narrow capability discovery through `FeaturePackContext.capa
 empty lookup, so existing context implementations and Packs do not need mechanical lifecycle changes. Capability
 matching uses both a canonical ID and the expected Java type; it is not a general service locator.
 
-The standard compatibility-family-2 keys are `dynamic-overlay`, `route-action`, `pack-controls`, and
-`character-tracking`. Dynamic Overlay providers continue to return
+The standard compatibility-family-2 keys are `dynamic-overlay`, `route-action`, `pack-controls`,
+`character-tracking`, and `eve-identity`. Dynamic Overlay providers continue to return
 immutable display-neutral snapshots; `requestRefresh()` only signals that the Host should re-read one provider.
 Overlay entries may optionally carry a bounded generic image marker anchored to a system; Packs own image acquisition and
 caching while the Host owns decoding, sector composition, pin rendering, and hover presentation. Route Actions receive a
 defensive, immutable `RouteSnapshot`, may expose a shared generic target selector, and return a synchronous display-neutral result.
-Artifact `2.1.0` added `NavigationRouteActionProvider`; artifact `2.2.0` adds credential-free typed multi-character
-tracking snapshots plus refresh, priority, and tracking-enabled controls. `NavigationRouteActionProvider` remains an optional subinterface for explicit authored navigation
+Artifact `2.1.0` added `NavigationRouteActionProvider`; artifact `2.2.0` added credential-free typed multi-character
+tracking snapshots plus refresh, priority, and tracking-enabled controls. Artifact `2.3.0` adds credential-free
+character/corporation/alliance identity snapshots. Core owns the current-identity choice; a Pack owns data retrieval
+and refresh but cannot supply credentials through this capability. `NavigationRouteActionProvider` remains an optional subinterface for explicit authored navigation
 intent. Existing `RouteActionProvider` implementations remain valid and the Host invokes the new method only after an
 explicit capability type check.
 Selected target IDs are opaque Pack-owned values and remain Host-persisted planning state. Neither

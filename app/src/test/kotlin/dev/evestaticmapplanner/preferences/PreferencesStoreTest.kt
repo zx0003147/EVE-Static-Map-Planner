@@ -36,6 +36,24 @@ import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
 
 class PreferencesStoreTest {
     @Test
+    fun `selected EVE identity round trips independently from manual Ansiblex alliance`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val store = PropertiesPreferencesStore(path)
+
+        store.save(
+            AppPreferences(
+                eveIdentity = EveIdentityPreferences(90_000_001),
+                ansiblex = AnsiblexPreferences("CONDI"),
+            ),
+        )
+
+        val loaded = store.load()
+        assertEquals(90_000_001, loaded.eveIdentity.selectedCharacterId)
+        assertEquals("CONDI", loaded.ansiblex.currentAllianceId)
+        assertTrue(Files.readString(path).contains("eveIdentity.selectedCharacterId=90000001"))
+    }
+
+    @Test
     fun `Ansiblex alliance identity round trips without ESI identity data`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val store = PropertiesPreferencesStore(path)

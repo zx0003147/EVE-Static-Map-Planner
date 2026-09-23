@@ -28,6 +28,7 @@ class ProductionCapabilityLookupTest {
         val routeActionHost = RouteActionHost()
         val packControlHost = PackControlHost()
         val characterTrackingHost = CharacterTrackingHost()
+        val eveIdentityHost = EveIdentityHost()
         val context = ProductionFeaturePackRuntime.productionContextFactory(
             root,
             {},
@@ -36,12 +37,14 @@ class ProductionCapabilityLookupTest {
             routeActionHost,
             packControlHost,
             characterTrackingHost,
+            eveIdentityHost,
         ).create(descriptor("test.pack"))
         try {
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.DYNAMIC_OVERLAY))
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.ROUTE_ACTION))
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.PACK_CONTROLS))
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.CHARACTER_TRACKING))
+            assertNotNull(context.capabilities().find(StandardFeatureCapabilities.EVE_IDENTITY))
             assertNull(context.capabilities().find(FeatureCapabilityKey(
                 FeatureCapabilityId("unknown"),
                 RouteActionCapability::class.java,
@@ -55,6 +58,7 @@ class ProductionCapabilityLookupTest {
             routeActionHost.close()
             packControlHost.close()
             characterTrackingHost.close()
+            eveIdentityHost.close()
             overlayHost.close()
             root.toFile().deleteRecursively()
         }
@@ -66,18 +70,21 @@ class ProductionCapabilityLookupTest {
         val routeActionHost = RouteActionHost()
         val packControlHost = PackControlHost()
         val characterTrackingHost = CharacterTrackingHost()
+        val eveIdentityHost = EveIdentityHost()
         try {
             val first = PackFeatureCapabilityLookup(
                 overlayHost.scopedDynamicCapability(PackId("first.pack")),
                 routeActionHost.scopedCapability(PackId("first.pack")),
                 packControlHost.scopedCapability(PackId("first.pack")),
                 characterTrackingHost.scopedCapability(PackId("first.pack")),
+                eveIdentityHost.scopedCapability(PackId("first.pack")),
             )
             val second = PackFeatureCapabilityLookup(
                 overlayHost.scopedDynamicCapability(PackId("second.pack")),
                 routeActionHost.scopedCapability(PackId("second.pack")),
                 packControlHost.scopedCapability(PackId("second.pack")),
                 characterTrackingHost.scopedCapability(PackId("second.pack")),
+                eveIdentityHost.scopedCapability(PackId("second.pack")),
             )
             val firstActions = assertNotNull(first.find(StandardFeatureCapabilities.ROUTE_ACTION))
             val secondActions = assertNotNull(second.find(StandardFeatureCapabilities.ROUTE_ACTION))
@@ -95,6 +102,7 @@ class ProductionCapabilityLookupTest {
             routeActionHost.close()
             packControlHost.close()
             characterTrackingHost.close()
+            eveIdentityHost.close()
             overlayHost.close()
         }
     }

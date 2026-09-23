@@ -24,6 +24,7 @@ import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.embeddedai.AiProviderConfig
 import dev.evestaticmapplanner.preferences.DefaultPreferencesStore
 import dev.evestaticmapplanner.preferences.AnsiblexPreferences
+import dev.evestaticmapplanner.preferences.EveIdentityPreferences
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
 import dev.evestaticmapplanner.preferences.MiniMapPreferences
@@ -335,6 +336,13 @@ class MapViewModel(
     fun updateAnsiblexPreferences(preferences: AnsiblexPreferences) {
         mutableState.update { current ->
             current.copy(appPreferences = current.appPreferences.copy(ansiblex = preferences))
+        }
+        schedulePreferencesSave()
+    }
+
+    fun updateEveIdentityPreferences(preferences: EveIdentityPreferences) {
+        mutableState.update { current ->
+            current.copy(appPreferences = current.appPreferences.copy(eveIdentity = preferences))
         }
         schedulePreferencesSave()
     }

@@ -74,6 +74,11 @@ object StandardFeatureCapabilities {
         FeatureCapabilityId("character-tracking"),
         CharacterTrackingCapability::class.java,
     )
+
+    val EVE_IDENTITY = FeatureCapabilityKey(
+        FeatureCapabilityId("eve-identity"),
+        EveIdentityCapability::class.java,
+    )
 }
 
 private object EmptyFeatureCapabilityLookup : FeatureCapabilityLookup {

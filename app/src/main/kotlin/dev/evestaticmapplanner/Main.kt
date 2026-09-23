@@ -60,6 +60,7 @@ import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
 import dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntime
 import dev.evestaticmapplanner.feature.api.CharacterTrackingPriority
+import dev.evestaticmapplanner.preferences.EveIdentityPreferences
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
 import dev.evestaticmapplanner.data.db.StaticDatabaseMetadataReader
@@ -313,9 +314,6 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val searchRepository = remember(configuration) { SqliteSystemSearchRepository(configuration.database.path) }
     val universeRepository = remember(configuration) { SqliteUniverseRepository(configuration.database.path) }
-    val featurePackManagerViewModel = remember(featurePackRuntime) {
-        FeaturePackManagerViewModel(featurePackRuntime.manager, featurePackRuntime.packControlHost)
-    }
     val mapViewModel = remember(configuration) {
         MapViewModel(
             staticMapRepository = staticRepository,
@@ -348,6 +346,15 @@ private fun FrameWindowScope.ReadyApplication(
             wormholeSessionStore = wormholeSessionStore,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
+    }
+    val featurePackManagerViewModel = remember(featurePackRuntime, mapViewModel) {
+        FeaturePackManagerViewModel(
+            featurePackRuntime.manager,
+            featurePackRuntime.packControlHost,
+            featurePackRuntime.eveIdentityHost,
+        ) { characterId ->
+            mapViewModel.updateEveIdentityPreferences(EveIdentityPreferences(characterId))
+        }
     }
     val miniMapViewModel = remember(configuration, mapViewModel) {
         MiniMapViewModel(persistPreferences = mapViewModel::updateMiniMapPreferences)
@@ -790,6 +797,7 @@ private fun FrameWindowScope.ReadyApplication(
     val voiceSettingsState by voiceSettingsController.state.collectAsState()
     val globalPushToTalkState by globalPushToTalkCoordinator.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
+    val eveIdentityState by featurePackRuntime.eveIdentityHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
     val miniMapHudState by miniMapHudController.state.collectAsState()
     LaunchedEffect(miniMapHudState.hotkeyStatus) {
@@ -848,9 +856,43 @@ private fun FrameWindowScope.ReadyApplication(
         }
     }
     val routeState by routeViewModel.state.collectAsState()
-    LaunchedEffect(mapState.isLoading, mapState.appPreferences.ansiblex.currentAllianceId, routeViewModel) {
+    LaunchedEffect(
+        mapState.isLoading,
+        mapState.appPreferences.eveIdentity.selectedCharacterId,
+        featurePackRuntime.eveIdentityHost,
+    ) {
         if (!mapState.isLoading) {
-            routeViewModel.setCurrentAllianceId(mapState.appPreferences.ansiblex.currentAllianceId)
+            featurePackRuntime.eveIdentityHost.restorePreferredCharacterId(
+                mapState.appPreferences.eveIdentity.selectedCharacterId,
+            )
+        }
+    }
+    LaunchedEffect(
+        mapState.isLoading,
+        eveIdentityState.selectedCharacterId,
+        mapState.appPreferences.eveIdentity.selectedCharacterId,
+        mapViewModel,
+    ) {
+        val selected = eveIdentityState.selectedCharacterId
+        if (!mapState.isLoading && selected != null && selected != mapState.appPreferences.eveIdentity.selectedCharacterId) {
+            mapViewModel.updateEveIdentityPreferences(EveIdentityPreferences(selected))
+        }
+    }
+    LaunchedEffect(
+        mapState.isLoading,
+        mapState.appPreferences.ansiblex.currentAllianceId,
+        eveIdentityState.currentIdentity,
+        routeViewModel,
+    ) {
+        if (!mapState.isLoading) {
+            val currentIdentity = eveIdentityState.currentIdentity
+            routeViewModel.setCurrentAllianceId(
+                if (currentIdentity != null) {
+                    currentIdentity.currentAllianceIdentifier
+                } else {
+                    mapState.appPreferences.ansiblex.currentAllianceId
+                },
+            )
         }
     }
     LaunchedEffect(routeState.usableAnsiblexConnections, miniMapViewModel) {

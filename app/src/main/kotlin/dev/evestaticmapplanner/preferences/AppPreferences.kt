@@ -42,10 +42,23 @@ data class AppPreferences(
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
     val ansiblex: AnsiblexPreferences = AnsiblexPreferences.Defaults,
+    val eveIdentity: EveIdentityPreferences = EveIdentityPreferences.Defaults,
     val uiLocale: AppLocale = AppLocale.EN_US,
 ) {
     companion object {
         val Defaults = AppPreferences()
+    }
+}
+
+data class EveIdentityPreferences(
+    val selectedCharacterId: Long? = null,
+) {
+    init {
+        require(selectedCharacterId == null || selectedCharacterId > 0) { "Character ID must be positive" }
+    }
+
+    companion object {
+        val Defaults = EveIdentityPreferences()
     }
 }
 
@@ -357,6 +370,11 @@ class PropertiesPreferencesStore(
                     normalizeAllianceId(properties.getProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID))
                 }.getOrNull(),
             ),
+            eveIdentity = EveIdentityPreferences(
+                selectedCharacterId = properties.getProperty(KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID)
+                    ?.toLongOrNull()
+                    ?.takeIf { it > 0 },
+            ),
             uiLocale = if ((settingsVersion.toIntOrNull() ?: 0) >= 7) {
                 AppLocale.fromTagOrNull(properties.getProperty(KEY_UI_LOCALE)) ?: AppLocale.EN_US
             } else {
@@ -386,6 +404,7 @@ class PropertiesPreferencesStore(
             val sharedMap = preferences.sharedMap
             val miniMap = preferences.miniMap
             val ansiblex = preferences.ansiblex
+            val eveIdentity = preferences.eveIdentity
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_UI_LOCALE, preferences.uiLocale.tag)
@@ -479,6 +498,9 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, miniMap.snapToScreenEdges.toString())
                 normalizeAllianceId(ansiblex.currentAllianceId)?.let {
                     setProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID, it)
+                }
+                eveIdentity.selectedCharacterId?.let {
+                    setProperty(KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID, it.toString())
                 }
             }
             Files.newOutputStream(temporary).use {
@@ -760,3 +782,4 @@ private const val KEY_MINI_MAP_INTERACTION_MODE = "miniMap.interaction.mode"
 private const val KEY_MINI_MAP_HUD_OPACITY = "miniMap.hud.opacity"
 private const val KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES = "miniMap.snapToScreenEdges"
 private const val KEY_ANSIBLEX_CURRENT_ALLIANCE_ID = "ansiblex.currentAllianceId"
+private const val KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID = "eveIdentity.selectedCharacterId"

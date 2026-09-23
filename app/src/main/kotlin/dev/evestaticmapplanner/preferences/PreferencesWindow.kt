@@ -1639,6 +1639,7 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
     val strings = LocalAppStrings.current.preferences
     val state by viewModel.state.collectAsState()
     val controls by viewModel.controlsState.collectAsState()
+    val identityState by viewModel.identityState.collectAsState()
     var removePending by remember { mutableStateOf<FeaturePackManagerItem?>(null) }
     LaunchedEffect(viewModel) { viewModel.refresh() }
 
@@ -1647,6 +1648,54 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
         strings.text(PreferencesText.FEATURE_PACKS_HELP),
         color = EveColors.SecondaryText,
     )
+    if (identityState.providerAvailable) {
+        HorizontalDivider()
+        Text(strings.text(PreferencesText.CURRENT_EVE_IDENTITY), style = MaterialTheme.typography.titleSmall)
+        Text(
+            strings.text(PreferencesText.CURRENT_EVE_IDENTITY_HELP),
+            color = EveColors.SecondaryText,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        identityState.errors.forEach { Text(it, color = EveColors.Error) }
+        if (identityState.refreshing) {
+            Text(strings.text(PreferencesText.REFRESHING_EVE_IDENTITIES), color = EveColors.SecondaryText)
+        }
+        if (identityState.identities.isEmpty() && !identityState.refreshing) {
+            Text(strings.text(PreferencesText.NO_EVE_IDENTITIES), color = EveColors.SecondaryText)
+        }
+        identityState.identities.forEach { identity ->
+            val selected = identity.character.id == identityState.selectedCharacterId
+            Text(identity.character.name, style = MaterialTheme.typography.titleSmall)
+            Text(
+                strings.text(
+                    PreferencesText.EVE_IDENTITY_CORPORATION,
+                    identity.corporation.name,
+                    identity.corporation.ticker,
+                ),
+                color = EveColors.SecondaryText,
+            )
+            Text(
+                identity.alliance?.let { alliance ->
+                    strings.text(PreferencesText.EVE_IDENTITY_ALLIANCE, alliance.name, alliance.ticker)
+                } ?: strings.text(PreferencesText.EVE_IDENTITY_NO_ALLIANCE),
+                color = EveColors.SecondaryText,
+            )
+            TextButton(
+                enabled = !selected,
+                onClick = { viewModel.selectIdentity(identity.character.id) },
+            ) {
+                Text(
+                    strings.text(
+                        if (selected) PreferencesText.SELECTED_EVE_IDENTITY else PreferencesText.SELECT_EVE_IDENTITY,
+                    ),
+                )
+            }
+        }
+        TextButton(
+            enabled = !identityState.refreshing,
+            onClick = { viewModel.refreshIdentities() },
+        ) { Text(strings.text(PreferencesText.REFRESH_EVE_IDENTITIES)) }
+    }
     state.discoveryErrors.forEach { Text(it, color = EveColors.Error) }
     if (state.initialized && state.packs.isEmpty() && state.discoveryErrors.isEmpty()) {
         Text(strings.text(PreferencesText.NO_FEATURE_PACKS), color = EveColors.SecondaryText)

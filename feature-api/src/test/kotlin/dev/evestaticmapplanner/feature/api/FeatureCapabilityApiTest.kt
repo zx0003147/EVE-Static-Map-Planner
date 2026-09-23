@@ -42,6 +42,7 @@ class FeatureCapabilityApiTest {
         assertNull(lookup.find(StandardFeatureCapabilities.ROUTE_ACTION))
         assertNull(lookup.find(StandardFeatureCapabilities.PACK_CONTROLS))
         assertNull(lookup.find(StandardFeatureCapabilities.CHARACTER_TRACKING))
+        assertNull(lookup.find(StandardFeatureCapabilities.EVE_IDENTITY))
     }
 
     @Test
@@ -66,6 +67,8 @@ class FeatureCapabilityApiTest {
         assertEquals(PackControlCapability::class.java, StandardFeatureCapabilities.PACK_CONTROLS.type)
         assertEquals(FeatureCapabilityId("character-tracking"), StandardFeatureCapabilities.CHARACTER_TRACKING.id)
         assertEquals(CharacterTrackingCapability::class.java, StandardFeatureCapabilities.CHARACTER_TRACKING.type)
+        assertEquals(FeatureCapabilityId("eve-identity"), StandardFeatureCapabilities.EVE_IDENTITY.id)
+        assertEquals(EveIdentityCapability::class.java, StandardFeatureCapabilities.EVE_IDENTITY.type)
     }
 
     private interface FirstCapability : FeatureCapability

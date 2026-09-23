@@ -11,6 +11,7 @@ internal class PackFeatureCapabilityLookup(
     private val routeAction: ScopedRouteActionCapability,
     private val packControls: ScopedPackControlCapability,
     private val characterTracking: ScopedCharacterTrackingCapability,
+    private val eveIdentity: ScopedEveIdentityCapability,
 ) : FeatureCapabilityLookup, AutoCloseable {
     override fun <T : FeatureCapability> find(key: FeatureCapabilityKey<T>): T? {
         val capability: FeatureCapability = when (key) {
@@ -18,12 +19,14 @@ internal class PackFeatureCapabilityLookup(
             StandardFeatureCapabilities.ROUTE_ACTION -> routeAction
             StandardFeatureCapabilities.PACK_CONTROLS -> packControls
             StandardFeatureCapabilities.CHARACTER_TRACKING -> characterTracking
+            StandardFeatureCapabilities.EVE_IDENTITY -> eveIdentity
             else -> return null
         }
         return key.type.takeIf { it.isInstance(capability) }?.cast(capability)
     }
 
     override fun close() {
+        eveIdentity.close()
         characterTracking.close()
         packControls.close()
         routeAction.close()
