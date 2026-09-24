@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
+import dev.evestaticmapplanner.data.ansiblex.ImportConflictField
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
@@ -363,12 +364,33 @@ internal object EnglishAnsiblexStrings : AnsiblexStrings {
 
     override fun importMode(mode: AnsiblexImportMode) = mode.name
     override fun summary(enabled: Int, total: Int, databasePath: String) = "$enabled enabled / $total total · $databasePath"
-    override fun previewCounts(rows: Int, valid: Int, invalid: Int, duplicates: Int) =
-        "Rows $rows · valid $valid · invalid $invalid · duplicates $duplicates"
+    override fun previewCounts(rows: Int, valid: Int, invalid: Int, duplicates: Int, conflicts: Int) =
+        "Original rows $rows · valid connections $valid · duplicate display rows $duplicates · " +
+            "invalid rows $invalid · conflicting connections $conflicts"
     override fun previewChanges(additions: Int, updates: Int, unchanged: Int, removals: Int) =
         "+$additions  ~$updates  =$unchanged  -$removals"
-    override fun diagnostic(diagnostic: ImportDiagnostic) =
-        "${diagnostic.rowNumber?.let { "Row $it: " }.orEmpty()}${diagnostic.message}"
+    override fun applyBlockedByConflicts(count: Int) = "Cannot apply: $count conflicting connection(s) require correction."
+    override fun applyBlockedByUnresolvedOwners(count: Int) = "Cannot apply: $count owner alliance value(s) require confirmation."
+    override fun applyBlockedByOtherErrors(count: Int) = "Cannot apply: $count other import error(s) require correction."
+    override fun diagnostic(diagnostic: ImportDiagnostic): String {
+        val conflict = diagnostic.duplicateConflict
+        if (diagnostic.code == "CONFLICTING_DUPLICATE" && conflict != null) {
+            val first = conflict.firstSystemName?.let { "$it (#${conflict.firstSystemId})" } ?: "#${conflict.firstSystemId}"
+            val second = conflict.secondSystemName?.let { "$it (#${conflict.secondSystemId})" } ?: "#${conflict.secondSystemId}"
+            val fields = conflict.fields.joinToString("; ") { detail ->
+                val label = when (detail.field) {
+                    ImportConflictField.DIRECTION -> "direction"
+                    ImportConflictField.DISPLAY_NAME -> "display name"
+                    ImportConflictField.NOTES -> "notes"
+                    ImportConflictField.OWNER_ALLIANCE -> "owner alliance"
+                    ImportConflictField.ENABLED -> "status"
+                }
+                "$label: ${detail.values.joinToString { "row ${it.rowNumber}=${it.value}" }}"
+            }
+            return "$first ↔ $second · rows ${conflict.rowNumbers.joinToString()} · conflicting fields: $fields"
+        }
+        return "${diagnostic.rowNumber?.let { "Row $it: " }.orEmpty()}${diagnostic.message}"
+    }
     override fun direction(direction: AnsiblexDirection) = when (direction) {
         AnsiblexDirection.BIDIRECTIONAL -> "Bidirectional"
         AnsiblexDirection.FIRST_TO_SECOND -> "First → Second"

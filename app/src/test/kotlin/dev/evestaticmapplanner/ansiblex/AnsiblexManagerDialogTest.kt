@@ -146,6 +146,25 @@ class AnsiblexManagerDialogTest {
     }
 
     @Test
+    fun `apply blocker keeps conflict and unresolved owner reasons visible`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                AnsiblexImportActions(
+                    canApply = false,
+                    busy = false,
+                    blockingSummary = AnsiblexImportBlockingSummary(2, 1, 0),
+                    onApply = {},
+                    onDiscard = {},
+                )
+            }
+        }
+
+        onNodeWithText("Apply").assertIsNotEnabled()
+        onNodeWithText("Cannot apply: 2 conflicting connection(s) require correction.").assertIsDisplayed()
+        onNodeWithText("Cannot apply: 1 owner alliance value(s) require confirmation.").assertIsDisplayed()
+    }
+
+    @Test
     fun `paste dialog accepts text and forwards it to preview parsing`() = runComposeUiTest {
         var pastedText by mutableStateOf("")
         var parsedText: String? = null

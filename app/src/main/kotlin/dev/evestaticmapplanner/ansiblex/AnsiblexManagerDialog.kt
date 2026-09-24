@@ -34,6 +34,7 @@ import dev.evestaticmapplanner.core.ansiblex.MAX_ALLIANCE_TICKER_LENGTH
 import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
 import dev.evestaticmapplanner.core.alliance.AllianceOwnerResolution
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
+import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportPreview
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
 import dev.evestaticmapplanner.search.AllianceSearchField
 import dev.evestaticmapplanner.search.displayLabel
@@ -57,6 +58,26 @@ import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
 internal enum class ClearConfirmation { IMPORTED, ALL }
+
+internal data class AnsiblexImportBlockingSummary(
+    val conflictCount: Int,
+    val unresolvedOwnerCount: Int,
+    val otherErrorCount: Int,
+)
+
+internal fun AnsiblexImportPreview.blockingSummary(): AnsiblexImportBlockingSummary {
+    val conflictCount = diagnostics.count { it.code == "CONFLICTING_DUPLICATE" }
+    val unresolvedOwnerCount = ownerResolutions.count {
+        it.resolution !is AllianceOwnerResolution.ResolvedExact
+    }
+    val ownerResolutionCodes = setOf("OWNER_CONFIRMATION_REQUIRED", "OWNER_AMBIGUOUS", "OWNER_UNKNOWN")
+    val otherErrorCount = diagnostics.count {
+        it.severity == ImportDiagnosticSeverity.ERROR &&
+            it.code != "CONFLICTING_DUPLICATE" &&
+            it.code !in ownerResolutionCodes
+    }
+    return AnsiblexImportBlockingSummary(conflictCount, unresolvedOwnerCount, otherErrorCount)
+}
 
 @Composable
 fun AnsiblexManagerDialog(
@@ -149,12 +170,14 @@ fun AnsiblexManagerDialog(
                             onPasteImport = { showPasteImport = true },
                         )
                         state.importPreview?.let { preview ->
+                            val blockingSummary = preview.blockingSummary()
                             Text(
                                 strings.previewCounts(
                                     preview.rawRowCount,
                                     preview.validRowCount,
                                     preview.invalidRowCount,
                                     preview.duplicateCount,
+                                    blockingSummary.conflictCount,
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -214,13 +237,13 @@ fun AnsiblexManagerDialog(
                                     }
                                 }
                             }
-                            Row {
-                                Button(
-                                    onClick = viewModel::applyImport,
-                                    enabled = preview.canApply && !state.isImportBusy,
-                                ) { Text(appStrings.common.apply) }
-                                TextButton(onClick = viewModel::discardImportPreview) { Text(strings.discard) }
-                            }
+                            AnsiblexImportActions(
+                                canApply = preview.canApply,
+                                busy = state.isImportBusy,
+                                blockingSummary = blockingSummary,
+                                onApply = viewModel::applyImport,
+                                onDiscard = viewModel::discardImportPreview,
+                            )
                         }
                         state.importError?.let {
                             Text(it.resolve(appStrings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
@@ -322,6 +345,40 @@ fun AnsiblexManagerDialog(
                 onDismiss = { showPasteImport = false },
             )
         }
+    }
+}
+
+@Composable
+internal fun AnsiblexApplyBlockingSummary(summary: AnsiblexImportBlockingSummary) {
+    val strings = LocalAppStrings.current.ansiblex
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (summary.conflictCount > 0) {
+            Text(strings.applyBlockedByConflicts(summary.conflictCount), color = EveColors.Error)
+        }
+        if (summary.unresolvedOwnerCount > 0) {
+            Text(strings.applyBlockedByUnresolvedOwners(summary.unresolvedOwnerCount), color = EveColors.Error)
+        }
+        if (summary.otherErrorCount > 0) {
+            Text(strings.applyBlockedByOtherErrors(summary.otherErrorCount), color = EveColors.Error)
+        }
+    }
+}
+
+@Composable
+internal fun AnsiblexImportActions(
+    canApply: Boolean,
+    busy: Boolean,
+    blockingSummary: AnsiblexImportBlockingSummary,
+    onApply: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    val appStrings = LocalAppStrings.current
+    if (!canApply) {
+        AnsiblexApplyBlockingSummary(blockingSummary)
+    }
+    Row {
+        Button(onClick = onApply, enabled = canApply && !busy) { Text(appStrings.common.apply) }
+        TextButton(onClick = onDiscard) { Text(appStrings.ansiblex.discard) }
     }
 }
 

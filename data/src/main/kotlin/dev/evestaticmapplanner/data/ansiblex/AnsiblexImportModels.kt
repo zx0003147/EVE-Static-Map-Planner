@@ -21,6 +21,34 @@ data class ImportDiagnostic(
     val message: String,
     val rowNumber: Long? = null,
     val field: String? = null,
+    val duplicateConflict: ImportDuplicateConflict? = null,
+)
+
+enum class ImportConflictField {
+    DIRECTION,
+    DISPLAY_NAME,
+    NOTES,
+    OWNER_ALLIANCE,
+    ENABLED,
+}
+
+data class ImportConflictValue(
+    val rowNumber: Long,
+    val value: String,
+)
+
+data class ImportConflictFieldDetail(
+    val field: ImportConflictField,
+    val values: List<ImportConflictValue>,
+)
+
+data class ImportDuplicateConflict(
+    val firstSystemId: Int,
+    val firstSystemName: String?,
+    val secondSystemId: Int,
+    val secondSystemName: String?,
+    val rowNumbers: List<Long>,
+    val fields: List<ImportConflictFieldDetail>,
 )
 
 data class ImportCandidate(

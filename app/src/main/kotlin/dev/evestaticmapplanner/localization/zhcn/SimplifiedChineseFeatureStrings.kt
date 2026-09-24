@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
+import dev.evestaticmapplanner.data.ansiblex.ImportConflictField
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
@@ -419,11 +420,30 @@ internal object SimplifiedChineseAnsiblexStrings : AnsiblexStrings {
         AnsiblexImportMode.REPLACE -> "替换（REPLACE）"
     }
     override fun summary(enabled: Int, total: Int, databasePath: String) = "$enabled 个已启用 / 共 $total 个 · $databasePath"
-    override fun previewCounts(rows: Int, valid: Int, invalid: Int, duplicates: Int) =
-        "行数 $rows · 有效 $valid · 无效 $invalid · 重复 $duplicates"
+    override fun previewCounts(rows: Int, valid: Int, invalid: Int, duplicates: Int, conflicts: Int) =
+        "原始行 $rows · 有效连接 $valid · 重复展示行 $duplicates · 无效行 $invalid · 冲突连接 $conflicts"
     override fun previewChanges(additions: Int, updates: Int, unchanged: Int, removals: Int) =
         "新增 $additions  更新 $updates  未变化 $unchanged  删除 $removals"
+    override fun applyBlockedByConflicts(count: Int) = "无法应用：$count 个连接存在冲突，需要修正。"
+    override fun applyBlockedByUnresolvedOwners(count: Int) = "无法应用：$count 个 Owner Alliance 需要确认。"
+    override fun applyBlockedByOtherErrors(count: Int) = "无法应用：还有 $count 个导入错误需要修正。"
     override fun diagnostic(diagnostic: ImportDiagnostic): String {
+        val conflict = diagnostic.duplicateConflict
+        if (diagnostic.code == "CONFLICTING_DUPLICATE" && conflict != null) {
+            val first = conflict.firstSystemName?.let { "$it (#${conflict.firstSystemId})" } ?: "#${conflict.firstSystemId}"
+            val second = conflict.secondSystemName?.let { "$it (#${conflict.secondSystemId})" } ?: "#${conflict.secondSystemId}"
+            val fields = conflict.fields.joinToString("；") { detail ->
+                val label = when (detail.field) {
+                    ImportConflictField.DIRECTION -> "方向"
+                    ImportConflictField.DISPLAY_NAME -> "连接名称"
+                    ImportConflictField.NOTES -> "备注"
+                    ImportConflictField.OWNER_ALLIANCE -> "Owner Alliance"
+                    ImportConflictField.ENABLED -> "状态"
+                }
+                "$label：${detail.values.joinToString { "第 ${it.rowNumber} 行=${it.value}" }}"
+            }
+            return "$first ↔ $second · 行号 ${conflict.rowNumbers.joinToString()} · 冲突字段：$fields"
+        }
         val message = when (diagnostic.code) {
             "UNSUPPORTED_FILE_TYPE" -> "仅支持 .csv 和 .json Ansiblex 导入文件。"
             "UNKNOWN_CSV_COLUMN" -> "CSV 包含未知列。"

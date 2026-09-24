@@ -376,10 +376,12 @@ class AnsiblexImportService(
             val conflicts = group.drop(1).filter { !it.sameContent(first) }
             if (conflicts.isNotEmpty()) {
                 group.forEach { invalidRows += it.rowNumber }
+                val conflict = duplicateConflict(group)
                 diagnostics += error(
                     "CONFLICTING_DUPLICATE",
-                    "Connection ${first.firstSystemId}-${first.secondSystemId} is repeated with conflicting values",
+                    conflict.message(),
                     first.rowNumber,
+                    duplicateConflict = conflict,
                 )
             } else {
                 unique += first
@@ -509,6 +511,67 @@ class AnsiblexImportService(
             notes == other.notes &&
             ownerAllianceId == other.ownerAllianceId &&
             enabled == other.enabled
+
+    private fun duplicateConflict(group: List<ImportCandidate>): ImportDuplicateConflict {
+        val first = group.first()
+        val fields = buildList {
+            addConflictField(ImportConflictField.DIRECTION, group, { it.direction }, { it.direction.name })
+            addConflictField(ImportConflictField.DISPLAY_NAME, group, { it.displayName }, { it.displayName.displayValue() })
+            addConflictField(ImportConflictField.NOTES, group, { it.notes }, { it.notes.displayValue() })
+            addConflictField(
+                ImportConflictField.OWNER_ALLIANCE,
+                group,
+                { it.ownerAllianceId },
+                { it.ownerAllianceDisplayValue() },
+            )
+            addConflictField(ImportConflictField.ENABLED, group, { it.enabled }, { it.enabled.toString() })
+        }
+        return ImportDuplicateConflict(
+            firstSystemId = first.firstSystemId,
+            firstSystemName = universeRepository.getSystem(first.firstSystemId)?.name,
+            secondSystemId = first.secondSystemId,
+            secondSystemName = universeRepository.getSystem(first.secondSystemId)?.name,
+            rowNumbers = group.map(ImportCandidate::rowNumber).sorted(),
+            fields = fields,
+        )
+    }
+}
+
+private fun MutableList<ImportConflictFieldDetail>.addConflictField(
+    field: ImportConflictField,
+    candidates: List<ImportCandidate>,
+    comparableValue: (ImportCandidate) -> Any?,
+    displayValue: (ImportCandidate) -> String,
+) {
+    if (candidates.map(comparableValue).distinct().size <= 1) return
+    add(
+        ImportConflictFieldDetail(
+            field = field,
+            values = candidates.map { ImportConflictValue(it.rowNumber, displayValue(it)) },
+        ),
+    )
+}
+
+private fun String?.displayValue(): String = this ?: "<empty>"
+
+private fun ImportCandidate.ownerAllianceDisplayValue(): String = ownerAllianceId?.let { id ->
+    buildString {
+        append("#").append(id)
+        ownerAllianceName?.let { append(" ").append(it) }
+        ownerAllianceTicker?.let { append(" [").append(it).append("]") }
+    }
+} ?: "<unknown>"
+
+private fun ImportDuplicateConflict.message(): String = buildString {
+    val first = firstSystemName?.let { "$it (#$firstSystemId)" } ?: "#$firstSystemId"
+    val second = secondSystemName?.let { "$it (#$secondSystemId)" } ?: "#$secondSystemId"
+    append("Connection ").append(first).append(" ↔ ").append(second)
+    append(" has conflicting values in rows ").append(rowNumbers.joinToString(", ")).append(": ")
+    append(
+        fields.joinToString("; ") { detail ->
+            "${detail.field.name} [${detail.values.joinToString { "row ${it.rowNumber}=${it.value}" }}]"
+        },
+    )
 }
 
 internal fun snapshotFingerprint(connections: List<AnsiblexConnection>): String = sha256(
@@ -537,8 +600,13 @@ internal fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-2
     .digest(bytes)
     .joinToString("") { "%02x".format(it) }
 
-private fun error(code: String, message: String, rowNumber: Long? = null, field: String? = null) =
-    ImportDiagnostic(ImportDiagnosticSeverity.ERROR, code, message, rowNumber, field)
+private fun error(
+    code: String,
+    message: String,
+    rowNumber: Long? = null,
+    field: String? = null,
+    duplicateConflict: ImportDuplicateConflict? = null,
+) = ImportDiagnostic(ImportDiagnosticSeverity.ERROR, code, message, rowNumber, field, duplicateConflict)
 
 private fun warning(code: String, message: String, rowNumber: Long? = null, field: String? = null) =
     ImportDiagnostic(ImportDiagnosticSeverity.WARNING, code, message, rowNumber, field)

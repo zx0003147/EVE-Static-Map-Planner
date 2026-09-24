@@ -330,8 +330,11 @@ interface AnsiblexStrings {
 
     fun importMode(mode: AnsiblexImportMode): String
     fun summary(enabled: Int, total: Int, databasePath: String): String
-    fun previewCounts(rows: Int, valid: Int, invalid: Int, duplicates: Int): String
+    fun previewCounts(rows: Int, valid: Int, invalid: Int, duplicates: Int, conflicts: Int): String
     fun previewChanges(additions: Int, updates: Int, unchanged: Int, removals: Int): String
+    fun applyBlockedByConflicts(count: Int): String
+    fun applyBlockedByUnresolvedOwners(count: Int): String
+    fun applyBlockedByOtherErrors(count: Int): String
     fun diagnostic(diagnostic: ImportDiagnostic): String
     fun direction(direction: AnsiblexDirection): String
     fun source(source: AnsiblexSource): String

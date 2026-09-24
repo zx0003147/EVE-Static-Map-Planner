@@ -78,7 +78,8 @@ internal object WebwayAnsiblexParser {
             from = RawImportEndpoint(null, from),
             to = RawImportEndpoint(null, to),
             displayName = null,
-            notes = listOf(columns[0], columns[7]).filter { it.isNotBlank() && it != "-" }.joinToString(" · ").takeIf(String::isNotEmpty),
+            // Region and route color describe each Webway display row, not the bidirectional connection.
+            notes = null,
             ownerAllianceId = null,
             ownerAllianceName = null,
             ownerAllianceTicker = null,

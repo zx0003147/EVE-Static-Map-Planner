@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.data
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDraft
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.alliance.AllianceDirectoryMerger
 import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
@@ -14,8 +15,10 @@ import dev.evestaticmapplanner.core.model.SolarSystemDetails
 import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
+import dev.evestaticmapplanner.core.route.AnsiblexRouteEdgeBuilder
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
+import dev.evestaticmapplanner.data.ansiblex.ImportConflictField
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnosticSeverity
 import dev.evestaticmapplanner.data.ansiblex.StaleImportPreviewException
 import dev.evestaticmapplanner.data.db.UserDatabase
@@ -174,6 +177,130 @@ class AnsiblexImportServiceTest {
         assertTrue(duplicate.diagnostics.any { it.severity == ImportDiagnosticSeverity.WARNING })
         assertFalse(conflict.canApply)
         assertTrue(conflict.diagnostics.any { it.code == "CONFLICTING_DUPLICATE" })
+    }
+
+    @Test
+    fun `Webway reverse rows with matching display metadata collapse into one connection`() {
+        val preview = Fixture().service(directory = condiDirectory()).previewWebwayText(
+            webwayText(
+                "Cache\tAlpha @ 1-1\tBravo @ 1-1\tOnline\tCONDI\t-\t4.45\tGrey\tYes",
+                "Cache\tBravo @ 1-1\tAlpha @ 1-1\tOnline\tCONDI\t-\t4.45\tGrey\tYes",
+            ),
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertTrue(preview.canApply)
+        assertEquals(2, preview.rawRowCount)
+        assertEquals(1, preview.validRowCount)
+        assertEquals(1, preview.duplicateCount)
+        assertEquals(0, preview.invalidRowCount)
+        assertEquals(null, preview.additions.single().candidate.notes)
+    }
+
+    @Test
+    fun `Webway reverse rows from different region and route displays still collapse`() {
+        val preview = Fixture().service(directory = condiDirectory()).previewWebwayText(
+            webwayText(
+                "Cache\tAlpha @ 1-1\tBravo @ 1-1\tOnline\tCONDI\t-\t4.45\tGrey\tYes",
+                "Insmother\tBravo @ 1-1\tAlpha @ 1-1\tOnline\tCONDI\t-\t4.45\tBeige\tYes",
+            ),
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertTrue(preview.canApply)
+        assertEquals(1, preview.validRowCount)
+        assertEquals(1, preview.duplicateCount)
+        assertEquals(0, preview.invalidRowCount)
+        assertTrue(preview.diagnostics.none { it.code == "CONFLICTING_DUPLICATE" })
+    }
+
+    @Test
+    fun `Webway reverse rows with different owners remain a structured blocking conflict`() {
+        val preview = Fixture().service(
+            directory = directory(
+                AllianceReference(10, "Alliance X", "AX"),
+                AllianceReference(20, "Alliance Y", "AY"),
+            ),
+        ).previewWebwayText(
+            webwayText(
+                "Cache\tAlpha @ 1-1\tBravo @ 1-1\tOnline\tAX\t-\t4.45\tGrey\tYes",
+                "Insmother\tBravo @ 1-1\tAlpha @ 1-1\tOnline\tAY\t-\t4.45\tBeige\tYes",
+            ),
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertFalse(preview.canApply)
+        assertEquals(2, preview.invalidRowCount)
+        val conflict = requireNotNull(preview.diagnostics.single { it.code == "CONFLICTING_DUPLICATE" }.duplicateConflict)
+        assertEquals(listOf(2L, 3L), conflict.rowNumbers)
+        assertEquals(listOf(ImportConflictField.OWNER_ALLIANCE), conflict.fields.map { it.field })
+        assertEquals(setOf("#10 Alliance X [AX]", "#20 Alliance Y [AY]"), conflict.fields.single().values.map { it.value }.toSet())
+        assertTrue(conflict.firstSystemName in setOf("Alpha", "Bravo"))
+        assertTrue(conflict.secondSystemName in setOf("Alpha", "Bravo"))
+    }
+
+    @Test
+    fun `Webway reverse rows with different status remain a structured blocking conflict`() {
+        val preview = Fixture().service(directory = condiDirectory()).previewWebwayText(
+            webwayText(
+                "Cache\tAlpha @ 1-1\tBravo @ 1-1\tOnline\tCONDI\t-\t4.45\tGrey\tYes",
+                "Insmother\tBravo @ 1-1\tAlpha @ 1-1\tOffline\tCONDI\t-\t4.45\tBeige\tYes",
+            ),
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertFalse(preview.canApply)
+        val conflict = requireNotNull(preview.diagnostics.single { it.code == "CONFLICTING_DUPLICATE" }.duplicateConflict)
+        assertEquals(listOf(ImportConflictField.ENABLED), conflict.fields.map { it.field })
+        assertEquals(setOf("true", "false"), conflict.fields.single().values.map { it.value }.toSet())
+    }
+
+    @Test
+    fun `CSV reverse rows with different explicit notes remain a blocking conflict`() {
+        val preview = Fixture().service().previewText(
+            "notes.csv",
+            """
+            from_system_id,to_system_id,note,direction
+            1,2,west,BIDIRECTIONAL
+            2,1,east,BIDIRECTIONAL
+            """.trimIndent(),
+            AnsiblexImportMode.MERGE,
+        )
+
+        assertFalse(preview.canApply)
+        val conflict = requireNotNull(preview.diagnostics.single { it.code == "CONFLICTING_DUPLICATE" }.duplicateConflict)
+        assertEquals(listOf(ImportConflictField.NOTES), conflict.fields.map { it.field })
+        assertEquals(setOf("west", "east"), conflict.fields.single().values.map { it.value }.toSet())
+    }
+
+    @Test
+    fun `54 Webway reverse pairs import as 54 bidirectional route connections`() {
+        val generatedSystems = (0 until 108).map { index -> system(1_000 + index, "WEB-$index") }
+        val rows = buildList {
+            repeat(54) { pairIndex ->
+                val first = "WEB-${pairIndex * 2}"
+                val second = "WEB-${pairIndex * 2 + 1}"
+                add("Region-$pairIndex\t$first @ 1-1\t$second @ 1-1\tOnline\tCONDI\t-\t4.00\tRoute-$pairIndex\tYes")
+                add("Other-$pairIndex\t$second @ 1-1\t$first @ 1-1\tOnline\tCONDI\t-\t4.00\tReturn-$pairIndex\tYes")
+            }
+        }
+        val fixture = Fixture(generatedSystems)
+        val service = fixture.service(directory = condiDirectory())
+        val preview = service.previewWebwayText(webwayText(*rows.toTypedArray()), AnsiblexImportMode.MERGE)
+
+        assertTrue(preview.canApply)
+        assertEquals(108, preview.rawRowCount)
+        assertEquals(54, preview.validRowCount)
+        assertEquals(54, preview.duplicateCount)
+        assertEquals(0, preview.invalidRowCount)
+        assertEquals(54, preview.additions.size)
+        assertEquals(0, preview.diagnostics.count { it.code == "CONFLICTING_DUPLICATE" })
+
+        service.apply(preview)
+        val connections = fixture.repository().getAll()
+        assertEquals(54, connections.size)
+        assertTrue(connections.all { it.direction == AnsiblexDirection.BIDIRECTIONAL })
+        assertEquals(108, AnsiblexRouteEdgeBuilder.build(connections).size)
     }
 
     @Test
@@ -336,7 +463,7 @@ class AnsiblexImportServiceTest {
     }
 }
 
-private class Fixture {
+private class Fixture(additionalSystems: List<SolarSystem> = emptyList()) {
     val userDb = createTempDirectory("ansiblex-import").resolve("user.db")
     private val systems = listOf(
         system(1, "Alpha"),
@@ -347,7 +474,7 @@ private class Fixture {
         system(6, "P7-45V"),
         system(7, "GE-8JV"),
         system(8, "E3-SDZ"),
-    )
+    ) + additionalSystems
     private val clock = Clock.fixed(Instant.parse("2026-08-17T00:00:00Z"), ZoneOffset.UTC)
     private val ids = AtomicInteger()
     private val universe = FakeUniverseRepository(systems)
@@ -372,6 +499,13 @@ private class Fixture {
 private fun directory(vararg alliances: AllianceReference) = AllianceDirectoryMerger.merge(
     listOf(AllianceDirectorySourceSnapshot("test", alliances.toList())),
 )
+
+private fun condiDirectory() = directory(AllianceReference(1_354_830_081L, "Goonswarm Federation", "CONDI"))
+
+private fun webwayText(vararg rows: String): String = buildString {
+    appendLine("Region\tSystem / POS\tSystem / POS\tStatus\tOwner\tPassword\tDist (ly)\tRoute\tFriendly")
+    append(rows.joinToString("\n"))
+}
 
 private class FakeUniverseRepository(systems: List<SolarSystem>) : UniverseRepository {
     private val systems = systems.associateBy(SolarSystem::id)
