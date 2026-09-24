@@ -47,14 +47,13 @@ internal object Real3DFeatureOverlayPresentationBuilder {
     fun build(
         state: OverlayState,
         geometry: Real3DStaticGeometry,
+        sovereignty: SovereigntyMapPresentation = SovereigntyMapPresentation.Empty,
     ): Real3DFeatureOverlayPresentation {
-        if (state.isEmpty) return Real3DFeatureOverlayPresentation.Empty
+        if (state.isEmpty && sovereignty.entries.isEmpty()) return Real3DFeatureOverlayPresentation.Empty
         val entries = mutableListOf<Real3DFeatureSystemEntry>()
         val emblemMembers = linkedMapOf<Pair<String, PresentationEmblemReference>, MutableList<MapPoint3>>()
         val legendSections = mutableListOf<FeatureOverlayLegendSection>()
         state.layers.forEach { layerState ->
-            val isSovereigntyLayer = layerState.provider.id == SOVEREIGNTY_OVERLAY_PROVIDER_ID &&
-                layerState.layer.id == SOVEREIGNTY_OVERLAY_LAYER_ID
             val visibleEntries = layerState.entries.asSequence()
                 .filter { it.visibility == OverlayEntryVisibility.VISIBLE }
                 .filter { it.systemId in geometry.nodesById }
@@ -87,9 +86,35 @@ internal object Real3DFeatureOverlayPresentationBuilder {
                     groupKey = groupKey,
                     color = style.color ?: DEFAULT_FEATURE_OVERLAY_COLOR,
                     title = entry.title,
-                    isSovereignty = isSovereigntyLayer,
+                    isSovereignty = false,
                 )
                 style.emblemReference?.let { reference ->
+                    emblemMembers.getOrPut(groupKey to reference, ::mutableListOf) +=
+                        geometry.nodesById.getValue(entry.systemId).position
+                }
+            }
+        }
+        val visibleSovereigntyEntries = sovereignty.entries
+            .filter { it.systemId in geometry.nodesById }
+            .sortedBy(SovereigntyMapEntry::systemId)
+        if (visibleSovereigntyEntries.isNotEmpty()) {
+            legendSections += FeatureOverlayLegendSection(
+                title = "Sovereignty",
+                entries = visibleSovereigntyEntries
+                    .distinctBy(SovereigntyMapEntry::ownerKey)
+                    .map { FeatureOverlayLegendEntry(it.ownerLabel, it.color) }
+                    .sortedBy(FeatureOverlayLegendEntry::label),
+            )
+            visibleSovereigntyEntries.forEach { entry ->
+                val groupKey = "planner-core-sovereignty:${entry.ownerKey}"
+                entries += Real3DFeatureSystemEntry(
+                    systemId = entry.systemId,
+                    groupKey = groupKey,
+                    color = entry.color,
+                    title = entry.ownerLabel,
+                    isSovereignty = true,
+                )
+                entry.emblemReference?.let { reference ->
                     emblemMembers.getOrPut(groupKey to reference, ::mutableListOf) +=
                         geometry.nodesById.getValue(entry.systemId).position
                 }
@@ -127,9 +152,6 @@ internal object Real3DFeatureOverlayPresentationBuilder {
         )
     }
 }
-
-private const val SOVEREIGNTY_OVERLAY_PROVIDER_ID = "sovereignty.pack.overlay"
-private const val SOVEREIGNTY_OVERLAY_LAYER_ID = "sovereignty"
 
 internal fun real3DSystemPairKey(firstSystemId: Int, secondSystemId: Int): Long {
     val lower = minOf(firstSystemId, secondSystemId)

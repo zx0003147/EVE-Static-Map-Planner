@@ -76,7 +76,7 @@ class SovereigntyPackIntegrationTest {
         }
 
     @Test
-    fun `external Pack starts from fresh cache and registers then removes Host contributions`() =
+    fun `external Pack uses typed Host contributions without legacy presentation providers`() =
         withTempDirectory { root ->
             val packJar = validatedSovereigntyPackJar()
             val packRoot = root.resolve("feature-packs")
@@ -112,22 +112,21 @@ class SovereigntyPackIntegrationTest {
                 assertEquals(1, classLoaderCreations)
                 assertTrue(events.contains("INFO:sovereignty.pack:Sovereignty Pack started"))
 
-                val overlay = runtime.overlayHost.state.value.layers.single()
-                assertEquals("sovereignty.pack.overlay", overlay.provider.id)
-                assertEquals("sovereignty", overlay.layer.id)
-                assertEquals(30004759, overlay.entries.single().systemId)
-                assertEquals("Cached Alliance", overlay.entries.single().title)
+                assertTrue(runtime.overlayHost.state.value.layers.isEmpty())
+                assertTrue(runtime.systemInfoHost.request(30004759).sections.isEmpty())
+
+                val sovereignty = runtime.sovereigntyHost.state.value
+                assertTrue(sovereignty.providerAvailable)
+                assertEquals(SovereigntyFreshness.AVAILABLE, sovereignty.snapshot.freshness)
+                assertEquals(99000001L, sovereignty.snapshot.getOwnership(30004759)?.allianceId)
+                assertEquals("Cached Alliance", sovereignty.snapshot.getOwnership(30004759)?.allianceName)
                 assertTrue(
                     OverlayManagementUiStateBuilder.build(
                         runtime.overlayHost.state.value,
                         OverlayVisibilityPreferences.Defaults,
+                        sovereigntyAvailable = sovereignty.providerAvailable,
                     ).showSovereigntyLogoPreferences,
                 )
-
-                val systemInfo = runtime.systemInfoHost.request(30004759)
-                val fields = systemInfo.sections.single().fields.associate { it.key to it.value }
-                assertEquals("Cached Alliance", fields["owner"])
-                assertEquals("Claimed", fields["status"])
 
                 val directory = runtime.allianceDirectoryHost.state.value
                 assertTrue(directory.providerAvailable)
@@ -138,12 +137,13 @@ class SovereigntyPackIntegrationTest {
                     setOf("feature-pack:sovereignty.pack"),
                     directory.snapshot.entriesById.getValue(99000001L).sources,
                 )
-                val sovereignty = runtime.sovereigntyHost.state.value
-                assertTrue(sovereignty.providerAvailable)
-                assertEquals(SovereigntyFreshness.AVAILABLE, sovereignty.snapshot.freshness)
-                assertEquals(99000001L, sovereignty.snapshot.getOwnership(30004759)?.allianceId)
-                assertEquals("Cached Alliance", sovereignty.snapshot.getOwnership(30004759)?.allianceName)
                 assertTrue(events.contains("INFO:sovereignty.pack:Using fresh cached PUBLIC_ESI sovereignty snapshot"))
+                assertTrue(
+                    events.contains(
+                        "INFO:sovereignty.pack:Typed Sovereignty is active; " +
+                            "legacy Overlay and System Info providers are not registered",
+                    ),
+                )
                 assertFalse(events.any { it.contains("attempting one startup refresh", ignoreCase = true) })
                 assertFalse(events.any { it.contains("startup refresh succeeded", ignoreCase = true) })
             } finally {

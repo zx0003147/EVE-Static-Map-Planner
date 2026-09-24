@@ -75,7 +75,7 @@ internal fun selectVisible2DAnsiblexConnections(
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun StaticMapCanvas(
+internal fun StaticMapCanvas(
     state: MapUiState,
     activeRoute: RouteResult?,
     normalWaypointSystemIds: List<Int>,
@@ -94,6 +94,7 @@ fun StaticMapCanvas(
     sharedMarkerState: SharedMarkerPresentationState,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
+    sovereigntyPresentation: SovereigntyMapPresentation,
     compactSystemInfo: CompactSystemInfoPresentation?,
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
@@ -137,6 +138,7 @@ fun StaticMapCanvas(
             showAnsiblexLayer = showAnsiblexLayer,
             missionState = missionState,
             featureOverlayState = featureOverlayState,
+            sovereigntyPresentation = sovereigntyPresentation,
             onCanvasSizeChanged = onCanvasSizeChanged,
             onFirstMapDisplayed = onFirstMapDisplayed,
             onZoom = onZoom,
@@ -257,16 +259,17 @@ fun StaticMapCanvas(
     val featureOverlayCoordinator = remember(featureOverlayScope) {
         FeatureOverlayPresentationCoordinator(
             scope = featureOverlayScope,
-            computer = { overlayState, projectedScene ->
+            computer = { overlayState, sovereignty, projectedScene ->
                 FeatureOverlayPresentationBuilder.build(
                     state = overlayState,
                     scene = projectedScene,
+                    sovereignty = sovereignty,
                 )
             },
         )
     }
-    val featureOverlayKey = remember(scene, featureOverlayState) {
-        FeatureOverlayGeometryKey.from(scene, featureOverlayState)
+    val featureOverlayKey = remember(scene, featureOverlayState, sovereigntyPresentation) {
+        FeatureOverlayGeometryKey.from(scene, featureOverlayState, sovereigntyPresentation)
     }
     val cachedFeatureOverlayPresentation = remember(featureOverlayKey) {
         featureOverlayCoordinator.peek(featureOverlayKey)
@@ -278,7 +281,14 @@ fun StaticMapCanvas(
             ?.presentation
         ?: FeatureOverlayPresentation.Empty
     LaunchedEffect(featureOverlayKey, featureOverlayCoordinator) {
-        when (val request = featureOverlayCoordinator.request(featureOverlayKey, featureOverlayState, scene)) {
+        when (
+            val request = featureOverlayCoordinator.request(
+                featureOverlayKey,
+                featureOverlayState,
+                sovereigntyPresentation,
+                scene,
+            )
+        ) {
             is FeatureOverlayPresentationRequest.Cached -> {
                 completedFeatureOverlayPresentation = KeyedFeatureOverlayPresentation(
                     featureOverlayKey,

@@ -136,6 +136,7 @@ internal fun PreferencesWindow(
     aiControlError: UiMessage?,
     featurePackManagerViewModel: FeaturePackManagerViewModel,
     overlayState: OverlayState,
+    sovereigntyAvailable: Boolean,
     webPackExportState: WebPackExportUiState,
     sharedMapState: SharedMapState,
     sharedMapOperationError: UiMessage?,
@@ -242,6 +243,7 @@ internal fun PreferencesWindow(
                             )
                             PreferencesCategory.OVERLAYS -> OverlayPreferencesContent(
                                 overlayState,
+                                sovereigntyAvailable,
                                 preferences.overlayVisibility,
                                 preferences.mapDisplay,
                                 onOverlayVisibilityChange,
@@ -1517,6 +1519,7 @@ private fun formatLocalInstant(instant: java.time.Instant): String =
 @Composable
 private fun OverlayPreferencesContent(
     overlayState: OverlayState,
+    sovereigntyAvailable: Boolean,
     preferences: OverlayVisibilityPreferences,
     mapDisplay: MapDisplayPreferences,
     onChange: (OverlayVisibilityPreferences) -> Unit,
@@ -1524,8 +1527,8 @@ private fun OverlayPreferencesContent(
     onReset: () -> Unit,
 ) {
     val strings = LocalAppStrings.current.preferences
-    val uiState = remember(overlayState, preferences) {
-        OverlayManagementUiStateBuilder.build(overlayState, preferences)
+    val uiState = remember(overlayState, sovereigntyAvailable, preferences) {
+        OverlayManagementUiStateBuilder.build(overlayState, preferences, sovereigntyAvailable)
     }
 
     Text(strings.text(PreferencesText.MAP_OVERLAYS), style = MaterialTheme.typography.titleMedium)

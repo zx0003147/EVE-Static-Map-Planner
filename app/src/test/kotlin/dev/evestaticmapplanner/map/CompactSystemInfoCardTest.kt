@@ -32,6 +32,11 @@ import dev.evestaticmapplanner.core.model.UniversePosition
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerDraft
+import dev.evestaticmapplanner.core.sovereignty.SovereigntyFreshness
+import dev.evestaticmapplanner.core.sovereignty.SovereigntySnapshot
+import dev.evestaticmapplanner.core.sovereignty.SovereigntyStatus
+import dev.evestaticmapplanner.core.sovereignty.SystemOwnerKind
+import dev.evestaticmapplanner.core.sovereignty.SystemOwnership
 import dev.evestaticmapplanner.feature.api.SystemInfoField
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoState
@@ -189,6 +194,73 @@ class CompactSystemInfoCardTest {
         assertEquals("1DQ1-A", presentation.title)
         assertEquals("2", presentation.fields.first { it.label == "System ID" }.value)
         assertEquals(listOf("fixture"), presentation.extensionSections.map { it.sectionId })
+    }
+
+    @Test
+    fun `Core sovereignty renders typed ownership and removes duplicate legacy section`() {
+        val legacy = SystemInfoSection(
+            sectionId = "sovereignty",
+            title = "Legacy Sovereignty",
+            fields = listOf(SystemInfoField("owner", "Owner", "Legacy Alliance")),
+        )
+
+        val presentation = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state = selectedState(system(2, "1DQ1-A")),
+                routeState = RoutePlannerUiState(),
+                jumpState = JumpOverlayUiState(),
+                systemInfoState = SystemInfoState(2, listOf(legacy)),
+                sovereigntySnapshot = sovereigntySnapshot(SovereigntyFreshness.AVAILABLE),
+            ),
+        )
+
+        val sovereignty = assertNotNull(presentation.sovereignty)
+        assertEquals(
+            listOf("Owner Kind", "Alliance", "Alliance ID", "Corporation", "Corporation ID", "Status", "Freshness"),
+            sovereignty.fields.map { it.label },
+        )
+        assertEquals("Alliance", sovereignty.fields.first().value)
+        assertTrue(presentation.extensionSections.none { it.sectionId == "sovereignty" })
+    }
+
+    @Test
+    fun `Core sovereignty distinguishes stale unknown and unavailable and retains old Pack fallback only when typed data is absent`() {
+        val stale = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state = selectedState(system(2, "1DQ1-A")),
+                routeState = RoutePlannerUiState(),
+                jumpState = JumpOverlayUiState(),
+                sovereigntySnapshot = sovereigntySnapshot(SovereigntyFreshness.STALE, includeOwnership = false),
+            ),
+        )
+        assertEquals(listOf("Unknown", "Unknown", "Stale"), stale.sovereignty?.fields?.map { it.value })
+
+        val unavailable = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state = selectedState(system(2, "1DQ1-A")),
+                routeState = RoutePlannerUiState(),
+                jumpState = JumpOverlayUiState(),
+                sovereigntySnapshot = SovereigntySnapshot.unavailable(),
+            ),
+        )
+        assertEquals(listOf("Unknown", "Unknown", "Unavailable"), unavailable.sovereignty?.fields?.map { it.value })
+
+        val legacy = SystemInfoSection(
+            "sovereignty",
+            "Legacy",
+            fields = listOf(SystemInfoField("owner", "Owner", "Fallback")),
+        )
+        val fallback = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state = selectedState(system(2, "1DQ1-A")),
+                routeState = RoutePlannerUiState(),
+                jumpState = JumpOverlayUiState(),
+                systemInfoState = SystemInfoState(2, listOf(legacy)),
+                sovereigntySnapshot = SovereigntySnapshot.unavailable(),
+            ),
+        )
+        assertNull(fallback.sovereignty)
+        assertEquals(listOf(legacy), fallback.extensionSections)
     }
 
     @Test
@@ -419,6 +491,35 @@ class CompactSystemInfoCardTest {
         factionId = null,
         wormholeClassId = null,
     )
+
+    private fun sovereigntySnapshot(
+        freshness: SovereigntyFreshness,
+        includeOwnership: Boolean = true,
+    ): SovereigntySnapshot {
+        val observedAt = 1_700_000_000_000L
+        val ownership = if (includeOwnership) {
+            SystemOwnership(
+                systemId = 2,
+                ownerKind = SystemOwnerKind.ALLIANCE,
+                allianceId = 99,
+                allianceName = "Core Alliance",
+                corporationId = 98,
+                corporationName = "Core Corporation",
+                sovereigntyStatus = SovereigntyStatus.CLAIMED,
+                observedAtEpochMillis = observedAt,
+                source = "Sovereignty Pack",
+                freshness = freshness,
+            )
+        } else {
+            null
+        }
+        return SovereigntySnapshot(
+            systemsById = ownership?.let { mapOf(it.systemId to it) }.orEmpty(),
+            observedAtEpochMillis = observedAt,
+            source = "Sovereignty Pack",
+            freshness = freshness,
+        )
+    }
 
     private fun region() = Region(1, "Delve", UniversePosition(0.0, 0.0, 0.0), null, "绝地之域")
 

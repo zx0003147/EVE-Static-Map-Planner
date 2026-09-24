@@ -57,10 +57,24 @@ object OverlayManagementUiStateBuilder {
     fun build(
         overlayState: OverlayState,
         visibility: OverlayVisibilityPreferences,
+        sovereigntyAvailable: Boolean = false,
     ): OverlayManagementUiState = OverlayManagementUiState(
-        overlays = overlayState.layers.map { layerState ->
-            val key = layerState.key()
-            OverlayManagementItem(
+        overlays = buildList {
+            if (sovereigntyAvailable) {
+                add(
+                    OverlayManagementItem(
+                        key = SovereigntyPresentationVisibility.Key,
+                        name = "Sovereignty",
+                        description = "Alliance sovereignty from Planner Core",
+                        providerName = "Planner Core",
+                        providerDescription = "Typed system ownership supplied by the active Sovereignty provider",
+                        enabled = visibility.isEnabled(SovereigntyPresentationVisibility.Key),
+                    ),
+                )
+            }
+            overlayState.layers.mapTo(this) { layerState ->
+                val key = layerState.key()
+                OverlayManagementItem(
                 key = key,
                 name = layerState.layer.name,
                 description = layerState.layer.description,
@@ -68,11 +82,14 @@ object OverlayManagementUiStateBuilder {
                 providerDescription = layerState.provider.description,
                 enabled = visibility.isEnabled(key),
             )
+            }
         },
-        showSovereigntyLogoPreferences = overlayState.layers.any { layerState ->
-            layerState.provider.id == SOVEREIGNTY_PROVIDER_ID && layerState.layer.id == SOVEREIGNTY_LAYER_ID
-        },
+        showSovereigntyLogoPreferences = sovereigntyAvailable,
     )
+}
+
+object SovereigntyPresentationVisibility {
+    val Key = OverlayLayerKey("planner.core", "sovereignty")
 }
 
 object OverlayVisibilityFilter {
@@ -87,5 +104,3 @@ object OverlayVisibilityFilter {
 private fun OverlayLayerState.key() = OverlayLayerKey(provider.id, layer.id)
 
 private val OVERLAY_ID_SYNTAX = Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*")
-private const val SOVEREIGNTY_PROVIDER_ID = "sovereignty.pack.overlay"
-private const val SOVEREIGNTY_LAYER_ID = "sovereignty"

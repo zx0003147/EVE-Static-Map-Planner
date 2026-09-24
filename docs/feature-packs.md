@@ -171,10 +171,11 @@ The manager does not download, publish, or silently enable Packs. Canonical firs
 
 ## First-party interoperability example
 
-Sovereignty is maintained in the external Sovereignty Pack repository and demonstrates the preserved Overlay, System Info,
-PackStorage, manifest, and lifecycle contracts. Its PUBLIC_ESI acquisition, Last Known Good cache, ownership model,
-territory metadata, visual identity, emblem metadata, and startup freshness behavior are documented and tested in
-that repository rather than duplicated here.
+Sovereignty is maintained in the external Sovereignty Pack repository. Current Hosts consume its typed Sovereignty
+provider as the single business-data path, then build 2D/3D territory and desktop System Info presentation inside
+Planner. The Pack retains Overlay/System Info only as a feature-detected fallback for Hosts that predate typed
+Sovereignty. Its PUBLIC_ESI acquisition, Last Known Good cache, ownership model, Alliance Directory publication, and
+startup freshness behavior are documented and tested in that repository rather than duplicated here.
 
 For an explicit integration test, build the external repository's canonical
 `build/external-feature-pack/sovereignty.pack/pack.jar`, then run:

@@ -47,11 +47,14 @@ class ExternalFeaturePacksIntegrationTest {
                 assertTrue(runtime.startReport.failures.isEmpty())
                 assertEquals(2, classLoaders.size)
                 assertEquals(
-                    setOf("sovereignty.pack.overlay", "esi.character-location"),
+                    setOf("esi.character-location"),
                     runtime.overlayHost.state.value.layers.map { it.provider.id }.toSet(),
                 )
-                val fields = runtime.systemInfoHost.request(30004759).sections.single().fields.associate { it.key to it.value }
-                assertEquals("Cached Alliance", fields["owner"])
+                assertTrue(runtime.systemInfoHost.request(30004759).sections.none { it.sectionId == "sovereignty" })
+                assertEquals(
+                    "Cached Alliance",
+                    runtime.sovereigntyHost.state.value.snapshot.getOwnership(30004759)?.allianceName,
+                )
                 assertEquals(listOf(PackId("esi.pack")), runtime.packControlHost.state.value.map { it.packId })
                 assertEquals("No connected characters", runtime.packControlHost.state.value.single().secondaryText)
                 assertEquals(setOf("esi.pack"), runtime.routeActionHost.state.value.map { it.key.packId.value }.toSet())

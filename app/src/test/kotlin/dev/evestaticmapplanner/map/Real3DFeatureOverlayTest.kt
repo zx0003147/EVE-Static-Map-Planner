@@ -11,10 +11,6 @@ import dev.evestaticmapplanner.core.model.SchematicPosition
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.model.StargateConnection
 import dev.evestaticmapplanner.core.model.UniversePosition
-import dev.evestaticmapplanner.feature.api.OverlayEntry
-import dev.evestaticmapplanner.feature.api.OverlayLayer
-import dev.evestaticmapplanner.feature.api.OverlayLayerState
-import dev.evestaticmapplanner.feature.api.OverlayProviderDescriptor
 import dev.evestaticmapplanner.feature.api.OverlayState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,20 +30,15 @@ class Real3DFeatureOverlayTest {
                 Real3DCanonicalProjection,
             ),
         )
-        val state = OverlayState(
-            listOf(
-                OverlayLayerState(
-                    OverlayProviderDescriptor("sovereignty.pack.overlay", "Sovereignty"),
-                    OverlayLayer("sovereignty", "Sovereignty"),
-                    listOf(
-                        OverlayEntry("sovereignty", 1, "Alliance", value = style),
-                        OverlayEntry("sovereignty", 2, "Alliance", value = style),
-                    ),
-                ),
+        val sovereignty = SovereigntyMapPresentation(
+            entries = listOf(
+                SovereigntyMapEntry(1, "alliance:42", "Alliance", Color(0xFF336699), emblem),
+                SovereigntyMapEntry(2, "alliance:42", "Alliance", Color(0xFF336699), emblem),
             ),
+            freshness = dev.evestaticmapplanner.core.sovereignty.SovereigntyFreshness.AVAILABLE,
         )
 
-        val presentation = Real3DFeatureOverlayPresentationBuilder.build(state, geometry)
+        val presentation = Real3DFeatureOverlayPresentationBuilder.build(OverlayState(emptyList()), geometry, sovereignty)
 
         assertEquals(2, presentation.entries.size)
         assertEquals(1, presentation.emblems.size)
@@ -74,7 +65,6 @@ class Real3DFeatureOverlayTest {
     )
 
     private companion object {
-        const val style = "presentation-color:#FF336699;owner-key:alliance;" +
-            "presentation-emblem-key:a;presentation-emblem-url:https://example.test/a.png"
+        val emblem = PresentationEmblemReference("a", "https://example.test/a.png")
     }
 }

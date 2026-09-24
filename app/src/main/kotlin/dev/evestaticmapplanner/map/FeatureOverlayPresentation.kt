@@ -139,17 +139,18 @@ private class FeatureOverlayPreparationProfiler(
 private fun Long.toMillis(): Double = this / 1_000_000.0
 
 /** Converts generic system Overlay entries into one cached, mutually exclusive political territory partition. */
-object FeatureOverlayPresentationBuilder {
+internal object FeatureOverlayPresentationBuilder {
     fun build(
         state: OverlayState,
         scene: ProjectedMapScene,
+        sovereignty: SovereigntyMapPresentation = SovereigntyMapPresentation.Empty,
         metricsSink: (FeatureOverlayPreparationMetrics) -> Unit = {},
         clockNanos: () -> Long = System::nanoTime,
     ): FeatureOverlayPresentation {
         val started = clockNanos()
         val profiler = FeatureOverlayPreparationProfiler(clockNanos)
         val input = profiler.measure(FeatureOverlayPreparationStage.OVERLAY_CONVERSION) {
-            collectInput(state, scene)
+            collectInput(state, scene, sovereignty)
         }
         if (input.seeds.isEmpty()) {
             return FeatureOverlayPresentation(emptyList(), legendSections = input.legendSections).also {
@@ -187,8 +188,9 @@ object FeatureOverlayPresentationBuilder {
     internal fun assignmentSnapshot(
         state: OverlayState,
         scene: ProjectedMapScene,
+        sovereignty: SovereigntyMapPresentation = SovereigntyMapPresentation.Empty,
     ): FeatureTerritoryAssignmentSnapshot {
-        val seeds = collectInput(state, scene).seeds
+        val seeds = collectInput(state, scene, sovereignty).seeds
         if (seeds.isEmpty()) return FeatureTerritoryAssignmentSnapshot(emptyMap(), emptyMap(), emptySet())
         val field = buildSharedField(seeds, scene)
         val boundaryEdges = sharedBoundaryEdges(field.assignment)
@@ -229,7 +231,11 @@ object FeatureOverlayPresentationBuilder {
     }
 }
 
-private fun collectInput(state: OverlayState, scene: ProjectedMapScene): TerritoryInput {
+private fun collectInput(
+    state: OverlayState,
+    scene: ProjectedMapScene,
+    sovereignty: SovereigntyMapPresentation,
+): TerritoryInput {
     val legendSections = mutableListOf<FeatureOverlayLegendSection>()
     val seeds = mutableListOf<TerritorySeed>()
     state.layers.forEach { layerState ->
@@ -263,8 +269,27 @@ private fun collectInput(state: OverlayState, scene: ProjectedMapScene): Territo
                 systemId = entry.systemId,
                 ownerLabel = entry.title,
                 color = metadata.color ?: DEFAULT_FEATURE_OVERLAY_COLOR,
-                identity = TerritoryIdentity(layerState.provider.id, layerState.layer.id, ownerKey),
+                identity = TerritoryIdentity("${layerState.provider.id}|${layerState.layer.id}", ownerKey),
                 emblemReference = metadata.emblemReference,
+            )
+        }
+    }
+    val sovereigntyEntries = sovereignty.entries.filter { scene.nodesById.containsKey(it.systemId) }
+    if (sovereigntyEntries.isNotEmpty()) {
+        legendSections += FeatureOverlayLegendSection(
+            title = "Sovereignty",
+            entries = sovereigntyEntries
+                .distinctBy(SovereigntyMapEntry::ownerKey)
+                .map { FeatureOverlayLegendEntry(it.ownerLabel, it.color) }
+                .sortedBy(FeatureOverlayLegendEntry::label),
+        )
+        sovereigntyEntries.forEach { entry ->
+            seeds += TerritorySeed(
+                systemId = entry.systemId,
+                ownerLabel = entry.ownerLabel,
+                color = entry.color,
+                identity = TerritoryIdentity(SOVEREIGNTY_TERRITORY_DOMAIN, entry.ownerKey),
+                emblemReference = entry.emblemReference,
             )
         }
     }
@@ -287,8 +312,7 @@ private fun buildSharedField(
             cellSize = max(scale / GRID_CELLS_PER_SCALE, MIN_GEOMETRY_SCALE),
         )
         val owners = seeds.groupBy(TerritorySeed::identity)
-            .toSortedMap(compareBy<TerritoryIdentity> { it.providerId }
-                .thenBy { it.layerId }
+            .toSortedMap(compareBy<TerritoryIdentity> { it.domainKey }
                 .thenBy { it.ownerKey })
             .map { (identity, ownerSeeds) -> OwnerField(identity, ownerSeeds) }
         val ownerIndexByIdentity = owners.mapIndexed { index, owner -> owner.identity to index }.toMap()
@@ -1121,6 +1145,7 @@ private fun parsePresentationMetadata(value: String?): PresentationMetadata {
 }
 
 internal val DEFAULT_FEATURE_OVERLAY_COLOR = Color(0xFF8EA8BD)
+private const val SOVEREIGNTY_TERRITORY_DOMAIN = "planner-core-sovereignty"
 private val PRESENTATION_COLOR_PATTERN = Regex("presentation-color:#([0-9A-Fa-f]{8})")
 private const val OWNER_KEY_PREFIX = "owner-key:"
 private const val EMBLEM_KEY_PREFIX = "presentation-emblem-key:"
@@ -1162,8 +1187,8 @@ private data class TerritoryPresentationBuild(
 
 internal data class InteriorCell(val cell: GridCell, val clearanceCells: Int)
 
-private data class TerritoryIdentity(val providerId: String, val layerId: String, val ownerKey: String) {
-    val stableKey: String = "$providerId|$layerId|$ownerKey"
+private data class TerritoryIdentity(val domainKey: String, val ownerKey: String) {
+    val stableKey: String = "$domainKey|$ownerKey"
 }
 
 private data class OwnerField(val identity: TerritoryIdentity, val seeds: List<TerritorySeed>)

@@ -13,21 +13,53 @@ import kotlinx.coroutines.async
 internal class FeatureOverlayGeometryKey private constructor(
     private val scene: ProjectedMapScene,
     private val overlaySignature: FeatureOverlayGeometrySignature,
+    private val sovereigntySignature: SovereigntyGeometrySignature,
 ) {
     val projectionId = scene.projectionId
 
     override fun equals(other: Any?): Boolean =
-        other is FeatureOverlayGeometryKey && scene === other.scene && overlaySignature == other.overlaySignature
+        other is FeatureOverlayGeometryKey && scene === other.scene &&
+            overlaySignature == other.overlaySignature && sovereigntySignature == other.sovereigntySignature
 
-    override fun hashCode(): Int = 31 * System.identityHashCode(scene) + overlaySignature.hashCode()
+    override fun hashCode(): Int = 31 * (31 * System.identityHashCode(scene) + overlaySignature.hashCode()) +
+        sovereigntySignature.hashCode()
 
     companion object {
-        fun from(scene: ProjectedMapScene, state: OverlayState) = FeatureOverlayGeometryKey(
+        fun from(
+            scene: ProjectedMapScene,
+            state: OverlayState,
+            sovereignty: SovereigntyMapPresentation = SovereigntyMapPresentation.Empty,
+        ) = FeatureOverlayGeometryKey(
             scene = scene,
             overlaySignature = state.geometrySignature(),
+            sovereigntySignature = sovereignty.geometrySignature(),
         )
     }
 }
+
+private data class SovereigntyGeometrySignature(
+    val entries: List<SovereigntyEntryGeometrySignature>,
+)
+
+private data class SovereigntyEntryGeometrySignature(
+    val systemId: Int,
+    val ownerKey: String,
+    val ownerLabel: String,
+    val color: ULong,
+    val emblemKey: String?,
+)
+
+private fun SovereigntyMapPresentation.geometrySignature() = SovereigntyGeometrySignature(
+    entries = entries.map { entry ->
+        SovereigntyEntryGeometrySignature(
+            systemId = entry.systemId,
+            ownerKey = entry.ownerKey,
+            ownerLabel = entry.ownerLabel,
+            color = entry.color.value,
+            emblemKey = entry.emblemReference?.key,
+        )
+    },
+)
 
 private data class FeatureOverlayGeometrySignature(
     val layers: List<FeatureOverlayLayerGeometrySignature>,
@@ -113,8 +145,8 @@ internal class FeatureOverlayPresentationCoordinator(
     private val scope: CoroutineScope,
     private val computationDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val cache: FeatureOverlayPresentationCache = FeatureOverlayPresentationCache(),
-    private val computer: suspend (OverlayState, ProjectedMapScene) -> FeatureOverlayPresentation =
-        { state, scene -> FeatureOverlayPresentationBuilder.build(state, scene) },
+    private val computer: suspend (OverlayState, SovereigntyMapPresentation, ProjectedMapScene) -> FeatureOverlayPresentation =
+        { state, sovereignty, scene -> FeatureOverlayPresentationBuilder.build(state, scene, sovereignty) },
 ) {
     private val inFlightLock = Any()
     private val inFlight = linkedMapOf<FeatureOverlayGeometryKey, Deferred<FeatureOverlayPresentation>>()
@@ -124,12 +156,13 @@ internal class FeatureOverlayPresentationCoordinator(
     fun request(
         key: FeatureOverlayGeometryKey,
         state: OverlayState,
+        sovereignty: SovereigntyMapPresentation,
         scene: ProjectedMapScene,
     ): FeatureOverlayPresentationRequest {
         cache.request(key)?.let { return FeatureOverlayPresentationRequest.Cached(it) }
         val deferred = synchronized(inFlightLock) {
             inFlight[key] ?: scope.async(computationDispatcher, start = CoroutineStart.LAZY) {
-                computer(state, scene).also { presentation -> cache.complete(key, presentation) }
+                computer(state, sovereignty, scene).also { presentation -> cache.complete(key, presentation) }
             }.also { created ->
                 inFlight[key] = created
                 created.invokeOnCompletion {
@@ -140,6 +173,12 @@ internal class FeatureOverlayPresentationCoordinator(
         }
         return FeatureOverlayPresentationRequest.Pending(deferred)
     }
+
+    fun request(
+        key: FeatureOverlayGeometryKey,
+        state: OverlayState,
+        scene: ProjectedMapScene,
+    ): FeatureOverlayPresentationRequest = request(key, state, SovereigntyMapPresentation.Empty, scene)
 
     fun isCurrent(key: FeatureOverlayGeometryKey): Boolean = cache.isCurrent(key)
 }

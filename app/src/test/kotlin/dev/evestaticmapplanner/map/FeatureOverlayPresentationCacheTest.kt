@@ -43,7 +43,7 @@ class FeatureOverlayPresentationCacheTest {
         val coordinator = FeatureOverlayPresentationCoordinator(
             scope = backgroundScope,
             computationDispatcher = StandardTestDispatcher(testScheduler),
-            computer = { _, requestedScene ->
+            computer = { _, _, requestedScene ->
                 if (requestedScene.projectionId == officialScene.projectionId) officialGate.await() else realGate.await()
             },
         )

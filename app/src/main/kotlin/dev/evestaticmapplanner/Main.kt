@@ -129,6 +129,7 @@ import dev.evestaticmapplanner.preferences.MiniMapSettingsWindow
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.PreferencesCategory
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
+import dev.evestaticmapplanner.preferences.SovereigntyPresentationVisibility
 import dev.evestaticmapplanner.preferences.PropertiesPreferencesStore
 import dev.evestaticmapplanner.shortcut.UnsupportedGlobalPushToTalkService
 import dev.evestaticmapplanner.route.RoutePlannerViewModel
@@ -975,6 +976,7 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val featureOverlayState by featurePackRuntime.overlayHost.state.collectAsState()
     val systemInfoState by featurePackRuntime.systemInfoHost.state.collectAsState()
+    val sovereigntyHostState by featurePackRuntime.sovereigntyHost.state.collectAsState()
     val routeActions by featurePackRuntime.routeActionHost.state.collectAsState()
     val normalRouteSnapshot = remember(routeState.activeRoute, featurePackRuntime) {
         featurePackRuntime.routeSnapshotAdapter.normal(routeState.activeRoute)
@@ -1090,6 +1092,10 @@ private fun FrameWindowScope.ReadyApplication(
             universeBuild = currentBuild.toString(),
             missionState = missionState,
             featureOverlayState = visibleFeatureOverlayState,
+            sovereigntySnapshot = sovereigntyHostState.snapshot,
+            sovereigntyPresentationEnabled = mapState.appPreferences.overlayVisibility.isEnabled(
+                SovereigntyPresentationVisibility.Key,
+            ),
             systemInfoState = systemInfoState,
             routeActions = routeActions,
             normalRouteSnapshot = normalRouteSnapshot,
@@ -1198,6 +1204,7 @@ private fun FrameWindowScope.ReadyApplication(
             aiControlError = aiPreferenceError,
             featurePackManagerViewModel = featurePackManagerViewModel,
             overlayState = featureOverlayState,
+            sovereigntyAvailable = sovereigntyHostState.providerAvailable,
             webPackExportState = webPackExportState,
             sharedMapState = sharedMapState,
             sharedMapOperationError = sharedMapOperationError,

@@ -44,7 +44,7 @@ class OverlayVisibilityTest {
     }
 
     @Test
-    fun `Sovereignty logo setting is absent without registered Sovereignty overlay`() {
+    fun `Sovereignty logo setting is absent without a typed Sovereignty provider`() {
         val empty = OverlayManagementUiStateBuilder.build(
             OverlayState(emptyList()),
             OverlayVisibilityPreferences.Defaults,
@@ -59,7 +59,7 @@ class OverlayVisibilityTest {
     }
 
     @Test
-    fun `Sovereignty logo setting is present with registered Sovereignty overlay`() {
+    fun `Sovereignty controls are driven by typed provider availability instead of legacy overlay IDs`() {
         val provider = OverlayProviderDescriptor("sovereignty.pack.overlay", "Sovereignty")
         val state = OverlayState(listOf(
             OverlayLayerState(
@@ -69,9 +69,17 @@ class OverlayVisibilityTest {
             ),
         ))
 
-        val uiState = OverlayManagementUiStateBuilder.build(state, OverlayVisibilityPreferences.Defaults)
+        val legacyOnly = OverlayManagementUiStateBuilder.build(state, OverlayVisibilityPreferences.Defaults)
+        val typed = OverlayManagementUiStateBuilder.build(
+            OverlayState(emptyList()),
+            OverlayVisibilityPreferences.Defaults.withEnabled(SovereigntyPresentationVisibility.Key, false),
+            sovereigntyAvailable = true,
+        )
 
-        assertTrue(uiState.showSovereigntyLogoPreferences)
+        assertFalse(legacyOnly.showSovereigntyLogoPreferences)
+        assertTrue(typed.showSovereigntyLogoPreferences)
+        assertEquals(listOf("Sovereignty"), typed.overlays.map { it.name })
+        assertFalse(typed.overlays.single().enabled)
     }
 
     @Test

@@ -109,6 +109,7 @@ internal fun Real3DMapCanvas(
     showAnsiblexLayer: Boolean,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
+    sovereigntyPresentation: SovereigntyMapPresentation,
     markerState: MarkerUiState,
     sharedMapState: SharedMapState,
     sharedMarkerState: SharedMarkerPresentationState,
@@ -142,8 +143,8 @@ internal fun Real3DMapCanvas(
     val camera = state.real3DCamera ?: return
     if (state.canvasSize.isEmpty) return
     val geometry = remember(scene) { Real3DStaticGeometry.from(scene) }
-    val featurePresentation = remember(featureOverlayState, geometry) {
-        Real3DFeatureOverlayPresentationBuilder.build(featureOverlayState, geometry)
+    val featurePresentation = remember(featureOverlayState, sovereigntyPresentation, geometry) {
+        Real3DFeatureOverlayPresentationBuilder.build(featureOverlayState, geometry, sovereigntyPresentation)
     }
     val visibleStargateConnectionKeys = remember(
         geometry,

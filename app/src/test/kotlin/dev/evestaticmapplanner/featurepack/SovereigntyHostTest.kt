@@ -74,6 +74,22 @@ class SovereigntyHostTest {
     }
 
     @Test
+    fun `provider can re-register after removal and restores available ownership`() {
+        val host = SovereigntyHost()
+        val capability = host.scopedCapability(PackId("sovereignty.pack"))
+        val first = capability.register(MutableProvider(available("First Alliance")))
+
+        first.close()
+        assertEquals(SovereigntyFreshness.UNAVAILABLE, host.snapshot().freshness)
+
+        capability.register(MutableProvider(available("Restored Alliance")))
+
+        assertTrue(host.state.value.providerAvailable)
+        assertEquals(SovereigntyFreshness.AVAILABLE, host.snapshot().freshness)
+        assertEquals("Restored Alliance", host.getOwnership(30_000_001)?.allianceName)
+    }
+
+    @Test
     fun `provider unavailable without last good remains unavailable`() {
         val host = SovereigntyHost()
         host.scopedCapability(PackId("sovereignty.pack")).register(

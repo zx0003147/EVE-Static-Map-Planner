@@ -1,5 +1,9 @@
 package dev.evestaticmapplanner.localization
 
+import dev.evestaticmapplanner.core.sovereignty.SovereigntyFreshness
+import dev.evestaticmapplanner.core.sovereignty.SovereigntyStatus
+import dev.evestaticmapplanner.core.sovereignty.SystemOwnerKind
+
 interface SystemInfoStrings {
     val selectedSystem: String
     val noSystemSelected: String
@@ -29,9 +33,20 @@ interface SystemInfoStrings {
     val available: String
     val unavailable: String
     val ownerUnknown: String
+    val sovereignty: String
+    val sovereigntyOwnerKind: String
+    val sovereigntyAlliance: String
+    val sovereigntyAllianceId: String
+    val sovereigntyCorporation: String
+    val sovereigntyCorporationId: String
+    val sovereigntyStatus: String
+    val sovereigntyFreshness: String
 
     fun regionValue(value: String): String
     fun constellationValue(value: String): String
     fun updatedBy(displayName: String): String
     fun fallbackSystem(systemId: Int): String
+    fun sovereigntyOwnerKind(kind: SystemOwnerKind): String
+    fun sovereigntyStatus(status: SovereigntyStatus): String
+    fun sovereigntyFreshness(freshness: SovereigntyFreshness): String
 }

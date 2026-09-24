@@ -103,6 +103,7 @@ import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.preferences.AnsiblexPreferences
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.sovereignty.SovereigntySnapshot
 import java.nio.file.Path
 
 @Composable
@@ -129,6 +130,8 @@ internal fun StaticMapScreen(
     universeBuild: String,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
+    sovereigntySnapshot: SovereigntySnapshot,
+    sovereigntyPresentationEnabled: Boolean,
     systemInfoState: SystemInfoState,
     routeActions: List<RouteActionUiState>,
     normalRouteSnapshot: RouteSnapshot?,
@@ -260,6 +263,10 @@ internal fun StaticMapScreen(
                         sharedMarkerState = sharedMarkerState,
                         missionState = missionState,
                         featureOverlayState = featureOverlayState,
+                        sovereigntyPresentation = SovereigntyMapPresentationBuilder.build(
+                            sovereigntySnapshot,
+                            enabled = sovereigntyPresentationEnabled,
+                        ),
                         compactSystemInfo = CompactSystemInfoPresentationBuilder.build(
                             state,
                             routeState,
@@ -267,6 +274,7 @@ internal fun StaticMapScreen(
                             state.selectedSystemId?.let(markerState.markersBySystemId::get),
                             systemInfoState,
                             sharedMarkerState,
+                            sovereigntySnapshot = sovereigntySnapshot,
                             strings = strings.systemInfo,
                             locale = state.appPreferences.uiLocale,
                         ),

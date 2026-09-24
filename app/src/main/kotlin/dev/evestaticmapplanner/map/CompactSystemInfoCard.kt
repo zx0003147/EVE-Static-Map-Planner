@@ -33,6 +33,10 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
 import dev.evestaticmapplanner.core.marker.Marker
 import dev.evestaticmapplanner.core.marker.MarkerColor
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
+import dev.evestaticmapplanner.core.sovereignty.SovereigntyFreshness
+import dev.evestaticmapplanner.core.sovereignty.SovereigntySnapshot
+import dev.evestaticmapplanner.core.sovereignty.SovereigntyStatus
+import dev.evestaticmapplanner.core.sovereignty.SystemOwnerKind
 import dev.evestaticmapplanner.marker.markerColor
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoState
@@ -65,8 +69,11 @@ data class CompactSystemInfoPresentation(
     val isInJumpIntersection: Boolean,
     val marker: CompactMarkerPresentation?,
     val sharedMarker: CompactSharedMarkerPresentation? = null,
+    val sovereignty: CompactSovereigntyPresentation? = null,
     val extensionSections: List<SystemInfoSection> = emptyList(),
 )
+
+data class CompactSovereigntyPresentation(val fields: List<CompactInfoField>)
 
 data class CompactMarkerPresentation(
     val glyph: String,
@@ -95,6 +102,7 @@ object CompactSystemInfoPresentationBuilder {
         marker: Marker? = null,
         systemInfoState: SystemInfoState = SystemInfoState(null, emptyList()),
         sharedMarkerState: SharedMarkerPresentationState = SharedMarkerPresentationState.Empty,
+        sovereigntySnapshot: SovereigntySnapshot = SovereigntySnapshot.unavailable(),
         localTimeZone: ZoneId = ZoneId.systemDefault(),
         strings: SystemInfoStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).systemInfo,
         locale: AppLocale = AppLocale.EN_US,
@@ -105,8 +113,21 @@ object CompactSystemInfoPresentationBuilder {
             ?.markersBySystemId
             ?.get(selectedSystemId)
             ?.toCompactPresentation(sharedMarkerState.isStale, localTimeZone)
-        val extensionSections = systemInfoState.sections.takeIf { systemInfoState.systemId == selectedSystemId }
+        val allExtensionSections = systemInfoState.sections.takeIf { systemInfoState.systemId == selectedSystemId }
             ?: emptyList()
+        val hasLegacySovereigntyFallback = allExtensionSections.any { it.sectionId == LEGACY_SOVEREIGNTY_SECTION_ID }
+        val sovereignty = if (
+            sovereigntySnapshot.freshness != SovereigntyFreshness.UNAVAILABLE || !hasLegacySovereigntyFallback
+        ) {
+            sovereigntyPresentation(sovereigntySnapshot, selectedSystemId, strings)
+        } else {
+            null
+        }
+        val extensionSections = if (sovereignty != null) {
+            allExtensionSections.filterNot { it.sectionId == LEGACY_SOVEREIGNTY_SECTION_ID }
+        } else {
+            allExtensionSections
+        }
         val fallbackName = state.scene?.nodesById?.get(selectedSystemId)?.system?.name
             ?: strings.fallbackSystem(selectedSystemId)
         val details = state.selectedSystemDetails?.takeIf { it.system.id == selectedSystemId }
@@ -121,6 +142,7 @@ object CompactSystemInfoPresentationBuilder {
                 isInJumpIntersection = false,
                 marker = marker?.toCompactPresentation(strings),
                 sharedMarker = sharedMarker,
+                sovereignty = sovereignty,
                 extensionSections = extensionSections,
             )
 
@@ -169,8 +191,42 @@ object CompactSystemInfoPresentationBuilder {
             isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,
             marker = marker?.toCompactPresentation(strings),
             sharedMarker = sharedMarker,
+            sovereignty = sovereignty,
             extensionSections = extensionSections,
         )
+    }
+
+    private fun sovereigntyPresentation(
+        snapshot: SovereigntySnapshot,
+        systemId: Int,
+        strings: SystemInfoStrings,
+    ): CompactSovereigntyPresentation {
+        val ownership = snapshot.getOwnership(systemId)
+        val fields = buildList {
+            add(
+                CompactInfoField(
+                    strings.sovereigntyOwnerKind,
+                    strings.sovereigntyOwnerKind(ownership?.ownerKind ?: SystemOwnerKind.UNKNOWN),
+                ),
+            )
+            ownership?.allianceName?.let { add(CompactInfoField(strings.sovereigntyAlliance, it)) }
+            ownership?.allianceId?.let { add(CompactInfoField(strings.sovereigntyAllianceId, it.toString())) }
+            ownership?.corporationName?.let { add(CompactInfoField(strings.sovereigntyCorporation, it)) }
+            ownership?.corporationId?.let { add(CompactInfoField(strings.sovereigntyCorporationId, it.toString())) }
+            add(
+                CompactInfoField(
+                    strings.sovereigntyStatus,
+                    strings.sovereigntyStatus(ownership?.sovereigntyStatus ?: SovereigntyStatus.UNKNOWN),
+                ),
+            )
+            add(
+                CompactInfoField(
+                    strings.sovereigntyFreshness,
+                    strings.sovereigntyFreshness(snapshot.freshness),
+                ),
+            )
+        }
+        return CompactSovereigntyPresentation(fields)
     }
 }
 
@@ -232,6 +288,10 @@ fun CompactSystemInfoCard(
             presentation.marker?.let { marker -> CompactMarkerSection(marker) }
             presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker, onEditSharedMarker) }
             if (presentation.isLoading) return@Column
+            presentation.sovereignty?.let { sovereignty ->
+                Text(strings.sovereignty, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+                sovereignty.fields.forEach { field -> CompactInfoRow(field) }
+            }
             if (presentation.ansiblexConnections.isNotEmpty()) {
                 Text(strings.ansiblexConnections, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
                 presentation.ansiblexConnections.forEach {
@@ -280,6 +340,8 @@ fun CompactSystemInfoCard(
         }
     }
 }
+
+private const val LEGACY_SOVEREIGNTY_SECTION_ID = "sovereignty"
 
 @Composable
 private fun CompactSharedMarkerSection(marker: CompactSharedMarkerPresentation, onEdit: (() -> Unit)?) {

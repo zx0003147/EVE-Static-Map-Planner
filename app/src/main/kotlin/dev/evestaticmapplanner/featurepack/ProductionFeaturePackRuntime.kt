@@ -63,7 +63,10 @@ class ProductionFeaturePackRuntime private constructor(
 
     /** Starts dynamic Pack work only after the Host has presented its first base-map frame. */
     fun onFirstMapDisplayed() {
-        if (!closed.get()) overlayHost.enableBackgroundRefreshes()
+        if (!closed.get()) {
+            overlayHost.enableBackgroundRefreshes()
+            sovereigntyHost.requestRefresh()
+        }
     }
 
     fun closeSafely(): ProductionFeaturePackCloseReport {
