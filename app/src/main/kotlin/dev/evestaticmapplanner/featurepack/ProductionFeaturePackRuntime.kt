@@ -56,6 +56,7 @@ class ProductionFeaturePackRuntime private constructor(
     val characterTrackingHost: CharacterTrackingHost,
     val eveIdentityHost: EveIdentityHost,
     val allianceDirectoryHost: AllianceDirectoryHost,
+    val sovereigntyHost: SovereigntyHost,
     internal val routeSnapshotAdapter: InteractiveRouteSnapshotAdapter,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
@@ -76,6 +77,8 @@ class ProductionFeaturePackRuntime private constructor(
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "EVE Identity Host close failed", it) }
         runCatching { allianceDirectoryHost.close() }
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Alliance Directory Host close failed", it) }
+        runCatching { sovereigntyHost.close() }
+            .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Sovereignty Host close failed", it) }
         runCatching { routeActionHost.close() }
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Route Action Host close failed", it) }
         runCatching { overlayHost.close() }
@@ -129,6 +132,9 @@ class ProductionFeaturePackRuntime private constructor(
             val allianceDirectoryHost = AllianceDirectoryHost { packId, operation, error ->
                 AppDiagnostics.warning("Alliance Directory failed: pack=$packId operation=$operation", error)
             }
+            val sovereigntyHost = SovereigntyHost { packId, operation, error ->
+                AppDiagnostics.warning("Sovereignty failed: pack=$packId operation=$operation", error)
+            }
             val routeSnapshotAdapter = InteractiveRouteSnapshotAdapter()
             val stateStore = PropertiesFeaturePackManagerStateStore(
                 normalizedApplicationRoot.resolve("feature-pack-manager.properties"),
@@ -148,6 +154,7 @@ class ProductionFeaturePackRuntime private constructor(
                     characterTrackingHost,
                     eveIdentityHost,
                     allianceDirectoryHost,
+                    sovereigntyHost,
                 ),
                 host = host,
             )
@@ -162,6 +169,7 @@ class ProductionFeaturePackRuntime private constructor(
                     characterTrackingHost,
                     eveIdentityHost,
                     allianceDirectoryHost,
+                    sovereigntyHost,
                     routeSnapshotAdapter,
                 )
             }
@@ -184,6 +192,7 @@ class ProductionFeaturePackRuntime private constructor(
                 characterTrackingHost,
                 eveIdentityHost,
                 allianceDirectoryHost,
+                sovereigntyHost,
                 routeSnapshotAdapter,
             )
         }
@@ -198,6 +207,7 @@ class ProductionFeaturePackRuntime private constructor(
             characterTrackingHost: CharacterTrackingHost,
             eveIdentityHost: EveIdentityHost,
             allianceDirectoryHost: AllianceDirectoryHost,
+            sovereigntyHost: SovereigntyHost,
         ) = FeaturePackContextFactory { descriptor ->
             ProductionFeaturePackContext(
                 applicationRoot.toAbsolutePath().normalize(),
@@ -212,6 +222,7 @@ class ProductionFeaturePackRuntime private constructor(
                     characterTrackingHost.scopedCapability(descriptor.packId),
                     eveIdentityHost.scopedCapability(descriptor.packId),
                     allianceDirectoryHost.scopedCapability(descriptor.packId),
+                    sovereigntyHost.scopedCapability(descriptor.packId),
                 ),
             )
         }

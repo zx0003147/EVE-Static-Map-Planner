@@ -5,6 +5,7 @@ import dev.evestaticmapplanner.feature.api.FeaturePackEntrypoint
 import dev.evestaticmapplanner.feature.api.PackId
 import dev.evestaticmapplanner.preferences.OverlayManagementUiStateBuilder
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
+import dev.evestaticmapplanner.core.sovereignty.SovereigntyFreshness
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -137,6 +138,11 @@ class SovereigntyPackIntegrationTest {
                     setOf("feature-pack:sovereignty.pack"),
                     directory.snapshot.entriesById.getValue(99000001L).sources,
                 )
+                val sovereignty = runtime.sovereigntyHost.state.value
+                assertTrue(sovereignty.providerAvailable)
+                assertEquals(SovereigntyFreshness.AVAILABLE, sovereignty.snapshot.freshness)
+                assertEquals(99000001L, sovereignty.snapshot.getOwnership(30004759)?.allianceId)
+                assertEquals("Cached Alliance", sovereignty.snapshot.getOwnership(30004759)?.allianceName)
                 assertTrue(events.contains("INFO:sovereignty.pack:Using fresh cached PUBLIC_ESI sovereignty snapshot"))
                 assertFalse(events.any { it.contains("attempting one startup refresh", ignoreCase = true) })
                 assertFalse(events.any { it.contains("startup refresh succeeded", ignoreCase = true) })
@@ -148,6 +154,8 @@ class SovereigntyPackIntegrationTest {
             assertTrue(runtime.systemInfoHost.request(30004759).sections.isEmpty())
             assertFalse(runtime.allianceDirectoryHost.state.value.providerAvailable)
             assertTrue(runtime.allianceDirectoryHost.state.value.snapshot.alliancesById.isEmpty())
+            assertFalse(runtime.sovereigntyHost.state.value.providerAvailable)
+            assertEquals(SovereigntyFreshness.UNAVAILABLE, runtime.sovereigntyHost.state.value.snapshot.freshness)
         }
 
     private inline fun withTempDirectory(block: (Path) -> Unit) {

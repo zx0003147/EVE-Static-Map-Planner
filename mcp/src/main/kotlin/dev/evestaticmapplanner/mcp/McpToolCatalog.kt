@@ -51,9 +51,9 @@ internal object McpToolCatalog {
         },
         queryTool(
             "get_system_info",
-            "Return safe static information for one canonical solar system ID. This does not change the map.",
+            "Return safe static information and current Core sovereignty ownership for one canonical solar system ID. This does not change the map.",
             schema(listOf("systemId"), "systemId" to positiveIntegerProperty()),
-            objectOutput("system", "regionName", "constellationName", "x", "y", "z", "stargateCount"),
+            systemInfoOutput(),
         ) { arguments ->
             val input = StrictArguments(arguments, setOf("systemId"), setOf("systemId"))
             client.getSystemInfo(input.positiveInt("systemId"))
@@ -641,6 +641,35 @@ private fun objectOutput(vararg required: String) = schema(
     required.toList(),
     *required.map { it to JsonObject(emptyMap()) }.toTypedArray(),
 )
+
+private fun systemInfoOutput(): ToolSchema {
+    val sovereignty = objectProperty(
+        listOf("ownerKind", "status", "freshness"),
+        "ownerKind" to enumProperty(linkedSetOf("ALLIANCE", "CORPORATION", "FACTION", "UNCLAIMED", "UNKNOWN")),
+        "allianceId" to positiveIntegerProperty(),
+        "allianceName" to plainStringProperty(),
+        "corporationId" to positiveIntegerProperty(),
+        "corporationName" to plainStringProperty(),
+        "factionId" to positiveIntegerProperty(),
+        "factionName" to plainStringProperty(),
+        "status" to enumProperty(linkedSetOf("CLAIMED", "UNCLAIMED", "UNKNOWN")),
+        "observedAtEpochMillis" to nonNegativeIntegerProperty(),
+        "source" to plainStringProperty(),
+        "freshness" to enumProperty(linkedSetOf("AVAILABLE", "STALE", "UNAVAILABLE")),
+        "errorMessage" to plainStringProperty(),
+    )
+    return schema(
+        listOf("system", "regionName", "constellationName", "x", "y", "z", "stargateCount"),
+        "system" to JsonObject(emptyMap()),
+        "regionName" to plainStringProperty(),
+        "constellationName" to plainStringProperty(),
+        "x" to buildJsonObject { put("type", "number") },
+        "y" to buildJsonObject { put("type", "number") },
+        "z" to buildJsonObject { put("type", "number") },
+        "stargateCount" to nonNegativeIntegerProperty(),
+        "sovereignty" to sovereignty,
+    )
+}
 
 private fun invalidOptimizerInputFailure() = LocalControlClientResult.Failure(
     LocalControlClientError(LocalControlClientErrorCode.INVALID_INPUT, "The optimizer input is invalid."),

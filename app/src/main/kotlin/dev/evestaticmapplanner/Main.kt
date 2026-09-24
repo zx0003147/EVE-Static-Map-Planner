@@ -489,10 +489,11 @@ private fun FrameWindowScope.ReadyApplication(
             currentIdentityContextProvider = { routeViewModel.state.value.currentIdentityContext },
         )
     }
-    val systemReadPort = remember(configuration) {
+    val systemReadPort = remember(configuration, featurePackRuntime) {
         RepositorySystemReadPort(
             searchRepository,
             universeRepository,
+            sovereigntySnapshotProvider = featurePackRuntime.sovereigntyHost::snapshot,
         )
     }
     val mapControlCoordinator = remember(

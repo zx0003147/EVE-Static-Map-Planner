@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.control.GetSystemInfoRequest
 import dev.evestaticmapplanner.control.MapControlService
 import dev.evestaticmapplanner.control.SystemInfoDto
 import dev.evestaticmapplanner.control.SystemSummaryDto
+import dev.evestaticmapplanner.control.SystemSovereigntyDto
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -27,6 +28,8 @@ class GetSystemInfoToolTest {
         assertTrue(result.contains("\"systemId\":30000142"))
         assertTrue(result.contains("\"name\":\"Jita\""))
         assertTrue(result.contains("\"regionName\":\"The Forge\""))
+        assertTrue(result.contains("\"allianceId\":99000001"))
+        assertTrue(result.contains("\"freshness\":\"AVAILABLE\""))
         assertEquals(
             listOf(GetSystemInfoTool.TOOL_CALL_DIAGNOSTIC, GetSystemInfoTool.TOOL_SUCCESS_DIAGNOSTIC),
             diagnostics,
@@ -114,4 +117,13 @@ private val JITA_INFO = SystemInfoDto(
     y = 6.07553069223847E16,
     z = 1.1746922706072243E17,
     stargateCount = 7,
+    sovereignty = SystemSovereigntyDto(
+        ownerKind = "ALLIANCE",
+        allianceId = 99_000_001,
+        allianceName = "Test Alliance",
+        status = "CLAIMED",
+        observedAtEpochMillis = 1_790_164_800_000,
+        source = "Sovereignty Pack / PUBLIC_ESI",
+        freshness = "AVAILABLE",
+    ),
 )

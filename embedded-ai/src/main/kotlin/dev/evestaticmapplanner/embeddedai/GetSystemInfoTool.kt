@@ -50,4 +50,20 @@ private fun dev.evestaticmapplanner.control.SystemInfoDto.toToolJson(): String =
     put("y", y)
     put("z", z)
     put("stargateCount", stargateCount)
+    sovereignty?.let { sovereignty ->
+        put("sovereignty", buildJsonObject {
+            put("ownerKind", sovereignty.ownerKind)
+            sovereignty.allianceId?.let { put("allianceId", it) }
+            sovereignty.allianceName?.let { put("allianceName", it) }
+            sovereignty.corporationId?.let { put("corporationId", it) }
+            sovereignty.corporationName?.let { put("corporationName", it) }
+            sovereignty.factionId?.let { put("factionId", it) }
+            sovereignty.factionName?.let { put("factionName", it) }
+            put("status", sovereignty.status)
+            sovereignty.observedAtEpochMillis?.let { put("observedAtEpochMillis", it) }
+            sovereignty.source?.let { put("source", it) }
+            put("freshness", sovereignty.freshness)
+            sovereignty.errorMessage?.let { put("errorMessage", it) }
+        })
+    }
 }.toString()

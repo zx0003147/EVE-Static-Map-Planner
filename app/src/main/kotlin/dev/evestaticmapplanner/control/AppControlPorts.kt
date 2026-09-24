@@ -25,6 +25,7 @@ import dev.evestaticmapplanner.core.route.buildDesktopRouteGraph
 import dev.evestaticmapplanner.core.route.RouteOptions
 import dev.evestaticmapplanner.core.route.NormalNavigationOutcome
 import dev.evestaticmapplanner.core.route.NormalNavigationPlanner
+import dev.evestaticmapplanner.core.sovereignty.SovereigntySnapshot
 import dev.evestaticmapplanner.map.MapViewModel
 import dev.evestaticmapplanner.wormhole.AddWormholeResult
 import dev.evestaticmapplanner.wormhole.WormholeSessionStore
@@ -37,6 +38,7 @@ import kotlinx.coroutines.withContext
 class RepositorySystemReadPort(
     private val searchRepository: SystemSearchRepository,
     private val universeRepository: UniverseRepository,
+    private val sovereigntySnapshotProvider: () -> SovereigntySnapshot = { SovereigntySnapshot.unavailable() },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : SystemReadPort {
     override suspend fun searchSystems(query: String, limit: Int): List<SystemSummaryDto> = withContext(ioDispatcher) {
@@ -45,6 +47,7 @@ class RepositorySystemReadPort(
 
     override suspend fun getSystemInfo(systemId: Int): SystemInfoDto? = withContext(ioDispatcher) {
         universeRepository.getSystemDetails(systemId)?.let { details ->
+            val sovereigntySnapshot = sovereigntySnapshotProvider()
             SystemInfoDto(
                 system = details.system.toSummary(),
                 regionName = details.region.name,
@@ -53,6 +56,29 @@ class RepositorySystemReadPort(
                 y = details.system.position.y,
                 z = details.system.position.z,
                 stargateCount = details.stargateCount,
+                sovereignty = sovereigntySnapshot.getOwnership(systemId)?.let { ownership ->
+                    SystemSovereigntyDto(
+                        ownerKind = ownership.ownerKind.name,
+                        allianceId = ownership.allianceId,
+                        allianceName = ownership.allianceName,
+                        corporationId = ownership.corporationId,
+                        corporationName = ownership.corporationName,
+                        factionId = ownership.factionId,
+                        factionName = ownership.factionName,
+                        status = ownership.sovereigntyStatus.name,
+                        observedAtEpochMillis = ownership.observedAtEpochMillis,
+                        source = ownership.source,
+                        freshness = ownership.freshness.name,
+                        errorMessage = sovereigntySnapshot.errorMessage,
+                    )
+                } ?: SystemSovereigntyDto(
+                    ownerKind = "UNKNOWN",
+                    status = "UNKNOWN",
+                    observedAtEpochMillis = sovereigntySnapshot.observedAtEpochMillis,
+                    source = sovereigntySnapshot.source,
+                    freshness = sovereigntySnapshot.freshness.name,
+                    errorMessage = sovereigntySnapshot.errorMessage,
+                ),
             )
         }
     }

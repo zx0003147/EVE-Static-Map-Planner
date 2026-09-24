@@ -15,6 +15,36 @@ import kotlin.test.assertTrue
 
 class McpTextFallbackFormatterTest {
     @Test
+    fun `system info includes Core sovereignty ownership`() {
+        val result = buildJsonObject {
+            put("system", buildJsonObject {
+                put("systemId", 30_004_759)
+                put("canonicalName", "1DQ1-A")
+                put("regionId", 10_000_060)
+                put("constellationId", 20_000_782)
+                put("securityStatus", -0.1)
+            })
+            put("regionName", "Delve")
+            put("constellationName", "O-EIMK")
+            put("stargateCount", 5)
+            put("sovereignty", buildJsonObject {
+                put("ownerKind", "ALLIANCE")
+                put("allianceId", 1_354_830_081)
+                put("allianceName", "Goonswarm Federation")
+                put("status", "CLAIMED")
+                put("freshness", "AVAILABLE")
+                put("source", "Sovereignty Pack / PUBLIC_ESI")
+            })
+        }
+
+        val text = McpTextFallbackFormatter.format("get_system_info", result)
+
+        assertContains(text, "Sovereignty alliance:\nGoonswarm Federation")
+        assertContains(text, "Sovereignty alliance ID:\n1354830081")
+        assertContains(text, "Sovereignty freshness:\nAVAILABLE")
+    }
+
+    @Test
     fun `small search result includes canonical name and system id`() {
         val result = buildJsonObject {
             put("systems", buildJsonArray {

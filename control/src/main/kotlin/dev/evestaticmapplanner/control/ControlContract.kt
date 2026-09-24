@@ -63,6 +63,22 @@ data class SystemInfoDto(
     val y: Double,
     val z: Double,
     val stargateCount: Int,
+    val sovereignty: SystemSovereigntyDto? = null,
+)
+
+data class SystemSovereigntyDto(
+    val ownerKind: String,
+    val allianceId: Long? = null,
+    val allianceName: String? = null,
+    val corporationId: Long? = null,
+    val corporationName: String? = null,
+    val factionId: Long? = null,
+    val factionName: String? = null,
+    val status: String,
+    val observedAtEpochMillis: Long? = null,
+    val source: String? = null,
+    val freshness: String,
+    val errorMessage: String? = null,
 )
 
 data class NormalRouteDto(

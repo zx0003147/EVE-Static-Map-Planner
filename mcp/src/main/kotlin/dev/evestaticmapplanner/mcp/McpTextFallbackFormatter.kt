@@ -102,6 +102,14 @@ internal object McpTextFallbackFormatter {
             appendField("Constellation ID", system?.text("constellationId"))
             appendField("Security", system?.text("securityStatus"))
             appendField("Stargates", content.text("stargateCount"))
+            content.obj("sovereignty")?.let { sovereignty ->
+                appendField("Sovereignty owner kind", sovereignty.text("ownerKind"))
+                appendField("Sovereignty alliance", sovereignty.text("allianceName"))
+                appendField("Sovereignty alliance ID", sovereignty.text("allianceId"))
+                appendField("Sovereignty status", sovereignty.text("status"))
+                appendField("Sovereignty freshness", sovereignty.text("freshness"))
+                appendField("Sovereignty source", sovereignty.text("source"))
+            }
         }.trimEnd()
     }
 
