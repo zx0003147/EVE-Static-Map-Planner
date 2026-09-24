@@ -65,6 +65,14 @@ import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.localization.LocalAppStrings
 import kotlin.math.hypot
 
+internal fun selectVisible2DAnsiblexConnections(
+    connections: List<AnsiblexConnection>,
+    showUnavailable: Boolean,
+    currentIdentityContext: CurrentIdentityContext?,
+): List<AnsiblexConnection> = connections.filter { connection ->
+    connection.enabled && (showUnavailable || AnsiblexAccessPolicy.isUsable(connection, currentIdentityContext))
+}
+
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun StaticMapCanvas(
@@ -166,9 +174,7 @@ fun StaticMapCanvas(
     val mapDisplayPreferences = state.appPreferences.mapDisplay
     val savedMarkerAppearance = state.appPreferences.marker.savedMarkerAppearance
     val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer, currentIdentityContext) {
-        ansiblexConnections.filter { connection ->
-            connection.enabled && (showAnsiblexLayer || AnsiblexAccessPolicy.isUsable(connection, currentIdentityContext))
-        }
+        selectVisible2DAnsiblexConnections(ansiblexConnections, showAnsiblexLayer, currentIdentityContext)
     }
     val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentIdentityContext) {
         AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentIdentityContext)
@@ -673,13 +679,13 @@ fun StaticMapCanvas(
                 )
             }
         }
-        if (showAnsiblexLayer && ansiblexConnections.isNotEmpty()) {
+        if (visibleAnsiblexConnections.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ANSIBLEX)) {
                 with(MapRenderer) {
                     drawAnsiblexLayer(
                         scene,
                         transform,
-                        ansiblexConnections,
+                        visibleAnsiblexConnections,
                         visualEmphasis,
                         currentIdentityContext,
                     )

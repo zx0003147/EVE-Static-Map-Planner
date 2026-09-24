@@ -85,6 +85,14 @@ import dev.evestaticmapplanner.shared.model.SharedMapState
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.RegionNameResolver
 
+internal fun selectVisibleReal3DAnsiblexConnections(
+    connections: List<AnsiblexConnection>,
+    showUnavailable: Boolean,
+    currentIdentityContext: CurrentIdentityContext?,
+): List<AnsiblexConnection> = connections.filter { connection ->
+    connection.enabled && (showUnavailable || AnsiblexAccessPolicy.isUsable(connection, currentIdentityContext))
+}
+
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun Real3DMapCanvas(
@@ -171,9 +179,7 @@ internal fun Real3DMapCanvas(
     val renderCache = remember(scene, textMeasurer) { MapRenderCache() }
     val density = LocalDensity.current
     val visibleAnsiblexConnections = remember(ansiblexConnections, showAnsiblexLayer, currentIdentityContext) {
-        ansiblexConnections.filter { connection ->
-            connection.enabled && (showAnsiblexLayer || AnsiblexAccessPolicy.isUsable(connection, currentIdentityContext))
-        }
+        selectVisibleReal3DAnsiblexConnections(ansiblexConnections, showAnsiblexLayer, currentIdentityContext)
     }
     val usableVisibleAnsiblexConnections = remember(visibleAnsiblexConnections, currentIdentityContext) {
         AnsiblexAccessPolicy.usableConnections(visibleAnsiblexConnections, currentIdentityContext)
@@ -535,7 +541,7 @@ internal fun Real3DMapCanvas(
                 spheres = jumpSpheres,
                 userOverlayCount = enabledJumpOverlays.size,
             )
-            if (showAnsiblexLayer) {
+            if (visibleAnsiblexConnections.isNotEmpty()) {
                 drawReal3DAnsiblexLayer(
                     geometry,
                     camera,
