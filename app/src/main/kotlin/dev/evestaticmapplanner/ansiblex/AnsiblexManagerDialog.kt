@@ -86,7 +86,7 @@ fun AnsiblexManagerDialog(
         clearAllPhrase = ""
     }
     val dismissManager = {
-        if (confirmation == null) onDismiss()
+        if (confirmation == null && !showPasteImport) onDismiss()
     }
 
     DialogWindow(
@@ -311,31 +311,17 @@ fun AnsiblexManagerDialog(
                 onDismiss = dismissConfirmation,
             )
         }
-    }
-    if (showPasteImport) {
-        AlertDialog(
-            onDismissRequest = { showPasteImport = false },
-            title = { Text(strings.pasteTitle) },
-            text = {
-                OutlinedTextField(
-                    value = pastedText,
-                    onValueChange = { pastedText = it },
-                    label = { Text(strings.pasteHint) },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 12,
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.previewPastedImport(pastedText)
-                        showPasteImport = false
-                    },
-                    enabled = pastedText.isNotBlank(),
-                ) { Text(strings.parse) }
-            },
-            dismissButton = { TextButton(onClick = { showPasteImport = false }) { Text(appStrings.common.cancel) } },
-        )
+        if (showPasteImport) {
+            AnsiblexPasteImportDialog(
+                pastedText = pastedText,
+                onPastedTextChange = { pastedText = it },
+                onParse = { text ->
+                    viewModel.previewPastedImport(text)
+                    showPasteImport = false
+                },
+                onDismiss = { showPasteImport = false },
+            )
+        }
     }
 }
 
@@ -360,6 +346,37 @@ internal fun AnsiblexImportEntryButtons(
         }
         Button(onClick = onPasteImport, enabled = !busy) { Text(strings.pasteImport) }
     }
+}
+
+@Composable
+internal fun AnsiblexPasteImportDialog(
+    pastedText: String,
+    onPastedTextChange: (String) -> Unit,
+    onParse: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val appStrings = LocalAppStrings.current
+    val strings = appStrings.ansiblex
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.pasteTitle) },
+        text = {
+            OutlinedTextField(
+                value = pastedText,
+                onValueChange = onPastedTextChange,
+                label = { Text(strings.pasteHint) },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 12,
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { onParse(pastedText) },
+                enabled = pastedText.isNotBlank(),
+            ) { Text(strings.parse) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(appStrings.common.cancel) } },
+    )
 }
 
 internal val ANSIBLEX_MANAGER_DEFAULT_SIZE = DpSize(960.dp, 760.dp)

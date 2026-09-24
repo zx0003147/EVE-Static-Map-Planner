@@ -1,6 +1,8 @@
 package dev.evestaticmapplanner.ansiblex
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.getValue
@@ -8,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
@@ -16,6 +19,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.Modifier
@@ -139,5 +143,98 @@ class AnsiblexManagerDialogTest {
         onNodeWithText("Paste Text Import").performClick()
         assertEquals(1, fileClicks)
         assertEquals(1, pasteClicks)
+    }
+
+    @Test
+    fun `paste dialog accepts text and forwards it to preview parsing`() = runComposeUiTest {
+        var pastedText by mutableStateOf("")
+        var parsedText: String? = null
+        setContent {
+            MaterialTheme {
+                AnsiblexPasteImportDialog(
+                    pastedText = pastedText,
+                    onPastedTextChange = { pastedText = it },
+                    onParse = { parsedText = it },
+                    onDismiss = {},
+                )
+            }
+        }
+
+        onNodeWithText("Parse").assertIsNotEnabled()
+        onNode(hasSetTextAction()).performClick().performTextInput(PASTED_IMPORT_FIXTURE)
+        waitForIdle()
+        onNodeWithText("Parse").assertIsEnabled().performClick()
+
+        assertEquals(PASTED_IMPORT_FIXTURE, parsedText)
+    }
+
+    @Test
+    fun `cancelling paste dialog closes only paste state`() = runComposeUiTest {
+        var managerVisible by mutableStateOf(true)
+        var pasteVisible by mutableStateOf(true)
+        var managerClicks = 0
+        setContent {
+            MaterialTheme {
+                if (managerVisible) {
+                    Box {
+                        Button(onClick = { managerClicks++ }) { Text("Manager action") }
+                        if (pasteVisible) {
+                            AnsiblexPasteImportDialog(
+                                pastedText = PASTED_IMPORT_FIXTURE,
+                                onPastedTextChange = {},
+                                onParse = {},
+                                onDismiss = { pasteVisible = false },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        onNodeWithText("Cancel").performClick()
+        waitForIdle()
+
+        assertTrue(!pasteVisible)
+        assertTrue(managerVisible)
+        onNodeWithText("Manager action").assertIsDisplayed().performClick()
+        assertEquals(1, managerClicks)
+    }
+
+    @Test
+    fun `paste dialog blocks pointer interaction with manager content`() = runComposeUiTest {
+        var managerVisible by mutableStateOf(true)
+        var pasteVisible by mutableStateOf(true)
+        var managerClicks = 0
+        setContent {
+            MaterialTheme {
+                if (managerVisible) {
+                    Box {
+                        Button(onClick = { managerClicks++ }) { Text("Manager action") }
+                        if (pasteVisible) {
+                            AnsiblexPasteImportDialog(
+                                pastedText = PASTED_IMPORT_FIXTURE,
+                                onPastedTextChange = {},
+                                onParse = {},
+                                onDismiss = { pasteVisible = false },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        onNodeWithText("Manager action").performMouseInput {
+            moveTo(center)
+            press()
+            release()
+        }
+        waitForIdle()
+
+        assertEquals(0, managerClicks)
+        assertTrue(managerVisible)
+    }
+
+    private companion object {
+        const val PASTED_IMPORT_FIXTURE = "from,to\n1DQ1-A,T5ZI-S"
     }
 }
