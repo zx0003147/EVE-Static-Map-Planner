@@ -71,6 +71,32 @@ class RoutePlannerViewModelTest {
     }
 
     @Test
+    fun `equal selected identity context retains active Ansiblex route`() = runTest {
+        val fixture = Fixture(withShortcut = true)
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler), selectAlliance = false)
+        advanceUntilIdle()
+        val selectedIdentity = CurrentIdentityContext(
+            source = CurrentIdentitySource.ESI,
+            character = EveCharacterIdentity(90_000_001, "Alpha"),
+            allianceId = TEST_ALLIANCE_ID,
+            allianceName = "Example Alliance",
+            allianceTicker = "EX",
+        )
+        viewModel.setCurrentIdentityContext(selectedIdentity)
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.setUseAnsiblex(true)
+        viewModel.calculateRoute()
+        val route = viewModel.state.value.activeRoute
+        assertEquals(1, route?.ansiblexJumps)
+
+        viewModel.setCurrentIdentityContext(selectedIdentity.copy())
+
+        assertEquals(route, viewModel.state.value.activeRoute)
+        assertEquals(1, viewModel.state.value.usableAnsiblexCount)
+    }
+
+    @Test
     fun `show unavailable toggle does not change allowed Ansiblex route or Mini Map input`() = runTest {
         val fixture = Fixture(withShortcut = true)
         val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))

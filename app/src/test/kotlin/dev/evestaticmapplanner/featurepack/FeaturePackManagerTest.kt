@@ -1,6 +1,11 @@
 package dev.evestaticmapplanner.featurepack
 
 import dev.evestaticmapplanner.feature.api.CoreVersion
+import dev.evestaticmapplanner.feature.api.EveCharacterIdentitySnapshot
+import dev.evestaticmapplanner.feature.api.EveCorporationIdentitySnapshot
+import dev.evestaticmapplanner.feature.api.EveIdentityProvider
+import dev.evestaticmapplanner.feature.api.EveIdentityProviderSnapshot
+import dev.evestaticmapplanner.feature.api.EveIdentitySnapshot
 import dev.evestaticmapplanner.feature.api.FeatureApiVersions
 import dev.evestaticmapplanner.feature.api.FeaturePackContext
 import dev.evestaticmapplanner.feature.api.FeaturePackHostInfo
@@ -15,6 +20,7 @@ import dev.evestaticmapplanner.feature.api.SystemInfoRegistration
 import dev.evestaticmapplanner.feature.api.SystemInfoRegistry
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import java.util.jar.JarEntry
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
@@ -225,6 +231,31 @@ class FeaturePackManagerTest {
             assertTrue(Files.isDirectory(root.resolve("feature-packs")))
         }
 
+    @Test
+    fun `ViewModel persists only a successful explicit identity selection`() = withTempDirectory { root ->
+        val identityHost = EveIdentityHost()
+        identityHost.scopedCapability(PackId("esi.pack")).register(
+            object : EveIdentityProvider {
+                override fun snapshot() = EveIdentityProviderSnapshot(
+                    listOf(identity(1, "Alpha"), identity(2, "Bravo")),
+                )
+            },
+        )
+        identityHost.completeInitialProviderRegistration()
+        var persistedCharacterId: Long? = null
+        val viewModel = FeaturePackManagerViewModel(
+            manager = manager(root, mutableListOf()),
+            eveIdentityHost = identityHost,
+            onIdentitySelected = { persistedCharacterId = it },
+        )
+
+        assertFalse(viewModel.selectIdentity(3))
+        assertEquals(null, persistedCharacterId)
+        assertTrue(viewModel.selectIdentity(2))
+        assertEquals(2L, persistedCharacterId)
+        assertEquals(2L, identityHost.state.value.selectedCharacterId)
+    }
+
     private fun manager(
         root: Path,
         events: MutableList<String>,
@@ -246,6 +277,13 @@ class FeaturePackManagerTest {
 
     private fun stateStore(root: Path) =
         PropertiesFeaturePackManagerStateStore(root.resolve("feature-pack-manager.properties"))
+
+    private fun identity(id: Long, name: String) = EveIdentitySnapshot(
+        EveCharacterIdentitySnapshot(id, name),
+        EveCorporationIdentitySnapshot(100 + id, "$name Corporation", "C$id"),
+        null,
+        Instant.ofEpochMilli(1_000 + id),
+    )
 
     private fun installFixture(root: Path): Path {
         val destination = root.resolve("feature-packs/fixture.pack/pack.jar")

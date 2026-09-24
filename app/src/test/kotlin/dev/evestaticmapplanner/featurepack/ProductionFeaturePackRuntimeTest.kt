@@ -69,6 +69,27 @@ class ProductionFeaturePackRuntimeTest {
         }
 
     @Test
+    fun `persisted identity is restored before startup provider registration completes`() =
+        withTempDirectory("identity-startup-order-") { applicationRoot ->
+            val runtime = ProductionFeaturePackRuntime.start(
+                packRoot = applicationRoot.resolve("feature-packs"),
+                applicationRoot = applicationRoot,
+                initialSelectedCharacterId = 90_000_002,
+            )
+
+            assertEquals(90_000_002L, runtime.eveIdentityHost.state.value.selectedCharacterId)
+            assertEquals(
+                EveIdentitySelectionReason.RESTORE_PERSISTED,
+                runtime.eveIdentityHost.state.value.lastSelectionReason,
+            )
+            assertEquals(
+                EveIdentitySelectionAvailability.UNAVAILABLE,
+                runtime.eveIdentityHost.state.value.selectionAvailability,
+            )
+            assertTrue(runtime.closeSafely().failures.isEmpty())
+        }
+
+    @Test
     fun `startup does not scan or load installed Packs when none are enabled`() =
         withTempDirectory("fp-3-disabled-pack-") { applicationRoot ->
             val packRoot = applicationRoot.resolve("feature-packs")

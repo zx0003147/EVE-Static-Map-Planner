@@ -61,6 +61,7 @@ import dev.evestaticmapplanner.alliance.PublicAllianceMetadataService
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidation
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
+import dev.evestaticmapplanner.featurepack.EveIdentitySelectionReason
 import dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntime
 import dev.evestaticmapplanner.feature.api.CharacterTrackingPriority
 import dev.evestaticmapplanner.preferences.EveIdentityPreferences
@@ -187,7 +188,14 @@ fun main(arguments: Array<String>) {
         return
     }
     McpDiscoveryStartup.maintain()
-    val featurePackRuntime = ProductionFeaturePackRuntime.start()
+    val preferencesStore = PropertiesPreferencesStore(
+        ApplicationDirectories.root().resolve("settings.properties"),
+        warningSink = AppDiagnostics::warning,
+    )
+    val startupPreferences = preferencesStore.load()
+    val featurePackRuntime = ProductionFeaturePackRuntime.start(
+        initialSelectedCharacterId = startupPreferences.eveIdentity.selectedCharacterId,
+    )
     featurePackRuntime.startReport.failures.forEach { failure ->
         AppDiagnostics.warning("Feature Pack loading continued after ${failure.kind}: ${failure.message}", failure.cause)
     }
@@ -222,14 +230,8 @@ fun main(arguments: Array<String>) {
     application {
         val wormholeSessionStore = remember { WormholeSessionStore() }
         val windowState = rememberWindowState(width = 1280.dp, height = 780.dp)
-        val preferencesStore = remember {
-            PropertiesPreferencesStore(
-                ApplicationDirectories.root().resolve("settings.properties"),
-                warningSink = AppDiagnostics::warning,
-            )
-        }
-        val localizationState = remember(preferencesStore) {
-            AppLocalizationState(preferencesStore.load().uiLocale)
+        val localizationState = remember {
+            AppLocalizationState(startupPreferences.uiLocale)
         }
         val localization by localizationState.state.collectAsState()
         var startup by remember { mutableStateOf(initial) }
@@ -892,23 +894,19 @@ private fun FrameWindowScope.ReadyApplication(
     }
     LaunchedEffect(
         mapState.isLoading,
-        mapState.appPreferences.eveIdentity.selectedCharacterId,
-        featurePackRuntime.eveIdentityHost,
-    ) {
-        if (!mapState.isLoading) {
-            featurePackRuntime.eveIdentityHost.restorePreferredCharacterId(
-                mapState.appPreferences.eveIdentity.selectedCharacterId,
-            )
-        }
-    }
-    LaunchedEffect(
-        mapState.isLoading,
+        eveIdentityState.selectionRevision,
+        eveIdentityState.lastSelectionReason,
         eveIdentityState.selectedCharacterId,
         mapState.appPreferences.eveIdentity.selectedCharacterId,
         mapViewModel,
     ) {
         val selected = eveIdentityState.selectedCharacterId
-        if (!mapState.isLoading && selected != null && selected != mapState.appPreferences.eveIdentity.selectedCharacterId) {
+        if (
+            !mapState.isLoading &&
+            eveIdentityState.lastSelectionReason == EveIdentitySelectionReason.AUTO_SELECT_SINGLE_STABLE &&
+            selected != null &&
+            selected != mapState.appPreferences.eveIdentity.selectedCharacterId
+        ) {
             mapViewModel.updateEveIdentityPreferences(EveIdentityPreferences(selected))
         }
     }

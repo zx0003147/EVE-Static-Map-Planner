@@ -1660,8 +1660,24 @@ private fun FeaturePacksPreferencesContent(viewModel: FeaturePackManagerViewMode
             style = MaterialTheme.typography.bodySmall,
         )
         identityState.errors.forEach { Text(it, color = EveColors.Error) }
-        if (identityState.refreshing) {
+        val unavailableSelectedId = identityState.selectedCharacterId?.takeIf { selectedId ->
+            identityState.identities.none { it.character.id == selectedId }
+        }
+        if (identityState.refreshing && unavailableSelectedId == null) {
             Text(strings.text(PreferencesText.REFRESHING_EVE_IDENTITIES), color = EveColors.SecondaryText)
+        }
+        if (unavailableSelectedId != null) {
+            Text(strings.text(PreferencesText.ID, unavailableSelectedId), style = MaterialTheme.typography.titleSmall)
+            Text(
+                strings.text(
+                    if (identityState.refreshing) {
+                        PreferencesText.REFRESHING_EVE_IDENTITIES
+                    } else {
+                        PreferencesText.UNAVAILABLE
+                    },
+                ),
+                color = EveColors.SecondaryText,
+            )
         }
         if (identityState.identities.isEmpty() && !identityState.refreshing) {
             Text(strings.text(PreferencesText.NO_EVE_IDENTITIES), color = EveColors.SecondaryText)

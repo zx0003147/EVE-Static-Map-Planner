@@ -99,6 +99,7 @@ class ProductionFeaturePackRuntime private constructor(
             applicationRoot: Path = packRoot.toAbsolutePath().normalize().parent,
             eventSink: (String) -> Unit = {},
             host: LocalFeaturePackHost = LocalFeaturePackHost(),
+            initialSelectedCharacterId: Long? = null,
         ): ProductionFeaturePackRuntime {
             val normalizedRoot = packRoot.toAbsolutePath().normalize()
             val normalizedApplicationRoot = applicationRoot.toAbsolutePath().normalize()
@@ -129,9 +130,16 @@ class ProductionFeaturePackRuntime private constructor(
             val characterTrackingHost = CharacterTrackingHost { packId, operation, error ->
                 AppDiagnostics.warning("Character Tracking failed: pack=$packId operation=$operation", error)
             }
-            val eveIdentityHost = EveIdentityHost { packId, operation, error ->
-                AppDiagnostics.warning("EVE Identity failed: pack=$packId operation=$operation", error)
-            }
+            val eveIdentityHost = EveIdentityHost(
+                failureSink = { packId, operation, error ->
+                    AppDiagnostics.warning("EVE Identity failed: pack=$packId operation=$operation", error)
+                },
+                diagnosticSink = { diagnostic ->
+                    val message = diagnostic.toLogMessage()
+                    if (diagnostic.selectionChanged) AppDiagnostics.info(message) else AppDiagnostics.debug(message)
+                },
+            )
+            initialSelectedCharacterId?.let(eveIdentityHost::restorePreferredCharacterId)
             val allianceDirectoryHost = AllianceDirectoryHost { packId, operation, error ->
                 AppDiagnostics.warning("Alliance Directory failed: pack=$packId operation=$operation", error)
             }
@@ -162,6 +170,7 @@ class ProductionFeaturePackRuntime private constructor(
                 host = host,
             )
             if (!Files.exists(normalizedRoot) || stateStore.load().values.none(StoredFeaturePackState::enabled)) {
+                eveIdentityHost.completeInitialProviderRegistration()
                 return ProductionFeaturePackRuntime(
                     ProductionFeaturePackStartReport(normalizedRoot, emptyList(), emptyList(), emptyList()),
                     manager,
@@ -178,6 +187,7 @@ class ProductionFeaturePackRuntime private constructor(
             }
 
             val startup = manager.startEnabledPacks()
+            eveIdentityHost.completeInitialProviderRegistration()
             return ProductionFeaturePackRuntime(
                 ProductionFeaturePackStartReport(
                     packRoot = normalizedRoot,
@@ -302,6 +312,14 @@ private fun parseCoreVersion(version: String): CoreVersion {
         components.getOrNull(1)?.toIntOrNull() ?: 0,
         components.getOrNull(2)?.toIntOrNull() ?: 0,
     )
+}
+
+private fun EveIdentitySelectionDiagnostic.toLogMessage(): String {
+    val event = if (selectionChanged) "selection-changed" else "selection-state"
+    return "EVE Identity $event: oldCharacterId=$oldCharacterId newCharacterId=$newCharacterId " +
+        "reason=$reason selectedCharacterId=$selectedCharacterId availableCharacterIds=$availableCharacterIds " +
+        "refreshing=$refreshing availability=$availability providerRevision=$providerRevision " +
+        "source=$source packId=${packId?.value}"
 }
 
 private fun platformName(): String = when {

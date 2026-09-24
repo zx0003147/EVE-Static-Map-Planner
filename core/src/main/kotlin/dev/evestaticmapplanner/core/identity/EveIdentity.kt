@@ -107,9 +107,7 @@ data class CurrentIdentityState(
         require(identities.map { it.character.id }.distinct().size == identities.size) {
             "EVE identity character IDs must be unique"
         }
-        require(selectedCharacterId == null || identities.any { it.character.id == selectedCharacterId }) {
-            "Selected EVE identity must exist in the identity list"
-        }
+        require(selectedCharacterId == null || selectedCharacterId > 0) { "Character ID must be positive" }
     }
 
     val currentIdentity: EveIdentity?
@@ -119,24 +117,16 @@ data class CurrentIdentityState(
         get() = currentIdentity?.currentAllianceId
 }
 
-/** Pure reconciliation rules for retaining or choosing the current identity as ESI data changes. */
+/** Orders refreshed identity data while retaining the authoritative character selection unchanged. */
 object CurrentIdentitySelection {
     fun reconcile(
         identities: List<EveIdentity>,
         selectedCharacterId: Long?,
-        preferredCharacterId: Long? = null,
     ): CurrentIdentityState {
         val ordered = identities
             .distinctBy { it.character.id }
             .sortedWith(compareBy<EveIdentity> { it.character.name.lowercase() }.thenBy { it.character.id })
-        val availableIds = ordered.mapTo(hashSetOf()) { it.character.id }
-        val selected = when {
-            preferredCharacterId in availableIds -> preferredCharacterId
-            selectedCharacterId in availableIds -> selectedCharacterId
-            ordered.size == 1 -> ordered.single().character.id
-            else -> null
-        }
-        return CurrentIdentityState(ordered, selected)
+        return CurrentIdentityState(ordered, selectedCharacterId)
     }
 
     fun select(state: CurrentIdentityState, characterId: Long): CurrentIdentityState {
