@@ -8,29 +8,6 @@ plugins {
 }
 
 val appVersion = providers.gradleProperty("appVersion").get()
-val nodeExecutableName = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "node.exe" else "node"
-val systemNodeCommand = System.getenv("PATH")
-    ?.split(File.pathSeparator)
-    ?.asSequence()
-    ?.map { File(it, nodeExecutableName) }
-    ?.firstOrNull(File::isFile)
-    ?.absolutePath
-    ?: nodeExecutableName
-
-plugins.withType<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsPlugin>().configureEach {
-    extensions.configure<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsEnvSpec> {
-        download.set(false)
-        command.set(systemNodeCommand)
-    }
-}
-
-plugins.withType<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin>().configureEach {
-    @Suppress("DEPRECATION_ERROR")
-    extensions.configure<org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension> {
-        download = false
-        command = systemNodeCommand
-    }
-}
 
 allprojects {
     group = "dev.evestaticmapplanner"

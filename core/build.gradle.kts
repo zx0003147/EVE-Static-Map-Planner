@@ -4,9 +4,6 @@ plugins {
 
 kotlin {
     jvm()
-    js(IR) {
-        nodejs()
-    }
     jvmToolchain(25)
 
     sourceSets {

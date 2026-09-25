@@ -48,7 +48,6 @@ jobs:
           .\gradlew.bat --no-daemon --console=plain
           :core:jvmTest
           :shared-client:jvmTest
-          :shared-client:jsBrowserTest
           :app:test
           :control:test
           :control-transport:test
