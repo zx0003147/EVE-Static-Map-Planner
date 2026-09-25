@@ -94,7 +94,6 @@ import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
 import dev.evestaticmapplanner.ui.EveWindowChrome
 import dev.evestaticmapplanner.ui.EveWindowSurface
-import dev.evestaticmapplanner.webpack.WebPackExportUiState
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -137,7 +136,6 @@ internal fun PreferencesWindow(
     featurePackManagerViewModel: FeaturePackManagerViewModel,
     overlayState: OverlayState,
     sovereigntyAvailable: Boolean,
-    webPackExportState: WebPackExportUiState,
     sharedMapState: SharedMapState,
     sharedMapOperationError: UiMessage?,
     sharedAdminState: SharedAdminUiState,
@@ -154,7 +152,6 @@ internal fun PreferencesWindow(
     onSharedMapClearAdminError: () -> Unit,
     onSharedMapClearInvite: () -> Unit,
     onOverlayVisibilityChange: (OverlayVisibilityPreferences) -> Unit,
-    onExportWebPack: () -> Unit,
     onAiControlChange: (Boolean) -> Unit,
     onAiSavedMarkerAccessChange: (Boolean) -> Unit,
     onResetMapDisplay: () -> Unit,
@@ -250,10 +247,6 @@ internal fun PreferencesWindow(
                                 onMapDisplayChange,
                                 onResetOverlayVisibility,
                             )
-                            PreferencesCategory.WEB_PACK -> WebPackPreferencesContent(
-                                webPackExportState,
-                                onExportWebPack,
-                            )
                             PreferencesCategory.SHARED_MAP -> SharedMapPreferencesContent(
                                 preferences.sharedMap,
                                 sharedMapState,
@@ -328,7 +321,6 @@ internal enum class PreferencesCategory {
     AI_FEATURES,
     FEATURE_PACKS,
     OVERLAYS,
-    WEB_PACK,
     SHARED_MAP,
 }
 
@@ -338,7 +330,6 @@ internal fun PreferencesStrings.categoryLabel(category: PreferencesCategory): St
         PreferencesCategory.AI_FEATURES -> PreferencesText.CATEGORY_AI_FEATURES
         PreferencesCategory.FEATURE_PACKS -> PreferencesText.CATEGORY_FEATURE_PACKS
         PreferencesCategory.OVERLAYS -> PreferencesText.CATEGORY_OVERLAYS
-        PreferencesCategory.WEB_PACK -> PreferencesText.CATEGORY_WEB_PACK
         PreferencesCategory.SHARED_MAP -> PreferencesText.CATEGORY_SHARED_MAP
     },
 )
@@ -1225,56 +1216,6 @@ internal const val VOICE_OUTPUT_SECTION_TEST_TAG = "voice-output-section"
 internal const val VOICE_INPUT_PROVIDER_TEST_TAG = "voice-input-provider"
 internal const val VOICE_OUTPUT_PROVIDER_TEST_TAG = "voice-output-provider"
 internal const val VOICE_SPEECH_PACK_TEST_TAG = "voice-speech-pack"
-
-@Composable
-internal fun WebPackPreferencesContent(
-    state: WebPackExportUiState,
-    onExport: () -> Unit,
-) {
-    val strings = LocalAppStrings.current.preferences
-    Text(strings.text(PreferencesText.WEB_PACK), style = MaterialTheme.typography.titleMedium)
-    Text(
-        strings.text(
-            PreferencesText.WEB_PACK_HELP,
-            dev.evestaticmapplanner.webpack.WebPackSchema.EXPORT_DIRECTORY_NAME,
-        ),
-        color = EveColors.SecondaryText,
-    )
-    TextButton(
-        onClick = onExport,
-        enabled = state !is WebPackExportUiState.Exporting,
-    ) {
-        Text(strings.text(if (state is WebPackExportUiState.Exporting) PreferencesText.EXPORTING else PreferencesText.EXPORT_WEB_PACK))
-    }
-    when (state) {
-        WebPackExportUiState.Idle -> Text(
-            strings.text(PreferencesText.WEB_PACK_READ_ONLY_HELP),
-            color = EveColors.SecondaryText,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        WebPackExportUiState.Exporting -> Text(
-            strings.text(PreferencesText.WEB_PACK_WRITING),
-            color = EveColors.Important,
-        )
-        is WebPackExportUiState.Failure -> {
-            Text(strings.text(PreferencesText.WEB_PACK_EXPORT_FAILED), color = EveColors.Error)
-            Text(state.message, color = EveColors.Error, style = MaterialTheme.typography.bodySmall)
-        }
-        is WebPackExportUiState.Success -> {
-            val report = state.report
-            Text(strings.text(PreferencesText.WEB_PACK_EXPORT_SUCCEEDED), color = EveColors.Important)
-            Text("SDE: ${report.sdeBuild}")
-            Text(strings.text(PreferencesText.SYSTEMS_COUNT, report.counts.systems))
-            Text(strings.text(PreferencesText.STARGATE_LINKS_COUNT, report.counts.stargateLinks))
-            Text(strings.text(PreferencesText.REGIONS_COUNT, report.counts.regions))
-            Text(strings.text(PreferencesText.CONSTELLATIONS_COUNT, report.counts.constellations))
-            Text(strings.text(PreferencesText.ANSIBLEX_LINKS_COUNT, report.counts.ansiblexLinks))
-            Text(strings.text(PreferencesText.PACK_SCHEMA, report.schemaVersion))
-            Text(strings.text(PreferencesText.PACK_VERSION, report.packVersion), style = MaterialTheme.typography.bodySmall)
-            Text(strings.text(PreferencesText.OUTPUT_PATH, report.outputDirectory), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
 
 @Composable
 private fun SharedMapPreferencesContent(

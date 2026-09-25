@@ -4,6 +4,9 @@
 
 **The core map works independently from local static universe data and does not require AI, ESI, or any Feature Pack. Optional integrations add AI map control through the EVE Map Assistant plugin and account-aware or live-data features through external ESI and Sovereignty Feature Packs.**
 
+The Web product has been retired. EVE Static Map Planner is maintained as a Windows desktop application; the
+shared protocol remains available for Desktop collaboration and route handoff compatibility.
+
 Version 1.4.0 applies a restrained EVE-inspired visual restyle across the desktop shell, menus, route tools, dialogs,
 preferences, and manager windows. It also fixes clipped shared input text and Preferences content spacing while
 preserving the existing map rendering, routes, selection visuals, and interactions.
@@ -119,24 +122,14 @@ Connected clients poll every 30 seconds and atomically replace the selected Work
 the last in-memory snapshot remains visible as stale in degraded mode; it is never persisted as a shared snapshot
 disk cache. Disconnecting clears Shared Marker state without affecting local markers or AI Missions.
 
-The Web client is also a Protocol v1 Shared Marker client. It preserves the Server URL + single-use Invite Code
-workflow and supports role-aware list, map display, locate, create, edit, delete, polling, and reconnect. With
-**Remember this device** enabled (the default), Web stores only the Server origin, Device Access Token, device name,
-and Workspace ID in browser IndexedDB and validates the credential against `/me` and `/workspaces` on every restore.
-Invalid, expired, revoked, or mismatched credentials are deleted. Disconnect removes the browser credential without
-revoking the server device; disabling Remember keeps it session-only. Cross-origin deployment requires the server's
-exact `SHARED_MAP_ALLOWED_ORIGINS` allowlist, and production Web/server origins must both use HTTPS. See
-[`docs/web-client.md`](docs/web-client.md).
-
 When the Server advertises the optional Protocol v1 `route-handoffs` feature, Desktop can publish the current Normal
-or Capital route from its corresponding panel. Web members of the same Workspace see recent Desktop routes and may
-explicitly load one; intent and the exact resolved snapshot travel together, and a Web Pack/SDE mismatch is shown
-instead of silently recalculating a different route. Viewer can read; Editor/Admin can publish. A publisher may
-delete their own handoff, and an Admin may delete any handoff in the Workspace.
+or Capital route from its corresponding panel. Route intent, the exact resolved snapshot, and compatibility metadata
+travel together. Viewer can read; Editor/Admin can publish. A publisher may delete their own handoff, and an Admin
+may delete any handoff in the Workspace.
 
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
 visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.4.0.
-The stable `fortizar` and `keepstar` tags replace the ordinary system node on Desktop and Web whether they come from
+The stable `fortizar` and `keepstar` tags replace the ordinary system node on Desktop whether they come from
 a Local Saved Marker or a Shared Marker. Both sources are resolved once per system, with `keepstar` taking priority
 over `fortizar`; unrelated names, notes, and tags do not change the primary node shape.
 
@@ -226,11 +219,6 @@ The database stores one normalized **logical route connection** per unordered sy
 Import always follows Parse → Validate → Preview → user confirmation → transactional Apply. `REPLACE` replaces only `source=IMPORT`; it never deletes or overwrites `source=MANUAL`.
 
 Files under `qa/` are explicitly synthetic acceptance fixtures and are not a real alliance Jump Bridge network.
-
-The Web Ansiblex tab retains its browser-local Personal Ansiblex import contract; alliance identity and permission
-filtering in this phase apply to the Desktop application. Web records are Previewed before Apply, persisted in that browser, available offline, and merged
-with—but never written into or substituted for—the default enabled Ansiblex exported in Web Pack. Pack links win on
-duplicate endpoint pairs.
 
 ## Import an extracted official JSONL SDE
 

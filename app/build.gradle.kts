@@ -114,7 +114,6 @@ dependencies {
     implementation(project(":mcp"))
     implementation(project(":sde"))
     implementation(project(":shared-client"))
-    implementation(project(":web-pack"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
     implementation(libs.kotlinx.coroutines.core)
@@ -172,20 +171,6 @@ tasks.test {
         externalEsiPackJar?.let { configuredPath ->
             systemProperty("esi.pack.jar", file(configuredPath).absolutePath)
         }
-    }
-}
-
-tasks.register<JavaExec>("exportWebPackCli") {
-    group = "application"
-    description = "Exports Web Pack data from Desktop databases for Web client development or deployment."
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("dev.evestaticmapplanner.webpack.WebPackExportCliKt")
-    workingDir = rootProject.projectDir
-    val staticDatabase = providers.gradleProperty("webStaticDb")
-    val userDatabase = providers.gradleProperty("webUserDb")
-    val outputDirectory = providers.gradleProperty("webPackOutput")
-    doFirst {
-        args(staticDatabase.get(), userDatabase.get(), outputDirectory.get(), appVersion)
     }
 }
 

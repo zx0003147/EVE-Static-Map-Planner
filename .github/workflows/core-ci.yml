@@ -42,7 +42,7 @@ jobs:
           :feature-api:verifyFeatureApiPublication
           :feature-api:verifyFeatureApiCoordinateConsumer
 
-      - name: Test application and Web modules
+      - name: Test application and maintained modules
         shell: pwsh
         run: >-
           .\gradlew.bat --no-daemon --console=plain
@@ -53,12 +53,10 @@ jobs:
           :control:test
           :control-transport:test
           :data:test
+          :embedded-ai:test
+          :marker-application:test
           :sde:test
           :mcp:test
-          :web-pack:test
-          :web-client:jsBrowserTest
-          :web-client:pwaRuntimeTest
-          webLoaderTest
 
       - name: Verify generic Feature Pack Host behavior
         shell: pwsh
