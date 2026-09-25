@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization.en
 
 import dev.evestaticmapplanner.core.map.MapProjectionId
+import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.localization.MapStrings
 
 internal object EnglishMapStrings : MapStrings {
@@ -19,6 +20,13 @@ internal object EnglishMapStrings : MapStrings {
     override val official2DSelected = "Official 2D selected"
     override val real3DSelected = "Real 3D selected"
     override val mapOverlays = "Map overlays"
+    override val trackedCharacters = "Tracked Characters"
+    override val noTrackedCharacters = "No tracked characters"
+    override val locationUnavailable = "Location unavailable"
+    override val trackingDisabled = "Tracking disabled"
+    override val locate = "Locate"
+    override val currentIdentity = "Current identity"
+    override val foregroundCharacter = "Foreground character"
     override val addTemporaryMarker = "Add Temporary Marker"
     override val addSavedMarker = "Add Saved Marker…"
     override val editMarker = "Edit Marker…"
@@ -65,4 +73,12 @@ internal object EnglishMapStrings : MapStrings {
         "$systemName is unavailable in Official 2D; switched to Real 3D."
     override fun wormholeConnections(count: Int) = "Wormhole Connections… ($count)"
     override fun sharedMarkerUnavailable(reason: String) = "Add Shared Marker… ($reason)"
+    override fun characterLocationStatus(status: TrackedCharacterLocationStatus) = when (status) {
+        TrackedCharacterLocationStatus.CURRENT -> "Current"
+        TrackedCharacterLocationStatus.STALE -> "Stale"
+        TrackedCharacterLocationStatus.DEGRADED -> "Degraded"
+        TrackedCharacterLocationStatus.UNKNOWN -> "Unknown"
+    }
+    override fun trackedCharacterCount(count: Int) = "$trackedCharacters ($count)"
+    override fun moreTrackedCharacters(count: Int) = "+$count more"
 }

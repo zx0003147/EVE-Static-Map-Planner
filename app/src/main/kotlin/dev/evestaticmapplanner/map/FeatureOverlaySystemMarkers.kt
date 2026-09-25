@@ -137,23 +137,27 @@ private fun DrawScope.drawOverlaySystemMarker(marker: PresentedOverlaySystemMark
 }
 
 internal fun overlaySystemMarkerGeometry(marker: PresentedOverlaySystemMarker): OverlaySystemMarkerGeometry {
+    return systemPortraitMarkerGeometry(marker.center, marker.node)
+}
+
+internal fun systemPortraitMarkerGeometry(center: Offset, node: Offset): OverlaySystemMarkerGeometry {
     val radius = OverlaySystemMarkerVisuals.PORTRAIT_RADIUS_PX
     return OverlaySystemMarkerGeometry(
         portraitRect = Rect(
-            marker.center.x - radius,
-            marker.center.y - radius,
-            marker.center.x + radius,
-            marker.center.y + radius,
+            center.x - radius,
+            center.y - radius,
+            center.x + radius,
+            center.y + radius,
         ),
         pinBaseLeft = Offset(
-            marker.center.x - OverlaySystemMarkerVisuals.PIN_HALF_BASE_WIDTH_PX,
-            marker.center.y + radius,
+            center.x - OverlaySystemMarkerVisuals.PIN_HALF_BASE_WIDTH_PX,
+            center.y + radius,
         ),
         pinBaseRight = Offset(
-            marker.center.x + OverlaySystemMarkerVisuals.PIN_HALF_BASE_WIDTH_PX,
-            marker.center.y + radius,
+            center.x + OverlaySystemMarkerVisuals.PIN_HALF_BASE_WIDTH_PX,
+            center.y + radius,
         ),
-        pinTip = marker.node,
+        pinTip = node,
     )
 }
 

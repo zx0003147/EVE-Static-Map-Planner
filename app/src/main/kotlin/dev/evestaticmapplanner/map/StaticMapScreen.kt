@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.map
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
@@ -40,6 +42,9 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.rememberTextMeasurer
+import dev.evestaticmapplanner.charactertracking.CharacterMapCharacter
+import dev.evestaticmapplanner.charactertracking.CharacterMapPresentation
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.ansiblex.AnsiblexManagerDialog
@@ -100,6 +105,7 @@ import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
 import dev.evestaticmapplanner.ui.EveOutlinedTextField as OutlinedTextField
 import dev.evestaticmapplanner.ui.EveTab
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
+import dev.evestaticmapplanner.ui.drawCharacterPortraitDisc
 import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.preferences.AnsiblexPreferences
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
@@ -130,6 +136,7 @@ internal fun StaticMapScreen(
     universeBuild: String,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
+    characterMapPresentation: CharacterMapPresentation,
     sovereigntySnapshot: SovereigntySnapshot,
     sovereigntyPresentationEnabled: Boolean,
     systemInfoState: SystemInfoState,
@@ -235,6 +242,7 @@ internal fun StaticMapScreen(
             MapToolbar(
                 state = state,
                 planningViewsState = planningViewsState,
+                characterMapPresentation = characterMapPresentation,
                 viewModel = viewModel,
                 planningViewCoordinator = planningViewCoordinator,
             )
@@ -263,6 +271,7 @@ internal fun StaticMapScreen(
                         sharedMarkerState = sharedMarkerState,
                         missionState = missionState,
                         featureOverlayState = featureOverlayState,
+                        characterMapPresentation = characterMapPresentation,
                         sovereigntyPresentation = SovereigntyMapPresentationBuilder.build(
                             sovereigntySnapshot,
                             enabled = sovereigntyPresentationEnabled,
@@ -286,6 +295,7 @@ internal fun StaticMapScreen(
                         onHoverExit = viewModel::clearHover,
                         onSelect = viewModel::selectAt,
                         onFocus = viewModel::selectAndFocusAt,
+                        onCharacterMarkerSelect = viewModel::selectSystemById,
                         onContextMenu = viewModel::openContextMenuAt,
                         onContextRouteStart = {
                             routeViewModel.setRouteStart(it)
@@ -600,14 +610,21 @@ internal fun activeNormalRouteForRenderer(
 private fun MapToolbar(
     state: MapUiState,
     planningViewsState: PlanningViewsState,
+    characterMapPresentation: CharacterMapPresentation,
     viewModel: MapViewModel,
     planningViewCoordinator: PlanningViewCoordinator,
 ) {
+    val strings = LocalAppStrings.current
     var renameViewId by remember { mutableStateOf<PlanningViewId?>(null) }
     MapToolbarContent(
         projectionId = state.projectionId,
         fitEnabled = state.scene != null,
         planningViewsState = planningViewsState,
+        characterMapPresentation = characterMapPresentation,
+        systemName = { systemId ->
+            state.scene?.nodesById?.get(systemId)?.system?.name ?: strings.map.fallbackSystem(systemId)
+        },
+        onLocateCharacter = viewModel::selectAndFocusSystem,
         onSwitchView = planningViewCoordinator::switchView,
         onCreateView = planningViewCoordinator::createView,
         onRenameView = { view -> renameViewId = view.id },
@@ -678,6 +695,9 @@ internal fun MapToolbarContent(
     onDeleteView: (PlanningViewId) -> Boolean,
     onFitMap: () -> Unit,
     onResetView: () -> Unit = {},
+    characterMapPresentation: CharacterMapPresentation = CharacterMapPresentation.Empty,
+    systemName: (Int) -> String = Int::toString,
+    onLocateCharacter: (Int) -> Unit = {},
     viewScrollState: ScrollState? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -703,9 +723,109 @@ internal fun MapToolbarContent(
                 if (projectionId == MapProjectionId.REAL_3D) {
                     CompactToolbarTextButton(onClick = onResetView, enabled = fitEnabled) { Text(strings.map.resetView) }
                 }
+                TrackedCharactersMenu(
+                    presentation = characterMapPresentation,
+                    systemName = systemName,
+                    onLocate = onLocateCharacter,
+                )
             }
         }
     }
+}
+
+@Composable
+private fun TrackedCharactersMenu(
+    presentation: CharacterMapPresentation,
+    systemName: (Int) -> String,
+    onLocate: (Int) -> Unit,
+) {
+    val strings = LocalAppStrings.current.map
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        CompactToolbarTextButton(onClick = { expanded = true }) {
+            Text(strings.trackedCharacterCount(presentation.characters.size))
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.widthIn(min = 300.dp, max = 420.dp),
+        ) {
+            if (presentation.characters.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text(strings.noTrackedCharacters) },
+                    onClick = { expanded = false },
+                    enabled = false,
+                )
+            } else {
+                presentation.characters.forEach { character ->
+                    TrackedCharacterMenuItem(
+                        character = character,
+                        systemName = systemName,
+                        onLocate = { systemId ->
+                            expanded = false
+                            onLocate(systemId)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackedCharacterMenuItem(
+    character: CharacterMapCharacter,
+    systemName: (Int) -> String,
+    onLocate: (Int) -> Unit,
+) {
+    val strings = LocalAppStrings.current.map
+    val textMeasurer = rememberTextMeasurer()
+    val systemId = character.systemId
+    val statusText = when {
+        !character.snapshot.trackingEnabled -> strings.trackingDisabled
+        systemId == null -> strings.locationUnavailable
+        else -> "${systemName(systemId)} · ${strings.characterLocationStatus(character.locationStatus)}"
+    }
+    val badges = buildList {
+        if (character.isCurrentIdentity) add(strings.currentIdentity)
+        if (character.isForegroundCharacter) add(strings.foregroundCharacter)
+    }
+    DropdownMenuItem(
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Canvas(Modifier.size(24.dp)) {
+                    drawCharacterPortraitDisc(
+                        stack = character.portrait,
+                        center = center,
+                        radius = size.minDimension / 2f - 1f,
+                        textMeasurer = textMeasurer,
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(character.characterName, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        buildString {
+                            append(statusText)
+                            if (badges.isNotEmpty()) append(" · ${badges.joinToString(" · ")}")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = EveColors.SecondaryText,
+                    )
+                }
+                Text(
+                    if (systemId == null) strings.locationUnavailable else strings.locate,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (systemId == null) EveColors.SecondaryText else EveColors.PrimaryAccent,
+                )
+            }
+        },
+        onClick = { systemId?.let(onLocate) },
+        enabled = systemId != null,
+    )
 }
 
 @Composable

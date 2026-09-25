@@ -157,6 +157,7 @@ internal fun systemNameVisualObstaclesBySystemId(
     sharedMarkers: List<PresentedSharedMarker>,
     sharedGeometry: SharedMarkerVisualGeometry,
     localSavedVisualRadiusPx: Double,
+    characterMarkers: List<PresentedCharacterSystemMarker> = emptyList(),
 ): Map<Int, SystemNameVisualObstacles> {
     val obstacles = linkedMapOf<Int, SystemNameVisualObstacles>()
     localMarkers.asSequence()
@@ -190,6 +191,13 @@ internal fun systemNameVisualObstaclesBySystemId(
         obstacles[systemId] = SystemNameVisualObstacles(
             centeredRightExtentPx = maxOf(existing.centeredRightExtentPx ?: 0.0, sharedRingExtent),
             screenBounds = existing.screenBounds + badgeBounds,
+        )
+    }
+    characterMarkers.forEach { marker ->
+        val systemId = marker.marker.systemId
+        val existing = obstacles[systemId] ?: SystemNameVisualObstacles()
+        obstacles[systemId] = existing.copy(
+            screenBounds = existing.screenBounds + characterSystemMarkerBounds(marker),
         )
     }
     return obstacles

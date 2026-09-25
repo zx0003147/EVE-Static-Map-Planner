@@ -48,6 +48,29 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class MapViewModelTest {
     @Test
+    fun `character marker selection never moves 2D viewport or real 3D camera`() = runTest {
+        val fixture = Fixture()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+
+        val viewportBefore = assertNotNull(viewModel.state.value.viewport)
+        viewModel.selectSystemById(2)
+        advanceUntilIdle()
+        assertEquals(2, viewModel.state.value.selectedSystemId)
+        assertEquals(viewportBefore, viewModel.state.value.viewport)
+
+        viewModel.switchProjection(MapProjectionId.REAL_3D)
+        advanceUntilIdle()
+        val cameraBefore = assertNotNull(viewModel.state.value.real3DCamera)
+        viewModel.selectSystemById(1)
+        advanceUntilIdle()
+        assertEquals(1, viewModel.state.value.selectedSystemId)
+        assertEquals(cameraBefore, viewModel.state.value.real3DCamera)
+    }
+
+    @Test
     fun `loads official scene and focuses requested system`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)

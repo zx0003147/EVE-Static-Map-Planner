@@ -67,6 +67,7 @@ import dev.evestaticmapplanner.core.map.Real3DProjectedJumpSphere
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.charactertracking.CharacterMapPresentation
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteEdgeType
@@ -109,6 +110,7 @@ internal fun Real3DMapCanvas(
     showAnsiblexLayer: Boolean,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
+    characterMapPresentation: CharacterMapPresentation,
     sovereigntyPresentation: SovereigntyMapPresentation,
     markerState: MarkerUiState,
     sharedMapState: SharedMapState,
@@ -123,6 +125,7 @@ internal fun Real3DMapCanvas(
     onHoverExit: () -> Unit,
     onSelect: (MapPoint) -> Unit,
     onFocus: (MapPoint) -> Unit,
+    onCharacterMarkerSelect: (Int) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
     onContextRouteStart: (Int) -> Unit,
     onContextRouteWaypoint: (Int) -> Unit,
@@ -390,6 +393,17 @@ internal fun Real3DMapCanvas(
             frame.projectedBySystemId[systemId]?.screen
         }
     }
+    val presentedCharacterSystemMarkers = remember(characterMapPresentation, geometry, frame, camera, strings.map) {
+        positionCharacterSystemMarkers(
+            presentation = characterMapPresentation,
+            knownSystemIds = geometry.nodesById.keys,
+            systemName = { systemId ->
+                geometry.nodesById[systemId]?.system?.name ?: strings.map.fallbackSystem(systemId)
+            },
+            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
+            strings = strings.map,
+        )
+    }
     val featureScope = rememberCoroutineScope()
     val featureEmblemRepository = remember(featureScope) {
         PresentationEmblemAssetRepository(
@@ -416,6 +430,7 @@ internal fun Real3DMapCanvas(
     }
     var canvasSizePx by remember { mutableStateOf(IntSize.Zero) }
     var compactCardBounds by remember { mutableStateOf<Rect?>(null) }
+    var hoveredCharacterSystemMarker by remember { mutableStateOf<PresentedCharacterSystemMarker?>(null) }
 
     LaunchedEffect(compactSystemInfo) {
         if (compactSystemInfo == null) compactCardBounds = null
@@ -448,6 +463,12 @@ internal fun Real3DMapCanvas(
                     onHoverExit()
                     return@onPointerEvent
                 }
+                val characterMarkerHit = hitTestCharacterSystemMarker(presentedCharacterSystemMarkers, position)
+                if (characterMarkerHit != null) {
+                    gesture.cancel()
+                    onCharacterMarkerSelect(characterMarkerHit.marker.systemId)
+                    return@onPointerEvent
+                }
                 if (hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, position) != null) {
                     gesture.cancel()
                     return@onPointerEvent
@@ -471,15 +492,27 @@ internal fun Real3DMapCanvas(
                         activeMarkerInteractionSystemId = null
                         hoveredSavedMarkerChild = null
                         hoveredOverlaySystemMarker = null
+                        hoveredCharacterSystemMarker = null
                         onPan(drag.screenDelta)
                     }
                     MapPointerButton.SECONDARY -> {
                         activeMarkerInteractionSystemId = null
                         hoveredSavedMarkerChild = null
                         hoveredOverlaySystemMarker = null
+                        hoveredCharacterSystemMarker = null
                         onRotate(drag.screenDelta)
                     }
                     null -> if (!gesture.isActive) {
+                        val characterMarkerHit = hitTestCharacterSystemMarker(presentedCharacterSystemMarkers, position)
+                        if (characterMarkerHit != null) {
+                            hoveredCharacterSystemMarker = characterMarkerHit
+                            hoveredOverlaySystemMarker = null
+                            activeMarkerInteractionSystemId = null
+                            hoveredSavedMarkerChild = null
+                            onHoverExit()
+                            return@onPointerEvent
+                        }
+                        hoveredCharacterSystemMarker = null
                         val overlayMarkerHit = hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, position)
                         if (overlayMarkerHit != null) {
                             hoveredOverlaySystemMarker = overlayMarkerHit
@@ -524,6 +557,7 @@ internal fun Real3DMapCanvas(
                 activeMarkerInteractionSystemId = null
                 hoveredSavedMarkerChild = null
                 hoveredOverlaySystemMarker = null
+                hoveredCharacterSystemMarker = null
                 onHoverExit()
             },
     ) {
@@ -614,6 +648,7 @@ internal fun Real3DMapCanvas(
                 )
             }
             drawOverlaySystemMarkers(presentedOverlaySystemMarkers, textMeasurer)
+            drawCharacterSystemMarkers(presentedCharacterSystemMarkers, textMeasurer)
             drawReal3DRouteWaypoints(frame, waypoints, textMeasurer)
             drawReal3DInteraction(
                 frame = frame,
@@ -670,6 +705,12 @@ internal fun Real3DMapCanvas(
                     lines = marker.tooltipLines,
                     offset = IntOffset(marker.center.x.toInt() + 28, marker.center.y.toInt() - 16),
                 )
+        }
+        hoveredCharacterSystemMarker?.takeIf { it.tooltipLines.isNotEmpty() }?.let { marker ->
+            MapMarkerTooltip(
+                lines = marker.tooltipLines,
+                offset = IntOffset(marker.center.x.toInt() + 28, marker.center.y.toInt() - 16),
+            )
         }
         FeatureOverlayLegend(
             sections = featurePresentation.legendSections,

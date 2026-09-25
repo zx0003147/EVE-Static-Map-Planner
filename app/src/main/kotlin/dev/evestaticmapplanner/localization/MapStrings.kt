@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization
 
 import dev.evestaticmapplanner.core.map.MapProjectionId
+import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 
 interface MapStrings {
     val loadingStaticUniverse: String
@@ -18,6 +19,13 @@ interface MapStrings {
     val official2DSelected: String
     val real3DSelected: String
     val mapOverlays: String
+    val trackedCharacters: String
+    val noTrackedCharacters: String
+    val locationUnavailable: String
+    val trackingDisabled: String
+    val locate: String
+    val currentIdentity: String
+    val foregroundCharacter: String
 
     val addTemporaryMarker: String
     val addSavedMarker: String
@@ -58,4 +66,7 @@ interface MapStrings {
     fun focusSwitchedToReal3D(systemName: String): String
     fun wormholeConnections(count: Int): String
     fun sharedMarkerUnavailable(reason: String): String
+    fun characterLocationStatus(status: TrackedCharacterLocationStatus): String
+    fun trackedCharacterCount(count: Int): String
+    fun moreTrackedCharacters(count: Int): String
 }

@@ -41,6 +41,7 @@ import dev.evestaticmapplanner.ai.WhisperCppTranscriber
 import dev.evestaticmapplanner.ai.WindowsSpeechSynthesizer
 import dev.evestaticmapplanner.ai.WindowsDpapiAiCredentialStore
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
+import dev.evestaticmapplanner.charactertracking.CharacterMapPresentationBuilder
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
 import dev.evestaticmapplanner.control.AppWormholeControlAdapter
@@ -798,6 +799,12 @@ private fun FrameWindowScope.ReadyApplication(
     val globalPushToTalkState by globalPushToTalkCoordinator.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val eveIdentityState by featurePackRuntime.eveIdentityHost.state.collectAsState()
+    val characterMapPresentation = remember(trackedCharacters, eveIdentityState.currentIdentity) {
+        CharacterMapPresentationBuilder.build(
+            snapshots = trackedCharacters,
+            currentIdentityCharacterId = eveIdentityState.currentIdentity?.character?.id,
+        )
+    }
     val allianceDirectoryState by featurePackRuntime.allianceDirectoryHost.state.collectAsState()
     val miniMapState by miniMapViewModel.state.collectAsState()
     val miniMapHudState by miniMapHudController.state.collectAsState()
@@ -1081,6 +1088,7 @@ private fun FrameWindowScope.ReadyApplication(
             universeBuild = currentBuild.toString(),
             missionState = missionState,
             featureOverlayState = visibleFeatureOverlayState,
+            characterMapPresentation = characterMapPresentation,
             sovereigntySnapshot = sovereigntyHostState.snapshot,
             sovereigntyPresentationEnabled = mapState.appPreferences.overlayVisibility.isEnabled(
                 SovereigntyPresentationVisibility.Key,

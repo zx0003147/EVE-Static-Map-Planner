@@ -46,6 +46,7 @@ import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.charactertracking.CharacterMapPresentation
 import dev.evestaticmapplanner.core.route.RouteResult
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
@@ -94,6 +95,7 @@ internal fun StaticMapCanvas(
     sharedMarkerState: SharedMarkerPresentationState,
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
+    characterMapPresentation: CharacterMapPresentation,
     sovereigntyPresentation: SovereigntyMapPresentation,
     compactSystemInfo: CompactSystemInfoPresentation?,
     onCanvasSizeChanged: (MapSize) -> Unit,
@@ -104,6 +106,7 @@ internal fun StaticMapCanvas(
     onHoverExit: () -> Unit,
     onSelect: (MapPoint) -> Unit,
     onFocus: (MapPoint) -> Unit,
+    onCharacterMarkerSelect: (Int) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
     onContextRouteStart: (Int) -> Unit,
     onContextRouteWaypoint: (Int) -> Unit,
@@ -138,6 +141,7 @@ internal fun StaticMapCanvas(
             showAnsiblexLayer = showAnsiblexLayer,
             missionState = missionState,
             featureOverlayState = featureOverlayState,
+            characterMapPresentation = characterMapPresentation,
             sovereigntyPresentation = sovereigntyPresentation,
             onCanvasSizeChanged = onCanvasSizeChanged,
             onFirstMapDisplayed = onFirstMapDisplayed,
@@ -148,6 +152,7 @@ internal fun StaticMapCanvas(
             onHoverExit = onHoverExit,
             onSelect = onSelect,
             onFocus = onFocus,
+            onCharacterMarkerSelect = onCharacterMarkerSelect,
             onContextMenu = onContextMenu,
             markerState = markerState,
             sharedMapState = sharedMapState,
@@ -343,6 +348,9 @@ internal fun StaticMapCanvas(
     val presentedOverlaySystemMarkers = remember(featureOverlayState, scene, transform) {
         presentOverlaySystemMarkers(featureOverlayState, scene, transform)
     }
+    val presentedCharacterSystemMarkers = remember(characterMapPresentation, scene, transform, strings.map) {
+        presentCharacterSystemMarkers(characterMapPresentation, scene, transform, strings.map)
+    }
     val markerOffsetPx = with(density) { 10.dp.toPx().toDouble() }
     val childOrbitRadiusPx = with(density) {
         savedMarkerChildOrbitRadiusDp(savedMarkerAppearance.ringRadiusDp).dp.toPx().toDouble()
@@ -352,6 +360,7 @@ internal fun StaticMapCanvas(
     var activeMarkerInteractionSystemId by remember { mutableStateOf<Int?>(null) }
     var hoveredSavedMarkerChild by remember { mutableStateOf<PresentedSavedMarkerChild?>(null) }
     var hoveredOverlaySystemMarker by remember { mutableStateOf<PresentedOverlaySystemMarker?>(null) }
+    var hoveredCharacterSystemMarker by remember { mutableStateOf<PresentedCharacterSystemMarker?>(null) }
     val expandedMarkerSystemIds = buildSet {
         state.hoveredSystemId?.let(::add)
         state.selectedSystemId?.let(::add)
@@ -507,12 +516,14 @@ internal fun StaticMapCanvas(
         presentedSharedMarkers,
         sharedMarkerGeometry,
         localSavedVisualRadiusPx,
+        presentedCharacterSystemMarkers,
     ) {
         systemNameVisualObstaclesBySystemId(
             localMarkers = presentedMarkers,
             sharedMarkers = presentedSharedMarkers,
             sharedGeometry = sharedMarkerGeometry,
             localSavedVisualRadiusPx = localSavedVisualRadiusPx,
+            characterMarkers = presentedCharacterSystemMarkers,
         )
     }
     val hoveredSharedMarker = remember(
@@ -539,6 +550,7 @@ internal fun StaticMapCanvas(
         activeMarkerInteractionSystemId = null
         hoveredSavedMarkerChild = null
         hoveredOverlaySystemMarker = null
+        hoveredCharacterSystemMarker = null
         withFrameNanos { }
         onFirstMapDisplayed()
     }
@@ -562,6 +574,15 @@ internal fun StaticMapCanvas(
                 if (state.contextMenu != null) return@onPointerEvent
                 val awtEvent = event.awtEventOrNull
                 val point = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
+                val characterMarkerHit = hitTestCharacterSystemMarker(presentedCharacterSystemMarkers, point)
+                if (characterMarkerHit != null) {
+                    isPointerGestureBlocked = true
+                    pressedAt = null
+                    lastDragPosition = null
+                    isDragging = false
+                    onCharacterMarkerSelect(characterMarkerHit.marker.systemId)
+                    return@onPointerEvent
+                }
                 if (hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, point) != null) {
                     isPointerGestureBlocked = true
                     pressedAt = null
@@ -607,6 +628,16 @@ internal fun StaticMapCanvas(
                         lastDragPosition = point
                     }
                 } else {
+                    val characterMarkerHit = hitTestCharacterSystemMarker(presentedCharacterSystemMarkers, point)
+                    if (characterMarkerHit != null) {
+                        hoveredCharacterSystemMarker = characterMarkerHit
+                        hoveredOverlaySystemMarker = null
+                        activeMarkerInteractionSystemId = null
+                        hoveredSavedMarkerChild = null
+                        onHoverExit()
+                        return@onPointerEvent
+                    }
+                    hoveredCharacterSystemMarker = null
                     val overlayMarkerHit = hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, point)
                     if (overlayMarkerHit != null) {
                         hoveredOverlaySystemMarker = overlayMarkerHit
@@ -640,6 +671,7 @@ internal fun StaticMapCanvas(
                 activeMarkerInteractionSystemId = null
                 hoveredSavedMarkerChild = null
                 hoveredOverlaySystemMarker = null
+                hoveredCharacterSystemMarker = null
                 onHoverExit()
             }
             .onPointerEvent(PointerEventType.Release) { event ->
@@ -813,9 +845,10 @@ internal fun StaticMapCanvas(
                 }
             }
         }
-        if (presentedOverlaySystemMarkers.isNotEmpty()) {
+        if (presentedOverlaySystemMarkers.isNotEmpty() || presentedCharacterSystemMarkers.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.FEATURE_SYSTEM_MARKER)) {
                 drawOverlaySystemMarkers(presentedOverlaySystemMarkers, textMeasurer)
+                drawCharacterSystemMarkers(presentedCharacterSystemMarkers, textMeasurer)
             }
         }
         Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.SELECTED_SYSTEM_FOCUS)) {
@@ -861,6 +894,12 @@ internal fun StaticMapCanvas(
             )
         }
         hoveredOverlaySystemMarker?.takeIf { it.tooltipLines.isNotEmpty() }?.let { marker ->
+            MapMarkerTooltip(
+                lines = marker.tooltipLines,
+                offset = IntOffset(marker.center.x.toInt() + 28, marker.center.y.toInt() - 16),
+            )
+        }
+        hoveredCharacterSystemMarker?.takeIf { it.tooltipLines.isNotEmpty() }?.let { marker ->
             MapMarkerTooltip(
                 lines = marker.tooltipLines,
                 offset = IntOffset(marker.center.x.toInt() + 28, marker.center.y.toInt() - 16),

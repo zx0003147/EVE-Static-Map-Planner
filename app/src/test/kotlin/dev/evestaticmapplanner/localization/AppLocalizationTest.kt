@@ -215,7 +215,9 @@ class AppLocalizationTest {
             listOf(
                 loadingStaticUniverse, unableToLoadMap, database, fitMap, resetView, renameView, viewName,
                 viewNameValidation, toggleProjection, openEmbeddedAiAssistant, collapseSidebar, expandSidebar,
-                official2DSelected, real3DSelected, addTemporaryMarker, addSavedMarker, editMarker,
+                official2DSelected, real3DSelected, mapOverlays, trackedCharacters, noTrackedCharacters,
+                locationUnavailable, trackingDisabled, locate, currentIdentity, foregroundCharacter,
+                addTemporaryMarker, addSavedMarker, editMarker,
                 savePermanently, removeMarker, markersUnavailable, addSharedMarker, openSharedMarker,
                 viewSharedMarker, addJumpRangeOverlay, setNormalStart, addNormalWaypoint, setNormalDestination,
                 setCapitalStart, addCapitalWaypoint, setCapitalDestination, createWormholeConnection,

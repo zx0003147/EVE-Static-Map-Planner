@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.localization.zhcn
 
 import dev.evestaticmapplanner.core.map.MapProjectionId
+import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.localization.MapStrings
 
 internal object SimplifiedChineseMapStrings : MapStrings {
@@ -19,6 +20,13 @@ internal object SimplifiedChineseMapStrings : MapStrings {
     override val official2DSelected = "已选择官方 2D"
     override val real3DSelected = "已选择真实 3D"
     override val mapOverlays = "地图叠加层"
+    override val trackedCharacters = "跟踪角色"
+    override val noTrackedCharacters = "没有跟踪角色"
+    override val locationUnavailable = "位置不可用"
+    override val trackingDisabled = "跟踪已禁用"
+    override val locate = "定位"
+    override val currentIdentity = "当前身份"
+    override val foregroundCharacter = "前台角色"
     override val addTemporaryMarker = "添加临时标记"
     override val addSavedMarker = "添加已保存标记…"
     override val editMarker = "编辑标记…"
@@ -65,4 +73,12 @@ internal object SimplifiedChineseMapStrings : MapStrings {
         "$systemName 在官方 2D 中不可用，已切换到真实 3D。"
     override fun wormholeConnections(count: Int) = "虫洞连接…（$count）"
     override fun sharedMarkerUnavailable(reason: String) = "添加共享标记…（$reason）"
+    override fun characterLocationStatus(status: TrackedCharacterLocationStatus) = when (status) {
+        TrackedCharacterLocationStatus.CURRENT -> "当前"
+        TrackedCharacterLocationStatus.STALE -> "过期"
+        TrackedCharacterLocationStatus.DEGRADED -> "降级"
+        TrackedCharacterLocationStatus.UNKNOWN -> "未知"
+    }
+    override fun trackedCharacterCount(count: Int) = "$trackedCharacters（$count）"
+    override fun moreTrackedCharacters(count: Int) = "另有 $count 个"
 }
