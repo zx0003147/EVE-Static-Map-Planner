@@ -48,7 +48,6 @@ class RoutePlannerViewModelTest {
 
         viewModel.calculateRoute()
         assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
-        assertEquals(0, viewModel.state.value.usableAnsiblexCount)
 
         viewModel.setCurrentIdentityContext(
             CurrentIdentityContext(
@@ -64,7 +63,6 @@ class RoutePlannerViewModelTest {
 
         viewModel.setCurrentIdentityContext(CurrentIdentityContext.manual(OTHER_ALLIANCE_ID))
         assertNull(viewModel.state.value.activeRoute)
-        assertEquals(0, viewModel.state.value.usableAnsiblexCount)
         viewModel.calculateRoute()
         assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
         assertEquals(0, viewModel.state.value.activeRoute?.ansiblexJumps)
@@ -93,11 +91,10 @@ class RoutePlannerViewModelTest {
         viewModel.setCurrentIdentityContext(selectedIdentity.copy())
 
         assertEquals(route, viewModel.state.value.activeRoute)
-        assertEquals(1, viewModel.state.value.usableAnsiblexCount)
     }
 
     @Test
-    fun `show unavailable toggle does not change allowed Ansiblex route or Mini Map input`() = runTest {
+    fun `show unavailable toggle does not change allowed Ansiblex route`() = runTest {
         val fixture = Fixture(withShortcut = true)
         val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
         advanceUntilIdle()
@@ -108,12 +105,10 @@ class RoutePlannerViewModelTest {
         viewModel.setShowAnsiblexLayer(true)
         viewModel.calculateRoute()
         val routeWithUnavailableShown = viewModel.state.value.activeRoute
-        val miniMapInputWithUnavailableShown = viewModel.state.value.usableAnsiblexConnections
         assertEquals(1, routeWithUnavailableShown?.ansiblexJumps)
 
         viewModel.setShowAnsiblexLayer(false)
         assertEquals(routeWithUnavailableShown, viewModel.state.value.activeRoute)
-        assertEquals(miniMapInputWithUnavailableShown, viewModel.state.value.usableAnsiblexConnections)
         viewModel.calculateRoute()
 
         assertEquals(routeWithUnavailableShown, viewModel.state.value.activeRoute)

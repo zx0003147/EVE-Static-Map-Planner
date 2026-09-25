@@ -25,7 +25,6 @@ import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.sun.jna.Platform
-import java.awt.EventQueue
 import dev.evestaticmapplanner.ai.EmbeddedAiAssistantWindow
 import dev.evestaticmapplanner.ai.AiAssistantProviderStatus
 import dev.evestaticmapplanner.ai.AiProviderSettingsController
@@ -45,7 +44,6 @@ import dev.evestaticmapplanner.charactertracking.CharacterMapPresentationBuilder
 import dev.evestaticmapplanner.charactertracking.CharacterTrackingPriorityCoordinator
 import dev.evestaticmapplanner.charactertracking.ForegroundCharacterCoordinator
 import dev.evestaticmapplanner.charactertracking.ForegroundCharacterState
-import dev.evestaticmapplanner.charactertracking.ManualWindowBindingResult
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
 import dev.evestaticmapplanner.control.AppWormholeControlAdapter
@@ -115,19 +113,11 @@ import dev.evestaticmapplanner.marker.MarkerManagerWindow
 import dev.evestaticmapplanner.marker.application.SavedMarkerService
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerApplicationService
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerPermissionPolicy
-import dev.evestaticmapplanner.minimap.MiniMapViewModel
-import dev.evestaticmapplanner.minimap.MiniMapWindow
-import dev.evestaticmapplanner.minimap.MiniMapHudController
-import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
-import dev.evestaticmapplanner.minimap.afterNativeHudFailure
-import dev.evestaticmapplanner.platform.windows.minimaphud.WindowsMiniMapGlobalHotkey
 import dev.evestaticmapplanner.platform.windows.shortcut.WindowsGlobalPushToTalkService
-import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
 import dev.evestaticmapplanner.mcp.LocalhostMcpHost
 import dev.evestaticmapplanner.core.marker.MarkerPersistence
 import dev.evestaticmapplanner.preferences.FeatureSettingsWindowState
 import dev.evestaticmapplanner.preferences.MarkerSettingsWindow
-import dev.evestaticmapplanner.preferences.MiniMapSettingsWindow
 import dev.evestaticmapplanner.preferences.PreferencesWindow
 import dev.evestaticmapplanner.preferences.PreferencesCategory
 import dev.evestaticmapplanner.preferences.OverlayVisibilityFilter
@@ -357,33 +347,6 @@ private fun FrameWindowScope.ReadyApplication(
             featurePackRuntime.eveIdentityHost,
         ) { characterId ->
             mapViewModel.updateEveIdentityPreferences(EveIdentityPreferences(characterId))
-        }
-    }
-    val miniMapViewModel = remember(configuration, mapViewModel) {
-        MiniMapViewModel(persistPreferences = mapViewModel::updateMiniMapPreferences)
-    }
-    val characterTrackingAvailable by featurePackRuntime.characterTrackingHost.availability.collectAsState()
-    val miniMapHudController = remember(configuration, characterTrackingAvailable) {
-        MiniMapHudController(if (Platform.isWindows()) WindowsMiniMapGlobalHotkey() else null)
-    }
-    DisposableEffect(miniMapHudController, miniMapViewModel, characterTrackingAvailable) {
-        if (characterTrackingAvailable) {
-            miniMapHudController.start {
-                EventQueue.invokeLater {
-                    val current = miniMapViewModel.state.value.preferences
-                    if (featurePackRuntime.characterTrackingHost.availability.value && current.enabled) {
-                        val next = when (current.interactionMode) {
-                            MiniMapInteractionMode.INTERACTIVE -> MiniMapInteractionMode.HUD_LOCKED
-                            MiniMapInteractionMode.HUD_LOCKED -> MiniMapInteractionMode.INTERACTIVE
-                        }
-                        miniMapViewModel.updatePreferences(current.copy(interactionMode = next), fit = false)
-                    }
-                }
-            }
-        }
-        onDispose {
-            runCatching(miniMapHudController::close)
-                .onFailure { AppDiagnostics.warning("Mini-map recovery hotkey did not close cleanly", it) }
         }
     }
     val foregroundCharacterCoordinator = remember(configuration) {
@@ -819,31 +782,7 @@ private fun FrameWindowScope.ReadyApplication(
         )
     }
     val allianceDirectoryState by featurePackRuntime.allianceDirectoryHost.state.collectAsState()
-    val miniMapState by miniMapViewModel.state.collectAsState()
-    val miniMapHudState by miniMapHudController.state.collectAsState()
-    LaunchedEffect(miniMapHudState.hotkeyStatus) {
-        if (miniMapHudState.hotkeyStatus == MiniMapRecoveryHotkeyStatus.FAILED) {
-            miniMapHudState.diagnostic?.let(AppDiagnostics::warning)
-        }
-    }
-    LaunchedEffect(miniMapHudState.hotkeyStatus, miniMapState.preferences.interactionMode) {
-        if (
-            miniMapHudState.hotkeyStatus in setOf(
-                MiniMapRecoveryHotkeyStatus.FAILED,
-                MiniMapRecoveryHotkeyStatus.UNSUPPORTED,
-            ) && miniMapState.preferences.interactionMode == MiniMapInteractionMode.HUD_LOCKED
-        ) {
-            miniMapViewModel.updatePreferences(
-                miniMapState.preferences.copy(interactionMode = MiniMapInteractionMode.INTERACTIVE),
-                fit = false,
-            )
-        }
-    }
-    LaunchedEffect(mapState.scene, miniMapViewModel) {
-        miniMapViewModel.updateScene(mapState.scene)
-    }
-    LaunchedEffect(trackedCharacters, miniMapViewModel) {
-        miniMapViewModel.updateCharacters(trackedCharacters)
+    LaunchedEffect(trackedCharacters, foregroundCharacterCoordinator) {
         foregroundCharacterCoordinator?.updateCharacters(trackedCharacters)
     }
     LaunchedEffect(
@@ -857,9 +796,6 @@ private fun FrameWindowScope.ReadyApplication(
             foregroundCharacterId = foregroundCharacterState.foregroundCharacterId,
             characters = trackedCharacters,
         )
-    }
-    LaunchedEffect(mapState.appPreferences.miniMap, miniMapViewModel) {
-        miniMapViewModel.restorePreferences(mapState.appPreferences.miniMap)
     }
     val sharedMapState by sharedMapViewModel.state.collectAsState()
     val sharedMapOperationError by sharedMapViewModel.operationError.collectAsState()
@@ -931,12 +867,6 @@ private fun FrameWindowScope.ReadyApplication(
             )
         }
     }
-    LaunchedEffect(routeState.usableAnsiblexConnections, miniMapViewModel) {
-        miniMapViewModel.updateAnsiblexConnections(routeState.usableAnsiblexConnections)
-    }
-    LaunchedEffect(routeState.activeRoute, miniMapViewModel) {
-        miniMapViewModel.updateActiveRoute(routeState.activeRoute)
-    }
     val wormholeState by wormholeViewModel.state.collectAsState()
     val jumpState by jumpViewModel.state.collectAsState()
     val capitalState by capitalViewModel.state.collectAsState()
@@ -949,9 +879,6 @@ private fun FrameWindowScope.ReadyApplication(
     }
     val markerState by markerViewModel.state.collectAsState()
     val missionState by missionMapStateStore.state.collectAsState()
-    LaunchedEffect(missionState.normalRoutes, missionState.capitalRoutes, miniMapViewModel) {
-        miniMapViewModel.updateMissionRoutes(missionState.normalRoutes, missionState.capitalRoutes)
-    }
     val sharedMarkerPresentation = remember(
         sharedMapState.snapshot,
         sharedMapState.stale,
@@ -1008,7 +935,6 @@ private fun FrameWindowScope.ReadyApplication(
     var showPreferences by remember { mutableStateOf(false) }
     var preferencesInitialCategory by remember { mutableStateOf(PreferencesCategory.MAP_DISPLAY) }
     var markerSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
-    var miniMapSettingsWindow by remember { mutableStateOf(FeatureSettingsWindowState()) }
     var showMarkerManager by remember { mutableStateOf(false) }
     var showSharedMarkerManager by remember { mutableStateOf(false) }
     var confirmClearTemporaryMarkers by remember { mutableStateOf(false) }
@@ -1023,17 +949,6 @@ private fun FrameWindowScope.ReadyApplication(
     val temporaryMarkerCount = markerState.markersBySystemId.values.count {
         it.persistence == MarkerPersistence.TEMPORARY
     }
-    val miniMapCapabilityUi = miniMapCapabilityUiDecision(
-        characterTrackingAvailable = characterTrackingAvailable,
-        miniMapEnabled = miniMapState.preferences.enabled,
-        settingsWindowOpen = miniMapSettingsWindow.isOpen,
-    )
-    LaunchedEffect(miniMapCapabilityUi.disableMiniMap, miniMapCapabilityUi.closeSettingsWindow) {
-        if (miniMapCapabilityUi.disableMiniMap) miniMapViewModel.setEnabled(false)
-        if (miniMapCapabilityUi.closeSettingsWindow) {
-            miniMapSettingsWindow = miniMapSettingsWindow.close()
-        }
-    }
     Column(Modifier.fillMaxSize().background(EveColors.PrimarySurface)) {
         EveTopMenuBar(
             menus = plannerTopMenus(
@@ -1041,8 +956,6 @@ private fun FrameWindowScope.ReadyApplication(
                     markerManagerOpen = showMarkerManager,
                     sharedMarkerManagerOpen = showSharedMarkerManager,
                     temporaryMarkerCount = temporaryMarkerCount,
-                    characterTrackingAvailable = characterTrackingAvailable,
-                    miniMapEnabled = miniMapState.preferences.enabled,
                     staticDataOpen = showStaticData,
                 ),
                 actions = PlannerTopMenuActions(
@@ -1050,16 +963,6 @@ private fun FrameWindowScope.ReadyApplication(
                     openSharedMarkerManager = { showSharedMarkerManager = true },
                     clearTemporaryMarkers = { confirmClearTemporaryMarkers = true },
                     openMarkerSettings = { markerSettingsWindow = markerSettingsWindow.show() },
-                    toggleMiniMap = {
-                        if (characterTrackingAvailable) {
-                            miniMapViewModel.setEnabled(!miniMapState.preferences.enabled)
-                        }
-                    },
-                    openMiniMapSettings = {
-                        if (characterTrackingAvailable) {
-                            miniMapSettingsWindow = miniMapSettingsWindow.show()
-                        }
-                    },
                     openPreferences = {
                         preferencesInitialCategory = PreferencesCategory.MAP_DISPLAY
                         showPreferences = true
@@ -1122,29 +1025,6 @@ private fun FrameWindowScope.ReadyApplication(
             onOpenEmbeddedAi = { showEmbeddedAi = true },
             onFirstMapDisplayed = featurePackRuntime::onFirstMapDisplayed,
             suppressMarkerOperationErrorDialog = showMarkerManager,
-        )
-    }
-    if (miniMapCapabilityUi.showMiniMapWindow) {
-        MiniMapWindow(
-            state = miniMapState,
-            viewModel = miniMapViewModel,
-            automaticFollowDiagnostic = foregroundCharacterState.diagnostic,
-            onBindCurrentWindow = { characterId ->
-                when (val result = foregroundCharacterCoordinator?.bindCurrentWindow(characterId)) {
-                    ManualWindowBindingResult.Bound -> "Current EVE client session bound"
-                    is ManualWindowBindingResult.Rejected -> result.reason
-                    null -> "Foreground client detection is unavailable on this platform"
-                }
-            },
-            hudRuntimeState = miniMapHudState,
-            onNativeWindowFailure = { failure ->
-                AppDiagnostics.warning("Mini-map native HUD style failed; restoring Standard + Interactive", failure)
-                miniMapViewModel.updatePreferences(
-                    miniMapViewModel.state.value.preferences.afterNativeHudFailure(),
-                    fit = false,
-                )
-            },
-            onClose = { miniMapViewModel.setEnabled(false) },
         )
     }
     if (showStaticData) {
@@ -1315,21 +1195,6 @@ private fun FrameWindowScope.ReadyApplication(
             onReset = mapViewModel::resetMarkerPreferences,
             focusRequest = markerSettingsWindow.focusRequest,
             onDismiss = { markerSettingsWindow = markerSettingsWindow.close() },
-        )
-    }
-    if (miniMapCapabilityUi.showSettingsWindow) {
-        MiniMapSettingsWindow(
-            preferences = mapState.appPreferences.miniMap,
-            onChange = { requested ->
-                miniMapViewModel.updatePreferences(
-                    requested.copy(interactionMode = miniMapHudController.safeMode(requested.interactionMode)),
-                    fit = false,
-                )
-            },
-            hudRuntimeState = miniMapHudState,
-            onReset = mapViewModel::resetMiniMapPreferences,
-            focusRequest = miniMapSettingsWindow.focusRequest,
-            onDismiss = { miniMapSettingsWindow = miniMapSettingsWindow.close() },
         )
     }
     if (showMarkerManager) {

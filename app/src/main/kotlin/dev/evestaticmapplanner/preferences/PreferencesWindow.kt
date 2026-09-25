@@ -68,9 +68,6 @@ import dev.evestaticmapplanner.featurepack.PackControlActionUiState
 import dev.evestaticmapplanner.feature.api.PackControlActionStatus
 import dev.evestaticmapplanner.feature.api.PackControlSeverity
 import dev.evestaticmapplanner.feature.api.OverlayState
-import dev.evestaticmapplanner.minimap.MINI_MAP_RECOVERY_HOTKEY_LABEL
-import dev.evestaticmapplanner.minimap.MiniMapHudRuntimeState
-import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.localization.LocalAppStrings
@@ -1894,109 +1891,6 @@ private fun localizedPackControlText(text: String, strings: dev.evestaticmapplan
         "This Pack could not provide its current status." -> strings.text(PreferencesText.FEATURE_PACK_STATUS_UNAVAILABLE)
         else -> text
     }
-
-@Composable
-internal fun MiniMapPreferencesContent(
-    preferences: MiniMapPreferences,
-    onChange: (MiniMapPreferences) -> Unit,
-    hudRuntimeState: MiniMapHudRuntimeState = MiniMapHudRuntimeState(
-        hotkeyStatus = MiniMapRecoveryHotkeyStatus.REGISTERED,
-    ),
-    onReset: () -> Unit,
-) {
-    val strings = LocalAppStrings.current.preferences
-    Text(strings.text(PreferencesText.MINI_MAP_SETTINGS), style = MaterialTheme.typography.titleMedium)
-    Text(
-        strings.text(PreferencesText.MINI_MAP_HELP),
-        color = EveColors.SecondaryText,
-    )
-    Text(strings.text(PreferencesText.VISIBLE_RANGE), style = MaterialTheme.typography.titleSmall)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        (1..5).forEach { hops ->
-            TextButton(
-                onClick = { onChange(preferences.copy(stargateHops = hops)) },
-                selected = preferences.stargateHops == hops,
-            ) {
-                Text(hops.toString())
-            }
-        }
-    }
-    Text(
-        strings.text(PreferencesText.HOP_COUNT, preferences.stargateHops),
-        color = EveColors.SecondaryText,
-        style = MaterialTheme.typography.bodySmall,
-    )
-    HorizontalDivider()
-    PreferenceCheckbox(strings.text(PreferencesText.SHOW_ANSIBLEX_CONNECTIONS), preferences.includeAnsiblexEdges) {
-        onChange(preferences.copy(includeAnsiblexEdges = it))
-    }
-    Text(
-        strings.text(PreferencesText.MINI_MAP_ANSIBLEX_HELP),
-        color = EveColors.SecondaryText,
-        style = MaterialTheme.typography.bodySmall,
-    )
-    HorizontalDivider()
-    Text(strings.text(PreferencesText.WINDOW_STYLE), style = MaterialTheme.typography.titleSmall)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        MiniMapWindowStyle.entries.forEach { style ->
-            TextButton(
-                onClick = { onChange(preferences.copy(windowStyle = style)) },
-                selected = preferences.windowStyle == style,
-            ) {
-                Text(strings.text(if (style == MiniMapWindowStyle.STANDARD) PreferencesText.STANDARD else PreferencesText.HUD))
-            }
-        }
-    }
-    Text(
-        strings.text(PreferencesText.WINDOW_STYLE_HELP),
-        color = EveColors.SecondaryText,
-        style = MaterialTheme.typography.bodySmall,
-    )
-    Text(strings.text(PreferencesText.INTERACTION), style = MaterialTheme.typography.titleSmall)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        TextButton(
-            onClick = { onChange(preferences.copy(interactionMode = MiniMapInteractionMode.INTERACTIVE)) },
-            selected = preferences.interactionMode == MiniMapInteractionMode.INTERACTIVE,
-        ) { Text(strings.text(PreferencesText.INTERACTIVE)) }
-        TextButton(
-            onClick = { onChange(preferences.copy(interactionMode = MiniMapInteractionMode.HUD_LOCKED)) },
-            selected = preferences.interactionMode == MiniMapInteractionMode.HUD_LOCKED,
-            enabled = hudRuntimeState.canLock,
-        ) { Text(strings.text(PreferencesText.HUD_LOCKED)) }
-    }
-    Text(
-        strings.text(
-            PreferencesText.RECOVERY_HOTKEY,
-            MINI_MAP_RECOVERY_HOTKEY_LABEL,
-            hotkeyStatusLabel(hudRuntimeState, strings),
-        ),
-        color = if (hudRuntimeState.canLock) EveColors.SecondaryText else EveColors.Important,
-        style = MaterialTheme.typography.bodySmall,
-    )
-    hudRuntimeState.diagnostic?.let {
-        Text(it, color = EveColors.Important, style = MaterialTheme.typography.bodySmall)
-    }
-    Text(strings.text(PreferencesText.HUD_OPACITY, (preferences.hudOpacity * 100).toInt()), style = MaterialTheme.typography.titleSmall)
-    Slider(
-        value = preferences.hudOpacity,
-        onValueChange = { onChange(preferences.copy(hudOpacity = it.coerceIn(0.4f, 1f))) },
-        valueRange = 0.4f..1f,
-        steps = 5,
-        enabled = preferences.windowStyle == MiniMapWindowStyle.HUD,
-    )
-    PreferenceCheckbox(strings.text(PreferencesText.SNAP_TO_SCREEN_EDGES), preferences.snapToScreenEdges) {
-        onChange(preferences.copy(snapToScreenEdges = it))
-    }
-    TextButton(onClick = onReset) { Text(strings.text(PreferencesText.RESET_MINI_MAP)) }
-}
-
-private fun hotkeyStatusLabel(state: MiniMapHudRuntimeState, strings: PreferencesStrings): String = when (state.hotkeyStatus) {
-    MiniMapRecoveryHotkeyStatus.NOT_STARTED -> strings.text(PreferencesText.HOTKEY_STARTING)
-    MiniMapRecoveryHotkeyStatus.REGISTERED -> strings.text(PreferencesText.HOTKEY_READY)
-    MiniMapRecoveryHotkeyStatus.FAILED -> strings.text(PreferencesText.HOTKEY_UNAVAILABLE)
-    MiniMapRecoveryHotkeyStatus.UNSUPPORTED -> strings.text(PreferencesText.HOTKEY_UNSUPPORTED)
-    MiniMapRecoveryHotkeyStatus.CLOSED -> strings.text(PreferencesText.HOTKEY_STOPPED)
-}
 
 @Composable
 private fun AiControlPreferencesContent(

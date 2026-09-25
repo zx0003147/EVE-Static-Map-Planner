@@ -42,7 +42,6 @@ data class AppPreferences(
     val pushToTalkShortcut: KeyboardShortcut? = null,
     val overlayVisibility: OverlayVisibilityPreferences = OverlayVisibilityPreferences.Defaults,
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
-    val miniMap: MiniMapPreferences = MiniMapPreferences.Defaults,
     val ansiblex: AnsiblexPreferences = AnsiblexPreferences.Defaults,
     val eveIdentity: EveIdentityPreferences = EveIdentityPreferences.Defaults,
     val uiLocale: AppLocale = AppLocale.EN_US,
@@ -357,43 +356,6 @@ class PropertiesPreferencesStore(
                     ?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 80 }
                     ?: DEFAULT_SHARED_MAP_DEVICE_NAME,
             ),
-            miniMap = run {
-                val rawWindowStyle = properties.getProperty(KEY_MINI_MAP_WINDOW_STYLE)
-                val parsedWindowStyle = rawWindowStyle?.let {
-                    runCatching { MiniMapWindowStyle.valueOf(it) }.getOrNull()
-                }
-                val rawInteractionMode = properties.getProperty(KEY_MINI_MAP_INTERACTION_MODE)
-                val parsedInteractionMode = rawInteractionMode?.let {
-                    runCatching { MiniMapInteractionMode.valueOf(it) }.getOrNull()
-                }
-                val safeWindowSettings =
-                    (rawWindowStyle == null || parsedWindowStyle != null) &&
-                        (rawInteractionMode == null || parsedInteractionMode != null)
-                MiniMapPreferences(
-                    enabled = properties.validBoolean(KEY_MINI_MAP_ENABLED, false),
-                    stargateHops = properties.getProperty(KEY_MINI_MAP_HOPS)?.toIntOrNull()?.takeIf { it in 1..5 } ?: 2,
-                    followMode = properties.getProperty(KEY_MINI_MAP_FOLLOW_MODE)?.let {
-                        runCatching { MiniMapFollowMode.valueOf(it) }.getOrNull()
-                    } ?: MiniMapFollowMode.AUTO,
-                    pinnedCharacterId = properties.getProperty(KEY_MINI_MAP_PINNED_CHARACTER_ID)
-                        ?.toLongOrNull()?.takeIf { it > 0 },
-                    windowBounds = MiniMapWindowBounds(
-                        x = properties.validFloat(KEY_MINI_MAP_WINDOW_X, 80f) { it in -20_000f..20_000f },
-                        y = properties.validFloat(KEY_MINI_MAP_WINDOW_Y, 80f) { it in -20_000f..20_000f },
-                        width = properties.validFloat(KEY_MINI_MAP_WINDOW_WIDTH, 420f) { it in 280f..2_000f },
-                        height = properties.validFloat(KEY_MINI_MAP_WINDOW_HEIGHT, 360f) { it in 240f..2_000f },
-                    ),
-                    includeAnsiblexEdges = properties.validBoolean(KEY_MINI_MAP_INCLUDE_ANSIBLEX, false),
-                    windowStyle = if (safeWindowSettings) parsedWindowStyle ?: MiniMapWindowStyle.STANDARD else MiniMapWindowStyle.STANDARD,
-                    interactionMode = if (safeWindowSettings) {
-                        parsedInteractionMode ?: MiniMapInteractionMode.INTERACTIVE
-                    } else {
-                        MiniMapInteractionMode.INTERACTIVE
-                    },
-                    hudOpacity = properties.validFloat(KEY_MINI_MAP_HUD_OPACITY, 0.88f) { it in 0.4f..1f },
-                    snapToScreenEdges = properties.validBoolean(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, true),
-                )
-            },
             ansiblex = run {
                 val legacyAllianceName = runCatching {
                     normalizeAllianceDisplayName(properties.getProperty(KEY_ANSIBLEX_CURRENT_ALLIANCE_ID))
@@ -448,7 +410,6 @@ class PropertiesPreferencesStore(
             val voice = preferences.voice
             val overlayVisibility = preferences.overlayVisibility
             val sharedMap = preferences.sharedMap
-            val miniMap = preferences.miniMap
             val ansiblex = preferences.ansiblex
             val eveIdentity = preferences.eveIdentity
             val properties = Properties().apply {
@@ -529,19 +490,6 @@ class PropertiesPreferencesStore(
                 sharedMap.serverUrl?.let { setProperty(KEY_SHARED_MAP_SERVER_URL, it) }
                 sharedMap.selectedWorkspaceId?.let { setProperty(KEY_SHARED_MAP_SELECTED_WORKSPACE_ID, it) }
                 setProperty(KEY_SHARED_MAP_DEVICE_NAME, sharedMap.deviceName)
-                setProperty(KEY_MINI_MAP_ENABLED, miniMap.enabled.toString())
-                setProperty(KEY_MINI_MAP_HOPS, miniMap.stargateHops.toString())
-                setProperty(KEY_MINI_MAP_FOLLOW_MODE, miniMap.followMode.name)
-                miniMap.pinnedCharacterId?.let { setProperty(KEY_MINI_MAP_PINNED_CHARACTER_ID, it.toString()) }
-                setProperty(KEY_MINI_MAP_WINDOW_X, miniMap.windowBounds.x.toString())
-                setProperty(KEY_MINI_MAP_WINDOW_Y, miniMap.windowBounds.y.toString())
-                setProperty(KEY_MINI_MAP_WINDOW_WIDTH, miniMap.windowBounds.width.toString())
-                setProperty(KEY_MINI_MAP_WINDOW_HEIGHT, miniMap.windowBounds.height.toString())
-                setProperty(KEY_MINI_MAP_INCLUDE_ANSIBLEX, miniMap.includeAnsiblexEdges.toString())
-                setProperty(KEY_MINI_MAP_WINDOW_STYLE, miniMap.windowStyle.name)
-                setProperty(KEY_MINI_MAP_INTERACTION_MODE, miniMap.interactionMode.name)
-                setProperty(KEY_MINI_MAP_HUD_OPACITY, miniMap.hudOpacity.toString())
-                setProperty(KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES, miniMap.snapToScreenEdges.toString())
                 setProperty(KEY_ANSIBLEX_IDENTITY_SOURCE, ansiblex.identitySource.name)
                 ansiblex.manualAllianceId?.let { setProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_ID, it.toString()) }
                 normalizeAllianceDisplayName(ansiblex.manualAllianceName)?.let {
@@ -819,19 +767,6 @@ private const val KEY_OVERLAY_DISABLED_LAYERS = "overlay.disabledLayers"
 private const val KEY_SHARED_MAP_SERVER_URL = "sharedMap.serverUrl"
 private const val KEY_SHARED_MAP_SELECTED_WORKSPACE_ID = "sharedMap.selectedWorkspaceId"
 private const val KEY_SHARED_MAP_DEVICE_NAME = "sharedMap.deviceName"
-private const val KEY_MINI_MAP_ENABLED = "miniMap.enabled"
-private const val KEY_MINI_MAP_HOPS = "miniMap.stargateHops"
-private const val KEY_MINI_MAP_FOLLOW_MODE = "miniMap.followMode"
-private const val KEY_MINI_MAP_PINNED_CHARACTER_ID = "miniMap.pinnedCharacterId"
-private const val KEY_MINI_MAP_WINDOW_X = "miniMap.window.x"
-private const val KEY_MINI_MAP_WINDOW_Y = "miniMap.window.y"
-private const val KEY_MINI_MAP_WINDOW_WIDTH = "miniMap.window.width"
-private const val KEY_MINI_MAP_WINDOW_HEIGHT = "miniMap.window.height"
-private const val KEY_MINI_MAP_INCLUDE_ANSIBLEX = "miniMap.includeAnsiblexEdges"
-private const val KEY_MINI_MAP_WINDOW_STYLE = "miniMap.window.style"
-private const val KEY_MINI_MAP_INTERACTION_MODE = "miniMap.interaction.mode"
-private const val KEY_MINI_MAP_HUD_OPACITY = "miniMap.hud.opacity"
-private const val KEY_MINI_MAP_SNAP_TO_SCREEN_EDGES = "miniMap.snapToScreenEdges"
 private const val KEY_ANSIBLEX_CURRENT_ALLIANCE_ID = "ansiblex.currentAllianceId"
 private const val KEY_ANSIBLEX_IDENTITY_SOURCE = "ansiblex.identitySource"
 private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_ID = "ansiblex.manualAllianceId"

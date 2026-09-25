@@ -27,5 +27,4 @@ object EnglishAppStrings : AppStrings {
     override val sharedMap: dev.evestaticmapplanner.localization.SharedMapStrings = EnglishSharedMapStrings
     override val wormhole: dev.evestaticmapplanner.localization.WormholeStrings = EnglishWormholeStrings
     override val ansiblex: dev.evestaticmapplanner.localization.AnsiblexStrings = EnglishAnsiblexStrings
-    override val miniMap: dev.evestaticmapplanner.localization.MiniMapStrings = EnglishMiniMapStrings
 }

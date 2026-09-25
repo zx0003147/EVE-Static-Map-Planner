@@ -19,7 +19,6 @@ interface AppStrings {
     val sharedMap: SharedMapStrings
     val wormhole: WormholeStrings
     val ansiblex: AnsiblexStrings
-    val miniMap: MiniMapStrings
 }
 
 object AppStringsCatalog {

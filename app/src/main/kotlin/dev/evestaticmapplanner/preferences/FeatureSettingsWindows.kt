@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.localization.LocalAppStrings
-import dev.evestaticmapplanner.minimap.MiniMapHudRuntimeState
 import dev.evestaticmapplanner.ui.EveDivider
 import dev.evestaticmapplanner.ui.EveTextButton
 import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
@@ -33,32 +32,6 @@ internal data class FeatureSettingsWindowState(
     )
 
     fun close(): FeatureSettingsWindowState = copy(isOpen = false)
-}
-
-@Composable
-internal fun MiniMapSettingsWindow(
-    preferences: MiniMapPreferences,
-    onChange: (MiniMapPreferences) -> Unit,
-    hudRuntimeState: MiniMapHudRuntimeState,
-    onReset: () -> Unit,
-    focusRequest: Int,
-    onDismiss: () -> Unit,
-) {
-    val strings = LocalAppStrings.current
-    FeatureSettingsWindow(
-        title = strings.mainShell.miniMapSettings,
-        width = 500.dp,
-        height = 680.dp,
-        focusRequest = focusRequest,
-        onDismiss = onDismiss,
-    ) {
-        MiniMapPreferencesContent(
-            preferences = preferences,
-            onChange = onChange,
-            hudRuntimeState = hudRuntimeState,
-            onReset = onReset,
-        )
-    }
 }
 
 @Composable

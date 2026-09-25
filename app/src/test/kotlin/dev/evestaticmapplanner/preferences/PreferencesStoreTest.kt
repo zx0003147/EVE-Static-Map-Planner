@@ -30,9 +30,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import dev.evestaticmapplanner.preferences.MiniMapFollowMode
-import dev.evestaticmapplanner.preferences.MiniMapPreferences
-import dev.evestaticmapplanner.preferences.MiniMapWindowBounds
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
 
@@ -220,47 +217,24 @@ class PreferencesStoreTest {
         }
 
     @Test
-    fun `mini-map settings round trip including negative monitor coordinates`() {
-        val root = createTempDirectory("mini-map-preferences")
+    fun `retired compact map keys are ignored and omitted on the next save`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
-        val expected = MiniMapPreferences(
-            enabled = true,
-            stargateHops = 5,
-            followMode = MiniMapFollowMode.PINNED,
-            pinnedCharacterId = 90_000_001,
-            windowBounds = MiniMapWindowBounds(-900f, 125f, 510f, 390f),
-            includeAnsiblexEdges = true,
-            windowStyle = MiniMapWindowStyle.HUD,
-            interactionMode = MiniMapInteractionMode.HUD_LOCKED,
-            hudOpacity = 0.64f,
-            snapToScreenEdges = false,
-        )
-        val store = PropertiesPreferencesStore(path)
-        store.save(AppPreferences.Defaults.copy(miniMap = expected))
-
-        assertEquals(expected, store.load().miniMap)
-        root.toFile().deleteRecursively()
-    }
-
-    @Test
-    fun `invalid Mini-map HUD mode falls back to Standard and Interactive`() = withTemporaryDirectory { root ->
-        val path = root.resolve("settings.properties")
+        val retiredPrefix = "mini" + "Map."
         Files.writeString(
             path,
             """
             settings.version=1
-            miniMap.window.style=GLASS
-            miniMap.interaction.mode=HUD_LOCKED
-            miniMap.hud.opacity=not-a-number
+            ${retiredPrefix}enabled=true
+            ${retiredPrefix}window.style=HUD
             """.trimIndent(),
         )
+        val store = PropertiesPreferencesStore(path)
 
-        val loaded = PropertiesPreferencesStore(path).load().miniMap
+        store.save(store.load())
 
-        assertEquals(MiniMapWindowStyle.STANDARD, loaded.windowStyle)
-        assertEquals(MiniMapInteractionMode.INTERACTIVE, loaded.interactionMode)
-        assertEquals(0.88f, loaded.hudOpacity)
+        assertFalse(Files.readString(path).contains(retiredPrefix))
     }
+
     @Test
     fun `Shared Map settings persist only non-sensitive configuration`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")

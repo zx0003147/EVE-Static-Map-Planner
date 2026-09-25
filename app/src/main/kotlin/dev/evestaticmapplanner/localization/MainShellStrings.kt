@@ -6,10 +6,6 @@ interface MainShellStrings {
     val sharedMarkerManager: String
     val clearAllTemporaryMarkers: String
     val markerSettings: String
-    val miniMap: String
-    val showMiniMap: String
-    val hideMiniMap: String
-    val miniMapSettings: String
     val preferences: String
     val openPreferences: String
     val staticData: String

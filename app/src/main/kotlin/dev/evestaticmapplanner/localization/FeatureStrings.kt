@@ -9,8 +9,6 @@ import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
-import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
-import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 import dev.evestaticmapplanner.shared.api.SharedMapError
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
@@ -383,33 +381,4 @@ data class AnsiblexUiMessage(
         value,
         technicalDetail,
     )
-}
-
-interface MiniMapStrings {
-    val title: String
-    val selectCharacter: String
-    val noTrackedCharacters: String
-    val automaticFollow: String
-    val pinnedFollow: String
-    val options: String
-    val showDiagnostics: String
-    val hideDiagnostics: String
-    val bindCurrentClient: String
-    val bindPrompt: String
-    val unknownCharacter: String
-    val diagnostics: String
-    val never: String
-    val none: String
-    val noCharacterSelected: String
-    val locationUnavailable: String
-    val unknownSystem: String
-
-    fun followMode(mode: MiniMapFollowMode): String
-    fun portraitDescription(characterName: String): String
-    fun trackingSummary(total: Int, tracked: Int, current: Int, stale: Int, degraded: Int, unknown: Int): String
-    fun validationSummary(lastValidatedAt: String, errorCategory: String): String
-    fun routeScope(hops: Int, includeAnsiblex: Boolean): String
-    fun status(status: TrackedCharacterLocationStatus): String
-    fun locationLine(systemName: String, status: TrackedCharacterLocationStatus): String
-    fun diagnosticText(message: String): String
 }

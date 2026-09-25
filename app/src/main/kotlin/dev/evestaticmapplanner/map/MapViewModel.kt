@@ -27,7 +27,6 @@ import dev.evestaticmapplanner.preferences.AnsiblexPreferences
 import dev.evestaticmapplanner.preferences.EveIdentityPreferences
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
-import dev.evestaticmapplanner.preferences.MiniMapPreferences
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SharedMapPreferences
@@ -326,13 +325,6 @@ class MapViewModel(
         schedulePreferencesSave()
     }
 
-    fun updateMiniMapPreferences(preferences: MiniMapPreferences) {
-        mutableState.update { current ->
-            current.copy(appPreferences = current.appPreferences.copy(miniMap = preferences))
-        }
-        schedulePreferencesSave()
-    }
-
     fun updateAnsiblexPreferences(preferences: AnsiblexPreferences) {
         mutableState.update { current ->
             current.copy(appPreferences = current.appPreferences.copy(ansiblex = preferences))
@@ -345,21 +337,6 @@ class MapViewModel(
             current.copy(appPreferences = current.appPreferences.copy(eveIdentity = preferences))
         }
         schedulePreferencesSave()
-    }
-
-    fun resetMiniMapPreferences() {
-        val defaults = MiniMapPreferences.Defaults
-        val current = mutableState.value.appPreferences.miniMap
-        updateMiniMapPreferences(
-            current.copy(
-                stargateHops = defaults.stargateHops,
-                includeAnsiblexEdges = defaults.includeAnsiblexEdges,
-                windowStyle = defaults.windowStyle,
-                interactionMode = defaults.interactionMode,
-                hudOpacity = defaults.hudOpacity,
-                snapToScreenEdges = defaults.snapToScreenEdges,
-            ),
-        )
     }
 
     fun resetMarkerPreferences() {

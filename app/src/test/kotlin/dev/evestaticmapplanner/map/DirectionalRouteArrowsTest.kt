@@ -82,27 +82,6 @@ class DirectionalRouteArrowsTest {
     }
 
     @Test
-    fun `Mini-map scaling preserves its readable Chevron floor`() {
-        val geometry = StraightMapConnectionGeometry(MapPoint(0.0, 0.0), MapPoint(100.0, 0.0))
-        val normal = buildDirectionalArrowheads(
-            geometry = geometry,
-            routeStrokeWidth = 3f,
-            scale = MINI_MAP_ROUTE_ARROW_SCALE,
-            minimumReadableLengthPx = MINI_MAP_ROUTE_ARROW_MIN_LENGTH_PX,
-        ).single()
-        val thicker = buildDirectionalArrowheads(
-            geometry = geometry,
-            routeStrokeWidth = 4f,
-            scale = MINI_MAP_ROUTE_ARROW_SCALE,
-            minimumReadableLengthPx = MINI_MAP_ROUTE_ARROW_MIN_LENGTH_PX,
-        ).single()
-
-        assertEquals(MINI_MAP_ROUTE_ARROW_MIN_LENGTH_PX, normal.lengthPx)
-        assertTrue(thicker.lengthPx > normal.lengthPx)
-        assertTrue(directionalChevronHaloStrokeWidth(2.4f, MINI_MAP_ROUTE_ARROW_SCALE) > 2.4f)
-    }
-
-    @Test
     fun `very long segments cap arrow count`() {
         val geometry = StraightMapConnectionGeometry(MapPoint(0.0, 0.0), MapPoint(10_000.0, 0.0))
 

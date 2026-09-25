@@ -27,5 +27,4 @@ object SimplifiedChineseAppStrings : AppStrings {
     override val sharedMap: dev.evestaticmapplanner.localization.SharedMapStrings = SimplifiedChineseSharedMapStrings
     override val wormhole: dev.evestaticmapplanner.localization.WormholeStrings = SimplifiedChineseWormholeStrings
     override val ansiblex: dev.evestaticmapplanner.localization.AnsiblexStrings = SimplifiedChineseAnsiblexStrings
-    override val miniMap: dev.evestaticmapplanner.localization.MiniMapStrings = SimplifiedChineseMiniMapStrings
 }

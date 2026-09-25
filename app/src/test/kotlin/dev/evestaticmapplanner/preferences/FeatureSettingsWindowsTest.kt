@@ -373,7 +373,6 @@ class FeatureSettingsWindowsTest {
         onNodeWithText("Marker Settings").assertIsDisplayed()
         onNodeWithText("Saved Marker Appearance").assertIsDisplayed()
         onNodeWithText("Map Display").assertDoesNotExist()
-        onNodeWithText("Mini-map Settings").assertDoesNotExist()
         onNodeWithText("AI Control").assertDoesNotExist()
 
         onAllNodes(isToggleable())[0].performClick()

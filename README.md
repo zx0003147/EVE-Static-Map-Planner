@@ -64,6 +64,10 @@ drafts, and does not send calculated transit systems. Capital routes do not expo
 selected route-action target and never auto-falls back after a disconnect. Add Character, Refresh Locations, and
 per-character tracking and Disconnect controls appear generically in the Feature Packs preferences page.
 
+Character Tracking is rendered directly on both main-map projections through the typed Host contract. The former
+Mini Map window, HUD mode, global recovery hotkey, and dedicated preferences have been retired; character updates
+move only their map markers, while Locate remains the explicit action that may focus the map.
+
 See `docs/feature-packs.md` for the platform contract, installation layout, lifecycle, and testing model.
 
 ## Development requirements

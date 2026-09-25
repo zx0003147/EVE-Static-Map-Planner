@@ -8,8 +8,6 @@ internal data class PlannerTopMenuState(
     val markerManagerOpen: Boolean,
     val sharedMarkerManagerOpen: Boolean,
     val temporaryMarkerCount: Int,
-    val characterTrackingAvailable: Boolean,
-    val miniMapEnabled: Boolean,
     val staticDataOpen: Boolean,
 )
 
@@ -18,8 +16,6 @@ internal data class PlannerTopMenuActions(
     val openSharedMarkerManager: () -> Unit,
     val clearTemporaryMarkers: () -> Unit,
     val openMarkerSettings: () -> Unit,
-    val toggleMiniMap: () -> Unit,
-    val openMiniMapSettings: () -> Unit,
     val openPreferences: () -> Unit,
     val openStaticData: () -> Unit,
 )
@@ -55,20 +51,6 @@ internal fun plannerTopMenus(
             ),
         ),
     ),
-    EveMenuSpec(
-        strings.miniMap,
-        listOf(
-            EveMenuItemSpec(
-                if (state.miniMapEnabled) strings.hideMiniMap else strings.showMiniMap,
-                onClick = actions.toggleMiniMap,
-            ),
-            EveMenuItemSpec(
-                strings.miniMapSettings,
-                separatorBefore = true,
-                onClick = actions.openMiniMapSettings,
-            ),
-        ),
-    ).takeIf { state.characterTrackingAvailable },
     EveMenuSpec(
         strings.preferences,
         listOf(EveMenuItemSpec(strings.openPreferences, onClick = actions.openPreferences)),

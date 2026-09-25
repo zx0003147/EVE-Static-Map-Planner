@@ -10,14 +10,12 @@ import dev.evestaticmapplanner.data.ansiblex.ImportConflictField
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
-import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.localization.AiAssistantStrings
 import dev.evestaticmapplanner.localization.AiVoiceStatus
 import dev.evestaticmapplanner.localization.AnsiblexMessage
 import dev.evestaticmapplanner.localization.AnsiblexStrings
 import dev.evestaticmapplanner.localization.MarkerMessage
 import dev.evestaticmapplanner.localization.MarkerStrings
-import dev.evestaticmapplanner.localization.MiniMapStrings
 import dev.evestaticmapplanner.localization.SharedMapStrings
 import dev.evestaticmapplanner.localization.WormholeMessage
 import dev.evestaticmapplanner.localization.WormholeStrings
@@ -25,7 +23,6 @@ import dev.evestaticmapplanner.shared.api.SharedMapError
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
-import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 
 internal object SimplifiedChineseAiAssistantStrings : AiAssistantStrings {
     override val title = "内置 AI 助手"
@@ -518,71 +515,3 @@ internal object SimplifiedChineseAnsiblexStrings : AnsiblexStrings {
 
 private fun appendDetail(message: String, detail: String?): String =
     detail?.takeIf { it.isNotBlank() && it != message }?.let { "$message\n$it" } ?: message
-
-internal object SimplifiedChineseMiniMapStrings : MiniMapStrings {
-    override val title = "EVE 小地图"
-    override val selectCharacter = "选择角色"
-    override val noTrackedCharacters = "没有可跟踪角色"
-    override val automaticFollow = "自动 — 跟随前台 EVE 客户端"
-    override val pinnedFollow = "固定 — 保持当前角色"
-    override val options = "小地图选项"
-    override val showDiagnostics = "显示诊断信息"
-    override val hideDiagnostics = "隐藏诊断信息"
-    override val bindCurrentClient = "绑定当前 EVE 客户端……"
-    override val bindPrompt = "将此 EVE 客户端临时绑定到："
-    override val unknownCharacter = "未知角色"
-    override val diagnostics = "诊断信息"
-    override val never = "从未"
-    override val none = "无"
-    override val noCharacterSelected = "未选择角色"
-    override val locationUnavailable = "位置不可用"
-    override val unknownSystem = "未知星系"
-    override fun followMode(mode: MiniMapFollowMode) = when (mode) {
-        MiniMapFollowMode.AUTO -> "自动"
-        MiniMapFollowMode.PINNED -> "固定"
-    }
-    override fun portraitDescription(characterName: String) = "$characterName 头像"
-    override fun trackingSummary(total: Int, tracked: Int, current: Int, stale: Int, degraded: Int, unknown: Int) =
-        "跟踪 $tracked/$total · 当前 $current · 过期 $stale · 降级 $degraded · 未知 $unknown"
-    override fun validationSummary(lastValidatedAt: String, errorCategory: String) =
-        "上次验证 $lastValidatedAt · 错误 $errorCategory"
-    override fun routeScope(hops: Int, includeAnsiblex: Boolean) =
-        "$hops 跳 · Ansiblex ${if (includeAnsiblex) "已包含" else "已排除"}"
-    override fun status(status: TrackedCharacterLocationStatus) = when (status) {
-        TrackedCharacterLocationStatus.CURRENT -> "当前"
-        TrackedCharacterLocationStatus.STALE -> "过期"
-        TrackedCharacterLocationStatus.DEGRADED -> "降级"
-        TrackedCharacterLocationStatus.UNKNOWN -> "未知"
-    }
-    override fun locationLine(systemName: String, status: TrackedCharacterLocationStatus) =
-        if (status == TrackedCharacterLocationStatus.STALE) "上次位置：$systemName · ${status(status)}"
-        else "$systemName · ${status(status)}"
-    override fun diagnosticText(message: String): String = when (message) {
-        "Waiting for a foreground EVE client" -> "正在等待前台 EVE 客户端"
-        "Previously followed character is no longer authorized for tracking" -> "之前跟随的角色已无跟踪授权"
-        "Character is not authorized for tracking" -> "角色未授权跟踪"
-        "No foreground window has been observed" -> "尚未检测到前台窗口"
-        "The foreground window is not a verified EVE game client" -> "前台窗口不是已验证的 EVE 游戏客户端"
-        "The EVE client session identity is incomplete" -> "EVE 客户端会话身份不完整"
-        "Following manual EVE client session binding" -> "正在跟随手动绑定的 EVE 客户端会话"
-        "Matched a manual EVE client session binding" -> "已匹配手动绑定的 EVE 客户端会话"
-        "Matched foreground EVE character exactly" -> "已精确匹配前台 EVE 角色"
-        "Foreground EVE character is not authorized for tracking; retaining the previous character" -> "前台 EVE 角色未授权跟踪；保留之前的角色"
-        "Foreground EVE client character is unknown; retaining the previous character" -> "前台 EVE 客户端角色未知；保留之前的角色"
-        "EVE Launcher is foreground; retaining the previous character" -> "EVE 启动器位于前台；保留之前的角色"
-        "Non-EVE window is foreground; retaining the previous character" -> "非 EVE 窗口位于前台；保留之前的角色"
-        "Foreground window identity is uncertain; retaining the previous character" -> "无法确认前台窗口身份；保留之前的角色"
-        "Rapid client reversal detected; waiting briefly for a stable foreground" -> "检测到客户端快速切换；正等待前台窗口稳定"
-        "Current EVE client session bound" -> "已绑定当前 EVE 客户端会话"
-        "Foreground client detection is unavailable on this platform" -> "此平台不支持前台客户端检测"
-        "No tracked characters\nConnect a character in ESI Pack first." -> "没有可跟踪角色\n请先在 ESI 功能包中连接角色。"
-        "Select a character to follow" -> "选择要跟随的角色"
-        "Followed character is unavailable" -> "跟随的角色不可用"
-        "Character location is outside the current map projection" -> "角色位置不在当前地图投影范围内"
-        else -> when {
-            message.startsWith("Tracking is disabled for ") -> "已禁止跟踪 ${message.removePrefix("Tracking is disabled for ")}"
-            message.startsWith("Location unavailable for ") -> "${message.removePrefix("Location unavailable for ")} 的位置不可用"
-            else -> message
-        }
-    }
-}

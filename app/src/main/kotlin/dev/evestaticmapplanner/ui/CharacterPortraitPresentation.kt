@@ -36,7 +36,7 @@ internal data class CharacterPortraitStack(
     val overflowCount: Int,
 )
 
-/** Shared Host-owned portrait presentation used by the main map and Mini-map. */
+/** Shared Host-owned portrait presentation used by character map surfaces. */
 internal fun presentCharacterPortraits(
     characters: List<TrackedCharacterSnapshot>,
     maximumVisible: Int = MAX_VISIBLE_PORTRAITS,

@@ -207,7 +207,7 @@ class AppLocalizationTest {
         strings.mainShell.run {
             listOf(
                 marker, markerManager, sharedMarkerManager, clearAllTemporaryMarkers, markerSettings,
-                miniMap, showMiniMap, hideMiniMap, miniMapSettings, preferences, openPreferences,
+                preferences, openPreferences,
                 staticData, openStaticData, keepWindowOnTop, disableAlwaysOnTop,
             )
         },
@@ -270,9 +270,6 @@ class AppLocalizationTest {
         },
         strings.ansiblex.run {
             listOf(managerTitle, importCsvJson, manualAdd, connections, clearImported, clearAllAnsiblex)
-        },
-        strings.miniMap.run {
-            listOf(title, selectCharacter, noTrackedCharacters, options, diagnostics)
         },
     )
         .flatMap { value -> if (value is List<*>) value.filterIsInstance<String>() else listOf(value as String) }

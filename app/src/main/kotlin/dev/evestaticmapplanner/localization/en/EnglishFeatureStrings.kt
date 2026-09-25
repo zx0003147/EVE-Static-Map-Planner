@@ -10,14 +10,12 @@ import dev.evestaticmapplanner.data.ansiblex.ImportConflictField
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
-import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
 import dev.evestaticmapplanner.localization.AiAssistantStrings
 import dev.evestaticmapplanner.localization.AiVoiceStatus
 import dev.evestaticmapplanner.localization.AnsiblexMessage
 import dev.evestaticmapplanner.localization.AnsiblexStrings
 import dev.evestaticmapplanner.localization.MarkerMessage
 import dev.evestaticmapplanner.localization.MarkerStrings
-import dev.evestaticmapplanner.localization.MiniMapStrings
 import dev.evestaticmapplanner.localization.SharedMapStrings
 import dev.evestaticmapplanner.localization.WormholeMessage
 import dev.evestaticmapplanner.localization.WormholeStrings
@@ -25,7 +23,6 @@ import dev.evestaticmapplanner.shared.api.SharedMapError
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
 import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
-import dev.evestaticmapplanner.preferences.MiniMapFollowMode
 
 internal object EnglishAiAssistantStrings : AiAssistantStrings {
     override val title = "Embedded AI Assistant"
@@ -438,36 +435,3 @@ internal object EnglishAnsiblexStrings : AnsiblexStrings {
 
 private fun appendDetail(message: String, detail: String?): String =
     detail?.takeIf { it.isNotBlank() && it != message }?.let { "$message\n$it" } ?: message
-
-internal object EnglishMiniMapStrings : MiniMapStrings {
-    override val title = "EVE Mini-map"
-    override val selectCharacter = "Select character"
-    override val noTrackedCharacters = "No tracked characters"
-    override val automaticFollow = "AUTO — Follow foreground EVE client"
-    override val pinnedFollow = "PINNED — Keep current character"
-    override val options = "Mini-map options"
-    override val showDiagnostics = "Show diagnostics"
-    override val hideDiagnostics = "Hide diagnostics"
-    override val bindCurrentClient = "Bind current EVE client…"
-    override val bindPrompt = "Temporarily bind this EVE client to:"
-    override val unknownCharacter = "Unknown character"
-    override val diagnostics = "Diagnostics"
-    override val never = "never"
-    override val none = "none"
-    override val noCharacterSelected = "No character selected"
-    override val locationUnavailable = "Location unavailable"
-    override val unknownSystem = "Unknown system"
-    override fun followMode(mode: MiniMapFollowMode) = mode.name
-    override fun portraitDescription(characterName: String) = "$characterName portrait"
-    override fun trackingSummary(total: Int, tracked: Int, current: Int, stale: Int, degraded: Int, unknown: Int) =
-        "Tracking $tracked/$total · current $current · stale $stale · degraded $degraded · unknown $unknown"
-    override fun validationSummary(lastValidatedAt: String, errorCategory: String) =
-        "Validated $lastValidatedAt · Error $errorCategory"
-    override fun routeScope(hops: Int, includeAnsiblex: Boolean) =
-        "$hops hops · Ansiblex ${if (includeAnsiblex) "included" else "excluded"}"
-    override fun status(status: TrackedCharacterLocationStatus) = status.name
-    override fun locationLine(systemName: String, status: TrackedCharacterLocationStatus) =
-        if (status == TrackedCharacterLocationStatus.STALE) "Last known: $systemName · ${status(status)}"
-        else "$systemName · ${status(status)}"
-    override fun diagnosticText(message: String) = message
-}

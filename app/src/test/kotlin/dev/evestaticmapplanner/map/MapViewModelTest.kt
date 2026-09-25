@@ -23,9 +23,6 @@ import dev.evestaticmapplanner.preferences.AppPreferences
 import dev.evestaticmapplanner.preferences.AiControlPreferences
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.MarkerPreferences
-import dev.evestaticmapplanner.preferences.MiniMapInteractionMode
-import dev.evestaticmapplanner.preferences.MiniMapPreferences
-import dev.evestaticmapplanner.preferences.MiniMapWindowStyle
 import dev.evestaticmapplanner.preferences.OverlayLayerKey
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
@@ -391,36 +388,6 @@ class MapViewModelTest {
         assertEquals(mapDisplay, viewModel.state.value.appPreferences.mapDisplay)
         assertEquals(MarkerPreferences.Defaults, viewModel.state.value.appPreferences.marker)
         assertEquals(mapDisplay, store.stored.mapDisplay)
-    }
-
-    @Test
-    fun `reset Mini-map presentation restores safe defaults while preserving window session`() = runTest {
-        val fixture = Fixture()
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val store = FakePreferencesStore()
-        val viewModel = fixture.viewModel(this, dispatcher, preferencesStore = store)
-        advanceUntilIdle()
-        val customized = MiniMapPreferences(
-            enabled = true,
-            stargateHops = 5,
-            windowStyle = MiniMapWindowStyle.HUD,
-            interactionMode = MiniMapInteractionMode.HUD_LOCKED,
-            hudOpacity = 0.5f,
-            snapToScreenEdges = false,
-        )
-        viewModel.updateMiniMapPreferences(customized)
-
-        viewModel.resetMiniMapPreferences()
-        advanceUntilIdle()
-
-        val reset = viewModel.state.value.appPreferences.miniMap
-        assertTrue(reset.enabled)
-        assertEquals(MiniMapPreferences.Defaults.stargateHops, reset.stargateHops)
-        assertEquals(MiniMapWindowStyle.STANDARD, reset.windowStyle)
-        assertEquals(MiniMapInteractionMode.INTERACTIVE, reset.interactionMode)
-        assertEquals(MiniMapPreferences.Defaults.hudOpacity, reset.hudOpacity)
-        assertEquals(MiniMapPreferences.Defaults.snapToScreenEdges, reset.snapToScreenEdges)
-        assertEquals(reset, store.stored.miniMap)
     }
 
     @Test
