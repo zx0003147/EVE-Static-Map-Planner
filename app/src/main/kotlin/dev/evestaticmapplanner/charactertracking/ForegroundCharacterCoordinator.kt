@@ -1,4 +1,4 @@
-package dev.evestaticmapplanner.minimap
+package dev.evestaticmapplanner.charactertracking
 
 import dev.evestaticmapplanner.feature.api.TrackedCharacterAuthorizationState
 import dev.evestaticmapplanner.feature.api.TrackedCharacterSnapshot
@@ -9,19 +9,19 @@ import dev.evestaticmapplanner.platform.windows.windowidentity.ForegroundWindowS
 import dev.evestaticmapplanner.platform.windows.windowidentity.WindowSessionIdentity
 import dev.evestaticmapplanner.platform.windows.windowidentity.WindowsForegroundWindowMonitor
 import dev.evestaticmapplanner.platform.windows.windowidentity.WindowsForegroundWindowSnapshotReader
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 internal fun interface MonotonicClock {
     fun nowNanos(): Long
 }
 
-internal data class CharacterFollowState(
-    val followedCharacterId: Long? = null,
+internal data class ForegroundCharacterState(
+    val foregroundCharacterId: Long? = null,
     val lastForeground: ForegroundWindowSnapshot? = null,
     val diagnostic: String = "Waiting for a foreground EVE client",
     val antiFlappingActive: Boolean = false,
@@ -33,11 +33,8 @@ internal sealed interface ManualWindowBindingResult {
     data class Rejected(val reason: String) : ManualWindowBindingResult
 }
 
-/**
- * Maps Phase 0's strict foreground-window identity to the typed tracked-character list.
- * Non-EVE and unrecognized windows retain the last selection. Only a rapid reversal is delayed.
- */
-internal class ForegroundCharacterFollowCoordinator(
+/** Maps strict foreground-window identity to a temporary foreground tracked character. */
+internal class ForegroundCharacterCoordinator(
     private val monitor: ForegroundWindowMonitor = WindowsForegroundWindowMonitor(),
     private val readSnapshot: (Long) -> ForegroundWindowSnapshot = WindowsForegroundWindowSnapshotReader()::read,
     private val clock: MonotonicClock = MonotonicClock(System::nanoTime),
@@ -45,7 +42,7 @@ internal class ForegroundCharacterFollowCoordinator(
     private val runStabilityTimer: Boolean = true,
 ) : AutoCloseable {
     private val lock = Any()
-    private val mutableState = MutableStateFlow(CharacterFollowState())
+    private val mutableState = MutableStateFlow(ForegroundCharacterState())
     private var charactersById = emptyMap<Long, TrackedCharacterSnapshot>()
     private var charactersByExactName = emptyMap<String, TrackedCharacterSnapshot>()
     private val manualBindings = mutableMapOf<WindowSessionIdentity, Long>()
@@ -54,11 +51,11 @@ internal class ForegroundCharacterFollowCoordinator(
     private var stabilityTimer: ScheduledExecutorService? = null
     private var started = false
 
-    val state: StateFlow<CharacterFollowState> = mutableState.asStateFlow()
+    val state: StateFlow<ForegroundCharacterState> = mutableState.asStateFlow()
 
     fun start(onFailure: (Throwable) -> Unit = {}) {
         synchronized(lock) {
-            check(!started) { "Foreground character follow coordinator is already started" }
+            check(!started) { "Foreground character coordinator is already started" }
             started = true
         }
         monitor.start(::onForegroundEvent, onFailure)
@@ -81,12 +78,12 @@ internal class ForegroundCharacterFollowCoordinator(
         charactersById = eligible.associateBy(TrackedCharacterSnapshot::characterId)
         charactersByExactName = eligible.associateBy(TrackedCharacterSnapshot::characterName)
         manualBindings.entries.removeIf { (_, characterId) -> characterId !in charactersById }
-        val current = mutableState.value.followedCharacterId
+        val current = mutableState.value.foregroundCharacterId
         if (current != null && current !in charactersById) {
             lastTransition = null
             pendingReversal = null
             mutableState.value = mutableState.value.copy(
-                followedCharacterId = null,
+                foregroundCharacterId = null,
                 diagnostic = "Previously followed character is no longer authorized for tracking",
                 antiFlappingActive = false,
                 manualBindingCount = manualBindings.size,
@@ -104,7 +101,9 @@ internal class ForegroundCharacterFollowCoordinator(
         val foreground = mutableState.value.lastForeground
             ?: return@synchronized ManualWindowBindingResult.Rejected("No foreground window has been observed")
         if (foreground.classification !in EVE_GAME_CLASSIFICATIONS) {
-            return@synchronized ManualWindowBindingResult.Rejected("The foreground window is not a verified EVE game client")
+            return@synchronized ManualWindowBindingResult.Rejected(
+                "The foreground window is not a verified EVE game client",
+            )
         }
         val session = foreground.sessionIdentity
             ?: return@synchronized ManualWindowBindingResult.Rejected("The EVE client session identity is incomplete")
@@ -132,7 +131,6 @@ internal class ForegroundCharacterFollowCoordinator(
     private fun evaluateSnapshotLocked(snapshot: ForegroundWindowSnapshot) {
         purgeDeadBindings()
         snapshot.sessionIdentity?.let(::removeReusedHandleBindings)
-        val retainedDiagnostic: String
         val candidate = when (snapshot.classification) {
             ForegroundWindowClassification.EVE_GAME_CHARACTER,
             ForegroundWindowClassification.EVE_GAME_UNKNOWN_CHARACTER,
@@ -147,7 +145,7 @@ internal class ForegroundCharacterFollowCoordinator(
             }
             else -> null
         }
-        retainedDiagnostic = when {
+        val diagnostic = when {
             candidate != null && snapshot.sessionIdentity?.let(manualBindings::containsKey) == true ->
                 "Matched a manual EVE client session binding"
             candidate != null -> "Matched foreground EVE character exactly"
@@ -163,11 +161,11 @@ internal class ForegroundCharacterFollowCoordinator(
         }
         mutableState.value = mutableState.value.copy(lastForeground = snapshot)
         if (candidate != null) {
-            acceptCandidateLocked(candidate, retainedDiagnostic)
+            acceptCandidateLocked(candidate, diagnostic)
         } else {
             pendingReversal = null
             mutableState.value = mutableState.value.copy(
-                diagnostic = retainedDiagnostic,
+                diagnostic = diagnostic,
                 antiFlappingActive = false,
                 manualBindingCount = manualBindings.size,
             )
@@ -175,7 +173,7 @@ internal class ForegroundCharacterFollowCoordinator(
     }
 
     private fun acceptCandidateLocked(characterId: Long, diagnostic: String, bypassStability: Boolean = false) {
-        val current = mutableState.value.followedCharacterId
+        val current = mutableState.value.foregroundCharacterId
         if (current == characterId) {
             pendingReversal = null
             mutableState.value = mutableState.value.copy(
@@ -205,7 +203,7 @@ internal class ForegroundCharacterFollowCoordinator(
         pendingReversal = null
         if (current != null) lastTransition = AcceptedTransition(current, characterId, now)
         mutableState.value = mutableState.value.copy(
-            followedCharacterId = characterId,
+            foregroundCharacterId = characterId,
             diagnostic = diagnostic,
             antiFlappingActive = false,
             manualBindingCount = manualBindings.size,

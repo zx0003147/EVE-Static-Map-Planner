@@ -1,4 +1,4 @@
-package dev.evestaticmapplanner.minimap
+package dev.evestaticmapplanner.charactertracking
 
 import dev.evestaticmapplanner.feature.api.TrackedCharacterAuthorizationState
 import dev.evestaticmapplanner.feature.api.TrackedCharacterLocationStatus
@@ -17,25 +17,25 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-class ForegroundCharacterFollowCoordinatorTest {
+class ForegroundCharacterCoordinatorTest {
     @Test
-    fun `known authorized EVE character follows immediately and ordinary A to B is not delayed`() {
+    fun `known authorized EVE character is selected immediately and ordinary A to B is not delayed`() {
         val fixture = fixture()
         fixture.coordinator.updateCharacters(listOf(character(1, "Alpha"), character(2, "Bravo")))
         fixture.start()
 
         fixture.emit(snapshot(10, "Alpha"))
-        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
 
         fixture.clock.advanceMillis(2_000)
         fixture.emit(snapshot(20, "Bravo"))
-        assertEquals(2, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(2, fixture.coordinator.state.value.foregroundCharacterId)
         assertFalse(fixture.coordinator.state.value.antiFlappingActive)
         fixture.close()
     }
 
     @Test
-    fun `rapid reversal is the only transition held for stability`() {
+    fun `rapid A to B to A reversal is the only transition held for stability`() {
         val fixture = fixture()
         fixture.coordinator.updateCharacters(listOf(character(1, "Alpha"), character(2, "Bravo")))
         fixture.start()
@@ -44,15 +44,15 @@ class ForegroundCharacterFollowCoordinatorTest {
 
         fixture.clock.advanceMillis(100)
         fixture.emit(snapshot(10, "Alpha"))
-        assertEquals(2, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(2, fixture.coordinator.state.value.foregroundCharacterId)
         assertTrue(fixture.coordinator.state.value.antiFlappingActive)
 
         fixture.clock.advanceMillis(349)
         fixture.coordinator.reevaluateStability()
-        assertEquals(2, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(2, fixture.coordinator.state.value.foregroundCharacterId)
         fixture.clock.advanceMillis(1)
         fixture.coordinator.reevaluateStability()
-        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
         assertFalse(fixture.coordinator.state.value.antiFlappingActive)
         fixture.close()
     }
@@ -71,13 +71,13 @@ class ForegroundCharacterFollowCoordinatorTest {
             ForegroundWindowClassification.UNKNOWN,
         ).forEachIndexed { index, classification ->
             fixture.emit(snapshot(100L + index, null, classification))
-            assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+            assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
         }
         fixture.close()
     }
 
     @Test
-    fun `focusing the Planner Mini-map retains the AUTO followed character`() {
+    fun `focusing the Planner retains the foreground character without moving identity`() {
         val fixture = fixture()
         fixture.coordinator.updateCharacters(listOf(character(1, "Alpha")))
         fixture.start()
@@ -85,26 +85,26 @@ class ForegroundCharacterFollowCoordinatorTest {
 
         fixture.emit(snapshot(99, null, ForegroundWindowClassification.NON_EVE, ownProcess = true))
 
-        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
         assertTrue(fixture.coordinator.state.value.diagnostic.contains("retaining"))
         fixture.close()
     }
 
     @Test
-    fun `unauthorized exact name is never followed and removal plus reconnect are explicit`() {
+    fun `unauthorized exact name is never selected and removal plus reconnect are explicit`() {
         val fixture = fixture()
         fixture.coordinator.updateCharacters(listOf(character(1, "Alpha")))
         fixture.start()
         fixture.emit(snapshot(20, "Bravo"))
-        assertEquals(null, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(null, fixture.coordinator.state.value.foregroundCharacterId)
 
         fixture.emit(snapshot(10, "Alpha"))
-        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
         fixture.coordinator.updateCharacters(emptyList())
-        assertEquals(null, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(null, fixture.coordinator.state.value.foregroundCharacterId)
 
         fixture.coordinator.updateCharacters(listOf(character(1, "Alpha")))
-        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
         fixture.close()
     }
 
@@ -116,11 +116,11 @@ class ForegroundCharacterFollowCoordinatorTest {
         fixture.emit(snapshot(10, null, ForegroundWindowClassification.EVE_GAME_UNKNOWN_CHARACTER, pid = 50, startSecond = 1))
 
         assertIs<ManualWindowBindingResult.Bound>(fixture.coordinator.bindCurrentWindow(1))
-        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
         assertEquals(1, fixture.coordinator.state.value.manualBindingCount)
 
         fixture.emit(snapshot(10, null, ForegroundWindowClassification.EVE_GAME_UNKNOWN_CHARACTER, pid = 51, startSecond = 2))
-        assertEquals(1, fixture.coordinator.state.value.followedCharacterId)
+        assertEquals(1, fixture.coordinator.state.value.foregroundCharacterId)
         assertEquals(0, fixture.coordinator.state.value.manualBindingCount)
         assertTrue(fixture.coordinator.state.value.diagnostic.contains("unknown"))
         fixture.close()
@@ -154,11 +154,13 @@ class ForegroundCharacterFollowCoordinatorTest {
         fixture.close()
     }
 
-    private fun fixture(isSessionAlive: (dev.evestaticmapplanner.platform.windows.windowidentity.WindowSessionIdentity) -> Boolean = { true }): Fixture {
+    private fun fixture(
+        isSessionAlive: (dev.evestaticmapplanner.platform.windows.windowidentity.WindowSessionIdentity) -> Boolean = { true },
+    ): Fixture {
         val monitor = FakeMonitor()
         val snapshots = mutableMapOf<Long, ForegroundWindowSnapshot>()
         val clock = FakeClock()
-        val coordinator = ForegroundCharacterFollowCoordinator(
+        val coordinator = ForegroundCharacterCoordinator(
             monitor = monitor,
             readSnapshot = { snapshots.getValue(it) },
             clock = clock,
@@ -172,7 +174,7 @@ class ForegroundCharacterFollowCoordinatorTest {
         val monitor: FakeMonitor,
         val snapshots: MutableMap<Long, ForegroundWindowSnapshot>,
         val clock: FakeClock,
-        val coordinator: ForegroundCharacterFollowCoordinator,
+        val coordinator: ForegroundCharacterCoordinator,
     ) : AutoCloseable {
         fun start() = coordinator.start()
         fun emit(snapshot: ForegroundWindowSnapshot) {

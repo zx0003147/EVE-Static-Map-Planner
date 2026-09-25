@@ -42,6 +42,10 @@ import dev.evestaticmapplanner.ai.WindowsSpeechSynthesizer
 import dev.evestaticmapplanner.ai.WindowsDpapiAiCredentialStore
 import dev.evestaticmapplanner.capital.CapitalRouteViewModel
 import dev.evestaticmapplanner.charactertracking.CharacterMapPresentationBuilder
+import dev.evestaticmapplanner.charactertracking.CharacterTrackingPriorityCoordinator
+import dev.evestaticmapplanner.charactertracking.ForegroundCharacterCoordinator
+import dev.evestaticmapplanner.charactertracking.ForegroundCharacterState
+import dev.evestaticmapplanner.charactertracking.ManualWindowBindingResult
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
 import dev.evestaticmapplanner.control.AppWormholeControlAdapter
@@ -64,7 +68,6 @@ import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
 import dev.evestaticmapplanner.featurepack.FeaturePackManagerViewModel
 import dev.evestaticmapplanner.featurepack.EveIdentitySelectionReason
 import dev.evestaticmapplanner.featurepack.ProductionFeaturePackRuntime
-import dev.evestaticmapplanner.feature.api.CharacterTrackingPriority
 import dev.evestaticmapplanner.preferences.EveIdentityPreferences
 import dev.evestaticmapplanner.core.repository.CachingStaticMapRepository
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportService
@@ -114,9 +117,6 @@ import dev.evestaticmapplanner.marker.application.AiSavedMarkerApplicationServic
 import dev.evestaticmapplanner.marker.application.AiSavedMarkerPermissionPolicy
 import dev.evestaticmapplanner.minimap.MiniMapViewModel
 import dev.evestaticmapplanner.minimap.MiniMapWindow
-import dev.evestaticmapplanner.minimap.CharacterFollowState
-import dev.evestaticmapplanner.minimap.ForegroundCharacterFollowCoordinator
-import dev.evestaticmapplanner.minimap.ManualWindowBindingResult
 import dev.evestaticmapplanner.minimap.MiniMapHudController
 import dev.evestaticmapplanner.minimap.MiniMapRecoveryHotkeyStatus
 import dev.evestaticmapplanner.minimap.afterNativeHudFailure
@@ -386,28 +386,36 @@ private fun FrameWindowScope.ReadyApplication(
                 .onFailure { AppDiagnostics.warning("Mini-map recovery hotkey did not close cleanly", it) }
         }
     }
-    val foregroundCharacterFollow = remember(configuration) {
-        if (Platform.isWindows()) ForegroundCharacterFollowCoordinator() else null
+    val foregroundCharacterCoordinator = remember(configuration) {
+        if (Platform.isWindows()) ForegroundCharacterCoordinator() else null
     }
-    DisposableEffect(foregroundCharacterFollow) {
-        foregroundCharacterFollow?.let { coordinator ->
+    DisposableEffect(foregroundCharacterCoordinator) {
+        foregroundCharacterCoordinator?.let { coordinator ->
             runCatching {
                 coordinator.start { failure ->
-                    AppDiagnostics.warning("Foreground EVE character follow reported a failure", failure)
+                    AppDiagnostics.warning("Foreground EVE character detection reported a failure", failure)
                 }
             }
-                .onFailure { AppDiagnostics.warning("Foreground EVE character follow could not start", it) }
+                .onFailure { AppDiagnostics.warning("Foreground EVE character detection could not start", it) }
         }
         onDispose {
-            runCatching { foregroundCharacterFollow?.close() }
-                .onFailure { AppDiagnostics.warning("Foreground EVE character follow did not close cleanly", it) }
+            runCatching { foregroundCharacterCoordinator?.close() }
+                .onFailure { AppDiagnostics.warning("Foreground EVE character detection did not close cleanly", it) }
         }
     }
-    val foregroundFollowStateFlow = remember(foregroundCharacterFollow) {
-        foregroundCharacterFollow?.state ?: MutableStateFlow(CharacterFollowState())
+    val foregroundCharacterStateFlow = remember(foregroundCharacterCoordinator) {
+        foregroundCharacterCoordinator?.state ?: MutableStateFlow(ForegroundCharacterState())
     }
-    val foregroundFollowState by foregroundFollowStateFlow.collectAsState()
-    var previousHighPriorityCharacterId by remember { mutableStateOf<Long?>(null) }
+    val foregroundCharacterState by foregroundCharacterStateFlow.collectAsState()
+    val characterTrackingPriorityCoordinator = remember(featurePackRuntime.characterTrackingHost) {
+        CharacterTrackingPriorityCoordinator(
+            setPriority = featurePackRuntime.characterTrackingHost::setPriority,
+            requestRefresh = featurePackRuntime.characterTrackingHost::requestRefresh,
+        )
+    }
+    DisposableEffect(characterTrackingPriorityCoordinator) {
+        onDispose(characterTrackingPriorityCoordinator::close)
+    }
     val sharedMapScope = remember(configuration) {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     }
@@ -799,10 +807,15 @@ private fun FrameWindowScope.ReadyApplication(
     val globalPushToTalkState by globalPushToTalkCoordinator.state.collectAsState()
     val trackedCharacters by featurePackRuntime.characterTrackingHost.state.collectAsState()
     val eveIdentityState by featurePackRuntime.eveIdentityHost.state.collectAsState()
-    val characterMapPresentation = remember(trackedCharacters, eveIdentityState.currentIdentity) {
+    val characterMapPresentation = remember(
+        trackedCharacters,
+        eveIdentityState.currentIdentity,
+        foregroundCharacterState.foregroundCharacterId,
+    ) {
         CharacterMapPresentationBuilder.build(
             snapshots = trackedCharacters,
             currentIdentityCharacterId = eveIdentityState.currentIdentity?.character?.id,
+            foregroundCharacterId = foregroundCharacterState.foregroundCharacterId,
         )
     }
     val allianceDirectoryState by featurePackRuntime.allianceDirectoryHost.state.collectAsState()
@@ -831,22 +844,19 @@ private fun FrameWindowScope.ReadyApplication(
     }
     LaunchedEffect(trackedCharacters, miniMapViewModel) {
         miniMapViewModel.updateCharacters(trackedCharacters)
-        foregroundCharacterFollow?.updateCharacters(trackedCharacters)
+        foregroundCharacterCoordinator?.updateCharacters(trackedCharacters)
     }
-    LaunchedEffect(foregroundFollowState.followedCharacterId, miniMapViewModel) {
-        val nextCharacterId = foregroundFollowState.followedCharacterId
-        previousHighPriorityCharacterId?.takeIf { it != nextCharacterId }?.let { previousCharacterId ->
-            featurePackRuntime.characterTrackingHost.setPriority(
-                previousCharacterId,
-                CharacterTrackingPriority.NORMAL,
-            )
-        }
-        nextCharacterId?.let { characterId ->
-            featurePackRuntime.characterTrackingHost.setPriority(characterId, CharacterTrackingPriority.HIGH)
-            featurePackRuntime.characterTrackingHost.requestRefresh(characterId)
-        }
-        previousHighPriorityCharacterId = nextCharacterId
-        miniMapViewModel.setAutomaticCharacter(foregroundFollowState.followedCharacterId)
+    LaunchedEffect(
+        trackedCharacters,
+        eveIdentityState.currentIdentity,
+        foregroundCharacterState.foregroundCharacterId,
+        characterTrackingPriorityCoordinator,
+    ) {
+        characterTrackingPriorityCoordinator.update(
+            currentIdentityCharacterId = eveIdentityState.currentIdentity?.character?.id,
+            foregroundCharacterId = foregroundCharacterState.foregroundCharacterId,
+            characters = trackedCharacters,
+        )
     }
     LaunchedEffect(mapState.appPreferences.miniMap, miniMapViewModel) {
         miniMapViewModel.restorePreferences(mapState.appPreferences.miniMap)
@@ -1089,6 +1099,7 @@ private fun FrameWindowScope.ReadyApplication(
             missionState = missionState,
             featureOverlayState = visibleFeatureOverlayState,
             characterMapPresentation = characterMapPresentation,
+            onBindCurrentClient = foregroundCharacterCoordinator?.let { coordinator -> coordinator::bindCurrentWindow },
             sovereigntySnapshot = sovereigntyHostState.snapshot,
             sovereigntyPresentationEnabled = mapState.appPreferences.overlayVisibility.isEnabled(
                 SovereigntyPresentationVisibility.Key,
@@ -1117,9 +1128,9 @@ private fun FrameWindowScope.ReadyApplication(
         MiniMapWindow(
             state = miniMapState,
             viewModel = miniMapViewModel,
-            automaticFollowDiagnostic = foregroundFollowState.diagnostic,
+            automaticFollowDiagnostic = foregroundCharacterState.diagnostic,
             onBindCurrentWindow = { characterId ->
-                when (val result = foregroundCharacterFollow?.bindCurrentWindow(characterId)) {
+                when (val result = foregroundCharacterCoordinator?.bindCurrentWindow(characterId)) {
                     ManualWindowBindingResult.Bound -> "Current EVE client session bound"
                     is ManualWindowBindingResult.Rejected -> result.reason
                     null -> "Foreground client detection is unavailable on this platform"

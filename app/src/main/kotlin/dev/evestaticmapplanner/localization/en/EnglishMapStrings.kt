@@ -27,6 +27,8 @@ internal object EnglishMapStrings : MapStrings {
     override val locate = "Locate"
     override val currentIdentity = "Current identity"
     override val foregroundCharacter = "Foreground character"
+    override val bindCurrentClient = "Bind client"
+    override val currentClientBound = "Current EVE client bound"
     override val addTemporaryMarker = "Add Temporary Marker"
     override val addSavedMarker = "Add Saved Marker…"
     override val editMarker = "Edit Marker…"
@@ -81,4 +83,5 @@ internal object EnglishMapStrings : MapStrings {
     }
     override fun trackedCharacterCount(count: Int) = "$trackedCharacters ($count)"
     override fun moreTrackedCharacters(count: Int) = "+$count more"
+    override fun currentClientBindingFailed(reason: String) = "Unable to bind current EVE client: $reason"
 }

@@ -85,6 +85,27 @@ class CharacterMapPresentationTest {
         )
     }
 
+    @Test
+    fun `current identity and foreground highlights remain independent`() {
+        val sameCharacter = CharacterMapPresentationBuilder.build(
+            listOf(character(1, "Alpha", 30_000_001)),
+            currentIdentityCharacterId = 1,
+            foregroundCharacterId = 1,
+        ).characters.single()
+        assertTrue(sameCharacter.isCurrentIdentity)
+        assertTrue(sameCharacter.isForegroundCharacter)
+
+        val differentCharacters = CharacterMapPresentationBuilder.build(
+            listOf(character(1, "Alpha", 30_000_001), character(2, "Bravo", 30_000_002)),
+            currentIdentityCharacterId = 1,
+            foregroundCharacterId = 2,
+        ).characters.associateBy(CharacterMapCharacter::characterId)
+        assertTrue(differentCharacters.getValue(1).isCurrentIdentity)
+        assertFalse(differentCharacters.getValue(1).isForegroundCharacter)
+        assertFalse(differentCharacters.getValue(2).isCurrentIdentity)
+        assertTrue(differentCharacters.getValue(2).isForegroundCharacter)
+    }
+
     private fun character(
         id: Long,
         name: String,

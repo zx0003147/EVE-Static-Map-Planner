@@ -27,6 +27,8 @@ internal object SimplifiedChineseMapStrings : MapStrings {
     override val locate = "定位"
     override val currentIdentity = "当前身份"
     override val foregroundCharacter = "前台角色"
+    override val bindCurrentClient = "绑定客户端"
+    override val currentClientBound = "已绑定当前 EVE 客户端"
     override val addTemporaryMarker = "添加临时标记"
     override val addSavedMarker = "添加已保存标记…"
     override val editMarker = "编辑标记…"
@@ -81,4 +83,5 @@ internal object SimplifiedChineseMapStrings : MapStrings {
     }
     override fun trackedCharacterCount(count: Int) = "$trackedCharacters（$count）"
     override fun moreTrackedCharacters(count: Int) = "另有 $count 个"
+    override fun currentClientBindingFailed(reason: String) = "无法绑定当前 EVE 客户端：$reason"
 }

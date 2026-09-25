@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.map
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.rememberTextMeasurer
 import dev.evestaticmapplanner.charactertracking.CharacterMapCharacter
 import dev.evestaticmapplanner.charactertracking.CharacterMapPresentation
+import dev.evestaticmapplanner.charactertracking.ManualWindowBindingResult
 import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.ansiblex.AnsiblexManagerDialog
@@ -137,6 +139,7 @@ internal fun StaticMapScreen(
     missionState: MissionMapUiState,
     featureOverlayState: OverlayState,
     characterMapPresentation: CharacterMapPresentation,
+    onBindCurrentClient: ((Long) -> ManualWindowBindingResult)?,
     sovereigntySnapshot: SovereigntySnapshot,
     sovereigntyPresentationEnabled: Boolean,
     systemInfoState: SystemInfoState,
@@ -243,6 +246,7 @@ internal fun StaticMapScreen(
                 state = state,
                 planningViewsState = planningViewsState,
                 characterMapPresentation = characterMapPresentation,
+                onBindCurrentClient = onBindCurrentClient,
                 viewModel = viewModel,
                 planningViewCoordinator = planningViewCoordinator,
             )
@@ -611,6 +615,7 @@ private fun MapToolbar(
     state: MapUiState,
     planningViewsState: PlanningViewsState,
     characterMapPresentation: CharacterMapPresentation,
+    onBindCurrentClient: ((Long) -> ManualWindowBindingResult)?,
     viewModel: MapViewModel,
     planningViewCoordinator: PlanningViewCoordinator,
 ) {
@@ -625,6 +630,7 @@ private fun MapToolbar(
             state.scene?.nodesById?.get(systemId)?.system?.name ?: strings.map.fallbackSystem(systemId)
         },
         onLocateCharacter = viewModel::selectAndFocusSystem,
+        onBindCurrentClient = onBindCurrentClient,
         onSwitchView = planningViewCoordinator::switchView,
         onCreateView = planningViewCoordinator::createView,
         onRenameView = { view -> renameViewId = view.id },
@@ -698,6 +704,7 @@ internal fun MapToolbarContent(
     characterMapPresentation: CharacterMapPresentation = CharacterMapPresentation.Empty,
     systemName: (Int) -> String = Int::toString,
     onLocateCharacter: (Int) -> Unit = {},
+    onBindCurrentClient: ((Long) -> ManualWindowBindingResult)? = null,
     viewScrollState: ScrollState? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -727,6 +734,7 @@ internal fun MapToolbarContent(
                     presentation = characterMapPresentation,
                     systemName = systemName,
                     onLocate = onLocateCharacter,
+                    onBindCurrentClient = onBindCurrentClient,
                 )
             }
         }
@@ -738,9 +746,11 @@ private fun TrackedCharactersMenu(
     presentation: CharacterMapPresentation,
     systemName: (Int) -> String,
     onLocate: (Int) -> Unit,
+    onBindCurrentClient: ((Long) -> ManualWindowBindingResult)?,
 ) {
     val strings = LocalAppStrings.current.map
     var expanded by remember { mutableStateOf(false) }
+    var bindingFeedback by remember { mutableStateOf<String?>(null) }
     Box {
         CompactToolbarTextButton(onClick = { expanded = true }) {
             Text(strings.trackedCharacterCount(presentation.characters.size))
@@ -765,6 +775,21 @@ private fun TrackedCharactersMenu(
                             expanded = false
                             onLocate(systemId)
                         },
+                        onBind = onBindCurrentClient?.let { bind ->
+                            { characterId ->
+                                bindingFeedback = when (val result = bind(characterId)) {
+                                    ManualWindowBindingResult.Bound -> strings.currentClientBound
+                                    is ManualWindowBindingResult.Rejected ->
+                                        strings.currentClientBindingFailed(result.reason)
+                                }
+                            }
+                        },
+                    )
+                }
+                bindingFeedback?.let { feedback ->
+                    DropdownMenuItem(
+                        text = { Text(feedback, style = MaterialTheme.typography.bodySmall) },
+                        onClick = { bindingFeedback = null },
                     )
                 }
             }
@@ -777,6 +802,7 @@ private fun TrackedCharacterMenuItem(
     character: CharacterMapCharacter,
     systemName: (Int) -> String,
     onLocate: (Int) -> Unit,
+    onBind: ((Long) -> Unit)?,
 ) {
     val strings = LocalAppStrings.current.map
     val textMeasurer = rememberTextMeasurer()
@@ -816,6 +842,19 @@ private fun TrackedCharacterMenuItem(
                         color = EveColors.SecondaryText,
                     )
                 }
+            }
+        },
+        onClick = { systemId?.let(onLocate) },
+        trailingIcon = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                onBind?.let { bind ->
+                    Text(
+                        strings.bindCurrentClient,
+                        modifier = Modifier.clickable { bind(character.characterId) }.padding(4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = EveColors.PrimaryAccent,
+                    )
+                }
                 Text(
                     if (systemId == null) strings.locationUnavailable else strings.locate,
                     style = MaterialTheme.typography.labelMedium,
@@ -823,8 +862,6 @@ private fun TrackedCharacterMenuItem(
                 )
             }
         },
-        onClick = { systemId?.let(onLocate) },
-        enabled = systemId != null,
     )
 }
 

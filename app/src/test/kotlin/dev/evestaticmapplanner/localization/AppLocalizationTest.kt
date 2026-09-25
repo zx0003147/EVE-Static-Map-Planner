@@ -217,6 +217,7 @@ class AppLocalizationTest {
                 viewNameValidation, toggleProjection, openEmbeddedAiAssistant, collapseSidebar, expandSidebar,
                 official2DSelected, real3DSelected, mapOverlays, trackedCharacters, noTrackedCharacters,
                 locationUnavailable, trackingDisabled, locate, currentIdentity, foregroundCharacter,
+                bindCurrentClient, currentClientBound,
                 addTemporaryMarker, addSavedMarker, editMarker,
                 savePermanently, removeMarker, markersUnavailable, addSharedMarker, openSharedMarker,
                 viewSharedMarker, addJumpRangeOverlay, setNormalStart, addNormalWaypoint, setNormalDestination,

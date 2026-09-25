@@ -26,6 +26,8 @@ interface MapStrings {
     val locate: String
     val currentIdentity: String
     val foregroundCharacter: String
+    val bindCurrentClient: String
+    val currentClientBound: String
 
     val addTemporaryMarker: String
     val addSavedMarker: String
@@ -69,4 +71,5 @@ interface MapStrings {
     fun characterLocationStatus(status: TrackedCharacterLocationStatus): String
     fun trackedCharacterCount(count: Int): String
     fun moreTrackedCharacters(count: Int): String
+    fun currentClientBindingFailed(reason: String): String
 }
