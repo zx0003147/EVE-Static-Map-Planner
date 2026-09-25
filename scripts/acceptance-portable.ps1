@@ -99,6 +99,24 @@ function Read-And-Assert-McpLocator {
     }
 }
 
+function Get-ApplicationStartingCount {
+    param([Parameter(Mandatory = $true)][string]$LogPath)
+
+    if (-not (Test-Path -LiteralPath $LogPath -PathType Leaf)) {
+        return 0
+    }
+    try {
+        $content = Get-Content -LiteralPath $LogPath -Raw -ErrorAction Stop
+        if ($null -eq $content) {
+            $content = ""
+        }
+        return [regex]::Matches($content, "Application starting").Count
+    } catch [System.IO.IOException] {
+        # Logback can briefly hold the file while creating or rotating it. The caller retries until the startup deadline.
+        return $null
+    }
+}
+
 function Start-And-ClosePortable {
     param(
         [Parameter(Mandatory = $true)][string]$ExecutablePath,
@@ -123,10 +141,9 @@ function Start-And-ClosePortable {
 
     New-Item -ItemType Directory -Path $FakeLocalAppData -Force | Out-Null
     $startupLog = Join-Path $FakeLocalAppData "EVE Static Map Planner\logs\app-0.log"
-    $initialStartupCount = if (Test-Path -LiteralPath $startupLog -PathType Leaf) {
-        [regex]::Matches((Get-Content -LiteralPath $startupLog -Raw), "Application starting").Count
-    } else {
-        0
+    $initialStartupCount = Get-ApplicationStartingCount -LogPath $startupLog
+    if ($null -eq $initialStartupCount) {
+        $initialStartupCount = 0
     }
     $process = [System.Diagnostics.Process]::Start($startInfo)
     try {
@@ -137,9 +154,8 @@ function Start-And-ClosePortable {
             Start-Sleep -Milliseconds 250
             $process.Refresh()
             $hadWindowHandle = $process.MainWindowHandle -ne [IntPtr]::Zero
-            $logReady = (Test-Path -LiteralPath $startupLog -PathType Leaf) -and
-                ([regex]::Matches((Get-Content -LiteralPath $startupLog -Raw), "Application starting").Count -gt
-                    $initialStartupCount)
+            $startupCount = Get-ApplicationStartingCount -LogPath $startupLog
+            $logReady = $null -ne $startupCount -and $startupCount -gt $initialStartupCount
             if ($process.Responding -and $logReady) {
                 $startupReady = $true
                 break

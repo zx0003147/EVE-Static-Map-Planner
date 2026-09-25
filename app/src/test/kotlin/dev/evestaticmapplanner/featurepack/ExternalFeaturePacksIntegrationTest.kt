@@ -46,10 +46,11 @@ class ExternalFeaturePacksIntegrationTest {
                 )
                 assertTrue(runtime.startReport.failures.isEmpty())
                 assertEquals(2, classLoaders.size)
-                assertEquals(
-                    setOf("esi.character-location"),
-                    runtime.overlayHost.state.value.layers.map { it.provider.id }.toSet(),
-                )
+                assertTrue(runtime.overlayHost.state.value.layers.isEmpty())
+                assertTrue(runtime.characterTrackingHost.availability.value)
+                assertTrue(runtime.characterTrackingHost.state.value.isEmpty())
+                assertTrue(runtime.eveIdentityHost.state.value.providerAvailable)
+                assertTrue(runtime.eveIdentityHost.state.value.identities.isEmpty())
                 assertTrue(runtime.systemInfoHost.request(30004759).sections.none { it.sectionId == "sovereignty" })
                 assertEquals(
                     "Cached Alliance",
@@ -65,6 +66,10 @@ class ExternalFeaturePacksIntegrationTest {
             }
             assertTrue(runtime.overlayHost.state.value.layers.isEmpty())
             assertTrue(runtime.packControlHost.state.value.isEmpty())
+            assertFalse(runtime.characterTrackingHost.availability.value)
+            assertTrue(runtime.characterTrackingHost.state.value.isEmpty())
+            assertFalse(runtime.eveIdentityHost.state.value.providerAvailable)
+            assertTrue(runtime.eveIdentityHost.state.value.identities.isEmpty())
             assertTrue(classLoaders.all { it.closed })
         } finally {
             root.toFile().deleteRecursively()

@@ -57,7 +57,7 @@ Install the optional Pack JARs at these exact paths, then enable them under Pref
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
 ```
 
-Without any Pack, the Core map, routing, databases, and updater continue to work normally. ESI Pack 1.2.0 adds EVE
+Without any Pack, the Core map, routing, databases, and updater continue to work normally. ESI Pack 2.0.0 adds EVE
 SSO, typed multi-character location tracking, portraits, and the explicit Normal-route `Send Navigation to EVE` action. It sends only
 the ordered Waypoints and Destination from the current navigation draft, supports destination-only and waypoint-only
 drafts, and does not send calculated transit systems. Capital routes do not expose this action. Each View stores one
@@ -96,7 +96,7 @@ For manual acceptance, an exact system name and isolated user database can be su
 
 Database resolution order is `--database`, the `eve.static.database` JVM property, `EVE_STATIC_DB`, then the platform application-data path. Without an explicit override, a missing managed database opens Static Data Setup so the application can download and build the latest official SDE.
 
-The separate user database resolves through `--user-database`, `eve.user.database`, `EVE_USER_DB`, then `%LOCALAPPDATA%\EVE Static Map Planner\data\user.db` on Windows. A missing `user.db` is created with schema version 4. Planning Views, route drafts, AI Missions, Wormhole topology, and per-View Route Action targets are session-only and are deliberately absent from this database. An existing damaged or newer database is never deleted or silently rebuilt; the application keeps the static map and Stargate-only routing available while disabling user-data features.
+The separate user database resolves through `--user-database`, `eve.user.database`, `EVE_USER_DB`, then `%LOCALAPPDATA%\EVE Static Map Planner\data\user.db` on Windows. A missing `user.db` is created with schema version 6. Existing supported schemas are migrated transactionally; a damaged or newer database is never deleted or silently rebuilt. Planning Views, route drafts, AI Missions, Wormhole topology, and per-View Route Action targets are session-only and are deliberately absent from this database. If user data cannot be opened, the application keeps the static map and Stargate-only routing available while disabling user-data features.
 
 ## Temporary Wormholes
 
@@ -142,7 +142,7 @@ over `fortizar`; unrelated names, notes, and tags do not change the primary node
 The official Windows distribution is the installer-free Portable ZIP:
 
 ```text
-EVE-Static-Map-Planner-1.4.0-Windows-x64.zip
+EVE-Static-Map-Planner-2.0.0-Windows-x64.zip
 ```
 
 Download and extract the complete ZIP, then open:
@@ -182,7 +182,7 @@ delete the LocalAppData directory.
 ## AI / MCP integration
 
 The recommended generic integration is Streamable HTTP at `http://127.0.0.1:27892/mcp`. The server runs inside the
-Map JVM, binds only IPv4 loopback, and exposes the same fixed 32 tools as the existing bridge. The EVE Map Assistant
+Map JVM, binds only IPv4 loopback, and exposes the same fixed 34 tools as the existing bridge. The EVE Map Assistant
 Codex Plugin prefers this HTTP endpoint, so moving the Portable directory does not change Plugin configuration: stop
 the Map, move the directory, restart the Map, and open a new Codex task.
 

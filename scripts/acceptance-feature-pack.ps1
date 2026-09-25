@@ -12,7 +12,7 @@ $script:StageNumber = 0
 $script:StageCount = 9
 $script:GradleInvocationCount = 0
 $script:StartedAt = [System.Diagnostics.Stopwatch]::StartNew()
-$featureApiArtifactVersion = "2.4.0"
+$featureApiArtifactVersion = "2.5.0"
 $legacyFeatureApi20Revision = "v1.0.0"
 $legacyFeatureApi23Revision = "c679f64aced1f64f76a892e9d059ff25bf2a73d7"
 
@@ -411,7 +411,7 @@ try {
     Write-Host ""
     Write-Host "PASS - repeatable cross-repository Feature Pack acceptance" -ForegroundColor Green
     Write-Host "Feature API: dev.evestaticmapplanner:feature-api:$featureApiArtifactVersion (runtime compatibility family 2)"
-    Write-Host "Pack: sovereignty.pack 0.3.0; required API 2; publisher/name verified"
+    Write-Host "Pack: sovereignty.pack 1.0.0; required API 2; publisher/name verified"
     Write-Host "Host integration: API 2; ClassLoader 1; ServiceLoader entrypoint 1; Overlay/System Info/Alliance Directory registered and unregistered"
     Write-Host "Legacy Hosts: Feature API 2.0.0 and 2.3.0 loaded the same Pack without linkage errors"
     Write-Host "No-Pack: no ClassLoader, storage, Public ESI, or worker"

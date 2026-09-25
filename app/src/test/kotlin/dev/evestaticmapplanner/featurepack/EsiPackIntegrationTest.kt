@@ -31,7 +31,7 @@ class EsiPackIntegrationTest {
             val attributes = jar.manifest.mainAttributes
             assertEquals("esi.pack", attributes.getValue(FeaturePackJarManifest.PACK_ID))
             assertEquals("ESI Pack", attributes.getValue(FeaturePackJarManifest.DISPLAY_NAME))
-            assertEquals("1.2.0", attributes.getValue(FeaturePackJarManifest.VERSION))
+            assertEquals("2.0.0", attributes.getValue(FeaturePackJarManifest.VERSION))
             assertEquals("EVE Static Map Planner", attributes.getValue(FeaturePackJarManifest.PUBLISHER))
             assertEquals(
                 FeatureApiVersions.current().identifier,
@@ -77,10 +77,11 @@ class EsiPackIntegrationTest {
                 assertTrue(events.contains("INFO:esi.pack:ESI Pack starting"))
                 assertTrue(events.contains("INFO:esi.pack:ESI Pack started"))
 
-                val overlay = runtime.overlayHost.state.value.layers.single()
-                assertEquals("esi.character-location", overlay.provider.id)
-                assertEquals("current-location", overlay.layer.id)
-                assertTrue(overlay.entries.isEmpty())
+                assertTrue(runtime.overlayHost.state.value.layers.isEmpty())
+                assertTrue(runtime.characterTrackingHost.availability.value)
+                assertTrue(runtime.characterTrackingHost.state.value.isEmpty())
+                assertTrue(runtime.eveIdentityHost.state.value.providerAvailable)
+                assertTrue(runtime.eveIdentityHost.state.value.identities.isEmpty())
 
                 val actions = runtime.routeActionHost.state.value
                 assertEquals(1, actions.size)
@@ -119,6 +120,10 @@ class EsiPackIntegrationTest {
             assertTrue(runtime.overlayHost.state.value.layers.isEmpty())
             assertTrue(runtime.routeActionHost.state.value.isEmpty())
             assertTrue(runtime.packControlHost.state.value.isEmpty())
+            assertFalse(runtime.characterTrackingHost.availability.value)
+            assertTrue(runtime.characterTrackingHost.state.value.isEmpty())
+            assertFalse(runtime.eveIdentityHost.state.value.providerAvailable)
+            assertTrue(runtime.eveIdentityHost.state.value.identities.isEmpty())
             assertTrue(checkNotNull(classLoader).closed)
         }
 

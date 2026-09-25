@@ -4,7 +4,10 @@
 
 View state is session-only. While the application is running, switching Views restores each View's routes, AI Mission overlays, and selected Route Action targets. Exiting discards every View and planning draft; the next startup is exactly one blank `View 1` with no routes, Missions, or selected target. Deleting a View removes its in-session AI Missions but does not affect external character sessions.
 
-`user.db` is schema 5 and contains no View or AI Mission tables. Schema 5 adds the nullable Ansiblex owner-alliance field; Saved Markers, settings, Feature Packs, and external character pools keep their existing persistence behavior.
+`user.db` is schema 6 and contains no View or AI Mission tables. Schema 6 stores the Ansiblex owner as a positive,
+stable Alliance ID with optional display name and ticker. Supported older schemas migrate transactionally; a schema-5
+text owner is retained as a display-only name and is not treated as a stable access-control identity. Saved Markers,
+settings, Feature Packs, and external character pools keep their existing persistence behavior.
 
 All Views observe the same application-session Wormhole network; switching Views never restores an older topology.
 If UI removal or Clear All deletes a Wormhole used by a Mission Normal Route, that route is removed in every View,
@@ -14,7 +17,7 @@ The Control API and fixed HTTP MCP catalog expose `list_views`, `get_current_vie
 
 The localhost HTTP MCP endpoint remains `http://127.0.0.1:27892/mcp`; View support does not change the plugin transport.
 
-Route Action target selection is generic and keyed by Pack plus selector ID. ESI Pack 1.2.0 contributes one
+Route Action target selection is generic and keyed by Pack plus selector ID. ESI Pack 2.0.0 contributes one
 `EVE Character` selector for `Send Navigation to EVE`. Core keeps only the opaque target ID in the current in-memory
 View. If the selected target disappears, Core keeps that ID visible as unavailable and disables the action; it never
 substitutes another available target.

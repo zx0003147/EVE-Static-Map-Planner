@@ -1,6 +1,6 @@
 # EVE Map Assistant Integration
 
-EVE Map Assistant 0.7.0 is a separately distributed Codex Plugin and Skill for EVE Static Map Planner. Its source,
+EVE Map Assistant 1.0.0 is a separately distributed Codex Plugin and Skill for EVE Static Map Planner. Its source,
 marketplace metadata, Skill instructions, fixed localhost HTTP MCP definition, and Plugin-specific QA live in the
 sibling `EVE-Map-Assistant-Plugin` repository.
 
@@ -8,9 +8,9 @@ Repository: [zx0003147/EVE-Map-Assistant-Plugin](https://github.com/zx0003147/EV
 
 ## Requirements
 
-- Extract EVE Static Map Planner 1.0.0 or later as a complete Portable application directory.
+- Extract EVE Static Map Planner 1.12.0 or later as a complete Portable application directory; 2.0.0 is recommended.
 - Start the map and enable **Preferences > AI Control** before map operations.
-- Install or enable EVE Map Assistant Plugin 0.7.0.
+- Install or enable EVE Map Assistant Plugin 1.0.0.
 - Open a new Codex task after installing or updating the Plugin.
 
 The Plugin connects to the Streamable HTTP endpoint hosted inside the running Map JVM:
@@ -20,8 +20,9 @@ http://127.0.0.1:27892/mcp
 ```
 
 It does not bundle an MCP executable and does not require PATH, PowerShell, Java, an absolute launcher path, or a
-manual Codex MCP registration. The server binds only IPv4 loopback and exposes the same canonical 32 tools as the
-supported STDIO bridge.
+manual Codex MCP registration. The server binds only IPv4 loopback and exposes the same canonical 34 tools as the
+supported STDIO bridge. The primary assistant skill owns a bounded 32-tool contract; the separate multi-point route
+skill owns the graph-export and native-optimizer tools.
 
 ```text
 EVE Static Map Planner -> localhost HTTP MCP (127.0.0.1:27892/mcp)

@@ -1,9 +1,9 @@
 # Windows x64 Portable ZIP distribution
 
-EVE Static Map Planner 1.4.0 is distributed for Windows x64 only as:
+EVE Static Map Planner 2.0.0 is distributed for Windows x64 only as:
 
 ```text
-EVE-Static-Map-Planner-1.4.0-Windows-x64.zip
+EVE-Static-Map-Planner-2.0.0-Windows-x64.zip
 ```
 
 The previous MSI release path is retired. The release does not require WiX, Windows Installer, a system JDK, registry
@@ -19,8 +19,8 @@ EVE Static Map Planner\
 ├─ EVE Map MCP Bridge.exe
 ├─ eve-map-mcp.exe
 ├─ app\
-│  ├─ app-1.4.0-<hash>.jar
-│  ├─ feature-api-2.2.0-<hash>.jar
+│  ├─ app-2.0.0-<hash>.jar
+│  ├─ feature-api-2.5.0-<hash>.jar
 │  ├─ mcp\
 │  └─ packaged resources and runtime dependencies
 └─ runtime\
@@ -83,10 +83,10 @@ Outputs are placed under:
 
 ```text
 build\release\
-├─ EVE-Static-Map-Planner-1.4.0-Windows-x64.zip
-├─ EVE-Static-Map-Planner-1.4.0-Windows-x64.zip.sha256
-├─ portable-audit-1.4.0.txt
-└─ release-manifest-1.4.0.txt
+├─ EVE-Static-Map-Planner-2.0.0-Windows-x64.zip
+├─ EVE-Static-Map-Planner-2.0.0-Windows-x64.zip.sha256
+├─ portable-audit-2.0.0.txt
+└─ release-manifest-2.0.0.txt
 ```
 
 No third-party archive dependency is used.
@@ -106,13 +106,13 @@ Feature Packs remain separate release artifacts and are never placed in the main
 %LOCALAPPDATA%\EVE Static Map Planner\feature-packs\sovereignty.pack\pack.jar
 ```
 
-Feature API runtime compatibility family 2 remains stable; the bundled Host artifact is `2.2.0`. ESI Pack 1.2.0
-consumes artifact `2.2.0`, while older family-2 Packs remain loadable without adopting optional navigation or tracking
-capability. Sovereignty Pack 0.2.1 keeps its independent PackStorage, state, and lifecycle behavior.
+Feature API runtime compatibility family 2 remains stable; the bundled Host artifact is `2.5.0`. The recommended
+release combination is ESI Pack 2.0.0 and Sovereignty Pack 1.0.0. Older family-2 Packs remain loadable but do not gain
+new optional Identity, Alliance Directory, or typed Sovereignty capabilities merely by running on the new Host.
 
 ## MCP portability
 
-Codex users should use EVE Map Assistant 0.7.0, which connects to the fixed localhost HTTP endpoint hosted by the
+Codex users should use EVE Map Assistant 1.0.0, which connects to the fixed localhost HTTP endpoint hosted by the
 running Map at `http://127.0.0.1:27892/mcp`. It requires no PATH entry, absolute executable path, or manual MCP
 registration. Moving the complete Portable directory does not change the Plugin configuration: restart the Map and
 open a new Codex task.
