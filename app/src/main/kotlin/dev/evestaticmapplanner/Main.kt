@@ -860,11 +860,13 @@ private fun FrameWindowScope.ReadyApplication(
         mapState.appPreferences.ansiblex,
         esiIdentityContext,
         routeViewModel,
+        featurePackRuntime.allianceCapitalHost,
     ) {
         if (!mapState.isLoading) {
-            routeViewModel.setCurrentIdentityContext(
-                mapState.appPreferences.ansiblex.currentIdentityContext(esiIdentityContext),
-            )
+            val currentIdentityContext = mapState.appPreferences.ansiblex.currentIdentityContext(esiIdentityContext)
+            routeViewModel.setCurrentIdentityContext(currentIdentityContext)
+            routeViewModel.setMaximumAnsiblexZone(mapState.appPreferences.ansiblex.maximumZone)
+            featurePackRuntime.allianceCapitalHost.updateCurrentIdentity(currentIdentityContext)
         }
     }
     val wormholeState by wormholeViewModel.state.collectAsState()
@@ -911,7 +913,18 @@ private fun FrameWindowScope.ReadyApplication(
     val featureOverlayState by featurePackRuntime.overlayHost.state.collectAsState()
     val systemInfoState by featurePackRuntime.systemInfoHost.state.collectAsState()
     val sovereigntyHostState by featurePackRuntime.sovereigntyHost.state.collectAsState()
+    val allianceCapitalHostState by featurePackRuntime.allianceCapitalHost.state.collectAsState()
     val routeActions by featurePackRuntime.routeActionHost.state.collectAsState()
+    LaunchedEffect(
+        sovereigntyHostState.snapshot,
+        allianceCapitalHostState.snapshot,
+        routeViewModel,
+    ) {
+        routeViewModel.setForceProjectionSources(
+            sovereigntyHostState.snapshot,
+            allianceCapitalHostState.snapshot,
+        )
+    }
     val normalRouteSnapshot = remember(routeState.activeRoute, featurePackRuntime) {
         featurePackRuntime.routeSnapshotAdapter.normal(routeState.activeRoute)
     }

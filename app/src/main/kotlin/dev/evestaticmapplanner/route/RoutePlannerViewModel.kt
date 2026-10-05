@@ -7,6 +7,10 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceDisplayName
 import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceTicker
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshotBuilder
+import dev.evestaticmapplanner.core.sovereignty.AllianceCapitalSnapshot
+import dev.evestaticmapplanner.core.sovereignty.SovereigntySnapshot
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StaticMapData
 import dev.evestaticmapplanner.core.repository.AnsiblexRepository
@@ -87,12 +91,14 @@ class RoutePlannerViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val searchDebounceMillis: Long = 180,
     private val routeEngine: NormalRouteEngine = NormalRouteEngine(),
+    initialMaximumAnsiblexZone: Int = 5,
 ) : NormalRoutePlanningPort {
     private val navigationPlanner = NormalNavigationPlanner(routeEngine)
     private val mutableState = MutableStateFlow(
         RoutePlannerUiState(
             userDatabaseError = userDatabaseError?.let { AnsiblexDataUnavailableUiMessage },
             wormholeConnections = wormholeSessionStore.connections.value,
+            maximumAnsiblexZone = initialMaximumAnsiblexZone,
         ),
     )
     val state: StateFlow<RoutePlannerUiState> = mutableState.asStateFlow()
@@ -101,11 +107,15 @@ class RoutePlannerViewModel(
     private var systemsById: Map<Int, SolarSystem> = emptyMap()
     private var currentAnsiblexConnections: List<AnsiblexConnection> = emptyList()
     private var currentWormholeConnections: List<WormholeConnection> = wormholeSessionStore.connections.value
+    private var currentForceProjectionZones: ForceProjectionZoneSnapshot? = null
     private var graph: RouteGraph? = null
     private var systemSearchJob: Job? = null
     private var fromSearchJob: Job? = null
     private var toSearchJob: Job? = null
     private var pendingPlanningSnapshot: NormalRoutePlanningSnapshot? = null
+    private var forceProjectionBuildJob: Job? = null
+    private var currentSovereigntySnapshot: SovereigntySnapshot? = null
+    private var currentAllianceCapitalSnapshot: AllianceCapitalSnapshot? = null
 
     init {
         observeWormholeConnections()
@@ -206,6 +216,30 @@ class RoutePlannerViewModel(
                 navigationMessage = null,
             )
         }
+    }
+
+    fun setMaximumAnsiblexZone(maximumZone: Int) {
+        require(maximumZone in 1..5) { "Maximum Ansiblex Zone must be between 1 and 5" }
+        if (mutableState.value.maximumAnsiblexZone == maximumZone) return
+        mutableState.update { it.copy(maximumAnsiblexZone = maximumZone) }
+        applyAnsiblexZonePolicyChange()
+    }
+
+    fun setForceProjectionZones(snapshot: ForceProjectionZoneSnapshot) {
+        if (currentForceProjectionZones == snapshot) return
+        currentForceProjectionZones = snapshot
+        mutableState.update { it.copy(forceProjectionZones = snapshot) }
+        applyAnsiblexZonePolicyChange()
+    }
+
+    fun setForceProjectionSources(
+        sovereignty: SovereigntySnapshot,
+        allianceCapitals: AllianceCapitalSnapshot,
+    ) {
+        if (currentSovereigntySnapshot == sovereignty && currentAllianceCapitalSnapshot == allianceCapitals) return
+        currentSovereigntySnapshot = sovereignty
+        currentAllianceCapitalSnapshot = allianceCapitals
+        rebuildForceProjectionZones()
     }
 
     fun setUseWormholes(enabled: Boolean) {
@@ -542,6 +576,7 @@ class RoutePlannerViewModel(
             }.onSuccess { (data, ansiblexResult) ->
                 staticData = data
                 systemsById = data.systems.associateBy(SolarSystem::id)
+                rebuildForceProjectionZones()
                 currentAnsiblexConnections = ansiblexResult.getOrElse { emptyList() }
                 val combinedGraphResult = rebuildGraph()
                 val graphResult = if (combinedGraphResult.isFailure && currentAnsiblexConnections.isNotEmpty()) {
@@ -620,7 +655,13 @@ class RoutePlannerViewModel(
         ).mapTo(hashSetOf()) { "ansiblex:${it.id}" }
         return route.edges.asSequence()
             .filter { it.type == RouteEdgeType.ANSIBLEX }
-            .all { it.connectionId.value in accessibleConnectionIds }
+            .all { edge ->
+                edge.connectionId.value in accessibleConnectionIds &&
+                    (currentForceProjectionZones?.isDestinationAllowed(
+                        edge.toSystemId,
+                        mutableState.value.maximumAnsiblexZone,
+                    ) != false)
+            }
     }
 
     private fun updateDraft(transform: (RoutePlannerUiState) -> RoutePlannerUiState) {
@@ -790,8 +831,37 @@ class RoutePlannerViewModel(
                     mutableState.value.currentIdentityContext,
                 ),
                 currentWormholeConnections,
+                currentForceProjectionZones?.let { zones ->
+                    { destinationSystemId ->
+                        zones.isDestinationAllowed(destinationSystemId, mutableState.value.maximumAnsiblexZone)
+                    }
+                },
             )
         }.onSuccess { graph = it }
+    }
+
+    private fun applyAnsiblexZonePolicyChange() {
+        if (staticData == null) return
+        rebuildGraph().onFailure {
+            AppDiagnostics.warning("Ansiblex Zone route graph rebuild failed", it)
+            return
+        }
+        if (mutableState.value.activeRoute != null) {
+            calculateRoute()
+        }
+    }
+
+    private fun rebuildForceProjectionZones() {
+        val data = staticData ?: return
+        val sovereignty = currentSovereigntySnapshot ?: return
+        val capitals = currentAllianceCapitalSnapshot ?: return
+        forceProjectionBuildJob?.cancel()
+        forceProjectionBuildJob = scope.launch {
+            val snapshot = withContext(ioDispatcher) {
+                ForceProjectionZoneSnapshotBuilder.build(data.systems, sovereignty, capitals)
+            }
+            setForceProjectionZones(snapshot)
+        }
     }
 }
 

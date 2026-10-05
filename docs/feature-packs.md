@@ -14,7 +14,7 @@ Feature API runtime compatibility and build-time artifact identity are deliberat
 ```text
 Runtime compatibility contract: EVE-Feature-API-Version: 2
 Compatibility family frozen: true
-Current Maven artifact: dev.evestaticmapplanner:feature-api:2.5.0
+Current Maven artifact: dev.evestaticmapplanner:feature-api:2.6.0
 Desktop application version: independent
 ```
 
@@ -22,7 +22,7 @@ Desktop application version: independent
 `FeatureApiVersion("2", true)`. A Pack should consume the Maven artifact as `compileOnly` and use the same coordinate
 for tests. The Host remains the only runtime owner of Feature API classes. Artifact `2.0.0` is the immutable release
 baseline; additive, backward-compatible navigation, character-tracking, EVE identity, Alliance Directory, and typed
-Sovereignty contracts are published through `2.5.0`. The frozen flag applies to the
+Sovereignty and Alliance Capital contracts are published through `2.6.0`. The frozen flag applies to the
 runtime compatibility-family identity, not to the Maven artifact's minor version.
 
 Feature API v2 is restart-only. The Host discovers one `FeaturePackEntrypoint`, calls `start(context)`, and closes the
@@ -31,7 +31,7 @@ and background-worker lifecycle contracts are not part of v2.
 
 ## Build artifact verification
 
-Core's normal verification publishes Feature API `2.5.0` only to the generated, ignored
+Core's normal verification publishes Feature API `2.6.0` only to the generated, ignored
 `feature-api/build/test-maven-repository`. The verification tasks inspect the artifact and compile an independent thin
 fixture Pack by Maven coordinate:
 
@@ -127,10 +127,15 @@ intent. Existing `RouteActionProvider` implementations remain valid and the Host
 explicit capability type check.
 Artifact `2.4.0` adds an optional Alliance Directory provider. It publishes stable Alliance IDs with optional display
 name/ticker metadata; the Host merges contributions by ID. Older Packs remain valid because the capability is additive.
-Artifact `2.5.0` adds an optional typed Sovereignty provider. Packs publish an in-memory, stable-ID-keyed system
+Artifact `2.5.0` adds an optional typed Sovereignty provider. Artifact `2.6.0` adds the optional Alliance Capital
+provider while retaining runtime compatibility family 2. Packs publish an in-memory, stable-ID-keyed system
 ownership snapshot while Core owns the domain model, last-good state, freshness, and system-ID query semantics. The
 provider snapshot performs no network I/O; older Packs simply leave Core Sovereignty unavailable while their existing
 Overlay and System Info contributions continue to work.
+Alliance Capital providers publish the `is_capital_system == true` Alliance/System observations from the same public
+ESI sovereignty refresh. The Host preserves last-good data, resolves one observation as available, treats an absent
+Alliance ID as unknown, and marks multiple systems for one Alliance ID as ambiguous without choosing one. Older Packs
+that do not query the new capability continue to load and leave Alliance Capital unavailable.
 Selected target IDs are opaque Pack-owned values and remain Host-persisted planning state. Neither
 contract exposes Compose, coroutines, coordinates, ViewModels, executors, Core route objects, database models, Control
 DTOs, ESI, OAuth, or HTTP client types. Pack Controls expose only a cheap synchronous status snapshot, generic action
@@ -196,7 +201,7 @@ The authoritative local cross-repository acceptance mechanism is Core's existing
     -SovereigntyRepo "C:\path\to\EVE-Sovereignty-Pack"
 ```
 
-It requires clean `main` worktrees. The runner publishes Feature API `2.5.0` only to Core's generated test repository,
+It requires clean `main` worktrees. The runner publishes Feature API `2.6.0` only to Core's generated test repository,
 builds the standalone Sovereignty Pack by coordinate, clean-builds Core without the Pack, runs focused Host and
 generic presentation regressions, supplies the canonical external JAR only to the explicit integration test, and
 enforces the exactly 34-tool MCP catalog. It uses fixtures/LKG data instead of live ESI and performs no remote

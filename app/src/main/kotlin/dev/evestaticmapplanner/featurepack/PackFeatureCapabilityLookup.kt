@@ -14,6 +14,7 @@ internal class PackFeatureCapabilityLookup(
     private val eveIdentity: ScopedEveIdentityCapability,
     private val allianceDirectory: ScopedAllianceDirectoryCapability,
     private val sovereignty: ScopedSovereigntyCapability,
+    private val allianceCapital: ScopedAllianceCapitalCapability,
 ) : FeatureCapabilityLookup, AutoCloseable {
     override fun <T : FeatureCapability> find(key: FeatureCapabilityKey<T>): T? {
         val capability: FeatureCapability = when (key) {
@@ -24,12 +25,14 @@ internal class PackFeatureCapabilityLookup(
             StandardFeatureCapabilities.EVE_IDENTITY -> eveIdentity
             StandardFeatureCapabilities.ALLIANCE_DIRECTORY -> allianceDirectory
             StandardFeatureCapabilities.SOVEREIGNTY -> sovereignty
+            StandardFeatureCapabilities.ALLIANCE_CAPITAL -> allianceCapital
             else -> return null
         }
         return key.type.takeIf { it.isInstance(capability) }?.cast(capability)
     }
 
     override fun close() {
+        allianceCapital.close()
         sovereignty.close()
         allianceDirectory.close()
         eveIdentity.close()

@@ -2,6 +2,7 @@ package dev.evestaticmapplanner.route
 
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.NavigationIntent
@@ -25,6 +26,7 @@ data class RoutePlannerUiState(
     val selectedTo: SolarSystem? = null,
     val waypoints: List<SolarSystem> = emptyList(),
     val useAnsiblex: Boolean = false,
+    val maximumAnsiblexZone: Int = 5,
     val useWormholes: Boolean = false,
     val showAnsiblexLayer: Boolean = true,
     val routeOutcome: RouteCalculationOutcome? = null,
@@ -35,6 +37,7 @@ data class RoutePlannerUiState(
     val isRouteStale: Boolean = false,
     val navigationMessage: UiMessage? = null,
     val ansiblexConnections: List<AnsiblexConnection> = emptyList(),
+    val forceProjectionZones: ForceProjectionZoneSnapshot = ForceProjectionZoneSnapshot.Empty,
     val currentIdentityContext: CurrentIdentityContext? = null,
     val wormholeConnections: List<WormholeConnection> = emptyList(),
     val importMode: AnsiblexImportMode = AnsiblexImportMode.MERGE,

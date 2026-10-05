@@ -32,6 +32,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessStatus
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
@@ -338,6 +339,9 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         connections: List<AnsiblexConnection>,
+        forceProjectionZones: ForceProjectionZoneSnapshot,
+        textMeasurer: TextMeasurer,
+        preferences: MapDisplayPreferences,
         emphasis: MapVisualEmphasis = MapVisualEmphasis.None,
         currentIdentityContext: CurrentIdentityContext? = null,
     ) {
@@ -352,20 +356,16 @@ object MapRenderer {
                 first = transform.worldToScreen(first),
                 second = transform.worldToScreen(second),
             )
-            path.reset()
-            path.moveTo(geometry.start.x.toFloat(), geometry.start.y.toFloat())
-            path.quadraticTo(
-                geometry.control.x.toFloat(),
-                geometry.control.y.toFloat(),
-                geometry.end.x.toFloat(),
-                geometry.end.y.toFloat(),
-            )
-            drawPath(
-                path = path,
-                color = style.color.multiplyAlpha(
-                    style.alphaMultiplier * emphasis.ansiblexAlphaMultiplier(connection.id),
-                ),
-                style = Stroke(width = 1.5f, pathEffect = ANSIBLEX_NETWORK_DASH_EFFECT),
+            drawAnsiblexConnectionWithZoneLabel(
+                geometry = geometry,
+                connection = connection,
+                zones = forceProjectionZones,
+                textMeasurer = textMeasurer,
+                preferences = preferences,
+                color = ansiblexRenderedColor(style, emphasis.ansiblexAlphaMultiplier(connection.id)),
+                strokeWidth = 1.5f,
+                pathEffect = ANSIBLEX_NETWORK_DASH_EFFECT,
+                scratchPath = path,
             )
         }
     }
@@ -1084,6 +1084,8 @@ internal fun ansiblexNetworkRenderStyle(status: AnsiblexAccessStatus): AnsiblexN
     AnsiblexAccessStatus.OWNER_UNKNOWN,
     AnsiblexAccessStatus.ALLIANCE_MISMATCH -> AnsiblexNetworkRenderStyle(ANSIBLEX_UNAVAILABLE_NETWORK_COLOR, 0.58f)
 }
+internal fun ansiblexRenderedColor(style: AnsiblexNetworkRenderStyle, emphasisAlpha: Float): Color =
+    style.color.multiplyAlpha(style.alphaMultiplier * emphasisAlpha)
 internal val ROUTE_STARGATE_COLOR = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.STARGATE).argb)
 internal val ROUTE_ANSIBLEX_COLOR = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.ANSIBLEX).argb)
 internal val WORMHOLE_PEACOCK_TEAL = Color(MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.WORMHOLE).argb)

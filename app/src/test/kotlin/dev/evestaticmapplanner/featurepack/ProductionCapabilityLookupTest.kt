@@ -31,6 +31,7 @@ class ProductionCapabilityLookupTest {
         val eveIdentityHost = EveIdentityHost()
         val allianceDirectoryHost = AllianceDirectoryHost()
         val sovereigntyHost = SovereigntyHost()
+        val allianceCapitalHost = AllianceCapitalHost()
         val context = ProductionFeaturePackRuntime.productionContextFactory(
             root,
             {},
@@ -42,6 +43,7 @@ class ProductionCapabilityLookupTest {
             eveIdentityHost,
             allianceDirectoryHost,
             sovereigntyHost,
+            allianceCapitalHost,
         ).create(descriptor("test.pack"))
         try {
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.DYNAMIC_OVERLAY))
@@ -51,6 +53,7 @@ class ProductionCapabilityLookupTest {
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.EVE_IDENTITY))
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.ALLIANCE_DIRECTORY))
             assertNotNull(context.capabilities().find(StandardFeatureCapabilities.SOVEREIGNTY))
+            assertNotNull(context.capabilities().find(StandardFeatureCapabilities.ALLIANCE_CAPITAL))
             assertNull(context.capabilities().find(FeatureCapabilityKey(
                 FeatureCapabilityId("unknown"),
                 RouteActionCapability::class.java,
@@ -67,6 +70,7 @@ class ProductionCapabilityLookupTest {
             eveIdentityHost.close()
             allianceDirectoryHost.close()
             sovereigntyHost.close()
+            allianceCapitalHost.close()
             overlayHost.close()
             root.toFile().deleteRecursively()
         }
@@ -81,6 +85,7 @@ class ProductionCapabilityLookupTest {
         val eveIdentityHost = EveIdentityHost()
         val allianceDirectoryHost = AllianceDirectoryHost()
         val sovereigntyHost = SovereigntyHost()
+        val allianceCapitalHost = AllianceCapitalHost()
         try {
             val first = PackFeatureCapabilityLookup(
                 overlayHost.scopedDynamicCapability(PackId("first.pack")),
@@ -90,6 +95,7 @@ class ProductionCapabilityLookupTest {
                 eveIdentityHost.scopedCapability(PackId("first.pack")),
                 allianceDirectoryHost.scopedCapability(PackId("first.pack")),
                 sovereigntyHost.scopedCapability(PackId("first.pack")),
+                allianceCapitalHost.scopedCapability(PackId("first.pack")),
             )
             val second = PackFeatureCapabilityLookup(
                 overlayHost.scopedDynamicCapability(PackId("second.pack")),
@@ -99,6 +105,7 @@ class ProductionCapabilityLookupTest {
                 eveIdentityHost.scopedCapability(PackId("second.pack")),
                 allianceDirectoryHost.scopedCapability(PackId("second.pack")),
                 sovereigntyHost.scopedCapability(PackId("second.pack")),
+                allianceCapitalHost.scopedCapability(PackId("second.pack")),
             )
             val firstActions = assertNotNull(first.find(StandardFeatureCapabilities.ROUTE_ACTION))
             val secondActions = assertNotNull(second.find(StandardFeatureCapabilities.ROUTE_ACTION))
@@ -119,6 +126,7 @@ class ProductionCapabilityLookupTest {
             eveIdentityHost.close()
             allianceDirectoryHost.close()
             sovereigntyHost.close()
+            allianceCapitalHost.close()
             overlayHost.close()
         }
     }

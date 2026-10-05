@@ -6,6 +6,20 @@ import dev.evestaticmapplanner.feature.api.PackId
 import dev.evestaticmapplanner.preferences.OverlayManagementUiStateBuilder
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.core.sovereignty.SovereigntyFreshness
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZone
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshotBuilder
+import dev.evestaticmapplanner.core.jump.UniverseDistanceCalculator
+import dev.evestaticmapplanner.core.model.SchematicPosition
+import dev.evestaticmapplanner.core.model.SolarSystem
+import dev.evestaticmapplanner.core.model.StaticMapData
+import dev.evestaticmapplanner.core.model.UniversePosition
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
+import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
+import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.route.buildDesktopRouteGraph
+import java.time.Instant
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -120,6 +134,45 @@ class SovereigntyPackIntegrationTest {
                 assertEquals(SovereigntyFreshness.AVAILABLE, sovereignty.snapshot.freshness)
                 assertEquals(99000001L, sovereignty.snapshot.getOwnership(30004759)?.allianceId)
                 assertEquals("Cached Alliance", sovereignty.snapshot.getOwnership(30004759)?.allianceName)
+                val allianceCapital = runtime.allianceCapitalHost.state.value
+                assertTrue(allianceCapital.providerAvailable)
+                assertEquals(30004759, allianceCapital.snapshot.getCapital(99000001).capitalSystemId)
+
+                val capitalSystem = forceProjectionSystem(30004759, "Capital", 0.0)
+                val targetSystem = forceProjectionSystem(30004760, "Target", 8.7)
+                val zones = ForceProjectionZoneSnapshotBuilder.build(
+                    listOf(capitalSystem, targetSystem),
+                    sovereignty.snapshot,
+                    allianceCapital.snapshot,
+                )
+                assertEquals(ForceProjectionZone.ZONE_1, zones.get(capitalSystem.id)?.zone)
+                assertEquals(ForceProjectionZone.ZONE_2, zones.get(targetSystem.id)?.zone)
+
+                val ansiblex = AnsiblexConnection(
+                    id = "fixture-directional-zone",
+                    firstSystemId = capitalSystem.id,
+                    secondSystemId = targetSystem.id,
+                    direction = AnsiblexDirection.BIDIRECTIONAL,
+                    displayName = null,
+                    notes = null,
+                    source = AnsiblexSource.MANUAL,
+                    sourceBatchId = null,
+                    enabled = true,
+                    createdAt = Instant.EPOCH,
+                    updatedAt = Instant.EPOCH,
+                    ownerAllianceId = 99000001,
+                )
+                val accessible = AnsiblexAccessPolicy.usableConnections(
+                    listOf(ansiblex),
+                    CurrentIdentityContext.manual(99000001),
+                )
+                val routeGraph = buildDesktopRouteGraph(
+                    StaticMapData(listOf(capitalSystem, targetSystem), emptyList()),
+                    accessible,
+                    ansiblexDestinationAllowed = { zones.isDestinationAllowed(it, 1) },
+                )
+                assertTrue(routeGraph.neighbors(capitalSystem.id).isEmpty())
+                assertEquals(listOf(capitalSystem.id), routeGraph.neighbors(targetSystem.id).map { it.toSystemId })
                 assertTrue(
                     OverlayManagementUiStateBuilder.build(
                         runtime.overlayHost.state.value,
@@ -156,6 +209,7 @@ class SovereigntyPackIntegrationTest {
             assertTrue(runtime.allianceDirectoryHost.state.value.snapshot.alliancesById.isEmpty())
             assertFalse(runtime.sovereigntyHost.state.value.providerAvailable)
             assertEquals(SovereigntyFreshness.UNAVAILABLE, runtime.sovereigntyHost.state.value.snapshot.freshness)
+            assertFalse(runtime.allianceCapitalHost.state.value.providerAvailable)
         }
 
     private inline fun withTempDirectory(block: (Path) -> Unit) {
@@ -184,10 +238,11 @@ class SovereigntyPackIntegrationTest {
         const val SOVEREIGNTY_PACK_JAR_PROPERTY = "sovereignty.pack.jar"
         val VALID_PUBLIC_ESI_CACHE = """
             {
-              "formatVersion": 2,
+              "formatVersion": 4,
               "source": "PUBLIC_ESI",
               "records": [
-                {"systemId": 30004759, "allianceId": 99000001, "allianceName": "Cached Alliance", "corporationName": null, "sovereigntyStatus": "Claimed"}
+                {"systemId": 30004759, "allianceId": 99000001, "allianceName": "Cached Alliance", "corporationId": null, "corporationName": null, "sovereigntyStatus": "Claimed", "isCapitalSystem": true},
+                {"systemId": 30004760, "allianceId": 99000001, "allianceName": "Cached Alliance", "corporationId": null, "corporationName": null, "sovereigntyStatus": "Claimed", "isCapitalSystem": false}
               ]
             }
         """.trimIndent()
@@ -212,3 +267,17 @@ class SovereigntyPackIntegrationTest {
         """.trimIndent()
     }
 }
+
+private fun forceProjectionSystem(id: Int, name: String, xLy: Double) = SolarSystem(
+    id = id,
+    constellationId = 20_000_001,
+    regionId = 10_000_001,
+    name = name,
+    securityStatus = 0.0,
+    securityClass = null,
+    position = UniversePosition(xLy * UniverseDistanceCalculator.METERS_PER_EVE_LIGHT_YEAR, 0.0, 0.0),
+    schematicPosition = SchematicPosition(xLy, 0.0),
+    radius = 1.0,
+    factionId = null,
+    wormholeClassId = null,
+)

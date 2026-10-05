@@ -42,6 +42,13 @@ internal object SimplifiedChineseSystemInfoStrings : SystemInfoStrings {
     override val sovereigntyCorporationId = "军团 ID"
     override val sovereigntyStatus = "主权状态"
     override val sovereigntyFreshness = "数据新鲜度"
+    override val forceProjection = "力量投射"
+    override val allianceCapital = "联盟首都"
+    override val distanceToCapital = "距联盟首都"
+    override val forceProjectionZone = "力量投射 Zone"
+    override val destinationZone = "目的地 Zone"
+    override val distanceToDestinationCapital = "距目的地联盟首都"
+    override val unknown = "未知"
     override fun regionValue(value: String) = "星域：$value"
     override fun constellationValue(value: String) = "星座：$value"
     override fun updatedBy(displayName: String) = "更新者：$displayName"
@@ -63,4 +70,5 @@ internal object SimplifiedChineseSystemInfoStrings : SystemInfoStrings {
         SovereigntyFreshness.STALE -> "已过期"
         SovereigntyFreshness.UNAVAILABLE -> "不可用"
     }
+    override fun distanceLy(distance: Double) = String.format(java.util.Locale.ROOT, "%.1f LY", distance)
 }

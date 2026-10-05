@@ -183,6 +183,18 @@ tasks.register<JavaExec>("runWindowIdentitySpike") {
     standardInput = System.`in`
 }
 
+tasks.register<JavaExec>("real3DLabelDetailQa") {
+    group = "verification"
+    description = "Reports Real 3D projected-node and ordinary-label counts against an explicit static.db."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.evestaticmapplanner.map.Real3DLabelDetailQaKt")
+    val qaDatabase = providers.gradleProperty("real3DLabelDetailDatabase")
+    doFirst {
+        args = listOf(qaDatabase.orNull ?: error("Provide -Preal3DLabelDetailDatabase=<static.db>"))
+    }
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+
 kotlin {
     jvmToolchain(25)
 }

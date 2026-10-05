@@ -19,6 +19,7 @@ internal object SimplifiedChineseRouteStrings : RouteStrings {
     override val calculating = "正在计算…"
     override val needsRecalculation = "需要重新计算"
     override val useAnsiblex = "使用 Ansiblex"
+    override val maximumAnsiblexZone = "Ansiblex 最大允许 Zone"
     override val useWormholes = "使用虫洞"
     override val showAnsiblexLayer = "显示 Ansiblex 图层"
     override val waypoints = "航点"

@@ -15,6 +15,7 @@ interface RouteStrings {
     val calculating: String
     val needsRecalculation: String
     val useAnsiblex: String
+    val maximumAnsiblexZone: String
     val useWormholes: String
     val showAnsiblexLayer: String
     val waypoints: String

@@ -142,6 +142,7 @@ internal fun RouteToolsPanel(
     onOpenEmbeddedAi: () -> Unit,
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
+    onMaximumAnsiblexZoneChanged: (Int) -> Unit,
     capitalState: CapitalRouteUiState,
     capitalViewModel: CapitalRouteViewModel,
     jumpState: JumpOverlayUiState,
@@ -228,6 +229,7 @@ internal fun RouteToolsPanel(
                                 NormalRouteSectionContent(
                                     state,
                                     viewModel,
+                                    onMaximumAnsiblexZoneChanged,
                                     routeActions,
                                     normalRouteSnapshot,
                                     normalNavigationSnapshot,
@@ -806,6 +808,7 @@ private fun JumpRangeSectionContent(
 private fun NormalRouteSectionContent(
     state: RoutePlannerUiState,
     viewModel: RoutePlannerViewModel,
+    onMaximumAnsiblexZoneChanged: (Int) -> Unit,
     routeActions: List<RouteActionUiState>,
     routeSnapshot: RouteSnapshot?,
     navigationSnapshot: NavigationSnapshot?,
@@ -845,6 +848,7 @@ private fun NormalRouteSectionContent(
             state = state,
             onUseAnsiblexChanged = viewModel::setUseAnsiblex,
             onUseWormholesChanged = viewModel::setUseWormholes,
+            onMaximumAnsiblexZoneChanged = onMaximumAnsiblexZoneChanged,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -917,6 +921,7 @@ internal fun NormalRouteConnectionOptions(
     state: RoutePlannerUiState,
     onUseAnsiblexChanged: (Boolean) -> Unit,
     onUseWormholesChanged: (Boolean) -> Unit,
+    onMaximumAnsiblexZoneChanged: (Int) -> Unit = {},
 ) {
     val strings = LocalAppStrings.current
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -927,6 +932,24 @@ internal fun NormalRouteConnectionOptions(
             modifier = Modifier.size(ROUTE_OPTION_CONTROL_SIZE),
         )
         Text(strings.route.useAnsiblex)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(strings.route.maximumAnsiblexZone, style = MaterialTheme.typography.labelSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            (1..5).forEach { zone ->
+                TextButton(onClick = { onMaximumAnsiblexZoneChanged(zone) }) {
+                    Text(
+                        zone.toString(),
+                        color = if (zone == state.maximumAnsiblexZone) EveColors.Important else Color.Unspecified,
+                        fontWeight = if (zone == state.maximumAnsiblexZone) {
+                            androidx.compose.ui.text.font.FontWeight.Bold
+                        } else {
+                            androidx.compose.ui.text.font.FontWeight.Normal
+                        },
+                    )
+                }
+            }
+        }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(

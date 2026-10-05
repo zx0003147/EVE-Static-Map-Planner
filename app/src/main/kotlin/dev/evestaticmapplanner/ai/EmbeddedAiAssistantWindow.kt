@@ -61,9 +61,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
@@ -259,15 +260,27 @@ internal fun EmbeddedAiAssistantContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.weight(1f).fillMaxSize(),
             ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.testTag(AI_ASSISTANT_HEADER_TEST_TAG),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().testTag(AI_ASSISTANT_HEADER_TEST_TAG),
                 ) {
+                    ChatSidebarChevronButton(
+                        expanded = sidebarVisible,
+                        onClick = { sidebarVisible = !sidebarVisible },
+                    )
                     Text(
                         strings.title,
                         style = MaterialTheme.typography.titleLarge,
                     )
-                    Text(providerStatus.description(strings), color = EveColors.SecondaryText)
+                    Text("|", color = EveColors.SecondaryText)
+                    Text(
+                        providerStatus.description(strings),
+                        color = EveColors.SecondaryText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 state.contextNotice?.let { Text(strings.contextNotice(it), color = EveColors.SecondaryText) }
                 if (!providerStatus.ready) {
@@ -340,16 +353,6 @@ internal fun EmbeddedAiAssistantContent(
                     },
                     onCancelVoice = onCancelVoice,
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth().testTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ChatSidebarChevronButton(
-                        expanded = sidebarVisible,
-                        onClick = { sidebarVisible = !sidebarVisible },
-                    )
-                    Box(Modifier.weight(1f))
-                }
                 voiceState.message?.let {
                     Text(
                         strings.voiceControllerMessage(it),
@@ -923,7 +926,6 @@ internal const val AI_CHAT_COMPOSER_TEST_TAG = "embedded-ai-chat-composer"
 internal const val AI_CHAT_EDITABLE_REGION_TEST_TAG = "embedded-ai-chat-editable-region"
 internal const val AI_CHAT_COMPOSER_CONTROLS_TEST_TAG = "embedded-ai-chat-composer-controls"
 internal const val AI_CHAT_INPUT_TEST_TAG = "embedded-ai-chat-input"
-internal const val AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG = "embedded-ai-chat-bottom-action-row"
 internal const val AI_CHAT_MESSAGE_TEST_TAG_PREFIX = "embedded-ai-chat-message"
 internal const val AI_SESSION_SIDEBAR_TEST_TAG = "embedded-ai-session-sidebar"
 internal const val AI_SESSION_ITEM_TEST_TAG_PREFIX = "embedded-ai-session-item"

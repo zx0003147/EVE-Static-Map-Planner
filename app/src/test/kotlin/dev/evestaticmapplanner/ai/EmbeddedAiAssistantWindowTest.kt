@@ -84,7 +84,7 @@ class EmbeddedAiAssistantWindowTest {
             runOnIdle { localization = AppLocalization(AppLocale.ZH_CN) }
             waitForIdle()
 
-            onNodeWithText("内置 AI 助手").assertIsDisplayed()
+            onNodeWithText("奥拉").assertIsDisplayed()
             onNodeWithText("对话").assertIsDisplayed()
             onNodeWithText("+ 新建对话").assertIsDisplayed()
             onNodeWithText("输入消息……").assertIsDisplayed()
@@ -249,19 +249,21 @@ class EmbeddedAiAssistantWindowTest {
         onAllNodesWithText("Hide Sidebar").assertCountEquals(0)
         onAllNodesWithText("Show Sidebar").assertCountEquals(0)
         val headerBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
+        val titleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
+        val providerBounds = onNodeWithText("DeepSeek · deepseek-flash · Secure storage")
+            .fetchSemanticsNode().boundsInRoot
         val expandedMessageBounds = onNodeWithTag(AI_CHAT_COMPOSER_TEST_TAG).fetchSemanticsNode().boundsInRoot
-        val expandedActionRowBounds = onNodeWithTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val expandedHandleBounds = onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).fetchSemanticsNode().boundsInRoot
         assertTrue(
-            abs(expandedHandleBounds.left - expandedMessageBounds.left) <= 1.1f,
-            "Expanded Chevron left edge must equal the Message input left border.",
+            expandedHandleBounds.left >= headerBounds.left && expandedHandleBounds.right <= headerBounds.right,
+            "Expanded Chevron must remain inside the header.",
         )
         assertTrue(
-            expandedHandleBounds.top >= expandedActionRowBounds.top &&
-                expandedHandleBounds.bottom <= expandedActionRowBounds.bottom,
-            "Expanded Chevron must remain inside the bottom action row.",
+            expandedHandleBounds.top >= headerBounds.top && expandedHandleBounds.bottom <= headerBounds.bottom,
+            "Expanded Chevron must remain vertically inside the header.",
         )
-        assertTrue(expandedHandleBounds.top > headerBounds.bottom, "Header must not contain the Chevron.")
+        assertTrue(expandedHandleBounds.right < titleBounds.left, "Chevron must appear to the left of the title.")
+        assertTrue(titleBounds.right < providerBounds.left, "Provider information must appear to the right of the title.")
         assertEquals(
             "Left chevron",
             onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG)
@@ -275,19 +277,23 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
         val collapsedHandle = onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed()
         val collapsedHandleBounds = collapsedHandle.fetchSemanticsNode().boundsInRoot
+        val collapsedTitleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
         val collapsedMessageBounds = onNodeWithTag(AI_CHAT_COMPOSER_TEST_TAG).fetchSemanticsNode().boundsInRoot
-        val collapsedActionRowBounds = onNodeWithTag(AI_CHAT_BOTTOM_ACTION_ROW_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val collapsedHeaderBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
         assertTrue(
-            abs(collapsedHandleBounds.left - collapsedMessageBounds.left) <= 1.1f,
-            "Collapsed Chevron left edge must equal the Message input left border.",
+            collapsedHandleBounds.left >= collapsedHeaderBounds.left &&
+                collapsedHandleBounds.right <= collapsedHeaderBounds.right,
+            "Collapsed Chevron must remain inside the header.",
         )
         assertTrue(
-            collapsedHandleBounds.top >= collapsedActionRowBounds.top &&
-                collapsedHandleBounds.bottom <= collapsedActionRowBounds.bottom,
-            "Collapsed Chevron must remain inside the bottom action row.",
+            collapsedHandleBounds.top >= collapsedHeaderBounds.top &&
+                collapsedHandleBounds.bottom <= collapsedHeaderBounds.bottom,
+            "Collapsed Chevron must remain vertically inside the header.",
         )
-        assertTrue(collapsedHandleBounds.top > collapsedHeaderBounds.bottom, "Header must not contain the Chevron.")
+        assertTrue(
+            collapsedHandleBounds.right < collapsedTitleBounds.left,
+            "Chevron must remain to the left of the title.",
+        )
         assertEquals(
             "Right chevron",
             collapsedHandle.fetchSemanticsNode().config[SemanticsProperties.StateDescription],

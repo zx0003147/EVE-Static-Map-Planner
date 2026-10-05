@@ -75,6 +75,8 @@ class FeatureCapabilityApiTest {
         assertEquals(AllianceDirectoryCapability::class.java, StandardFeatureCapabilities.ALLIANCE_DIRECTORY.type)
         assertEquals(FeatureCapabilityId("sovereignty"), StandardFeatureCapabilities.SOVEREIGNTY.id)
         assertEquals(SovereigntyCapability::class.java, StandardFeatureCapabilities.SOVEREIGNTY.type)
+        assertEquals(FeatureCapabilityId("alliance-capital"), StandardFeatureCapabilities.ALLIANCE_CAPITAL.id)
+        assertEquals(AllianceCapitalCapability::class.java, StandardFeatureCapabilities.ALLIANCE_CAPITAL.type)
     }
 
     private interface FirstCapability : FeatureCapability

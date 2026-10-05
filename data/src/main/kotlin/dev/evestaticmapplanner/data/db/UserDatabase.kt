@@ -74,11 +74,33 @@ object UserDatabase {
                 3 -> migrateVersionThreeToFour(connection, path, migrationHook)
                 4 -> migrateVersionFourToFive(connection, path, migrationHook)
                 5 -> migrateVersionFiveToSix(connection, path, migrationHook)
+                6 -> migrateVersionSixToSeven(connection, path, migrationHook)
                 else -> throw UserDatabaseException(
                     "No migration is available from user database schema $version to ${UserDatabaseSchema.VERSION}",
                 )
             }
             version++
+        }
+    }
+
+    private fun migrateVersionSixToSeven(
+        connection: Connection,
+        path: Path,
+        migrationHook: (Connection) -> Unit,
+    ) {
+        connection.autoCommit = false
+        try {
+            UserDatabaseSchema.addAnsiblexPrimaryDirection(connection)
+            validateContents(connection, path, 7, requiredTables(7), requiredIndexes(7))
+            migrationHook(connection)
+            connection.createStatement().use { it.execute("PRAGMA user_version = 7") }
+            validate(connection, path, expectedVersion = 7)
+            connection.commit()
+        } catch (error: Throwable) {
+            connection.rollback()
+            throw error
+        } finally {
+            connection.autoCommit = true
         }
     }
 
@@ -236,6 +258,7 @@ object UserDatabase {
         if ("saved_marker_children" in requiredTables) validateSavedMarkerChildrenSchema(connection)
         if (schemaVersion == 5) validateLegacyAnsiblexOwnerAllianceSchema(connection)
         if (schemaVersion >= 6) validateAnsiblexOwnerAllianceSchema(connection)
+        if (schemaVersion >= 7) validateAnsiblexPrimaryDirectionSchema(connection)
         val foreignKeyErrors = connection.createStatement().use { statement ->
             statement.executeQuery("PRAGMA foreign_key_check").use { result -> result.next() }
         }
@@ -314,6 +337,48 @@ object UserDatabase {
         val missing = requiredFragments.filterNot(createSql::contains)
         if (missing.isNotEmpty()) {
             throw UserDatabaseException("User database Ansiblex stable owner alliance constraints are incomplete: missing $missing")
+        }
+    }
+
+    private fun validateAnsiblexPrimaryDirectionSchema(connection: Connection) {
+        data class Column(val name: String, val type: String, val notNull: Boolean)
+        val columns = connection.createStatement().use { statement ->
+            statement.executeQuery("PRAGMA table_info(ansiblex_connections)").use { result ->
+                buildList {
+                    while (result.next()) {
+                        val name = result.getString("name")
+                        if (name == "primary_from_system_id" || name == "primary_to_system_id") {
+                            add(Column(name, result.getString("type"), result.getInt("notnull") == 1))
+                        }
+                    }
+                }
+            }
+        }
+        assertSchema(
+            columns == listOf(
+                Column("primary_from_system_id", "INTEGER", false),
+                Column("primary_to_system_id", "INTEGER", false),
+            ),
+            "User database ansiblex_connections primary direction columns are invalid",
+        )
+        val createSql = connection.createStatement().use { statement ->
+            statement.executeQuery(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ansiblex_connections'",
+            ).use { result ->
+                if (!result.next()) throw UserDatabaseException("User database ansiblex_connections table has no schema SQL")
+                result.getString(1).uppercase().replace(Regex("\\s+"), " ")
+            }
+        }
+        val requiredFragments = setOf(
+            "PRIMARY_FROM_SYSTEM_ID IS NULL AND PRIMARY_TO_SYSTEM_ID IS NULL",
+            "PRIMARY_FROM_SYSTEM_ID = FIRST_SYSTEM_ID AND PRIMARY_TO_SYSTEM_ID = SECOND_SYSTEM_ID",
+            "PRIMARY_FROM_SYSTEM_ID = SECOND_SYSTEM_ID AND PRIMARY_TO_SYSTEM_ID = FIRST_SYSTEM_ID",
+            "DIRECTION = 'FIRST_TO_SECOND' AND PRIMARY_FROM_SYSTEM_ID = FIRST_SYSTEM_ID",
+            "DIRECTION = 'SECOND_TO_FIRST' AND PRIMARY_FROM_SYSTEM_ID = SECOND_SYSTEM_ID",
+        )
+        val missing = requiredFragments.filterNot(createSql::contains)
+        if (missing.isNotEmpty()) {
+            throw UserDatabaseException("User database Ansiblex primary direction constraints are incomplete: missing $missing")
         }
     }
 

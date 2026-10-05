@@ -61,6 +61,8 @@ class MapRouteStyleTest {
         assertEquals(1f, available.alphaMultiplier)
         assertEquals(ANSIBLEX_UNAVAILABLE_NETWORK_COLOR, unavailable.color)
         assertEquals(0.58f, unavailable.alphaMultiplier)
+        assertEquals(available.color, ansiblexRenderedColor(available, 1f))
+        assertEquals(unavailable.color.copy(alpha = 0.58f), ansiblexRenderedColor(unavailable, 1f))
     }
 
     @Test

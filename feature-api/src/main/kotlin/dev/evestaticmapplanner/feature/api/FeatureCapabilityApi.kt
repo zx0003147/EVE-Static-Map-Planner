@@ -89,6 +89,11 @@ object StandardFeatureCapabilities {
         FeatureCapabilityId("sovereignty"),
         SovereigntyCapability::class.java,
     )
+
+    val ALLIANCE_CAPITAL = FeatureCapabilityKey(
+        FeatureCapabilityId("alliance-capital"),
+        AllianceCapitalCapability::class.java,
+    )
 }
 
 private object EmptyFeatureCapabilityLookup : FeatureCapabilityLookup {

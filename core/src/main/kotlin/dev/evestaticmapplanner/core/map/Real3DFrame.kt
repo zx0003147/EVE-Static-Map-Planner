@@ -92,24 +92,52 @@ class Real3DStaticGeometry private constructor(
 
 class Real3DProjectedNode internal constructor(
     val node: Real3DWorldNode,
-    var screen: MapPoint,
+    var screenX: Double,
+    var screenY: Double,
     var depth: Double,
     var radiusPx: Float,
-)
+) {
+    internal val mapEntry: Map.Entry<Int, Real3DProjectedNode> = Real3DProjectedNodeMapEntry(this)
+
+    fun snapshotScreenPoint(): MapPoint = MapPoint(screenX, screenY)
+}
 
 class Real3DProjectedEdge internal constructor(
     val edge: Real3DWorldEdge,
-    var first: MapPoint,
-    var second: MapPoint,
+    var firstScreenX: Double,
+    var firstScreenY: Double,
+    var secondScreenX: Double,
+    var secondScreenY: Double,
     var averageDepth: Double,
     var alpha: Float,
-)
+) {
+    fun snapshotFirstScreenPoint(): MapPoint = MapPoint(firstScreenX, firstScreenY)
+
+    fun snapshotSecondScreenPoint(): MapPoint = MapPoint(secondScreenX, secondScreenY)
+}
 
 class Real3DProjectedHierarchyAnchor internal constructor(
     val anchor: Real3DHierarchyAnchor,
-    var screen: MapPoint,
+    var screenX: Double,
+    var screenY: Double,
     var depth: Double,
-)
+) {
+    fun snapshotScreenPoint(): MapPoint = MapPoint(screenX, screenY)
+}
+
+private class Real3DProjectedNodeMapEntry(
+    private val projected: Real3DProjectedNode,
+) : Map.Entry<Int, Real3DProjectedNode> {
+    override val key: Int get() = projected.node.system.id
+    override val value: Real3DProjectedNode get() = projected
+
+    override fun equals(other: Any?): Boolean =
+        other is Map.Entry<*, *> && key == other.key && value == other.value
+
+    override fun hashCode(): Int = key.hashCode() xor value.hashCode()
+
+    override fun toString(): String = "$key=$value"
+}
 
 data class Real3DFrame(
     /** Painter order is far-to-near so nearer systems remain visually dominant. */
@@ -147,14 +175,22 @@ object Real3DFrameProjector {
 class Real3DFrameProjectionWorkspace {
     private val nodesFarToNear = ArrayList<Real3DProjectedNode>()
     private val edges = ArrayList<Real3DProjectedEdge>()
-    private val projectedBySystemId = HashMap<Int, Real3DProjectedNode>()
     private val regions = ArrayList<Real3DProjectedHierarchyAnchor>()
     private val constellations = ArrayList<Real3DProjectedHierarchyAnchor>()
-    private val nodePool = HashMap<Int, Real3DProjectedNode>()
-    private val edgePool = HashMap<Long, Real3DProjectedEdge>()
-    private val regionPool = HashMap<Int, Real3DProjectedHierarchyAnchor>()
-    private val constellationPool = HashMap<Int, Real3DProjectedHierarchyAnchor>()
+    private var boundGeometry: Real3DStaticGeometry? = null
+    private var nodeSlots = arrayOfNulls<Real3DProjectedNode>(0)
+    private var edgeSlots = arrayOfNulls<Real3DProjectedEdge>(0)
+    private var regionSlots = arrayOfNulls<Real3DProjectedHierarchyAnchor>(0)
+    private var constellationSlots = arrayOfNulls<Real3DProjectedHierarchyAnchor>(0)
+    private var nodeIndexBySystemId: Map<Int, Int> = emptyMap()
+    private var nodeVisibilityGeneration = IntArray(0)
+    private var currentGeneration = 0
+    private val projectedBySystemId = ProjectedNodeMapView()
     private val frame = Real3DFrame(nodesFarToNear, edges, projectedBySystemId, regions, constellations)
+    private val projector = AllocationLightFrameProjector()
+    private val projected = MutableProjectedPoint()
+    private val first = MutableProjectedPoint()
+    private val second = MutableProjectedPoint()
 
     fun project(
         geometry: Real3DStaticGeometry,
@@ -162,62 +198,182 @@ class Real3DFrameProjectionWorkspace {
         viewportSize: MapSize,
         edgeVisibility: ((Real3DWorldEdge) -> Boolean)? = null,
     ): Real3DFrame {
+        bindGeometry(geometry)
         nodesFarToNear.clear()
         edges.clear()
-        projectedBySystemId.clear()
         regions.clear()
         constellations.clear()
-        val projector = AllocationLightFrameProjector(camera, viewportSize)
-        val projected = MutableProjectedPoint()
-        geometry.nodes.forEach { node ->
-            if (!projector.project(node.position, projected)) return@forEach
-            val pooled = nodePool.getOrPut(node.system.id) {
-                Real3DProjectedNode(node, MapPoint(projected.x, projected.y), projected.depth, 0f)
+        val generation = nextGeneration()
+        projector.update(camera, viewportSize)
+        for (index in geometry.nodes.indices) {
+            val node = geometry.nodes[index]
+            if (!projector.project(node.position, projected)) continue
+            val pooled = nodeSlots[index] ?: Real3DProjectedNode(
+                node = node,
+                screenX = projected.x,
+                screenY = projected.y,
+                depth = projected.depth,
+                radiusPx = 0f,
+            ).also { created ->
+                nodeSlots[index] = created
             }
-            pooled.screen = MapPoint(projected.x, projected.y)
+            pooled.screenX = projected.x
+            pooled.screenY = projected.y
             pooled.depth = projected.depth
             pooled.radiusPx = Real3DFrameProjector.nodeRadius(projected.depth, camera.distance)
-            nodesFarToNear += pooled
+            nodeVisibilityGeneration[index] = generation
+            nodesFarToNear.add(pooled)
         }
-        nodesFarToNear.sortWith(compareByDescending<Real3DProjectedNode> { it.depth }.thenBy { it.node.system.id })
-        nodesFarToNear.forEach { projectedBySystemId[it.node.system.id] = it }
-        val first = MutableProjectedPoint()
-        val second = MutableProjectedPoint()
-        geometry.edges.forEach { edge ->
-            if (edgeVisibility != null && !edgeVisibility(edge)) return@forEach
-            if (!projector.projectSegment(edge.first, edge.second, first, second)) return@forEach
+        nodesFarToNear.sortWith(REAL_3D_PROJECTED_NODE_COMPARATOR)
+        for (index in geometry.edges.indices) {
+            val edge = geometry.edges[index]
+            if (edgeVisibility != null && !edgeVisibility(edge)) continue
+            if (!projector.projectSegment(edge.first, edge.second, first, second)) continue
             val averageDepth = (first.depth + second.depth) / 2.0
-            val key = (edge.firstSystemId.toLong() shl 32) xor (edge.secondSystemId.toLong() and 0xFFFF_FFFFL)
-            val pooled = edgePool.getOrPut(key) {
-                Real3DProjectedEdge(edge, MapPoint(first.x, first.y), MapPoint(second.x, second.y), averageDepth, 0f)
+            val pooled = edgeSlots[index] ?: Real3DProjectedEdge(
+                edge = edge,
+                firstScreenX = first.x,
+                firstScreenY = first.y,
+                secondScreenX = second.x,
+                secondScreenY = second.y,
+                averageDepth = averageDepth,
+                alpha = 0f,
+            ).also { created ->
+                edgeSlots[index] = created
             }
-            pooled.first = MapPoint(first.x, first.y)
-            pooled.second = MapPoint(second.x, second.y)
+            pooled.firstScreenX = first.x
+            pooled.firstScreenY = first.y
+            pooled.secondScreenX = second.x
+            pooled.secondScreenY = second.y
             pooled.averageDepth = averageDepth
             pooled.alpha = Real3DFrameProjector.edgeAlpha(averageDepth, camera.distance)
-            edges += pooled
+            edges.add(pooled)
         }
-        geometry.regions.forEach { anchor ->
+        for (index in geometry.regions.indices) {
+            val anchor = geometry.regions[index]
             if (projector.project(anchor.position, projected)) {
-                val pooled = regionPool.getOrPut(anchor.id) {
-                    Real3DProjectedHierarchyAnchor(anchor, MapPoint(projected.x, projected.y), projected.depth)
+                val pooled = regionSlots[index] ?: Real3DProjectedHierarchyAnchor(
+                    anchor = anchor,
+                    screenX = projected.x,
+                    screenY = projected.y,
+                    depth = projected.depth,
+                ).also { created ->
+                    regionSlots[index] = created
                 }
-                pooled.screen = MapPoint(projected.x, projected.y)
+                pooled.screenX = projected.x
+                pooled.screenY = projected.y
                 pooled.depth = projected.depth
-                regions += pooled
+                regions.add(pooled)
             }
         }
-        geometry.constellations.forEach { anchor ->
+        for (index in geometry.constellations.indices) {
+            val anchor = geometry.constellations[index]
             if (projector.project(anchor.position, projected)) {
-                val pooled = constellationPool.getOrPut(anchor.id) {
-                    Real3DProjectedHierarchyAnchor(anchor, MapPoint(projected.x, projected.y), projected.depth)
+                val pooled = constellationSlots[index] ?: Real3DProjectedHierarchyAnchor(
+                    anchor = anchor,
+                    screenX = projected.x,
+                    screenY = projected.y,
+                    depth = projected.depth,
+                ).also { created ->
+                    constellationSlots[index] = created
                 }
-                pooled.screen = MapPoint(projected.x, projected.y)
+                pooled.screenX = projected.x
+                pooled.screenY = projected.y
                 pooled.depth = projected.depth
-                constellations += pooled
+                constellations.add(pooled)
             }
         }
         return frame
+    }
+
+    private fun bindGeometry(geometry: Real3DStaticGeometry) {
+        val existing = boundGeometry
+        require(existing == null || existing === geometry) {
+            "A Real3DFrameProjectionWorkspace cannot be shared by different static geometries"
+        }
+        if (existing != null) return
+        boundGeometry = geometry
+        nodeSlots = arrayOfNulls(geometry.nodes.size)
+        edgeSlots = arrayOfNulls(geometry.edges.size)
+        regionSlots = arrayOfNulls(geometry.regions.size)
+        constellationSlots = arrayOfNulls(geometry.constellations.size)
+        nodeVisibilityGeneration = IntArray(geometry.nodes.size)
+        nodeIndexBySystemId = HashMap<Int, Int>(geometry.nodes.size * 4 / 3 + 1).apply {
+            geometry.nodes.forEachIndexed { index, node -> put(node.system.id, index) }
+        }
+        nodesFarToNear.ensureCapacity(geometry.nodes.size)
+        edges.ensureCapacity(geometry.edges.size)
+        regions.ensureCapacity(geometry.regions.size)
+        constellations.ensureCapacity(geometry.constellations.size)
+    }
+
+    private fun nextGeneration(): Int {
+        if (currentGeneration == Int.MAX_VALUE) {
+            nodeVisibilityGeneration.fill(0)
+            currentGeneration = 1
+        } else {
+            currentGeneration += 1
+        }
+        return currentGeneration
+    }
+
+    private inner class ProjectedNodeMapView : Map<Int, Real3DProjectedNode> {
+        override val size: Int get() = nodesFarToNear.size
+        override fun isEmpty(): Boolean = nodesFarToNear.isEmpty()
+
+        override fun get(key: Int): Real3DProjectedNode? {
+            val index = nodeIndexBySystemId[key] ?: return null
+            if (nodeVisibilityGeneration[index] != currentGeneration) return null
+            return nodeSlots[index]
+        }
+
+        override fun containsKey(key: Int): Boolean = get(key) != null
+
+        override fun containsValue(value: Real3DProjectedNode): Boolean =
+            nodesFarToNear.any { projected -> projected === value }
+
+        override val keys: Set<Int> = object : AbstractSet<Int>() {
+            override val size: Int get() = nodesFarToNear.size
+            override fun contains(element: Int): Boolean = containsKey(element)
+            override fun iterator(): Iterator<Int> = object : Iterator<Int> {
+                private var index = 0
+                override fun hasNext(): Boolean = index < nodesFarToNear.size
+                override fun next(): Int = nodesFarToNear[index++].node.system.id
+            }
+        }
+
+        override val values: Collection<Real3DProjectedNode> = object : AbstractCollection<Real3DProjectedNode>() {
+            override val size: Int get() = nodesFarToNear.size
+            override fun contains(element: Real3DProjectedNode): Boolean = containsValue(element)
+            override fun iterator(): Iterator<Real3DProjectedNode> = object : Iterator<Real3DProjectedNode> {
+                private var index = 0
+                override fun hasNext(): Boolean = index < nodesFarToNear.size
+                override fun next(): Real3DProjectedNode = nodesFarToNear[index++]
+            }
+        }
+
+        override val entries: Set<Map.Entry<Int, Real3DProjectedNode>> =
+            object : AbstractSet<Map.Entry<Int, Real3DProjectedNode>>() {
+                override val size: Int get() = nodesFarToNear.size
+                override fun contains(element: Map.Entry<Int, Real3DProjectedNode>): Boolean =
+                    get(element.key) === element.value
+
+                override fun iterator(): Iterator<Map.Entry<Int, Real3DProjectedNode>> =
+                    object : Iterator<Map.Entry<Int, Real3DProjectedNode>> {
+                        private var index = 0
+                        override fun hasNext(): Boolean = index < nodesFarToNear.size
+                        override fun next(): Map.Entry<Int, Real3DProjectedNode> = nodesFarToNear[index++].mapEntry
+                    }
+            }
+
+        override fun equals(other: Any?): Boolean =
+            other === this || other is Map<*, *> && size == other.size && entries.all { entry ->
+                other[entry.key] == entry.value
+            }
+
+        override fun hashCode(): Int = entries.sumOf(Map.Entry<Int, Real3DProjectedNode>::hashCode)
+
+        override fun toString(): String = entries.joinToString(prefix = "{", postfix = "}")
     }
 }
 
@@ -228,16 +384,47 @@ private class MutableProjectedPoint(
 )
 
 /** Allocation-light scalar projector dedicated to the high-frequency base-map frame. */
-private class AllocationLightFrameProjector(
-    private val camera: Real3DCamera,
-    private val viewportSize: MapSize,
-) {
-    private val basis = camera.basis()
-    private val cameraPosition = camera.position()
-    private val focalLength = viewportSize.height /
-        (2.0 * tan(camera.verticalFieldOfViewDegrees * PI / 360.0))
+private class AllocationLightFrameProjector {
+    private var rightX = 0.0
+    private var rightY = 0.0
+    private var rightZ = 0.0
+    private var upX = 0.0
+    private var upY = 0.0
+    private var upZ = 0.0
+    private var forwardX = 0.0
+    private var forwardY = 0.0
+    private var forwardZ = 0.0
+    private var cameraX = 0.0
+    private var cameraY = 0.0
+    private var cameraZ = 0.0
+    private var focalLength = 0.0
+    private var nearPlane = 0.0
+    private var farPlane = 0.0
+    private var viewportWidth = 0.0
+    private var viewportHeight = 0.0
     private val firstView = MutableProjectedPoint()
     private val secondView = MutableProjectedPoint()
+
+    fun update(camera: Real3DCamera, viewportSize: MapSize) {
+        val basis = camera.basis()
+        rightX = basis.right.x
+        rightY = basis.right.y
+        rightZ = basis.right.z
+        upX = basis.up.x
+        upY = basis.up.y
+        upZ = basis.up.z
+        forwardX = basis.forward.x
+        forwardY = basis.forward.y
+        forwardZ = basis.forward.z
+        cameraX = camera.target.x - forwardX * camera.distance
+        cameraY = camera.target.y - forwardY * camera.distance
+        cameraZ = camera.target.z - forwardZ * camera.distance
+        viewportWidth = viewportSize.width
+        viewportHeight = viewportSize.height
+        focalLength = viewportHeight / (2.0 * tan(camera.verticalFieldOfViewDegrees * PI / 360.0))
+        nearPlane = camera.nearPlane
+        farPlane = camera.farPlane
+    }
 
     fun project(point: MapPoint3, output: MutableProjectedPoint): Boolean {
         worldToView(point, output)
@@ -252,27 +439,27 @@ private class AllocationLightFrameProjector(
     ): Boolean {
         worldToView(first, firstView)
         worldToView(second, secondView)
-        if (firstView.depth < camera.nearPlane && secondView.depth < camera.nearPlane) return false
-        if (firstView.depth > camera.farPlane && secondView.depth > camera.farPlane) return false
-        if (firstView.depth < camera.nearPlane) interpolateAtDepth(firstView, secondView, camera.nearPlane)
-        if (secondView.depth < camera.nearPlane) interpolateAtDepth(secondView, firstView, camera.nearPlane)
-        if (firstView.depth > camera.farPlane) interpolateAtDepth(firstView, secondView, camera.farPlane)
-        if (secondView.depth > camera.farPlane) interpolateAtDepth(secondView, firstView, camera.farPlane)
+        if (firstView.depth < nearPlane && secondView.depth < nearPlane) return false
+        if (firstView.depth > farPlane && secondView.depth > farPlane) return false
+        if (firstView.depth < nearPlane) interpolateAtDepth(firstView, secondView, nearPlane)
+        if (secondView.depth < nearPlane) interpolateAtDepth(secondView, firstView, nearPlane)
+        if (firstView.depth > farPlane) interpolateAtDepth(firstView, secondView, farPlane)
+        if (secondView.depth > farPlane) interpolateAtDepth(secondView, firstView, farPlane)
         if (!projectView(firstView, firstOutput, cullToViewport = false)) return false
         if (!projectView(secondView, secondOutput, cullToViewport = false)) return false
         return maxOf(firstOutput.x, secondOutput.x) >= 0.0 &&
-            minOf(firstOutput.x, secondOutput.x) <= viewportSize.width &&
+            minOf(firstOutput.x, secondOutput.x) <= viewportWidth &&
             maxOf(firstOutput.y, secondOutput.y) >= 0.0 &&
-            minOf(firstOutput.y, secondOutput.y) <= viewportSize.height
+            minOf(firstOutput.y, secondOutput.y) <= viewportHeight
     }
 
     private fun worldToView(point: MapPoint3, output: MutableProjectedPoint) {
-        val relativeX = point.x - cameraPosition.x
-        val relativeY = point.y - cameraPosition.y
-        val relativeZ = point.z - cameraPosition.z
-        output.x = relativeX * basis.right.x + relativeY * basis.right.y + relativeZ * basis.right.z
-        output.y = relativeX * basis.up.x + relativeY * basis.up.y + relativeZ * basis.up.z
-        output.depth = relativeX * basis.forward.x + relativeY * basis.forward.y + relativeZ * basis.forward.z
+        val relativeX = point.x - cameraX
+        val relativeY = point.y - cameraY
+        val relativeZ = point.z - cameraZ
+        output.x = relativeX * rightX + relativeY * rightY + relativeZ * rightZ
+        output.y = relativeX * upX + relativeY * upY + relativeZ * upZ
+        output.depth = relativeX * forwardX + relativeY * forwardY + relativeZ * forwardZ
     }
 
     private fun projectView(
@@ -280,10 +467,10 @@ private class AllocationLightFrameProjector(
         output: MutableProjectedPoint,
         cullToViewport: Boolean,
     ): Boolean {
-        if (input.depth < camera.nearPlane || input.depth > camera.farPlane) return false
-        val screenX = viewportSize.width / 2.0 + input.x * focalLength / input.depth
-        val screenY = viewportSize.height / 2.0 - input.y * focalLength / input.depth
-        if (cullToViewport && (screenX < 0.0 || screenX > viewportSize.width || screenY < 0.0 || screenY > viewportSize.height)) {
+        if (input.depth < nearPlane || input.depth > farPlane) return false
+        val screenX = viewportWidth / 2.0 + input.x * focalLength / input.depth
+        val screenY = viewportHeight / 2.0 - input.y * focalLength / input.depth
+        if (cullToViewport && (screenX < 0.0 || screenX > viewportWidth || screenY < 0.0 || screenY > viewportHeight)) {
             return false
         }
         output.x = screenX
@@ -302,6 +489,11 @@ private class AllocationLightFrameProjector(
         target.y += (other.y - target.y) * amount
         target.depth = depth
     }
+}
+
+private val REAL_3D_PROJECTED_NODE_COMPARATOR = Comparator<Real3DProjectedNode> { first, second ->
+    val depthOrder = second.depth.compareTo(first.depth)
+    if (depthOrder != 0) depthOrder else first.node.system.id.compareTo(second.node.system.id)
 }
 
 object Real3DPicker {

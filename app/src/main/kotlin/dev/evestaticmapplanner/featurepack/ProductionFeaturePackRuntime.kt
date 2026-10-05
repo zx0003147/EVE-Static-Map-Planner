@@ -57,6 +57,7 @@ class ProductionFeaturePackRuntime private constructor(
     val eveIdentityHost: EveIdentityHost,
     val allianceDirectoryHost: AllianceDirectoryHost,
     val sovereigntyHost: SovereigntyHost,
+    val allianceCapitalHost: AllianceCapitalHost,
     internal val routeSnapshotAdapter: InteractiveRouteSnapshotAdapter,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
@@ -66,6 +67,7 @@ class ProductionFeaturePackRuntime private constructor(
         if (!closed.get()) {
             overlayHost.enableBackgroundRefreshes()
             sovereigntyHost.requestRefresh()
+            allianceCapitalHost.requestRefresh()
         }
     }
 
@@ -82,6 +84,8 @@ class ProductionFeaturePackRuntime private constructor(
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Alliance Directory Host close failed", it) }
         runCatching { sovereigntyHost.close() }
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Sovereignty Host close failed", it) }
+        runCatching { allianceCapitalHost.close() }
+            .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Alliance Capital Host close failed", it) }
         runCatching { routeActionHost.close() }
             .onFailure { failures += FeaturePackFailure(FeaturePackFailureKind.CLOSE_FAILED, "Route Action Host close failed", it) }
         runCatching { overlayHost.close() }
@@ -146,6 +150,9 @@ class ProductionFeaturePackRuntime private constructor(
             val sovereigntyHost = SovereigntyHost { packId, operation, error ->
                 AppDiagnostics.warning("Sovereignty failed: pack=$packId operation=$operation", error)
             }
+            val allianceCapitalHost = AllianceCapitalHost { packId, operation, error ->
+                AppDiagnostics.warning("Alliance Capital failed: pack=$packId operation=$operation", error)
+            }
             val routeSnapshotAdapter = InteractiveRouteSnapshotAdapter()
             val stateStore = PropertiesFeaturePackManagerStateStore(
                 normalizedApplicationRoot.resolve("feature-pack-manager.properties"),
@@ -166,6 +173,7 @@ class ProductionFeaturePackRuntime private constructor(
                     eveIdentityHost,
                     allianceDirectoryHost,
                     sovereigntyHost,
+                    allianceCapitalHost,
                 ),
                 host = host,
             )
@@ -182,6 +190,7 @@ class ProductionFeaturePackRuntime private constructor(
                     eveIdentityHost,
                     allianceDirectoryHost,
                     sovereigntyHost,
+                    allianceCapitalHost,
                     routeSnapshotAdapter,
                 )
             }
@@ -206,6 +215,7 @@ class ProductionFeaturePackRuntime private constructor(
                 eveIdentityHost,
                 allianceDirectoryHost,
                 sovereigntyHost,
+                allianceCapitalHost,
                 routeSnapshotAdapter,
             )
         }
@@ -221,6 +231,7 @@ class ProductionFeaturePackRuntime private constructor(
             eveIdentityHost: EveIdentityHost,
             allianceDirectoryHost: AllianceDirectoryHost,
             sovereigntyHost: SovereigntyHost,
+            allianceCapitalHost: AllianceCapitalHost,
         ) = FeaturePackContextFactory { descriptor ->
             ProductionFeaturePackContext(
                 applicationRoot.toAbsolutePath().normalize(),
@@ -236,6 +247,7 @@ class ProductionFeaturePackRuntime private constructor(
                     eveIdentityHost.scopedCapability(descriptor.packId),
                     allianceDirectoryHost.scopedCapability(descriptor.packId),
                     sovereigntyHost.scopedCapability(descriptor.packId),
+                    allianceCapitalHost.scopedCapability(descriptor.packId),
                 ),
             )
         }

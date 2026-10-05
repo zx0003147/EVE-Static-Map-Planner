@@ -32,7 +32,9 @@ class Real3DFrameTest {
         val initial = Real3DFrameProjector.project(geometry, camera, viewport).projectedBySystemId
         val rotated = Real3DFrameProjector.project(geometry, camera.rotated(35.0, 20.0), viewport).projectedBySystemId
 
-        assertTrue(initial.keys.intersect(rotated.keys).any { initial.getValue(it).screen != rotated.getValue(it).screen })
+        assertTrue(initial.keys.intersect(rotated.keys).any {
+            initial.getValue(it).snapshotScreenPoint() != rotated.getValue(it).snapshotScreenPoint()
+        })
     }
 
     @Test

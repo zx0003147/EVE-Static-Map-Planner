@@ -125,27 +125,30 @@ class AnsiblexImportService(
                     connection.prepareStatement(
                         """
                         UPDATE ansiblex_connections
-                        SET direction = ?, display_name = ?, notes = ?, owner_alliance_id = ?,
+                        SET primary_from_system_id = ?, primary_to_system_id = ?,
+                            direction = ?, display_name = ?, notes = ?, owner_alliance_id = ?,
                             owner_alliance_name = ?, owner_alliance_ticker = ?,
                             source_batch_id = ?, enabled = ?, updated_at = ?
                         WHERE id = ? AND source = 'IMPORT'
                         """.trimIndent(),
                     ).use { statement ->
-                        statement.setString(1, change.candidate.direction.name)
-                        statement.setString(2, change.candidate.displayName)
-                        statement.setString(3, change.candidate.notes)
+                        statement.setInt(1, change.candidate.primaryFromSystemId)
+                        statement.setInt(2, change.candidate.primaryToSystemId)
+                        statement.setString(3, change.candidate.direction.name)
+                        statement.setString(4, change.candidate.displayName)
+                        statement.setString(5, change.candidate.notes)
                         val ownerAllianceId = change.candidate.ownerAllianceId
                         if (ownerAllianceId == null) {
-                            statement.setObject(4, null)
+                            statement.setObject(6, null)
                         } else {
-                            statement.setLong(4, ownerAllianceId)
+                            statement.setLong(6, ownerAllianceId)
                         }
-                        statement.setString(5, change.candidate.ownerAllianceName)
-                        statement.setString(6, change.candidate.ownerAllianceTicker)
-                        statement.setString(7, batchId)
-                        statement.setInt(8, if (change.candidate.enabled) 1 else 0)
-                        statement.setString(9, now.toString())
-                        statement.setString(10, existing.id)
+                        statement.setString(7, change.candidate.ownerAllianceName)
+                        statement.setString(8, change.candidate.ownerAllianceTicker)
+                        statement.setString(9, batchId)
+                        statement.setInt(10, if (change.candidate.enabled) 1 else 0)
+                        statement.setString(11, now.toString())
+                        statement.setString(12, existing.id)
                         check(statement.executeUpdate() == 1) { "Expected imported connection ${existing.id} to be updated" }
                     }
                 }
@@ -357,6 +360,8 @@ class AnsiblexImportService(
                 resolved += ImportCandidate(
                     firstSystemId = minOf(from, to),
                     secondSystemId = maxOf(from, to),
+                    primaryFromSystemId = from,
+                    primaryToSystemId = to,
                     direction = direction,
                     displayName = row.displayName?.trim()?.takeIf(String::isNotEmpty),
                     notes = row.notes?.trim()?.takeIf(String::isNotEmpty),
@@ -483,6 +488,8 @@ class AnsiblexImportService(
         id = id,
         firstSystemId = firstSystemId,
         secondSystemId = secondSystemId,
+        primaryFromSystemId = primaryFromSystemId,
+        primaryToSystemId = primaryToSystemId,
         direction = direction,
         displayName = displayName,
         notes = notes,
@@ -497,7 +504,9 @@ class AnsiblexImportService(
     )
 
     private fun ImportCandidate.matches(connection: AnsiblexConnection): Boolean =
-        direction == connection.direction &&
+        primaryFromSystemId == connection.primaryFromSystemId &&
+            primaryToSystemId == connection.primaryToSystemId &&
+            direction == connection.direction &&
             displayName == connection.displayName &&
             notes == connection.notes &&
             ownerAllianceId == connection.ownerAllianceId &&
@@ -581,6 +590,8 @@ internal fun snapshotFingerprint(connections: List<AnsiblexConnection>): String 
                 it.id,
                 it.firstSystemId,
                 it.secondSystemId,
+                it.primaryFromSystemId,
+                it.primaryToSystemId,
                 it.direction,
                 it.displayName,
                 it.notes,

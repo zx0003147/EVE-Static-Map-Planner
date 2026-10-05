@@ -14,7 +14,7 @@ internal object SimplifiedChineseMapStrings : MapStrings {
     override val viewName = "视图名称"
     override val viewNameValidation = "视图名称不能为空且不能重复。"
     override val toggleProjection = "切换 2D/3D 地图模式"
-    override val openEmbeddedAiAssistant = "打开内置 AI 助手"
+    override val openEmbeddedAiAssistant = "打开奥拉"
     override val collapseSidebar = "收起侧边栏"
     override val expandSidebar = "展开侧边栏"
     override val official2DSelected = "已选择官方 2D"

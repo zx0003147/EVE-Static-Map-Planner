@@ -19,6 +19,7 @@ internal object EnglishRouteStrings : RouteStrings {
     override val calculating = "Calculating…"
     override val needsRecalculation = "Needs recalculation"
     override val useAnsiblex = "Use Ansiblex"
+    override val maximumAnsiblexZone = "Maximum Ansiblex Zone"
     override val useWormholes = "Use Wormholes"
     override val showAnsiblexLayer = "Show Ansiblex layer"
     override val waypoints = "Waypoints"

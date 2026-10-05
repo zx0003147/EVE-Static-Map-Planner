@@ -71,6 +71,34 @@ class AnsiblexImportServiceTest {
     }
 
     @Test
+    fun `import preserves primary source and destination independently of canonical endpoints`() {
+        val fixture = Fixture()
+        val service = fixture.service()
+        val preview = service.previewText(
+            "primary-direction.csv",
+            """
+            from_system_id,to_system_id,direction
+            2,1,BIDIRECTIONAL
+            """.trimIndent(),
+            AnsiblexImportMode.MERGE,
+        )
+
+        val candidate = preview.additions.single().candidate
+        assertEquals(1, candidate.firstSystemId)
+        assertEquals(2, candidate.secondSystemId)
+        assertEquals(2, candidate.primaryFromSystemId)
+        assertEquals(1, candidate.primaryToSystemId)
+
+        service.apply(preview)
+
+        val persisted = fixture.repository().getAll().single()
+        assertEquals(1, persisted.firstSystemId)
+        assertEquals(2, persisted.secondSystemId)
+        assertEquals(2, persisted.primaryFromSystemId)
+        assertEquals(1, persisted.primaryToSystemId)
+    }
+
+    @Test
     fun `valid strict JSON parses while unknown fields and malformed JSON fail`() {
         val fixture = Fixture()
         val valid = fixture.service().previewText(

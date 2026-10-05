@@ -89,6 +89,33 @@ class RouteGraphTest {
         }
     }
 
+    @Test
+    fun `bidirectional Ansiblex can remain traversable in only one Zone-approved direction`() {
+        val data = staticData(1, 2)
+        val connection = ansiblex("directional-zone", 1, 2)
+
+        val graph = buildDesktopRouteGraph(
+            data,
+            listOf(connection),
+            ansiblexDestinationAllowed = { destination -> destination == 2 },
+        )
+
+        assertEquals(listOf(2), graph.neighbors(1).map(RouteEdge::toSystemId))
+        assertEquals(emptyList(), graph.neighbors(2))
+    }
+
+    @Test
+    fun `unknown destination Zone contributes no Ansiblex route edges`() {
+        val graph = buildDesktopRouteGraph(
+            staticData(1, 2),
+            listOf(ansiblex("unknown-zone", 1, 2)),
+            ansiblexDestinationAllowed = { false },
+        )
+
+        assertEquals(emptyList(), graph.neighbors(1))
+        assertEquals(emptyList(), graph.neighbors(2))
+    }
+
     private fun buildGraph(
         vararg systemIds: Int,
         gates: List<Pair<Int, Int>> = emptyList(),

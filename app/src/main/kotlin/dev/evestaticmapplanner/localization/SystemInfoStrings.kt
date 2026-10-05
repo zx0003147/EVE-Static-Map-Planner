@@ -41,6 +41,13 @@ interface SystemInfoStrings {
     val sovereigntyCorporationId: String
     val sovereigntyStatus: String
     val sovereigntyFreshness: String
+    val forceProjection: String
+    val allianceCapital: String
+    val distanceToCapital: String
+    val forceProjectionZone: String
+    val destinationZone: String
+    val distanceToDestinationCapital: String
+    val unknown: String
 
     fun regionValue(value: String): String
     fun constellationValue(value: String): String
@@ -49,4 +56,5 @@ interface SystemInfoStrings {
     fun sovereigntyOwnerKind(kind: SystemOwnerKind): String
     fun sovereigntyStatus(status: SovereigntyStatus): String
     fun sovereigntyFreshness(freshness: SovereigntyFreshness): String
+    fun distanceLy(distance: Double): String
 }

@@ -29,6 +29,8 @@ data class AnsiblexConnection(
     val ownerAllianceId: Long? = null,
     val ownerAllianceName: String? = null,
     val ownerAllianceTicker: String? = null,
+    val primaryFromSystemId: Int? = null,
+    val primaryToSystemId: Int? = null,
 ) {
     init {
         require(id.isNotBlank()) { "Ansiblex connection ID must not be blank" }
@@ -45,6 +47,20 @@ data class AnsiblexConnection(
         require(ownerAllianceId == null || ownerAllianceId > 0) { "Ansiblex owner alliance ID must be positive" }
         requireAllianceDisplayText("Ansiblex owner alliance name", ownerAllianceName, MAX_ALLIANCE_NAME_LENGTH)
         requireAllianceDisplayText("Ansiblex owner alliance ticker", ownerAllianceTicker, MAX_ALLIANCE_TICKER_LENGTH)
+        require((primaryFromSystemId == null) == (primaryToSystemId == null)) {
+            "Ansiblex primary direction endpoints must both be present or both be unavailable"
+        }
+        if (primaryFromSystemId != null && primaryToSystemId != null) {
+            require(setOf(primaryFromSystemId, primaryToSystemId) == setOf(firstSystemId, secondSystemId)) {
+                "Ansiblex primary direction must use the connection endpoints"
+            }
+            require(
+                direction == AnsiblexDirection.BIDIRECTIONAL ||
+                    primaryFromSystemId == logicalFromSystemId() && primaryToSystemId == logicalToSystemId(),
+            ) {
+                "Ansiblex primary direction must match its one-way direction"
+            }
+        }
     }
 
     fun logicalFromSystemId(): Int = when (direction) {

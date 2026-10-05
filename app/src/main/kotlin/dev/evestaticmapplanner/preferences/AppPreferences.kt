@@ -73,6 +73,7 @@ data class AnsiblexPreferences(
     val manualAllianceId: Long? = null,
     val manualAllianceName: String? = null,
     val manualAllianceTicker: String? = null,
+    val maximumZone: Int = 5,
 ) {
     init {
         require(manualAllianceId == null || manualAllianceId > 0) { "Alliance ID must be positive" }
@@ -82,6 +83,7 @@ data class AnsiblexPreferences(
         require(manualAllianceTicker == normalizeAllianceTicker(manualAllianceTicker)) {
             "Manual alliance ticker must be canonical"
         }
+        require(maximumZone in 1..5) { "Maximum Ansiblex Zone must be between 1 and 5" }
     }
 
     fun currentIdentityContext(esiIdentity: CurrentIdentityContext?): CurrentIdentityContext? = when (identitySource) {
@@ -149,13 +151,16 @@ data class MapDisplayPreferences(
     val constellationZoomThreshold: Double = DEFAULT_CONSTELLATION_ZOOM_THRESHOLD,
     val systemZoomThreshold: Double = DEFAULT_SYSTEM_ZOOM_THRESHOLD,
     val real3DConstellationScaleThreshold: Double = DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD,
+    val real3DConstellationDisplayRangeLy: Double = DEFAULT_REAL_3D_CONSTELLATION_DISPLAY_RANGE_LY,
     val real3DSystemScaleThreshold: Double = DEFAULT_REAL_3D_SYSTEM_SCALE_THRESHOLD,
+    val real3DSystemDisplayRangeLy: Double = DEFAULT_REAL_3D_SYSTEM_DISPLAY_RANGE_LY,
     val real3DStargateVisibilityFilteringEnabled: Boolean = true,
     val regionPrimaryFontSizeSp: Float = DEFAULT_REGION_PRIMARY_FONT_SIZE_SP,
     val regionBackgroundFontSizeSp: Float = DEFAULT_REGION_BACKGROUND_FONT_SIZE_SP,
     val regionBackgroundAlpha: Float = DEFAULT_REGION_BACKGROUND_ALPHA,
     val constellationFontSizeSp: Float = DEFAULT_CONSTELLATION_FONT_SIZE_SP,
     val systemFontSizeSp: Float = DEFAULT_SYSTEM_FONT_SIZE_SP,
+    val ansiblexZoneLabelFontSizeSp: Float = DEFAULT_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP,
     val sovereigntyLogoEmphasisZoom: Double = DEFAULT_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM,
 ) {
     init {
@@ -183,11 +188,32 @@ data class MapDisplayPreferences(
                 real3DConstellationScaleThreshold < real3DSystemScaleThreshold &&
                 real3DSystemScaleThreshold <= MAX_ZOOM_THRESHOLD,
         ) { "Real 3D system threshold must be greater than its constellation threshold" }
+        require(
+            real3DConstellationDisplayRangeLy.isFinite() &&
+                real3DConstellationDisplayRangeLy in
+                MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY,
+        ) {
+            "Real 3D constellation display range must be between " +
+                "$MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY and $MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY LY"
+        }
+        require(
+            real3DSystemDisplayRangeLy.isFinite() &&
+                real3DSystemDisplayRangeLy in
+                MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY,
+        ) {
+            "Real 3D system display range must be between " +
+                "$MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY and $MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY LY"
+        }
         require(regionPrimaryFontSizeSp.isFinite() && regionPrimaryFontSizeSp in 1f..MAX_FONT_SIZE_SP)
         require(regionBackgroundFontSizeSp.isFinite() && regionBackgroundFontSizeSp in 1f..MAX_FONT_SIZE_SP)
         require(regionBackgroundAlpha.isFinite() && regionBackgroundAlpha in 0f..1f)
         require(constellationFontSizeSp.isFinite() && constellationFontSizeSp in 1f..MAX_FONT_SIZE_SP)
         require(systemFontSizeSp.isFinite() && systemFontSizeSp in 1f..MAX_FONT_SIZE_SP)
+        require(
+            ansiblexZoneLabelFontSizeSp.isFinite() &&
+                ansiblexZoneLabelFontSizeSp in
+                MIN_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP..MAX_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP,
+        )
         require(
             sovereigntyLogoEmphasisZoom.isFinite() &&
                 sovereigntyLogoEmphasisZoom in MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM..MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM,
@@ -272,7 +298,15 @@ class PropertiesPreferencesStore(
                 constellationZoomThreshold = thresholds.first,
                 systemZoomThreshold = thresholds.second,
                 real3DConstellationScaleThreshold = real3DThresholds.first,
+                real3DConstellationDisplayRangeLy = properties.validDouble(
+                    KEY_REAL_3D_CONSTELLATION_DISPLAY_RANGE_LY,
+                    defaults.real3DConstellationDisplayRangeLy,
+                ) { it in MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY },
                 real3DSystemScaleThreshold = real3DThresholds.second,
+                real3DSystemDisplayRangeLy = properties.validDouble(
+                    KEY_REAL_3D_SYSTEM_DISPLAY_RANGE_LY,
+                    defaults.real3DSystemDisplayRangeLy,
+                ) { it in MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY },
                 real3DStargateVisibilityFilteringEnabled = properties.validBoolean(
                     KEY_REAL_3D_STARGATE_VISIBILITY_FILTERING_ENABLED,
                     defaults.real3DStargateVisibilityFilteringEnabled,
@@ -297,6 +331,10 @@ class PropertiesPreferencesStore(
                     KEY_SYSTEM_FONT_SIZE,
                     defaults.systemFontSizeSp,
                 ) { it in 1f..MAX_FONT_SIZE_SP },
+                ansiblexZoneLabelFontSizeSp = properties.validFloat(
+                    KEY_ANSIBLEX_ZONE_LABEL_FONT_SIZE,
+                    defaults.ansiblexZoneLabelFontSizeSp,
+                ) { it in MIN_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP..MAX_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP },
                 sovereigntyLogoEmphasisZoom = properties.validDouble(
                     KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM,
                     defaults.sovereigntyLogoEmphasisZoom,
@@ -376,6 +414,10 @@ class PropertiesPreferencesStore(
                     manualAllianceTicker = runCatching {
                         normalizeAllianceTicker(properties.getProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_TICKER))
                     }.getOrNull(),
+                    maximumZone = properties.getProperty(KEY_ANSIBLEX_MAXIMUM_ZONE)
+                        ?.toIntOrNull()
+                        ?.takeIf { it in 1..5 }
+                        ?: AnsiblexPreferences.Defaults.maximumZone,
                 )
             },
             eveIdentity = EveIdentityPreferences(
@@ -421,7 +463,15 @@ class PropertiesPreferencesStore(
                     KEY_REAL_3D_CONSTELLATION_THRESHOLD,
                     mapDisplay.real3DConstellationScaleThreshold.toString(),
                 )
+                setProperty(
+                    KEY_REAL_3D_CONSTELLATION_DISPLAY_RANGE_LY,
+                    mapDisplay.real3DConstellationDisplayRangeLy.toString(),
+                )
                 setProperty(KEY_REAL_3D_SYSTEM_THRESHOLD, mapDisplay.real3DSystemScaleThreshold.toString())
+                setProperty(
+                    KEY_REAL_3D_SYSTEM_DISPLAY_RANGE_LY,
+                    mapDisplay.real3DSystemDisplayRangeLy.toString(),
+                )
                 setProperty(
                     KEY_REAL_3D_STARGATE_VISIBILITY_FILTERING_ENABLED,
                     mapDisplay.real3DStargateVisibilityFilteringEnabled.toString(),
@@ -431,6 +481,10 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_REGION_BACKGROUND_ALPHA, mapDisplay.regionBackgroundAlpha.toString())
                 setProperty(KEY_CONSTELLATION_FONT_SIZE, mapDisplay.constellationFontSizeSp.toString())
                 setProperty(KEY_SYSTEM_FONT_SIZE, mapDisplay.systemFontSizeSp.toString())
+                setProperty(
+                    KEY_ANSIBLEX_ZONE_LABEL_FONT_SIZE,
+                    mapDisplay.ansiblexZoneLabelFontSizeSp.toString(),
+                )
                 setProperty(KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM, mapDisplay.sovereigntyLogoEmphasisZoom.toString())
                 setProperty(KEY_SHOW_MARKERS, marker.showMarkers.toString())
                 setProperty(KEY_SHOW_SHARED_MARKERS, marker.showSharedMarkers.toString())
@@ -498,6 +552,7 @@ class PropertiesPreferencesStore(
                 normalizeAllianceTicker(ansiblex.manualAllianceTicker)?.let {
                     setProperty(KEY_ANSIBLEX_MANUAL_ALLIANCE_TICKER, it)
                 }
+                setProperty(KEY_ANSIBLEX_MAXIMUM_ZONE, ansiblex.maximumZone.toString())
                 eveIdentity.selectedCharacterId?.let {
                     setProperty(KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID, it.toString())
                 }
@@ -687,7 +742,11 @@ private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", "6", "7
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
+const val DEFAULT_REAL_3D_CONSTELLATION_DISPLAY_RANGE_LY = 50.0
 const val DEFAULT_REAL_3D_SYSTEM_SCALE_THRESHOLD = 4.5
+const val DEFAULT_REAL_3D_SYSTEM_DISPLAY_RANGE_LY = 10.0
+const val MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY = 0.1
+const val MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY = 250.0
 const val DEFAULT_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 0.75
 const val MIN_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 0.01
 const val MAX_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = 250.0
@@ -696,6 +755,9 @@ const val DEFAULT_REGION_BACKGROUND_FONT_SIZE_SP = 20f
 const val DEFAULT_REGION_BACKGROUND_ALPHA = 0.07f
 const val DEFAULT_CONSTELLATION_FONT_SIZE_SP = 13f
 const val DEFAULT_SYSTEM_FONT_SIZE_SP = 11f
+const val DEFAULT_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP = 10f
+const val MIN_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP = 8f
+const val MAX_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP = 18f
 const val MAX_ZOOM_THRESHOLD = 250.0
 const val MAX_FONT_SIZE_SP = 72f
 const val DEFAULT_SHARED_MAP_DEVICE_NAME = "EVE Static Map Planner"
@@ -714,7 +776,9 @@ private const val KEY_UI_LOCALE = "ui.locale"
 private const val KEY_CONSTELLATION_THRESHOLD = "mapDisplay.constellationZoomThreshold"
 private const val KEY_SYSTEM_THRESHOLD = "mapDisplay.systemZoomThreshold"
 private const val KEY_REAL_3D_CONSTELLATION_THRESHOLD = "mapDisplay.real3DConstellationScaleThreshold"
+private const val KEY_REAL_3D_CONSTELLATION_DISPLAY_RANGE_LY = "mapDisplay.real3DConstellationDisplayRangeLy"
 private const val KEY_REAL_3D_SYSTEM_THRESHOLD = "mapDisplay.real3DSystemScaleThreshold"
+private const val KEY_REAL_3D_SYSTEM_DISPLAY_RANGE_LY = "mapDisplay.real3DSystemDisplayRangeLy"
 private const val KEY_REAL_3D_STARGATE_VISIBILITY_FILTERING_ENABLED =
     "mapDisplay.real3DStargateVisibilityFilteringEnabled"
 private const val KEY_REGION_PRIMARY_FONT_SIZE = "mapDisplay.regionPrimaryFontSizeSp"
@@ -722,6 +786,7 @@ private const val KEY_REGION_BACKGROUND_FONT_SIZE = "mapDisplay.regionBackground
 private const val KEY_REGION_BACKGROUND_ALPHA = "mapDisplay.regionBackgroundAlpha"
 private const val KEY_CONSTELLATION_FONT_SIZE = "mapDisplay.constellationFontSizeSp"
 private const val KEY_SYSTEM_FONT_SIZE = "mapDisplay.systemFontSizeSp"
+private const val KEY_ANSIBLEX_ZONE_LABEL_FONT_SIZE = "mapDisplay.ansiblexZoneLabelFontSizeSp"
 private const val KEY_SOVEREIGNTY_LOGO_EMPHASIS_ZOOM = "mapDisplay.sovereigntyLogoEmphasisZoom"
 private const val KEY_SHOW_MARKERS = "marker.showMarkers"
 private const val KEY_SHOW_SHARED_MARKERS = "marker.showSharedMarkers"
@@ -772,4 +837,5 @@ private const val KEY_ANSIBLEX_IDENTITY_SOURCE = "ansiblex.identitySource"
 private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_ID = "ansiblex.manualAllianceId"
 private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_NAME = "ansiblex.manualAllianceName"
 private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_TICKER = "ansiblex.manualAllianceTicker"
+private const val KEY_ANSIBLEX_MAXIMUM_ZONE = "ansiblex.maximumZone"
 private const val KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID = "eveIdentity.selectedCharacterId"

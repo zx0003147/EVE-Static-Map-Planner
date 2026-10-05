@@ -85,7 +85,7 @@ fun main(args: Array<String>) {
         val result = profileScenario(scenario, geometry, viewport)
         println(result.format())
     }
-    println("REAL3D_PROFILE allocationHotspots=screen-coordinate values; route/sphere projection records; depth sorting")
+    println("REAL3D_PROFILE allocationHotspots=depth-sort workspace; fixed camera-basis values; iterator adapters")
 }
 
 private data class Scenario(
@@ -104,14 +104,21 @@ private data class ProfileResult(
     val labelsDrawn: Int,
     val extraPrimitives: Int,
     val averageMillis: Double,
+    val p50Millis: Double,
     val p95Millis: Double,
+    val p99Millis: Double,
     val approximateFps: Double,
     val averageAllocatedKib: Double?,
+    val gcCount: Long,
+    val gcPauseMillis: Long,
+    val checksum: Long,
 ) {
     fun format(): String = "REAL3D_PROFILE scenario=$name systems=$systemsDrawn edges=$edgesDrawn labels=$labelsDrawn " +
-        "extra=$extraPrimitives avgMs=${decimal(averageMillis)} p95Ms=${decimal(p95Millis)} " +
+        "extra=$extraPrimitives avgMs=${decimal(averageMillis)} p50Ms=${decimal(p50Millis)} " +
+        "p95Ms=${decimal(p95Millis)} p99Ms=${decimal(p99Millis)} " +
         "approxProjectionFps=${decimal(approximateFps)} " +
-        "avgAllocatedKiB=${averageAllocatedKib?.let(::decimal) ?: "unavailable"}"
+        "avgAllocatedKiB=${averageAllocatedKib?.let(::decimal) ?: "unavailable"} " +
+        "gcCount=$gcCount gcPauseMs=$gcPauseMillis checksum=${checksum.toULong().toString(16)}"
 }
 
 private fun profileScenario(
@@ -120,8 +127,9 @@ private fun profileScenario(
     viewport: MapSize,
 ): ProfileResult {
     val workspace = Real3DFrameProjectionWorkspace()
-    repeat(WARMUP_ITERATIONS) { index ->
-        val camera = animatedCamera(scenario.camera, index)
+    val warmupCameras = List(WARMUP_ITERATIONS) { index -> animatedCamera(scenario.camera, index) }
+    val measuredCameras = List(MEASURED_ITERATIONS) { index -> animatedCamera(scenario.camera, index) }
+    warmupCameras.forEach { camera ->
         scenario.extraWork(camera, workspace.project(geometry, camera, viewport))
     }
     val allocationBean = (ManagementFactory.getThreadMXBean() as? ThreadMXBean)
@@ -130,19 +138,23 @@ private fun profileScenario(
     val threadId = Thread.currentThread().threadId()
     val timings = LongArray(MEASURED_ITERATIONS)
     var frame: Real3DFrame = workspace.project(geometry, scenario.camera, viewport)
-    var extraPrimitives = 0
+    val gcBefore = gcSnapshot()
     val allocatedBefore = allocationBean?.getThreadAllocatedBytes(threadId)
-    repeat(MEASURED_ITERATIONS) { index ->
-        val camera = animatedCamera(scenario.camera, index)
+    measuredCameras.forEachIndexed { index, camera ->
         val started = System.nanoTime()
         frame = workspace.project(geometry, camera, viewport)
-        extraPrimitives = scenario.extraWork(camera, frame)
         timings[index] = System.nanoTime() - started
     }
     val allocatedAfter = allocationBean?.getThreadAllocatedBytes(threadId)
+    val gcAfter = gcSnapshot()
+    val extraPrimitives = scenario.extraWork(scenario.camera, frame)
+    var checksum = CHECKSUM_OFFSET
+    measuredCameras.forEach { camera ->
+        frame = workspace.project(geometry, camera, viewport)
+        checksum = frameChecksum(frame, checksum)
+    }
     val sorted = timings.sortedArray()
     val averageMillis = timings.average() / NANOS_PER_MILLI
-    val p95Index = (ceil(MEASURED_ITERATIONS * 0.95).toInt() - 1).coerceIn(sorted.indices)
     val labels = when (scenario.labelCount) {
         LabelCount.REGIONS -> frame.regions.size
         LabelCount.CONSTELLATIONS -> frame.regions.size + frame.constellations.size
@@ -155,12 +167,54 @@ private fun profileScenario(
         labelsDrawn = labels,
         extraPrimitives = extraPrimitives,
         averageMillis = averageMillis,
-        p95Millis = sorted[p95Index] / NANOS_PER_MILLI,
+        p50Millis = percentile(sorted, 0.50) / NANOS_PER_MILLI,
+        p95Millis = percentile(sorted, 0.95) / NANOS_PER_MILLI,
+        p99Millis = percentile(sorted, 0.99) / NANOS_PER_MILLI,
         approximateFps = 1_000.0 / averageMillis,
         averageAllocatedKib = allocatedBefore?.let { before ->
             allocatedAfter?.let { after -> (after - before).toDouble() / MEASURED_ITERATIONS / 1_024.0 }
         },
+        gcCount = gcAfter.count - gcBefore.count,
+        gcPauseMillis = gcAfter.pauseMillis - gcBefore.pauseMillis,
+        checksum = checksum,
     )
+}
+
+private data class GcSnapshot(val count: Long, val pauseMillis: Long)
+
+private fun gcSnapshot(): GcSnapshot {
+    val beans = ManagementFactory.getGarbageCollectorMXBeans()
+    return GcSnapshot(
+        count = beans.sumOf { bean -> bean.collectionCount.coerceAtLeast(0L) },
+        pauseMillis = beans.sumOf { bean -> bean.collectionTime.coerceAtLeast(0L) },
+    )
+}
+
+private fun percentile(sorted: LongArray, percentile: Double): Long {
+    val index = (ceil(sorted.size * percentile).toInt() - 1).coerceIn(sorted.indices)
+    return sorted[index]
+}
+
+private fun frameChecksum(frame: Real3DFrame, initial: Long): Long {
+    var checksum = initial
+    fun mix(value: Long) {
+        checksum = (checksum xor value) * CHECKSUM_PRIME
+    }
+    frame.nodesFarToNear.forEach { node ->
+        mix(node.node.system.id.toLong())
+        mix(node.screenX.toBits())
+        mix(node.screenY.toBits())
+        mix(node.depth.toBits())
+    }
+    frame.edges.forEach { edge ->
+        mix(edge.edge.firstSystemId.toLong())
+        mix(edge.edge.secondSystemId.toLong())
+        mix(edge.firstScreenX.toBits())
+        mix(edge.firstScreenY.toBits())
+        mix(edge.secondScreenX.toBits())
+        mix(edge.secondScreenY.toBits())
+    }
+    return checksum
 }
 
 private fun animatedCamera(camera: Real3DCamera, index: Int): Real3DCamera = camera.rotated(
@@ -170,6 +224,8 @@ private fun animatedCamera(camera: Real3DCamera, index: Int): Real3DCamera = cam
 
 private fun decimal(value: Double): String = String.format(Locale.ROOT, "%.3f", value)
 
-private const val WARMUP_ITERATIONS = 40
-private const val MEASURED_ITERATIONS = 240
+private const val WARMUP_ITERATIONS = 120
+private const val MEASURED_ITERATIONS = 600
 private const val NANOS_PER_MILLI = 1_000_000.0
+private const val CHECKSUM_OFFSET = -0x340d631b7bdddcdbL
+private const val CHECKSUM_PRIME = 0x100000001b3L

@@ -69,9 +69,14 @@ class UserDatabaseTest {
         )
         assertEquals(10, added.firstSystemId)
         assertEquals(20, added.secondSystemId)
+        assertEquals(20, added.primaryFromSystemId)
+        assertEquals(10, added.primaryToSystemId)
         assertEquals(20, added.logicalFromSystemId())
         assertEquals(99_000_001L, added.ownerAllianceId)
-        assertEquals("Example Alliance", repository.getAll().single().ownerAllianceName)
+        val persisted = repository.getAll().single()
+        assertEquals(20, persisted.primaryFromSystemId)
+        assertEquals(10, persisted.primaryToSystemId)
+        assertEquals("Example Alliance", persisted.ownerAllianceName)
         assertTrue(repository.setEnabled("manual-1", false))
         assertFalse(repository.getAll().single().enabled)
         assertTrue(repository.delete("manual-1"))
@@ -147,6 +152,23 @@ class UserDatabaseTest {
                     ) VALUES(
                         'bad-owner', 30, 40, 'BIDIRECTIONAL', NULL, NULL, 'MANUAL', NULL, 1,
                         '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z', -1, NULL, NULL
+                    )
+                    """.trimIndent(),
+                )
+            }
+            assertFailsWith<SQLException> {
+                connection.createStatement().execute(
+                    """
+                    INSERT INTO ansiblex_connections(
+                        id, first_system_id, second_system_id,
+                        primary_from_system_id, primary_to_system_id,
+                        direction, display_name, notes,
+                        source, source_batch_id, enabled, created_at, updated_at,
+                        owner_alliance_id, owner_alliance_name, owner_alliance_ticker
+                    ) VALUES(
+                        'partial-primary', 50, 60, 50, NULL,
+                        'BIDIRECTIONAL', NULL, NULL, 'MANUAL', NULL, 1,
+                        '2026-08-17T00:00:00Z', '2026-08-17T00:00:00Z', NULL, NULL, NULL
                     )
                     """.trimIndent(),
                 )

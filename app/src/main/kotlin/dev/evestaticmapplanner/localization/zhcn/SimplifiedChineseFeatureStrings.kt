@@ -25,7 +25,7 @@ import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 
 internal object SimplifiedChineseAiAssistantStrings : AiAssistantStrings {
-    override val title = "内置 AI 助手"
+    override val title = "奥拉"
     override val chats = "对话"
     override val newChat = "+ 新建对话"
     override val chatLifetimeHelper = "对话会保留到规划器关闭。"

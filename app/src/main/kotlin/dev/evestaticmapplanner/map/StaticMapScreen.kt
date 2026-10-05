@@ -216,6 +216,12 @@ internal fun StaticMapScreen(
             onOpenEmbeddedAi = onOpenEmbeddedAi,
             state = routeState,
             viewModel = routeViewModel,
+            onMaximumAnsiblexZoneChanged = { maximumZone ->
+                routeViewModel.setMaximumAnsiblexZone(maximumZone)
+                viewModel.updateAnsiblexPreferences(
+                    state.appPreferences.ansiblex.copy(maximumZone = maximumZone),
+                )
+            },
             jumpState = jumpState,
             jumpViewModel = jumpViewModel,
             capitalState = capitalState,
@@ -267,6 +273,7 @@ internal fun StaticMapScreen(
                         jumpOverlays = jumpState.overlays,
                         intersectionSystemIds = jumpState.intersectionSystemIds,
                         ansiblexConnections = routeState.ansiblexConnections,
+                        forceProjectionZones = routeState.forceProjectionZones,
                         currentIdentityContext = routeState.currentIdentityContext,
                         wormholeConnections = routeState.wormholeConnections,
                         showAnsiblexLayer = routeState.showAnsiblexLayer,

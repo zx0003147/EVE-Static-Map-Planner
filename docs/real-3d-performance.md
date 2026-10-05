@@ -6,27 +6,29 @@ reported projection FPS is not an end-to-end UI frame rate.
 
 Profile environment:
 
-- Date: 2026-09-04
+- Date: 2026-10-05
 - Runtime: JDK 25
 - Viewport: 1920 × 1080
 - Static universe: 8,490 systems and 6,989 canonical stargate edges
-- Warm-up: 40 frames per scenario
-- Sample: 240 moving-camera frames per scenario
+- Warm-up: 120 pre-created camera frames per scenario
+- Sample: 600 pre-created moving-camera frames per scenario
+- Timing/allocation scope: `Real3DFrameProjectionWorkspace.project()` only
 
-| Scenario | Systems | Edges | Labels | Extra primitives | Avg ms | p95 ms | Approx. projection FPS | Avg allocated KiB |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Full map | 5,486 | 6,989 | 71 | 0 | 2.093 | 2.768 | 477.681 | 1,513.845 |
-| Typical zoom | 3,964 | 5,329 | 633 | 0 | 1.732 | 2.655 | 577.400 | 1,122.320 |
-| Rotated view | 5,486 | 6,989 | 871 | 0 | 1.915 | 2.633 | 522.188 | 1,513.843 |
-| Inside map | 1,063 | 1,437 | 1,076 | 0 | 0.653 | 1.252 | 1,531.323 | 296.206 |
-| Route visible | 3,965 | 5,181 | 633 | 1 route leg | 1.648 | 2.557 | 606.629 | 1,108.961 |
-| Four jump spheres | 3,899 | 5,064 | 620 | 2,848 | 2.267 | 3.179 | 441.077 | 1,678.291 |
-| Common overlays | 2,923 | 3,926 | 2,962 | 564 | 1.616 | 2.297 | 618.761 | 880.927 |
+| Scenario | Systems | Edges | Labels | Avg ms | p50 ms | p95 ms | p99 ms | Avg allocated KiB | GC count / pause ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Full map | 5,486 | 6,989 | 71 | 2.084 | 1.959 | 2.880 | 3.306 | 31.602 | 0 / 0 |
+| Typical zoom | 3,940 | 5,252 | 629 | 1.740 | 1.643 | 2.368 | 2.763 | 15.623 | 0 / 0 |
+| Rotated view | 5,486 | 6,989 | 871 | 1.960 | 1.862 | 2.635 | 2.910 | 31.602 | 0 / 0 |
+| Inside map | 1,047 | 1,433 | 1,060 | 0.607 | 0.533 | 0.915 | 1.355 | 3.558 | 0 / 0 |
+| Route visible | 3,932 | 5,117 | 629 | 1.696 | 1.579 | 2.367 | 2.950 | 15.483 | 0 / 0 |
+| Four jump spheres | 3,860 | 5,003 | 615 | 1.652 | 1.531 | 2.352 | 2.827 | 15.478 | 0 / 0 |
+| Common overlays | 2,896 | 3,898 | 2,935 | 1.339 | 1.280 | 1.863 | 2.192 | 15.483 | 0 / 0 |
 
-The worst measured CPU projection p95 was 3.179 ms with four tessellated jump spheres. The 60 FPS
-CPU budget is 16.667 ms. Remaining allocation hotspots are immutable screen-coordinate values and
-route/sphere projection records. Static XYZ geometry, label layouts, decoded marker images, sphere
-meshes, feature ownership links, path effects, and the large frame collections are cached or reused.
+The calibrated pre-optimization full-map baseline was 4.082 ms average, 5.268 ms p95, 6.561 ms p99,
+1,513.775 KiB allocated per frame, and 3 collections / 26 ms of GC pause during the sample. The
+optimized run reduced allocation by 97.9% and full-map p95 by 45.3%. Per-scenario correctness
+checksums remained identical before and after the optimization. Remaining projection allocation is
+primarily JVM depth-sort workspace and small fixed per-frame values.
 
 Run the repeatable profile with:
 

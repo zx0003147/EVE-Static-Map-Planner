@@ -35,6 +35,20 @@ import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
 
 class PreferencesStoreTest {
     @Test
+    fun `Maximum Ansiblex Zone defaults to five and round trips without a database migration`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            assertEquals(5, AnsiblexPreferences.Defaults.maximumZone)
+
+            PropertiesPreferencesStore(path).save(
+                AppPreferences(ansiblex = AnsiblexPreferences(maximumZone = 3)),
+            )
+
+            assertEquals(3, PropertiesPreferencesStore(path).load().ansiblex.maximumZone)
+            assertTrue(Files.readString(path).contains("ansiblex.maximumZone=3"))
+        }
+
+    @Test
     fun `Ansiblex identity selection defaults to ESI and can explicitly switch to manual`() {
         val esi = CurrentIdentityContext(
             source = CurrentIdentitySource.ESI,
@@ -145,6 +159,9 @@ class PreferencesStoreTest {
         val loaded = PropertiesPreferencesStore(path).load()
 
         assertEquals(9.0, loaded.mapDisplay.systemZoomThreshold)
+        assertEquals(50.0, loaded.mapDisplay.real3DConstellationDisplayRangeLy)
+        assertEquals(10.0, loaded.mapDisplay.real3DSystemDisplayRangeLy)
+        assertEquals(DEFAULT_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP, loaded.mapDisplay.ansiblexZoneLabelFontSizeSp)
         assertFalse(loaded.marker.showMarkers)
         assertNull(loaded.aiProvider)
     }
@@ -263,13 +280,19 @@ class PreferencesStoreTest {
         assertEquals(2.0, MapDisplayPreferences.Defaults.constellationZoomThreshold)
         assertEquals(6.0, MapDisplayPreferences.Defaults.systemZoomThreshold)
         assertEquals(1.8, MapDisplayPreferences.Defaults.real3DConstellationScaleThreshold)
+        assertEquals(50.0, MapDisplayPreferences.Defaults.real3DConstellationDisplayRangeLy)
         assertEquals(4.5, MapDisplayPreferences.Defaults.real3DSystemScaleThreshold)
+        assertEquals(10.0, MapDisplayPreferences.Defaults.real3DSystemDisplayRangeLy)
         assertTrue(MapDisplayPreferences.Defaults.real3DStargateVisibilityFilteringEnabled)
         assertEquals(16f, MapDisplayPreferences.Defaults.regionPrimaryFontSizeSp)
         assertEquals(20f, MapDisplayPreferences.Defaults.regionBackgroundFontSizeSp)
         assertEquals(0.07f, MapDisplayPreferences.Defaults.regionBackgroundAlpha)
         assertEquals(13f, MapDisplayPreferences.Defaults.constellationFontSizeSp)
         assertEquals(11f, MapDisplayPreferences.Defaults.systemFontSizeSp)
+        assertEquals(
+            DEFAULT_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP,
+            MapDisplayPreferences.Defaults.ansiblexZoneLabelFontSizeSp,
+        )
         assertEquals(0.75, MapDisplayPreferences.Defaults.sovereigntyLogoEmphasisZoom)
         assertEquals(MarkerPreferences.Defaults, AppPreferences.Defaults.marker)
         assertTrue(MarkerPreferences.Defaults.showMarkers)
@@ -291,13 +314,16 @@ class PreferencesStoreTest {
                 constellationZoomThreshold = 3.25,
                 systemZoomThreshold = 9.5,
                 real3DConstellationScaleThreshold = 2.25,
+                real3DConstellationDisplayRangeLy = 75.0,
                 real3DSystemScaleThreshold = 7.5,
+                real3DSystemDisplayRangeLy = 20.0,
                 real3DStargateVisibilityFilteringEnabled = false,
                 regionPrimaryFontSizeSp = 17f,
                 regionBackgroundFontSizeSp = 22f,
                 regionBackgroundAlpha = 0.12f,
                 constellationFontSizeSp = 14f,
                 systemFontSizeSp = 12f,
+                ansiblexZoneLabelFontSizeSp = 15f,
                 sovereigntyLogoEmphasisZoom = 0.85,
             ),
             marker = MarkerPreferences(
@@ -336,10 +362,22 @@ class PreferencesStoreTest {
             it == "mapDisplay.sovereigntyLogoEmphasisZoom=0.85"
         })
         assertTrue(Files.readString(path).lineSequence().any {
+            it == "mapDisplay.ansiblexZoneLabelFontSizeSp=15.0"
+        })
+        assertFalse(Files.readString(path).lineSequence().any {
+            it.startsWith("mapDisplay.ansiblexZoneLabelSemantics=")
+        })
+        assertTrue(Files.readString(path).lineSequence().any {
             it == "mapDisplay.real3DConstellationScaleThreshold=2.25"
         })
         assertTrue(Files.readString(path).lineSequence().any {
+            it == "mapDisplay.real3DConstellationDisplayRangeLy=75.0"
+        })
+        assertTrue(Files.readString(path).lineSequence().any {
             it == "mapDisplay.real3DSystemScaleThreshold=7.5"
+        })
+        assertTrue(Files.readString(path).lineSequence().any {
+            it == "mapDisplay.real3DSystemDisplayRangeLy=20.0"
         })
         assertTrue(Files.readString(path).lineSequence().any {
             it == "mapDisplay.real3DStargateVisibilityFilteringEnabled=false"
@@ -429,6 +467,29 @@ class PreferencesStoreTest {
     }
 
     @Test
+    fun `legacy Ansiblex Zone Label semantics key is ignored and not written again`() =
+        withTemporaryDirectory { root ->
+            val path = root.resolve("settings.properties")
+            Files.writeString(
+                path,
+                """
+                settings.version=8
+                mapDisplay.ansiblexZoneLabelFontSizeSp=15
+                mapDisplay.ansiblexZoneLabelSemantics=DIRECTION
+                """.trimIndent(),
+            )
+            val store = PropertiesPreferencesStore(path)
+
+            val loaded = store.load()
+
+            assertEquals(15f, loaded.mapDisplay.ansiblexZoneLabelFontSizeSp)
+            store.save(loaded)
+            assertFalse(Files.readString(path).lineSequence().any {
+                it.startsWith("mapDisplay.ansiblexZoneLabelSemantics=")
+            })
+        }
+
+    @Test
     fun `malformed values fall back individually while unknown keys are ignored`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         Files.writeString(
@@ -442,7 +503,11 @@ class PreferencesStoreTest {
             mapDisplay.regionBackgroundAlpha=0.12
             mapDisplay.constellationFontSizeSp=15
             mapDisplay.systemFontSizeSp=12
+            mapDisplay.ansiblexZoneLabelFontSizeSp=99
+            mapDisplay.ansiblexZoneLabelSemantics=DIRECTION
             mapDisplay.sovereigntyLogoEmphasisZoom=not-a-mode
+            mapDisplay.real3DConstellationDisplayRangeLy=NaN
+            mapDisplay.real3DSystemDisplayRangeLy=-5
             mapDisplay.real3DStargateVisibilityFilteringEnabled=invalid
             future.unknown.preference=ignored
             """.trimIndent(),
@@ -457,7 +522,10 @@ class PreferencesStoreTest {
         assertEquals(0.12f, loaded.regionBackgroundAlpha)
         assertEquals(15f, loaded.constellationFontSizeSp)
         assertEquals(12f, loaded.systemFontSizeSp)
+        assertEquals(DEFAULT_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP, loaded.ansiblexZoneLabelFontSizeSp)
         assertEquals(0.75, loaded.sovereigntyLogoEmphasisZoom)
+        assertEquals(50.0, loaded.real3DConstellationDisplayRangeLy)
+        assertEquals(10.0, loaded.real3DSystemDisplayRangeLy)
         assertTrue(loaded.real3DStargateVisibilityFilteringEnabled)
     }
 

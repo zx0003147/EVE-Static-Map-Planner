@@ -92,6 +92,12 @@ class FeatureApiBoundaryTest {
     private companion object {
         const val API_PACKAGE = "dev.evestaticmapplanner.feature.api"
         val EXPECTED_PUBLIC_TYPES = sortedSetOf(
+            "$API_PACKAGE.AllianceCapitalCapability",
+            "$API_PACKAGE.AllianceCapitalProvider",
+            "$API_PACKAGE.AllianceCapitalProvider\$DefaultImpls",
+            "$API_PACKAGE.AllianceCapitalRecordDto",
+            "$API_PACKAGE.AllianceCapitalRegistration",
+            "$API_PACKAGE.AllianceCapitalSnapshotDto",
             "$API_PACKAGE.AllianceDirectoryCapability",
             "$API_PACKAGE.AllianceDirectoryProvider",
             "$API_PACKAGE.AllianceDirectoryProvider\$DefaultImpls",

@@ -6,6 +6,7 @@ import dev.evestaticmapplanner.data.db.SqliteConnectionFactory
 import dev.evestaticmapplanner.data.db.UserDatabase
 import dev.evestaticmapplanner.data.db.UserDatabaseException
 import dev.evestaticmapplanner.data.db.UserDatabaseSchema
+import dev.evestaticmapplanner.data.repository.SqliteAnsiblexRepository
 import dev.evestaticmapplanner.data.repository.SqliteSavedMarkerRepository
 import java.nio.file.Files
 import java.sql.Connection
@@ -109,7 +110,7 @@ class UserDatabaseMigrationTest {
 
         UserDatabase.initialize(path)
         UserDatabase.open(path).use { connection ->
-            assertEquals(6, connection.userVersion())
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
             assertFalse("planning_views" in connection.applicationTables())
             assertFalse("ai_missions" in connection.applicationTables())
         }
@@ -227,7 +228,7 @@ class UserDatabaseMigrationTest {
 
         assertEquals(before, snapshotAnsiblex(path))
         UserDatabase.open(path).use { connection ->
-            assertEquals(6, connection.userVersion())
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
             assertEquals(
                 listOf(
                     "owner_alliance_id" to "INTEGER",
@@ -263,7 +264,7 @@ class UserDatabaseMigrationTest {
 
         assertEquals(before, snapshotAnsiblex(path))
         UserDatabase.open(path).use { connection ->
-            assertEquals(6, connection.userVersion())
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
             assertEquals(
                 listOf(
                     listOf(null, "CONDI", null),
@@ -273,6 +274,29 @@ class UserDatabaseMigrationTest {
                     "SELECT owner_alliance_id, owner_alliance_name, owner_alliance_ticker " +
                         "FROM ansiblex_connections ORDER BY id",
                 ),
+            )
+        }
+    }
+
+    @Test
+    fun `version six migration preserves bridges and marks primary direction unavailable`() {
+        val path = createTempDirectory("user-db-v6-migrate").resolve("user.db")
+        SqliteConnectionFactory.open(path).use(::createVersionSixFixture)
+        val before = snapshotAnsiblex(path)
+
+        UserDatabase.initialize(path)
+
+        assertEquals(before, snapshotAnsiblex(path))
+        val migrated = SqliteAnsiblexRepository(path).getAll()
+        assertTrue(migrated.isNotEmpty())
+        assertTrue(migrated.all { it.primaryFromSystemId == null && it.primaryToSystemId == null })
+        UserDatabase.open(path).use { connection ->
+            assertEquals(UserDatabaseSchema.VERSION, connection.userVersion())
+            assertEquals(
+                listOf("primary_from_system_id", "primary_to_system_id"),
+                connection.rows("PRAGMA table_info(ansiblex_connections)")
+                    .mapNotNull { it[1] }
+                    .filter { it.startsWith("primary_") },
             )
         }
     }
@@ -386,12 +410,12 @@ class UserDatabaseMigrationTest {
     }
 
     @Test
-    fun `newer schema seven fixture is rejected byte-for-byte`() {
+    fun `newer schema eight fixture is rejected byte-for-byte`() {
         val path = createTempDirectory("user-db-too-new").resolve("user.db")
         SqliteConnectionFactory.open(path).use { connection ->
             connection.createStatement().execute("CREATE TABLE planning_views(value TEXT) STRICT")
             connection.createStatement().execute("INSERT INTO planning_views VALUES('keep')")
-            connection.createStatement().execute("PRAGMA user_version = 7")
+            connection.createStatement().execute("PRAGMA user_version = 8")
         }
         val before = Files.readAllBytes(path)
 
@@ -554,6 +578,14 @@ private fun createVersionFiveFixture(connection: Connection) {
     UserDatabaseSchema.addAnsiblexOwnerAlliance(connection)
     connection.createStatement().use { statement ->
         statement.execute("PRAGMA user_version = 5")
+    }
+}
+
+private fun createVersionSixFixture(connection: Connection) {
+    createVersionFiveFixture(connection)
+    UserDatabaseSchema.migrateAnsiblexOwnerAllianceToStableId(connection)
+    connection.createStatement().use { statement ->
+        statement.execute("PRAGMA user_version = 6")
     }
 }
 

@@ -35,6 +35,8 @@ class SqliteAnsiblexRepository(
             id = idGenerator(),
             firstSystemId = draft.firstSystemId,
             secondSystemId = draft.secondSystemId,
+            primaryFromSystemId = draft.fromSystemId,
+            primaryToSystemId = draft.toSystemId,
             direction = draft.direction,
             displayName = draft.displayName?.trim()?.takeIf(String::isNotEmpty),
             notes = draft.notes?.trim()?.takeIf(String::isNotEmpty),
@@ -84,28 +86,35 @@ internal fun Connection.insertAnsiblex(connection: AnsiblexConnection) {
     prepareStatement(
         """
         INSERT INTO ansiblex_connections(
-            id, first_system_id, second_system_id, direction, display_name, notes,
+            id, first_system_id, second_system_id, primary_from_system_id, primary_to_system_id,
+            direction, display_name, notes,
             source, source_batch_id, enabled, created_at, updated_at,
             owner_alliance_id, owner_alliance_name, owner_alliance_ticker
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
     ).use { statement ->
         statement.setString(1, connection.id)
         statement.setInt(2, connection.firstSystemId)
         statement.setInt(3, connection.secondSystemId)
-        statement.setString(4, connection.direction.name)
-        statement.setString(5, connection.displayName)
-        statement.setString(6, connection.notes)
-        statement.setString(7, connection.source.name)
-        statement.setString(8, connection.sourceBatchId)
-        statement.setInt(9, if (connection.enabled) 1 else 0)
-        statement.setString(10, connection.createdAt.toString())
-        statement.setString(11, connection.updatedAt.toString())
-        connection.ownerAllianceId.let { ownerId ->
-            if (ownerId == null) statement.setObject(12, null) else statement.setLong(12, ownerId)
+        connection.primaryFromSystemId.let { systemId ->
+            if (systemId == null) statement.setObject(4, null) else statement.setInt(4, systemId)
         }
-        statement.setString(13, connection.ownerAllianceName)
-        statement.setString(14, connection.ownerAllianceTicker)
+        connection.primaryToSystemId.let { systemId ->
+            if (systemId == null) statement.setObject(5, null) else statement.setInt(5, systemId)
+        }
+        statement.setString(6, connection.direction.name)
+        statement.setString(7, connection.displayName)
+        statement.setString(8, connection.notes)
+        statement.setString(9, connection.source.name)
+        statement.setString(10, connection.sourceBatchId)
+        statement.setInt(11, if (connection.enabled) 1 else 0)
+        statement.setString(12, connection.createdAt.toString())
+        statement.setString(13, connection.updatedAt.toString())
+        connection.ownerAllianceId.let { ownerId ->
+            if (ownerId == null) statement.setObject(14, null) else statement.setLong(14, ownerId)
+        }
+        statement.setString(15, connection.ownerAllianceName)
+        statement.setString(16, connection.ownerAllianceTicker)
         statement.executeUpdate()
     }
 }
@@ -120,6 +129,8 @@ internal fun ResultSet.toAnsiblex(): AnsiblexConnection = AnsiblexConnection(
     id = getString("id"),
     firstSystemId = getInt("first_system_id"),
     secondSystemId = getInt("second_system_id"),
+    primaryFromSystemId = getInt("primary_from_system_id").takeUnless { wasNull() },
+    primaryToSystemId = getInt("primary_to_system_id").takeUnless { wasNull() },
     direction = AnsiblexDirection.valueOf(getString("direction")),
     displayName = getString("display_name"),
     notes = getString("notes"),

@@ -45,6 +45,7 @@ import dev.evestaticmapplanner.core.map.MapProjectionId
 import dev.evestaticmapplanner.core.map.ProjectedRouteOverlayBuilder
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.charactertracking.CharacterMapPresentation
 import dev.evestaticmapplanner.core.route.RouteResult
@@ -87,6 +88,7 @@ internal fun StaticMapCanvas(
     jumpOverlays: List<JumpRangeOverlay>,
     intersectionSystemIds: Set<Int>,
     ansiblexConnections: List<AnsiblexConnection>,
+    forceProjectionZones: ForceProjectionZoneSnapshot,
     currentIdentityContext: CurrentIdentityContext?,
     wormholeConnections: List<WormholeConnection>,
     showAnsiblexLayer: Boolean,
@@ -137,6 +139,7 @@ internal fun StaticMapCanvas(
             capitalExplicitDestinationSystemId = capitalExplicitDestinationSystemId,
             jumpOverlays = jumpOverlays,
             ansiblexConnections = ansiblexConnections,
+            forceProjectionZones = forceProjectionZones,
             currentIdentityContext = currentIdentityContext,
             showAnsiblexLayer = showAnsiblexLayer,
             missionState = missionState,
@@ -728,6 +731,9 @@ internal fun StaticMapCanvas(
                         scene,
                         transform,
                         visibleAnsiblexConnections,
+                        forceProjectionZones,
+                        textMeasurer,
+                        mapDisplayPreferences,
                         visualEmphasis,
                         currentIdentityContext,
                     )

@@ -1794,6 +1794,16 @@ private fun MapDisplayPreferencesContent(
         isValid = { it >= THRESHOLD_MIN && it < mapDisplay.real3DSystemScaleThreshold },
     ) { onChange(mapDisplay.copy(real3DConstellationScaleThreshold = it)) }
     NumericPreferenceSlider(
+        strings.text(PreferencesText.CONSTELLATION_3D_DISPLAY_RANGE),
+        mapDisplay.real3DConstellationDisplayRangeLy,
+        "LY",
+        2,
+        MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY,
+        isValid = {
+            it in MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY
+        },
+    ) { onChange(mapDisplay.copy(real3DConstellationDisplayRangeLy = it)) }
+    NumericPreferenceSlider(
         strings.text(PreferencesText.SYSTEM_3D_ZOOM_THRESHOLD),
         mapDisplay.real3DSystemScaleThreshold,
         "x",
@@ -1801,6 +1811,16 @@ private fun MapDisplayPreferencesContent(
         (mapDisplay.real3DConstellationScaleThreshold + THRESHOLD_MIN_GAP).coerceAtMost(THRESHOLD_MAX)..THRESHOLD_MAX,
         isValid = { it > mapDisplay.real3DConstellationScaleThreshold && it <= THRESHOLD_MAX },
     ) { onChange(mapDisplay.copy(real3DSystemScaleThreshold = it)) }
+    NumericPreferenceSlider(
+        strings.text(PreferencesText.SYSTEM_3D_DISPLAY_RANGE),
+        mapDisplay.real3DSystemDisplayRangeLy,
+        "LY",
+        2,
+        MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY,
+        isValid = {
+            it in MIN_REAL_3D_LABEL_DISPLAY_RANGE_LY..MAX_REAL_3D_LABEL_DISPLAY_RANGE_LY
+        },
+    ) { onChange(mapDisplay.copy(real3DSystemDisplayRangeLy = it)) }
     HorizontalDivider()
     FontPreferenceSliders(mapDisplay, onChange)
     TextButton(onClick = onReset) { Text(strings.text(PreferencesText.RESET_MAP_DISPLAY)) }
@@ -1829,6 +1849,21 @@ private fun FontPreferenceSliders(mapDisplay: MapDisplayPreferences, onChange: (
     NumericPreferenceSlider(strings.text(PreferencesText.SYSTEM_FONT_SIZE), mapDisplay.systemFontSizeSp.toDouble(), "sp", 0,
         FONT_SIZE_MIN..FONT_SIZE_MAX, FONT_SIZE_STEPS, ::validFontSize) {
         onChange(mapDisplay.copy(systemFontSizeSp = it.toFloat()))
+    }
+    NumericPreferenceSlider(
+        label = strings.text(PreferencesText.ANSIBLEX_ZONE_LABEL_FONT_SIZE),
+        value = mapDisplay.ansiblexZoneLabelFontSizeSp.toDouble(),
+        suffix = "sp",
+        decimals = 0,
+        sliderRange = MIN_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP.toDouble()..
+            MAX_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP.toDouble(),
+        steps = 9,
+        isValid = {
+            it in MIN_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP.toDouble()..
+                MAX_ANSIBLEX_ZONE_LABEL_FONT_SIZE_SP.toDouble()
+        },
+    ) {
+        onChange(mapDisplay.copy(ansiblexZoneLabelFontSizeSp = it.toFloat()))
     }
 }
 

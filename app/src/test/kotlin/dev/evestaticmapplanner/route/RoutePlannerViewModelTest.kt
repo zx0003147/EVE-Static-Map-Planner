@@ -9,6 +9,10 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
 import dev.evestaticmapplanner.core.identity.EveCharacterIdentity
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZone
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneStatus
+import dev.evestaticmapplanner.core.forceprojection.SystemForceProjectionZone
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.model.StargateConnection
 import dev.evestaticmapplanner.core.model.StaticMapData
@@ -36,6 +40,43 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoutePlannerViewModelTest {
+    @Test
+    fun `Maximum Zone filters a bidirectional Ansiblex independently and refreshes active route`() = runTest {
+        val fixture = Fixture(withShortcut = true)
+        val viewModel = fixture.viewModel(StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        viewModel.setForceProjectionZones(
+            ForceProjectionZoneSnapshot(
+                mapOf(
+                    1 to forceProjection(1, ForceProjectionZone.ZONE_4),
+                    4 to forceProjection(4, ForceProjectionZone.ZONE_2),
+                ),
+            ),
+        )
+        viewModel.setMaximumAnsiblexZone(3)
+        viewModel.setUseAnsiblex(true)
+
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.calculateRoute()
+        assertEquals(1, viewModel.state.value.activeRoute?.ansiblexJumps)
+
+        viewModel.updateToQuery("")
+        viewModel.selectFrom(fixture.systems[3])
+        viewModel.selectTo(fixture.systems[0])
+        viewModel.calculateRoute()
+        assertEquals(0, viewModel.state.value.activeRoute?.ansiblexJumps)
+        assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
+
+        viewModel.updateToQuery("")
+        viewModel.selectFrom(fixture.systems[0])
+        viewModel.selectTo(fixture.systems[3])
+        viewModel.calculateRoute()
+        viewModel.setMaximumAnsiblexZone(1)
+        assertEquals(0, viewModel.state.value.activeRoute?.ansiblexJumps)
+        assertEquals(3, viewModel.state.value.activeRoute?.stargateJumps)
+    }
+
     @Test
     fun `ESI identity filters Ansiblex and manual simulation can switch the result`() = runTest {
         val fixture = Fixture(withShortcut = true)
@@ -614,6 +655,15 @@ class RoutePlannerViewModelTest {
         assertNull(routeViewModel.state.value.activeRoute)
     }
 }
+
+private fun forceProjection(systemId: Int, zone: ForceProjectionZone) = SystemForceProjectionZone(
+    systemId = systemId,
+    ownerAllianceId = TEST_ALLIANCE_ID,
+    capitalSystemId = 1,
+    distanceLy = zone.ordinal * 5.0,
+    zone = zone,
+    status = ForceProjectionZoneStatus.AVAILABLE,
+)
 
 private val ENGLISH = AppStringsCatalog.forLocale(AppLocale.EN_US)
 

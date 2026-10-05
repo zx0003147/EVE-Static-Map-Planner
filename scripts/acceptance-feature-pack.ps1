@@ -12,7 +12,7 @@ $script:StageNumber = 0
 $script:StageCount = 9
 $script:GradleInvocationCount = 0
 $script:StartedAt = [System.Diagnostics.Stopwatch]::StartNew()
-$featureApiArtifactVersion = "2.5.0"
+$featureApiArtifactVersion = "2.6.0"
 $legacyFeatureApi20Revision = "v1.0.0"
 $legacyFeatureApi23Revision = "c679f64aced1f64f76a892e9d059ff25bf2a73d7"
 

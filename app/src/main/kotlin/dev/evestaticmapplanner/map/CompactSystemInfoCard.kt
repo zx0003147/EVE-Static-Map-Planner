@@ -37,6 +37,8 @@ import dev.evestaticmapplanner.core.sovereignty.SovereigntyFreshness
 import dev.evestaticmapplanner.core.sovereignty.SovereigntySnapshot
 import dev.evestaticmapplanner.core.sovereignty.SovereigntyStatus
 import dev.evestaticmapplanner.core.sovereignty.SystemOwnerKind
+import dev.evestaticmapplanner.core.forceprojection.SystemForceProjectionZone
+import dev.evestaticmapplanner.core.forceprojection.shortLabel
 import dev.evestaticmapplanner.marker.markerColor
 import dev.evestaticmapplanner.feature.api.SystemInfoSection
 import dev.evestaticmapplanner.feature.api.SystemInfoState
@@ -119,7 +121,13 @@ object CompactSystemInfoPresentationBuilder {
         val sovereignty = if (
             sovereigntySnapshot.freshness != SovereigntyFreshness.UNAVAILABLE || !hasLegacySovereigntyFallback
         ) {
-            sovereigntyPresentation(sovereigntySnapshot, selectedSystemId, strings)
+            sovereigntyPresentation(
+                sovereigntySnapshot,
+                selectedSystemId,
+                routeState.forceProjectionZones.get(selectedSystemId),
+                state.scene?.nodesById,
+                strings,
+            )
         } else {
             null
         }
@@ -185,7 +193,8 @@ object CompactSystemInfoPresentationBuilder {
                     ?: connection.ownerAllianceTicker
                     ?: connection.ownerAllianceId?.toString()
                     ?: strings.ownerUnknown
-                "→ $other · $direction · $owner · $accessLabel"
+                val zoneDetail = ansiblexZoneDetail(connection, state, routeState, strings)
+                "→ $other · $direction · $owner · $accessLabel$zoneDetail"
             },
             jumpOverlayLabels = coveringOverlays.map { it.label ?: it.id },
             isInJumpIntersection = selectedSystemId in jumpState.intersectionSystemIds,
@@ -199,6 +208,8 @@ object CompactSystemInfoPresentationBuilder {
     private fun sovereigntyPresentation(
         snapshot: SovereigntySnapshot,
         systemId: Int,
+        forceProjection: SystemForceProjectionZone?,
+        nodesById: Map<Int, dev.evestaticmapplanner.core.map.ProjectedSystemNode>?,
         strings: SystemInfoStrings,
     ): CompactSovereigntyPresentation {
         val ownership = snapshot.getOwnership(systemId)
@@ -225,8 +236,58 @@ object CompactSystemInfoPresentationBuilder {
                     strings.sovereigntyFreshness(snapshot.freshness),
                 ),
             )
+            add(
+                CompactInfoField(
+                    strings.allianceCapital,
+                    forceProjection?.capitalSystemId
+                        ?.let { nodesById?.get(it)?.system?.name ?: it.toString() }
+                        ?: strings.unknown,
+                ),
+            )
+            add(
+                CompactInfoField(
+                    strings.distanceToCapital,
+                    forceProjection?.distanceLy?.let(strings::distanceLy) ?: strings.unavailable,
+                ),
+            )
+            add(
+                CompactInfoField(
+                    strings.forceProjectionZone,
+                    forceProjection?.zone?.shortLabel ?: strings.unavailable,
+                ),
+            )
         }
         return CompactSovereigntyPresentation(fields)
+    }
+
+    private fun ansiblexZoneDetail(
+        connection: dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection,
+        state: MapUiState,
+        routeState: RoutePlannerUiState,
+        strings: SystemInfoStrings,
+    ): String {
+        fun name(systemId: Int) = state.scene?.nodesById?.get(systemId)?.system?.name ?: systemId.toString()
+        fun zone(systemId: Int): String {
+            val result = routeState.forceProjectionZones.get(systemId)
+            val zone = result?.zone?.shortLabel ?: strings.unavailable
+            val distance = result?.distanceLy?.let(strings::distanceLy)
+            return if (distance == null) zone else "$zone · $distance"
+        }
+        fun singleDirection(destinationSystemId: Int): String {
+            val result = routeState.forceProjectionZones.get(destinationSystemId)
+            val zone = result?.zone?.shortLabel ?: strings.unavailable
+            val distance = result?.distanceLy?.let(strings::distanceLy) ?: strings.unavailable
+            return " · ${strings.destinationZone}: $zone · ${strings.distanceToDestinationCapital}: $distance"
+        }
+        return when (connection.direction) {
+            AnsiblexDirection.FIRST_TO_SECOND ->
+                singleDirection(connection.secondSystemId)
+            AnsiblexDirection.SECOND_TO_FIRST ->
+                singleDirection(connection.firstSystemId)
+            AnsiblexDirection.BIDIRECTIONAL ->
+                " · ${name(connection.firstSystemId)} → ${name(connection.secondSystemId)}: ${zone(connection.secondSystemId)}" +
+                    " · ${name(connection.secondSystemId)} → ${name(connection.firstSystemId)}: ${zone(connection.firstSystemId)}"
+        }
     }
 }
 
@@ -298,8 +359,8 @@ fun CompactSystemInfoCard(
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        softWrap = false,
+                        maxLines = 3,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }

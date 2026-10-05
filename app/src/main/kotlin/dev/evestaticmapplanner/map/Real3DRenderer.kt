@@ -55,8 +55,12 @@ import dev.evestaticmapplanner.core.map.MapPoint
 import dev.evestaticmapplanner.core.map.MapSize
 import dev.evestaticmapplanner.core.map.MapVisualSemantics
 import dev.evestaticmapplanner.core.map.PrimarySystemNodeShape
+import dev.evestaticmapplanner.core.map.ProjectedMapScene
 import dev.evestaticmapplanner.core.map.Real3DFrame
 import dev.evestaticmapplanner.core.map.Real3DFrameProjectionWorkspace
+import dev.evestaticmapplanner.core.map.Real3DProjectedEdge
+import dev.evestaticmapplanner.core.map.Real3DProjectedHierarchyAnchor
+import dev.evestaticmapplanner.core.map.Real3DProjectedNode
 import dev.evestaticmapplanner.core.map.Real3DStaticGeometry
 import dev.evestaticmapplanner.core.map.Real3DProjectedCapitalRoute
 import dev.evestaticmapplanner.core.map.Real3DProjectedRoute
@@ -66,8 +70,10 @@ import dev.evestaticmapplanner.core.map.Real3DJumpSphereProjector
 import dev.evestaticmapplanner.core.map.Real3DProjectedJumpSphere
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexAccessPolicy
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.charactertracking.CharacterMapPresentation
+import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.route.CapitalRouteResult
 import dev.evestaticmapplanner.core.route.RouteEdgeType
@@ -106,6 +112,7 @@ internal fun Real3DMapCanvas(
     capitalExplicitDestinationSystemId: Int?,
     jumpOverlays: List<JumpRangeOverlay>,
     ansiblexConnections: List<AnsiblexConnection>,
+    forceProjectionZones: ForceProjectionZoneSnapshot,
     currentIdentityContext: CurrentIdentityContext?,
     showAnsiblexLayer: Boolean,
     missionState: MissionMapUiState,
@@ -149,17 +156,33 @@ internal fun Real3DMapCanvas(
     val featurePresentation = remember(featureOverlayState, sovereigntyPresentation, geometry) {
         Real3DFeatureOverlayPresentationBuilder.build(featureOverlayState, geometry, sovereigntyPresentation)
     }
-    val visibleStargateConnectionKeys = remember(
+    val regionVisibility = remember(
         geometry,
         state.selectedSystemId,
         state.appPreferences.mapDisplay.real3DStargateVisibilityFilteringEnabled,
     ) {
-        Real3DStargateVisibility.visibleConnectionKeys(
+        Real3DStargateVisibility.resolve(
             geometry = geometry,
             focusedSystemId = state.selectedSystemId,
             filteringEnabled = state.appPreferences.mapDisplay.real3DStargateVisibilityFilteringEnabled,
         )
     }
+    val labelDetailScope = remember(
+        state.selectedSystemId,
+        regionVisibility.detailRegionIds,
+        camera.target,
+        state.appPreferences.mapDisplay.real3DConstellationDisplayRangeLy,
+        state.appPreferences.mapDisplay.real3DSystemDisplayRangeLy,
+    ) {
+        Real3DLabelDetailScopeResolver.resolve(
+            selectedSystemId = state.selectedSystemId,
+            selectedDetailRegionIds = regionVisibility.detailRegionIds,
+            center = camera.target,
+            constellationDisplayRangeLy = state.appPreferences.mapDisplay.real3DConstellationDisplayRangeLy,
+            systemDisplayRangeLy = state.appPreferences.mapDisplay.real3DSystemDisplayRangeLy,
+        )
+    }
+    val visibleStargateConnectionKeys = regionVisibility.visibleConnectionKeys
     val projectedEdgeKeys = remember(visibleStargateConnectionKeys, featurePresentation.linkColorsBySystemPair) {
         visibleStargateConnectionKeys?.let { visibleStargates ->
             buildSet {
@@ -324,7 +347,7 @@ internal fun Real3DMapCanvas(
             } else {
                 emptySet()
             },
-            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
+            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.snapshotScreenPoint() },
         )
     }
     val sharedMarkerGeometry = remember(density) {
@@ -360,7 +383,7 @@ internal fun Real3DMapCanvas(
             missionMarkers = missionState.markers,
             geometry = sharedMarkerGeometry,
             localSavedRingRadiusPx = localSavedRingRadiusPx,
-            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
+            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.snapshotScreenPoint() },
         )
     }
     // The projection workspace mutates one live frame instance, so camera and viewport must be explicit cache keys.
@@ -379,7 +402,7 @@ internal fun Real3DMapCanvas(
             localChildrenBySystemId = markerState.childrenByParentSystemId,
             showLocalMarkers = state.appPreferences.marker.showMarkers,
             sharedMarkerState = sharedMarkerState,
-            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
+            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.snapshotScreenPoint() },
         )
     }
     val primarySystemNodesById = remember(presentedPrimarySystemNodes) {
@@ -390,7 +413,7 @@ internal fun Real3DMapCanvas(
     }
     val presentedOverlaySystemMarkers = remember(decodedOverlaySystemMarkers, frame, camera) {
         positionOverlaySystemMarkers(decodedOverlaySystemMarkers) { systemId ->
-            frame.projectedBySystemId[systemId]?.screen
+            frame.projectedBySystemId[systemId]?.snapshotScreenPoint()
         }
     }
     val presentedCharacterSystemMarkers = remember(characterMapPresentation, geometry, frame, camera, strings.map) {
@@ -400,7 +423,7 @@ internal fun Real3DMapCanvas(
             systemName = { systemId ->
                 geometry.nodesById[systemId]?.system?.name ?: strings.map.fallbackSystem(systemId)
             },
-            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
+            screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.snapshotScreenPoint() },
             strings = strings.map,
         )
     }
@@ -582,6 +605,9 @@ internal fun Real3DMapCanvas(
                     camera,
                     state.canvasSize,
                     visibleAnsiblexConnections,
+                    forceProjectionZones,
+                    textMeasurer,
+                    state.appPreferences.mapDisplay,
                     visualEmphasis,
                     currentIdentityContext,
                 )
@@ -589,6 +615,8 @@ internal fun Real3DMapCanvas(
             drawReal3DWormholes(geometry, camera, state.canvasSize, wormholeConnections, visualEmphasis)
             drawReal3DLabels(
                 frame = frame,
+                scene = scene,
+                detailScope = labelDetailScope,
                 semanticMode = state.semanticLabelMode,
                 textMeasurer = textMeasurer,
                 cache = renderCache,
@@ -644,7 +672,7 @@ internal fun Real3DMapCanvas(
                     textMeasurer = textMeasurer,
                     cache = renderCache,
                     preferences = state.appPreferences.mapDisplay,
-                    screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.screen },
+                    screenPosition = { systemId -> frame.projectedBySystemId[systemId]?.snapshotScreenPoint() },
                 )
             }
             drawOverlaySystemMarkers(presentedOverlaySystemMarkers, textMeasurer)
@@ -890,8 +918,8 @@ private fun DrawScope.drawReal3DBase(
                     edge.edge.secondSystemId,
                 ),
             ),
-            start = edge.first.toOffset(),
-            end = edge.second.toOffset(),
+            start = edge.firstToOffset(),
+            end = edge.secondToOffset(),
             strokeWidth = REAL_3D_EDGE_WIDTH_PX,
         )
     }
@@ -901,7 +929,7 @@ private fun DrawScope.drawReal3DBase(
             color = real3DSystemBaseColor(projected, sovereigntyColorsBySystemId)
                 .multiplyAlpha(emphasis.systemAlphaMultiplier(projected.node.system.id)),
             radius = projected.radiusPx,
-            center = projected.screen.toOffset(),
+            center = projected.toOffset(),
         )
     }
 }
@@ -922,14 +950,14 @@ private fun DrawScope.drawReal3DFeatureOwnership(
         ]?.let { color ->
             drawLine(
                 color = color.copy(alpha = REAL_3D_FEATURE_LINK_ALPHA),
-                start = edge.first.toOffset(),
-                end = edge.second.toOffset(),
+                start = edge.firstToOffset(),
+                end = edge.secondToOffset(),
                 strokeWidth = REAL_3D_FEATURE_LINK_WIDTH_PX,
             )
         }
     }
     presentation.decorativeEntriesBySystemId.forEach { (systemId, entries) ->
-        val center = frame.projectedBySystemId[systemId]?.screen?.toOffset() ?: return@forEach
+        val center = frame.projectedBySystemId[systemId]?.toOffset() ?: return@forEach
         entries.forEachIndexed { index, entry ->
             val radius = REAL_3D_FEATURE_RING_RADIUS_PX + index * REAL_3D_FEATURE_RING_STEP_PX
             drawCircle(entry.color.copy(alpha = REAL_3D_FEATURE_NODE_FILL_ALPHA), radius, center)
@@ -960,6 +988,8 @@ private fun DrawScope.drawReal3DFeatureEmblems(emblems: List<Real3DReadyFeatureE
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
     frame: Real3DFrame,
+    scene: ProjectedMapScene,
+    detailScope: Real3DLabelDetailScope,
     semanticMode: SemanticLabelMode,
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
@@ -976,7 +1006,8 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
         drawCenteredReal3DLabel(
             real3DRegionLabel(projected.anchor, locale),
             regionType,
-            projected.screen,
+            projected.screenX,
+            projected.screenY,
             textMeasurer,
             cache,
             preferences,
@@ -985,10 +1016,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
     }
     if (semanticMode == SemanticLabelMode.CONSTELLATION) {
         frame.constellations.forEach { projected ->
+            val regionId = scene.constellationsById[projected.anchor.id]?.regionId ?: return@forEach
+            if (!detailScope.isOrdinaryLabelVisible(semanticMode, regionId, projected.anchor.position)) return@forEach
             drawCenteredReal3DLabel(
                 projected.anchor.name,
                 MapLabelType.CONSTELLATION,
-                projected.screen,
+                projected.screenX,
+                projected.screenY,
                 textMeasurer,
                 cache,
                 preferences,
@@ -998,6 +1032,14 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
     }
     if (semanticMode == SemanticLabelMode.SYSTEM) {
         frame.nodesFarToNear.forEach { projected ->
+            if (!detailScope.isOrdinaryLabelVisible(
+                    semanticMode,
+                    projected.node.system.regionId,
+                    projected.node.position,
+                )
+            ) {
+                return@forEach
+            }
             val systemId = projected.node.system.id
             if (systemId !in emphasis.focusedSystemIds) {
                 drawReal3DSystemLabel(
@@ -1012,6 +1054,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawReal3DLabels(
     }
 }
 
+internal fun isReal3DOrdinaryLabelRegionVisible(
+    regionId: Int,
+    detailRegionIds: Set<Int>?,
+): Boolean = detailRegionIds == null || regionId in detailRegionIds
+
 internal fun real3DRegionLabel(
     anchor: dev.evestaticmapplanner.core.map.Real3DHierarchyAnchor,
     locale: AppLocale,
@@ -1020,7 +1067,8 @@ internal fun real3DRegionLabel(
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCenteredReal3DLabel(
     text: String,
     type: MapLabelType,
-    center: MapPoint,
+    centerX: Double,
+    centerY: Double,
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
@@ -1031,8 +1079,8 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCenteredReal3DL
         textLayoutResult = layout,
         color = labelColor(type, preferences).multiplyAlpha(alphaMultiplier),
         topLeft = Offset(
-            (center.x - layout.size.width / 2.0).toFloat(),
-            (center.y - layout.size.height / 2.0).toFloat(),
+            (centerX - layout.size.width / 2.0).toFloat(),
+            (centerY - layout.size.height / 2.0).toFloat(),
         ),
     )
 }
@@ -1053,7 +1101,7 @@ private fun DrawScope.drawReal3DEmphasizedSystems(
         drawCircle(
             color = real3DSystemBaseColor(projected, sovereigntyColorsBySystemId),
             radius = projected.radiusPx + REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX,
-            center = projected.screen.toOffset(),
+            center = projected.toOffset(),
         )
     }
     emphasis.prioritizedSystemIds.asSequence()
@@ -1076,8 +1124,8 @@ private fun DrawScope.drawReal3DSystemLabel(
 ) {
     val layout = cache.label(projected.node.system.name, MapLabelType.SYSTEM, preferences, textMeasurer)
     val topLeft = Offset(
-        (projected.screen.x + offsetPx).toFloat(),
-        (projected.screen.y - layout.size.height / 2.0).toFloat(),
+        (projected.screenX + offsetPx).toFloat(),
+        (projected.screenY - layout.size.height / 2.0).toFloat(),
     )
     if (drawBackground) {
         drawRect(
@@ -1104,6 +1152,9 @@ private fun DrawScope.drawReal3DAnsiblexLayer(
     camera: dev.evestaticmapplanner.core.map.Real3DCamera,
     viewportSize: MapSize,
     connections: List<AnsiblexConnection>,
+    forceProjectionZones: ForceProjectionZoneSnapshot,
+    textMeasurer: TextMeasurer,
+    preferences: MapDisplayPreferences,
     emphasis: MapVisualEmphasis,
     currentIdentityContext: CurrentIdentityContext?,
 ) {
@@ -1120,20 +1171,16 @@ private fun DrawScope.drawReal3DAnsiblexLayer(
             first = segment.first.screen,
             second = segment.second.screen,
         )
-        path.reset()
-        path.moveTo(curve.start.x.toFloat(), curve.start.y.toFloat())
-        path.quadraticTo(
-            curve.control.x.toFloat(),
-            curve.control.y.toFloat(),
-            curve.end.x.toFloat(),
-            curve.end.y.toFloat(),
-        )
-        drawPath(
-            path = path,
-            color = style.color.multiplyAlpha(
-                style.alphaMultiplier * emphasis.ansiblexAlphaMultiplier(connection.id),
-            ),
-            style = Stroke(width = 1.5f, pathEffect = REAL_3D_ANSIBLEX_NETWORK_DASH_EFFECT),
+        drawAnsiblexConnectionWithZoneLabel(
+            geometry = curve,
+            connection = connection,
+            zones = forceProjectionZones,
+            textMeasurer = textMeasurer,
+            preferences = preferences,
+            color = ansiblexRenderedColor(style, emphasis.ansiblexAlphaMultiplier(connection.id)),
+            strokeWidth = 1.5f,
+            pathEffect = REAL_3D_ANSIBLEX_NETWORK_DASH_EFFECT,
+            scratchPath = path,
         )
     }
 }
@@ -1248,13 +1295,13 @@ private fun DrawScope.drawReal3DJumpSpheres(
                 drawCircle(
                     color = color.copy(alpha = 0.82f),
                     radius = 5f + (index % 4) * 2.2f,
-                    center = node.screen.toOffset(),
+                    center = node.toOffset(),
                     style = Stroke(1.5f),
                 )
             }
         }
         frame.projectedBySystemId[projected.sphere.overlay.originSystemId]?.let { origin ->
-            val center = origin.screen.toOffset()
+            val center = origin.toOffset()
             drawCircle(color.copy(alpha = 0.2f), 11f, center)
             drawCircle(color, 7f + (index % 3), center, style = Stroke(2f))
         }
@@ -1391,7 +1438,7 @@ private fun DrawScope.drawReal3DRouteEndpoint(
     haloRadius: Float,
     ringRadius: Float,
 ) {
-    val center = frame.projectedBySystemId[systemId]?.screen?.toOffset() ?: return
+    val center = frame.projectedBySystemId[systemId]?.toOffset() ?: return
     drawCircle(color.copy(alpha = 0.25f), haloRadius, center)
     drawCircle(color, ringRadius, center, style = Stroke(3f))
 }
@@ -1402,7 +1449,7 @@ private fun DrawScope.drawReal3DRouteWaypoints(
     textMeasurer: TextMeasurer,
 ) {
     waypoints.forEach { waypoint ->
-        val base = frame.projectedBySystemId[waypoint.systemId]?.screen?.toOffset() ?: return@forEach
+        val base = frame.projectedBySystemId[waypoint.systemId]?.toOffset() ?: return@forEach
         val column = waypoint.stackIndex % 3
         val row = waypoint.stackIndex / 3
         val center = Offset(base.x + 11f + column * 14f, base.y - 10f - row * 14f)
@@ -1469,7 +1516,7 @@ private fun DrawScope.drawReal3DHighlightedNode(
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
 ) {
-    val center = projected.screen.toOffset()
+    val center = projected.toOffset()
     val systemId = projected.node.system.id
     val primarySystemNode = primarySystemNodesById[systemId]
     val shape = primarySystemNode?.shape ?: PrimarySystemNodeShape.SYSTEM
@@ -1513,6 +1560,14 @@ private fun DrawScope.drawReal3DHighlightedNode(
 
 private fun Offset.toMapPoint(): MapPoint = MapPoint(x.toDouble(), y.toDouble())
 private fun MapPoint.toOffset(): Offset = Offset(x.toFloat(), y.toFloat())
+
+private fun Real3DProjectedNode.toOffset(): Offset = Offset(screenX.toFloat(), screenY.toFloat())
+
+private fun Real3DProjectedHierarchyAnchor.toOffset(): Offset = Offset(screenX.toFloat(), screenY.toFloat())
+
+private fun Real3DProjectedEdge.firstToOffset(): Offset = Offset(firstScreenX.toFloat(), firstScreenY.toFloat())
+
+private fun Real3DProjectedEdge.secondToOffset(): Offset = Offset(secondScreenX.toFloat(), secondScreenY.toFloat())
 private fun Color.multiplyAlpha(multiplier: Float): Color = copy(alpha = alpha * multiplier)
 
 private val REAL_3D_BACKGROUND = Color(0xFF09121D)

@@ -42,6 +42,13 @@ internal object EnglishSystemInfoStrings : SystemInfoStrings {
     override val sovereigntyCorporationId = "Corporation ID"
     override val sovereigntyStatus = "Status"
     override val sovereigntyFreshness = "Freshness"
+    override val forceProjection = "Force Projection"
+    override val allianceCapital = "Capital"
+    override val distanceToCapital = "Distance to Capital"
+    override val forceProjectionZone = "Force Projection Zone"
+    override val destinationZone = "Destination Zone"
+    override val distanceToDestinationCapital = "Distance to Destination Capital"
+    override val unknown = "Unknown"
     override fun regionValue(value: String) = "Region: $value"
     override fun constellationValue(value: String) = "Constellation: $value"
     override fun updatedBy(displayName: String) = "Updated by $displayName"
@@ -63,4 +70,5 @@ internal object EnglishSystemInfoStrings : SystemInfoStrings {
         SovereigntyFreshness.STALE -> "Stale"
         SovereigntyFreshness.UNAVAILABLE -> "Unavailable"
     }
+    override fun distanceLy(distance: Double) = String.format(java.util.Locale.ROOT, "%.1f LY", distance)
 }

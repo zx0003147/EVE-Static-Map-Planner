@@ -16,6 +16,10 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexConnection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexDirection
 import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZone
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
+import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneStatus
+import dev.evestaticmapplanner.core.forceprojection.SystemForceProjectionZone
 import dev.evestaticmapplanner.core.jump.JumpProfile
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlay
 import dev.evestaticmapplanner.core.map.MapPoint
@@ -58,6 +62,34 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class CompactSystemInfoCardTest {
+    @Test
+    fun `System Info shows sovereignty-relative Capital distance and Zone`() {
+        val zone = SystemForceProjectionZone(
+            systemId = 2,
+            ownerAllianceId = 99,
+            capitalSystemId = 1,
+            distanceLy = 8.7,
+            zone = ForceProjectionZone.ZONE_2,
+            status = ForceProjectionZoneStatus.AVAILABLE,
+        )
+
+        val presentation = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state = selectedState(system(2, "Target")),
+                routeState = RoutePlannerUiState(
+                    forceProjectionZones = ForceProjectionZoneSnapshot(mapOf(2 to zone)),
+                ),
+                jumpState = JumpOverlayUiState(),
+                sovereigntySnapshot = sovereigntySnapshot(SovereigntyFreshness.AVAILABLE),
+            ),
+        )
+        val fields = assertNotNull(presentation.sovereignty).fields.associate { it.label to it.value }
+
+        assertEquals("1", fields["Capital"])
+        assertEquals("8.7 LY", fields["Distance to Capital"])
+        assertEquals("Z2", fields["Force Projection Zone"])
+    }
+
     @Test
     fun `labels switch locale while canonical system hierarchy values remain unchanged`() {
         val state = selectedState(system(2, "1DQ1-A"))
@@ -216,7 +248,10 @@ class CompactSystemInfoCardTest {
 
         val sovereignty = assertNotNull(presentation.sovereignty)
         assertEquals(
-            listOf("Owner Kind", "Alliance", "Alliance ID", "Corporation", "Corporation ID", "Status", "Freshness"),
+            listOf(
+                "Owner Kind", "Alliance", "Alliance ID", "Corporation", "Corporation ID", "Status", "Freshness",
+                "Capital", "Distance to Capital", "Force Projection Zone",
+            ),
             sovereignty.fields.map { it.label },
         )
         assertEquals("Alliance", sovereignty.fields.first().value)
@@ -233,7 +268,10 @@ class CompactSystemInfoCardTest {
                 sovereigntySnapshot = sovereigntySnapshot(SovereigntyFreshness.STALE, includeOwnership = false),
             ),
         )
-        assertEquals(listOf("Unknown", "Unknown", "Stale"), stale.sovereignty?.fields?.map { it.value })
+        assertEquals(
+            listOf("Unknown", "Unknown", "Stale", "Unknown", "Unavailable", "Unavailable"),
+            stale.sovereignty?.fields?.map { it.value },
+        )
 
         val unavailable = assertNotNull(
             CompactSystemInfoPresentationBuilder.build(
@@ -243,7 +281,10 @@ class CompactSystemInfoCardTest {
                 sovereigntySnapshot = SovereigntySnapshot.unavailable(),
             ),
         )
-        assertEquals(listOf("Unknown", "Unknown", "Unavailable"), unavailable.sovereignty?.fields?.map { it.value })
+        assertEquals(
+            listOf("Unknown", "Unknown", "Unavailable", "Unknown", "Unavailable", "Unavailable"),
+            unavailable.sovereignty?.fields?.map { it.value },
+        )
 
         val legacy = SystemInfoSection(
             "sovereignty",

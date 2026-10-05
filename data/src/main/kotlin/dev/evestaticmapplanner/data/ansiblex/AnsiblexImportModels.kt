@@ -54,6 +54,8 @@ data class ImportDuplicateConflict(
 data class ImportCandidate(
     val firstSystemId: Int,
     val secondSystemId: Int,
+    val primaryFromSystemId: Int,
+    val primaryToSystemId: Int,
     val direction: AnsiblexDirection,
     val displayName: String?,
     val notes: String?,
