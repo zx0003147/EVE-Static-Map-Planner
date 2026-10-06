@@ -30,6 +30,7 @@ import dev.evestaticmapplanner.preferences.MarkerPreferences
 import dev.evestaticmapplanner.preferences.OverlayVisibilityPreferences
 import dev.evestaticmapplanner.preferences.PreferencesStore
 import dev.evestaticmapplanner.preferences.SharedMapPreferences
+import dev.evestaticmapplanner.core.network.NetworkProxyConfiguration
 import dev.evestaticmapplanner.shortcut.KeyboardShortcut
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.FocusSwitchedToReal3DUiMessage
@@ -337,6 +338,23 @@ class MapViewModel(
             current.copy(appPreferences = current.appPreferences.copy(eveIdentity = preferences))
         }
         schedulePreferencesSave()
+    }
+
+    suspend fun updateNetworkProxyPreferences(
+        configuration: NetworkProxyConfiguration,
+    ): Result<Unit> = withContext(NonCancellable) {
+        preferencesMutation.withLock {
+            settingsSaveJob?.cancel()
+            val validated = configuration.validated()
+            val next = mutableState.value.appPreferences.copy(networkProxy = validated)
+            val saved = withContext(ioDispatcher) { runCatching { preferencesStore.save(next) } }
+            if (saved.isSuccess) {
+                mutableState.update { current ->
+                    current.copy(appPreferences = current.appPreferences.copy(networkProxy = validated))
+                }
+            }
+            saved
+        }
     }
 
     fun resetMarkerPreferences() {

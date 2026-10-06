@@ -3,6 +3,7 @@ package dev.evestaticmapplanner.embeddedai
 import com.sun.net.httpserver.HttpServer
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import java.net.InetSocketAddress
+import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -12,9 +13,30 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class BraveWebSearchTest {
+    @Test
+    fun `network mapping retains the original exception in diagnostics without exposing the key`() = runBlocking {
+        var captured: Throwable? = null
+        var message = ""
+        val original = IOException("socket detail")
+        val client = BraveWebSearchClient(
+            transport = BraveSearchTransport { _, _, _ -> throw original },
+            diagnostics = { text, failure -> message = text; captured = failure },
+        )
+        SecretValue.from("never-log-this-key").use { secret ->
+            assertEquals(
+                WebSearchErrorCode.SEARCH_NETWORK_ERROR,
+                assertFailsWith<WebSearchException> { client.search(WebSearchRequest("EVE"), secret) }.code,
+            )
+        }
+        assertSame(original, captured)
+        assertTrue(message.contains("api.search.brave.com"))
+        assertFalse(message.contains("never-log-this-key"))
+    }
+
     @Test
     fun `fixture request sends auth query freshness bounds and parses trimmed sources`() = runBlocking {
         var recordedToken: String? = null

@@ -148,7 +148,9 @@ class LocalControlClientTest {
         val direct = newDirectLocalControlHttpClient()
         assertEquals(java.net.http.HttpClient.Redirect.NEVER, direct.followRedirects())
         assertEquals(DirectProxySelector, direct.proxy().orElse(null))
+        assertEquals(listOf(Proxy.NO_PROXY), DirectProxySelector.select(URI("http://localhost:1/v1/handshake")))
         assertEquals(listOf(Proxy.NO_PROXY), DirectProxySelector.select(URI("http://127.0.0.1:1/v1/handshake")))
+        assertEquals(listOf(Proxy.NO_PROXY), DirectProxySelector.select(URI("http://[::1]:1/v1/handshake")))
 
         withPublished(root, searchService("A")) { _, _, _ ->
             val redirect = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 1)

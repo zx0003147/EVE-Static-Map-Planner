@@ -127,6 +127,7 @@ class BraveWebSearchClient(
     private val transport: BraveSearchTransport = JavaBraveSearchTransport(),
     private val requestTimeout: Duration = DEFAULT_BRAVE_TIMEOUT,
     private val json: Json = Json { ignoreUnknownKeys = true },
+    private val diagnostics: (String, Throwable) -> Unit = { _, _ -> },
 ) : WebSearchClient {
     override suspend fun search(request: WebSearchRequest, secret: SecretValue): WebSearchResponse {
         val uri = buildRequestUri(request)
@@ -142,17 +143,22 @@ class BraveWebSearchClient(
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: HttpConnectTimeoutException) {
+        } catch (failure: HttpConnectTimeoutException) {
+            diagnostics("Brave Search connect timeout: target=${uri.host}", failure)
             throw searchError(WebSearchErrorCode.SEARCH_TIMEOUT, "Web search timed out.")
-        } catch (_: java.net.http.HttpTimeoutException) {
+        } catch (failure: java.net.http.HttpTimeoutException) {
+            diagnostics("Brave Search request timeout: target=${uri.host}", failure)
             throw searchError(WebSearchErrorCode.SEARCH_TIMEOUT, "Web search timed out.")
-        } catch (_: ConnectException) {
+        } catch (failure: ConnectException) {
+            diagnostics("Brave Search connection failed: target=${uri.host}", failure)
             throw searchError(WebSearchErrorCode.SEARCH_NETWORK_ERROR, "Web search could not be reached.")
-        } catch (_: IOException) {
+        } catch (failure: IOException) {
+            diagnostics("Brave Search I/O failed: target=${uri.host}", failure)
             throw searchError(WebSearchErrorCode.SEARCH_NETWORK_ERROR, "Web search could not be reached.")
         } catch (failure: WebSearchException) {
             throw failure
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            diagnostics("Brave Search request failed: target=${uri.host}", failure)
             throw searchError(WebSearchErrorCode.SEARCH_PROVIDER_ERROR, "Web search failed.")
         }
         when (response.statusCode) {

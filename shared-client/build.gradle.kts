@@ -17,6 +17,7 @@ kotlin {
         jvmMain {
             kotlin.srcDir("src/main/kotlin")
             dependencies {
+                implementation(project(":core"))
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.cio)

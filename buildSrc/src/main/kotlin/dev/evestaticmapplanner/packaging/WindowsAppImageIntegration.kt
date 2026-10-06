@@ -17,6 +17,7 @@ data class WindowsAppImageAudit(
 object WindowsAppImageIntegration {
     const val MAIN_LAUNCHER = "EVE Static Map Planner"
     const val MAIN_CLASS = "dev.evestaticmapplanner.MainKt"
+    const val SYSTEM_PROXY_JVM_OPTION = "-Djava.net.useSystemProxies=true"
     const val MCP_LAUNCHER = "EVE Map MCP Bridge"
     const val STABLE_MCP_LAUNCHER = "eve-map-mcp"
     const val MCP_MAIN_CLASS = "dev.evestaticmapplanner.mcp.MainKt"
@@ -61,6 +62,12 @@ object WindowsAppImageIntegration {
     fun launcherClasspath(config: String): List<String> = config.lineSequence()
         .map(String::trim)
         .filter { it.startsWith("app.classpath=") }
+        .map { it.substringAfter('=') }
+        .toList()
+
+    fun launcherJavaOptions(config: String): List<String> = config.lineSequence()
+        .map(String::trim)
+        .filter { it.startsWith("java-options=") }
         .map { it.substringAfter('=') }
         .toList()
 
@@ -136,6 +143,9 @@ object WindowsAppImageIntegration {
             StandardCharsets.UTF_8,
         )
         require(launcherMainClass(mainConfig) == MAIN_CLASS) { "Main launcher class changed" }
+        require(SYSTEM_PROXY_JVM_OPTION in launcherJavaOptions(mainConfig)) {
+            "Main launcher is missing the system-proxy JVM option"
+        }
         require(launcherMainClass(mcpConfig) == MCP_MAIN_CLASS) { "MCP launcher class changed" }
         require(stableMcpConfig == mcpConfig) { "Stable and compatibility MCP launcher configs differ" }
         require(launcherClasspath(mainConfig).none { it.contains("\\mcp\\", ignoreCase = true) }) {

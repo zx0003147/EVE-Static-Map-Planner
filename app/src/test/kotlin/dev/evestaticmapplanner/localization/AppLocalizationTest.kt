@@ -69,7 +69,11 @@ class AppLocalizationTest {
     fun `Preferences Provider Voice and Static Data catalogs are complete in both locales`() {
         AppLocale.entries.forEach { locale ->
             val strings = AppStringsCatalog.forLocale(locale)
-            assertTrue(PreferencesText.entries.all { strings.preferences.text(it, "fixture", "fixture-2").isNotBlank() })
+            assertTrue(
+                PreferencesText.entries.all {
+                    strings.preferences.text(it, "fixture", "fixture-2", "fixture-3").isNotBlank()
+                },
+            )
             assertTrue(VoiceInputProvider.entries.all { strings.preferences.voiceInputProvider(it).isNotBlank() })
             assertTrue(VoiceOutputProvider.entries.all { strings.preferences.voiceOutputProvider(it).isNotBlank() })
             assertTrue(AlibabaSpeechRegion.entries.all { strings.preferences.speechRegion(it).isNotBlank() })

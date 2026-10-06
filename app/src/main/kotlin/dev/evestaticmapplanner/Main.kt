@@ -60,6 +60,8 @@ import dev.evestaticmapplanner.core.repository.SystemSearchRepository
 import dev.evestaticmapplanner.core.repository.UniverseRepository
 import dev.evestaticmapplanner.core.identity.toCurrentIdentityContext
 import dev.evestaticmapplanner.core.alliance.AllianceDirectorySnapshot
+import dev.evestaticmapplanner.core.network.NetworkProxyRuntime
+import dev.evestaticmapplanner.core.network.NetworkProxyTester
 import dev.evestaticmapplanner.alliance.PublicAllianceMetadataService
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidation
 import dev.evestaticmapplanner.featurepack.FeaturePackRuntimeValidationArguments
@@ -179,6 +181,8 @@ fun main(arguments: Array<String>) {
         warningSink = AppDiagnostics::warning,
     )
     val startupPreferences = preferencesStore.load()
+    val applicationProxySelector = NetworkProxyRuntime.install(startupPreferences.networkProxy)
+    logSystemProxyStartupDiagnostics(proxySelector = applicationProxySelector)
     val featurePackRuntime = ProductionFeaturePackRuntime.start(
         initialSelectedCharacterId = startupPreferences.eveIdentity.selectedCharacterId,
     )
@@ -503,7 +507,9 @@ private fun FrameWindowScope.ReadyApplication(
         AiCredentialResolver(aiSecureCredentialStore, aiSessionCredentialStore)
     }
     val aiClientFactory = remember(configuration) { DefaultAiClientFactory() }
-    val braveSearchClient = remember(configuration) { BraveWebSearchClient() }
+    val braveSearchClient = remember(configuration) {
+        BraveWebSearchClient(diagnostics = AppDiagnostics::warning)
+    }
     val aiConfigSource = remember(configuration, mapViewModel) {
         SavedOrEnvironmentAiProviderConfigSource(
             savedConfig = { mapViewModel.state.value.appPreferences.aiProvider },
@@ -1074,6 +1080,35 @@ private fun FrameWindowScope.ReadyApplication(
                 localizationState.updateLocale(locale)
                 mapViewModel.updateAppLocale(locale)
             },
+            onNetworkProxySave = { proxy ->
+                mapViewModel.updateNetworkProxyPreferences(proxy).onSuccess {
+                    NetworkProxyRuntime.update(proxy)
+                    AppDiagnostics.info(
+                        "Network proxy settings saved: mode=${proxy.mode}, " +
+                            "selected=${NetworkProxyRuntime.selector().select(BRAVE_SEARCH_DIAGNOSTIC_URI)}",
+                    )
+                }
+            },
+            onNetworkProxyTest = { proxy ->
+                withContext(Dispatchers.IO) {
+                    NetworkProxyTester().test(NetworkProxyRuntime.selectorFor(proxy)).also { result ->
+                        if (result.successful) {
+                            AppDiagnostics.info(
+                                "Network proxy test succeeded: mode=${proxy.mode}, " +
+                                    "selected=${result.selectedProxy}, target=${result.target}, " +
+                                    "status=${result.statusCode}, redirect=${result.redirectLocation ?: "none"}",
+                            )
+                        } else {
+                            AppDiagnostics.warning(
+                                "Network proxy test failed: mode=${proxy.mode}, " +
+                                    "selected=${result.selectedProxy}, target=${result.target}, " +
+                                    "status=${result.statusCode}, redirect=${result.redirectLocation ?: "none"}",
+                                result.failure,
+                            )
+                        }
+                    }
+                }
+            },
             aiProviderSettingsState = aiProviderSettingsState,
             webSearchSettingsState = webSearchSettingsState,
             voiceSettingsState = voiceSettingsState,
@@ -1188,6 +1223,9 @@ private fun FrameWindowScope.ReadyApplication(
                         onSuccess = {
                             controlLifecycle.setEnabled(false)
                             embeddedAiController.configurationChanged()
+                            NetworkProxyRuntime.update(
+                                dev.evestaticmapplanner.core.network.NetworkProxyConfiguration.Defaults,
+                            )
                         },
                         onFailure = {
                             aiPreferenceError = dev.evestaticmapplanner.localization.PreferencesUiMessage(

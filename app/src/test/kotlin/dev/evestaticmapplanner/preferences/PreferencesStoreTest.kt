@@ -32,8 +32,29 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
+import dev.evestaticmapplanner.core.network.NetworkProxyConfiguration
+import dev.evestaticmapplanner.core.network.NetworkProxyMode
 
 class PreferencesStoreTest {
+    @Test
+    fun `new installations default to System while legacy settings migrate to Direct`() = withTemporaryDirectory { root ->
+        val fresh = PropertiesPreferencesStore(root.resolve("fresh.properties")).load()
+        assertEquals(NetworkProxyMode.SYSTEM, fresh.networkProxy.mode)
+
+        val legacyPath = root.resolve("legacy.properties")
+        Files.writeString(legacyPath, "settings.version=8\n")
+        assertEquals(NetworkProxyMode.DIRECT, PropertiesPreferencesStore(legacyPath).load().networkProxy.mode)
+    }
+
+    @Test
+    fun `manual HTTP proxy settings round trip`() = withTemporaryDirectory { root ->
+        val path = root.resolve("settings.properties")
+        val expected = NetworkProxyConfiguration(NetworkProxyMode.MANUAL, host = "proxy.example", port = 8080)
+        PropertiesPreferencesStore(path).save(AppPreferences(networkProxy = expected))
+        assertEquals(expected, PropertiesPreferencesStore(path).load().networkProxy)
+        assertTrue(Files.readString(path).contains("networkProxy.mode=MANUAL"))
+    }
+
     @Test
     fun `Maximum Ansiblex Zone defaults to five and round trips without a database migration`() =
         withTemporaryDirectory { root ->
@@ -192,7 +213,7 @@ class PreferencesStoreTest {
 
             store.save(migrated)
             val reloaded = store.load()
-            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=8" })
+            assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=9" })
             assertEquals(AiCredentialRef("openrouter"), reloaded.aiProvider?.credentialRef)
             assertEquals(active, reloaded.aiProviderProfiles[AiProviderType.OPENROUTER])
         }
@@ -307,7 +328,7 @@ class PreferencesStoreTest {
     }
 
     @Test
-    fun `save writes version eight and a new store reloads all values`() = withTemporaryDirectory { root ->
+    fun `save writes current version and a new store reloads all values`() = withTemporaryDirectory { root ->
         val path = root.resolve("settings.properties")
         val expected = AppPreferences(
             mapDisplay = MapDisplayPreferences(
@@ -349,7 +370,7 @@ class PreferencesStoreTest {
 
         PropertiesPreferencesStore(path).save(expected)
 
-        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=8" })
+        assertTrue(Files.readString(path).lineSequence().any { it == "settings.version=9" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.showSharedMarkers=false" })
         assertTrue(Files.readString(path).lineSequence().any { it == "marker.savedMarkerAppearance.ringRadiusDp=24.5" })
@@ -704,7 +725,7 @@ class PreferencesStoreTest {
         val savedText = Files.readString(path)
         val restarted = PropertiesPreferencesStore(path).load()
 
-        assertTrue(savedText.lineSequence().any { it == "settings.version=8" })
+        assertTrue(savedText.lineSequence().any { it == "settings.version=9" })
         assertTrue(savedText.lineSequence().any { it == "ui.locale=zh-CN" })
         assertEquals(expected, restarted)
     }

@@ -22,6 +22,9 @@ import dev.evestaticmapplanner.shortcut.KeyboardShortcutCodec
 import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceDisplayName
 import dev.evestaticmapplanner.core.ansiblex.normalizeAllianceTicker
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
+import dev.evestaticmapplanner.core.network.ManualProxyType
+import dev.evestaticmapplanner.core.network.NetworkProxyConfiguration
+import dev.evestaticmapplanner.core.network.NetworkProxyMode
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -44,6 +47,7 @@ data class AppPreferences(
     val sharedMap: SharedMapPreferences = SharedMapPreferences.Defaults,
     val ansiblex: AnsiblexPreferences = AnsiblexPreferences.Defaults,
     val eveIdentity: EveIdentityPreferences = EveIdentityPreferences.Defaults,
+    val networkProxy: NetworkProxyConfiguration = NetworkProxyConfiguration.Defaults,
     val uiLocale: AppLocale = AppLocale.EN_US,
 ) {
     companion object {
@@ -425,6 +429,7 @@ class PropertiesPreferencesStore(
                     ?.toLongOrNull()
                     ?.takeIf { it > 0 },
             ),
+            networkProxy = properties.networkProxyConfiguration(warningSink),
             uiLocale = if ((settingsVersion.toIntOrNull() ?: 0) >= 7) {
                 AppLocale.fromTagOrNull(properties.getProperty(KEY_UI_LOCALE)) ?: AppLocale.EN_US
             } else {
@@ -454,6 +459,7 @@ class PropertiesPreferencesStore(
             val sharedMap = preferences.sharedMap
             val ansiblex = preferences.ansiblex
             val eveIdentity = preferences.eveIdentity
+            val networkProxy = preferences.networkProxy.validated()
             val properties = Properties().apply {
                 setProperty(KEY_SETTINGS_VERSION, SETTINGS_VERSION)
                 setProperty(KEY_UI_LOCALE, preferences.uiLocale.tag)
@@ -555,6 +561,12 @@ class PropertiesPreferencesStore(
                 setProperty(KEY_ANSIBLEX_MAXIMUM_ZONE, ansiblex.maximumZone.toString())
                 eveIdentity.selectedCharacterId?.let {
                     setProperty(KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID, it.toString())
+                }
+                setProperty(KEY_NETWORK_PROXY_MODE, networkProxy.mode.name)
+                setProperty(KEY_NETWORK_PROXY_MANUAL_TYPE, networkProxy.manualType.name)
+                if (networkProxy.mode == NetworkProxyMode.MANUAL) {
+                    setProperty(KEY_NETWORK_PROXY_HOST, networkProxy.host.trim())
+                    setProperty(KEY_NETWORK_PROXY_PORT, checkNotNull(networkProxy.port).toString())
                 }
             }
             Files.newOutputStream(temporary).use {
@@ -733,12 +745,29 @@ private fun Properties.overlayVisibilityPreferences(): OverlayVisibilityPreferen
     return OverlayVisibilityPreferences(disabledLayers)
 }
 
+private fun Properties.networkProxyConfiguration(warningSink: (String) -> Unit): NetworkProxyConfiguration {
+    val encodedMode = getProperty(KEY_NETWORK_PROXY_MODE) ?: return NetworkProxyConfiguration.LegacyDefaults
+    return runCatching {
+        NetworkProxyConfiguration(
+            mode = NetworkProxyMode.valueOf(encodedMode),
+            manualType = getProperty(KEY_NETWORK_PROXY_MANUAL_TYPE)
+                ?.let(ManualProxyType::valueOf)
+                ?: ManualProxyType.HTTP,
+            host = getProperty(KEY_NETWORK_PROXY_HOST).orEmpty().trim(),
+            port = getProperty(KEY_NETWORK_PROXY_PORT)?.toIntOrNull(),
+        ).validated()
+    }.getOrElse {
+        warningSink("Network proxy settings are invalid; Direct mode was selected")
+        NetworkProxyConfiguration.LegacyDefaults
+    }
+}
+
 private fun String.canonicalUuidOrNull(): String? = runCatching { UUID.fromString(this).toString() }
     .getOrNull()
     ?.takeIf { it == this }
 
-const val SETTINGS_VERSION = "8"
-private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", "6", "7", SETTINGS_VERSION)
+const val SETTINGS_VERSION = "9"
+private val SUPPORTED_SETTINGS_VERSIONS = setOf("1", "2", "3", "4", "5", "6", "7", "8", SETTINGS_VERSION)
 const val DEFAULT_CONSTELLATION_ZOOM_THRESHOLD = 2.0
 const val DEFAULT_SYSTEM_ZOOM_THRESHOLD = 6.0
 const val DEFAULT_REAL_3D_CONSTELLATION_SCALE_THRESHOLD = 1.8
@@ -839,3 +868,7 @@ private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_NAME = "ansiblex.manualAllianceNa
 private const val KEY_ANSIBLEX_MANUAL_ALLIANCE_TICKER = "ansiblex.manualAllianceTicker"
 private const val KEY_ANSIBLEX_MAXIMUM_ZONE = "ansiblex.maximumZone"
 private const val KEY_EVE_IDENTITY_SELECTED_CHARACTER_ID = "eveIdentity.selectedCharacterId"
+private const val KEY_NETWORK_PROXY_MODE = "networkProxy.mode"
+private const val KEY_NETWORK_PROXY_MANUAL_TYPE = "networkProxy.manualType"
+private const val KEY_NETWORK_PROXY_HOST = "networkProxy.host"
+private const val KEY_NETWORK_PROXY_PORT = "networkProxy.port"

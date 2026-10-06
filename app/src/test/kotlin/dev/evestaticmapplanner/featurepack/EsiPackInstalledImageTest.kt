@@ -81,6 +81,12 @@ class EsiPackInstalledImageTest {
                 it.trim() == "java-options=--enable-native-access=ALL-UNNAMED"
             },
         )
+        assertEquals(
+            1,
+            configuration.lineSequence().count {
+                it.trim() == "java-options=-Djava.net.useSystemProxies=true"
+            },
+        )
     }
 
     private fun assertPackBoundary(pack: Path) {

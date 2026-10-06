@@ -19,6 +19,7 @@ kotlin {
                 "dev/evestaticmapplanner/core/jump/JumpRangeOverlayCollection.kt",
                 "dev/evestaticmapplanner/core/map/MapSceneCache.kt",
                 "dev/evestaticmapplanner/core/route/DesktopRouteGraph.kt",
+                "dev/evestaticmapplanner/core/network/**",
             )
         }
         jvmMain {
@@ -33,6 +34,7 @@ kotlin {
                 "dev/evestaticmapplanner/core/jump/JumpRangeOverlayCollection.kt",
                 "dev/evestaticmapplanner/core/map/MapSceneCache.kt",
                 "dev/evestaticmapplanner/core/route/DesktopRouteGraph.kt",
+                "dev/evestaticmapplanner/core/network/**",
             )
         }
         commonTest.dependencies {

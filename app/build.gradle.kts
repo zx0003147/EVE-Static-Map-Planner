@@ -202,7 +202,10 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "dev.evestaticmapplanner.MainKt"
-        jvmArgs("--enable-native-access=ALL-UNNAMED")
+        jvmArgs(
+            "--enable-native-access=ALL-UNNAMED",
+            WindowsAppImageIntegration.SYSTEM_PROXY_JVM_OPTION,
+        )
         nativeDistributions {
             nativeOutputDir?.let { outputBaseDir.set(file(it).resolve("compose")) }
             packageName = "EVE Static Map Planner"
@@ -405,6 +408,7 @@ val createIntegratedDistributable by tasks.registering {
             "--runtime-image", composeApplicationImage.resolve("runtime").absolutePath,
             "--icon", project.file("src/main/resources/icons/app-icon.ico").absolutePath,
             "--java-options", "--enable-native-access=ALL-UNNAMED",
+            "--java-options", WindowsAppImageIntegration.SYSTEM_PROXY_JVM_OPTION,
             "--add-launcher", "${WindowsAppImageIntegration.MCP_LAUNCHER}=${additionalLauncherProperties.absolutePath}",
             "--add-launcher", "${WindowsAppImageIntegration.STABLE_MCP_LAUNCHER}=${additionalLauncherProperties.absolutePath}",
         )

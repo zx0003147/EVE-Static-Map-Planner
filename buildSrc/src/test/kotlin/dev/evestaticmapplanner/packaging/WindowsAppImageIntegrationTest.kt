@@ -51,6 +51,23 @@ class WindowsAppImageIntegrationTest {
     }
 
     @Test
+    fun `launcher Java options include system proxy support`() {
+        val config = """
+            [Application]
+            app.mainclass=dev.evestaticmapplanner.MainKt
+
+            [JavaOptions]
+            java-options=-Djpackage.app-version=0.2.0
+            java-options=${WindowsAppImageIntegration.SYSTEM_PROXY_JVM_OPTION}
+        """.trimIndent()
+
+        assertTrue(
+            WindowsAppImageIntegration.SYSTEM_PROXY_JVM_OPTION in
+                WindowsAppImageIntegration.launcherJavaOptions(config),
+        )
+    }
+
+    @Test
     fun `jimage output is reduced to module names`() {
         val modules = WindowsAppImageIntegration.parseJimageModules(
             """

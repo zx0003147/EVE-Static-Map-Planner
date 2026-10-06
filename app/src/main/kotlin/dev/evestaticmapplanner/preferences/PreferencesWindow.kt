@@ -22,6 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +69,11 @@ import dev.evestaticmapplanner.featurepack.PackControlActionUiState
 import dev.evestaticmapplanner.feature.api.PackControlActionStatus
 import dev.evestaticmapplanner.feature.api.PackControlSeverity
 import dev.evestaticmapplanner.feature.api.OverlayState
+import dev.evestaticmapplanner.core.network.ManualProxyType
+import dev.evestaticmapplanner.core.network.NetworkProxyConfiguration
+import dev.evestaticmapplanner.core.network.NetworkProxyMode
+import dev.evestaticmapplanner.core.network.NetworkProxyTestResult
+import dev.evestaticmapplanner.core.network.isValidProxyHost
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppStringsCatalog
 import dev.evestaticmapplanner.localization.LocalAppStrings
@@ -94,6 +100,7 @@ import dev.evestaticmapplanner.ui.EveWindowSurface
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun PreferencesWindow(
@@ -101,6 +108,10 @@ internal fun PreferencesWindow(
     preferences: AppPreferences,
     onMapDisplayChange: (MapDisplayPreferences) -> Unit,
     onLocaleChange: (AppLocale) -> Unit,
+    onNetworkProxySave: suspend (NetworkProxyConfiguration) -> Result<Unit> = { Result.success(Unit) },
+    onNetworkProxyTest: suspend (NetworkProxyConfiguration) -> NetworkProxyTestResult = {
+        NetworkProxyTestResult(false, "<not configured>")
+    },
     aiProviderSettingsState: AiProviderSettingsUiState = AiProviderSettingsUiState(),
     webSearchSettingsState: WebSearchSettingsUiState = WebSearchSettingsUiState(),
     voiceSettingsState: VoiceSettingsUiState = VoiceSettingsUiState(),
@@ -195,6 +206,11 @@ internal fun PreferencesWindow(
                                 preferences.mapDisplay,
                                 onMapDisplayChange,
                                 onResetMapDisplay,
+                            )
+                            PreferencesCategory.NETWORK -> NetworkProxyPreferencesContent(
+                                preferences.networkProxy,
+                                onNetworkProxySave,
+                                onNetworkProxyTest,
                             )
                             PreferencesCategory.AI_FEATURES -> AiFeaturesPreferencesContent(
                                 savedConfig = preferences.aiProvider,
@@ -315,6 +331,7 @@ internal fun LanguagePreferenceContent(
 
 internal enum class PreferencesCategory {
     MAP_DISPLAY,
+    NETWORK,
     AI_FEATURES,
     FEATURE_PACKS,
     OVERLAYS,
@@ -324,6 +341,7 @@ internal enum class PreferencesCategory {
 internal fun PreferencesStrings.categoryLabel(category: PreferencesCategory): String = text(
     when (category) {
         PreferencesCategory.MAP_DISPLAY -> PreferencesText.CATEGORY_MAP_DISPLAY
+        PreferencesCategory.NETWORK -> PreferencesText.CATEGORY_NETWORK
         PreferencesCategory.AI_FEATURES -> PreferencesText.CATEGORY_AI_FEATURES
         PreferencesCategory.FEATURE_PACKS -> PreferencesText.CATEGORY_FEATURE_PACKS
         PreferencesCategory.OVERLAYS -> PreferencesText.CATEGORY_OVERLAYS
@@ -335,6 +353,105 @@ internal enum class AiFeaturesSection { EMBEDDED_ASSISTANT, MCP_INTEGRATION }
 
 internal data class AiFeaturesExpansionState(val expanded: AiFeaturesSection? = null) {
     fun toggle(section: AiFeaturesSection) = copy(expanded = if (expanded == section) null else section)
+}
+
+@Composable
+internal fun NetworkProxyPreferencesContent(
+    saved: NetworkProxyConfiguration,
+    onSave: suspend (NetworkProxyConfiguration) -> Result<Unit>,
+    onTest: suspend (NetworkProxyConfiguration) -> NetworkProxyTestResult,
+) {
+    val strings = LocalAppStrings.current.preferences
+    val scope = rememberCoroutineScope()
+    var mode by remember(saved) { mutableStateOf(saved.mode) }
+    val manualType = ManualProxyType.HTTP
+    var host by remember(saved) { mutableStateOf(saved.host) }
+    var port by remember(saved) { mutableStateOf(saved.port?.toString().orEmpty()) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    val portNumber = port.toIntOrNull()
+    val valid = mode != NetworkProxyMode.MANUAL || (isValidProxyHost(host) && portNumber in 1..65535)
+    fun draft() = NetworkProxyConfiguration(mode, manualType, host.trim(), portNumber).validated()
+
+    Text(strings.text(PreferencesText.NETWORK_PROXY), style = MaterialTheme.typography.titleMedium)
+    Text(strings.text(PreferencesText.NETWORK_PROXY_HELP), style = MaterialTheme.typography.bodySmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        NetworkProxyMode.entries.forEach { option ->
+            val label = when (option) {
+                NetworkProxyMode.DIRECT -> PreferencesText.PROXY_DIRECT
+                NetworkProxyMode.SYSTEM -> PreferencesText.PROXY_SYSTEM
+                NetworkProxyMode.MANUAL -> PreferencesText.PROXY_MANUAL
+            }
+            TextButton(onClick = { mode = option; status = null }, selected = mode == option) {
+                Text(strings.text(label))
+            }
+        }
+    }
+    if (mode == NetworkProxyMode.MANUAL) {
+        Text(strings.text(PreferencesText.PROXY_TYPE), style = MaterialTheme.typography.labelMedium)
+        Text("HTTP", style = MaterialTheme.typography.bodyMedium)
+        OutlinedTextField(
+            value = host,
+            onValueChange = { host = it; status = null },
+            label = { Text(strings.text(PreferencesText.PROXY_HOST)) },
+            singleLine = true,
+            isError = host.isNotEmpty() && !isValidProxyHost(host),
+            modifier = Modifier.fillMaxWidth().testTag("network-proxy-host"),
+        )
+        OutlinedTextField(
+            value = port,
+            onValueChange = { if (it.all(Char::isDigit)) port = it; status = null },
+            label = { Text(strings.text(PreferencesText.PROXY_PORT)) },
+            singleLine = true,
+            isError = port.isNotEmpty() && portNumber !in 1..65535,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth().testTag("network-proxy-port"),
+        )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = {
+            busy = true
+            status = null
+            scope.launch {
+                val result = onSave(draft())
+                status = if (result.isSuccess) {
+                    strings.text(PreferencesText.PROXY_SAVED_RESTART)
+                } else {
+                    strings.text(PreferencesText.PROXY_SAVE_FAILED)
+                }
+                busy = false
+            }
+        }, enabled = valid && !busy) { Text(strings.text(PreferencesText.SAVE)) }
+        TextButton(onClick = {
+            busy = true
+            status = null
+            scope.launch {
+                val result = onTest(draft())
+                status = if (result.successful) {
+                    strings.text(
+                        PreferencesText.PROXY_TEST_SUCCESS,
+                        result.selectedProxy,
+                        result.statusCode ?: "-",
+                        result.target ?: "-",
+                    )
+                } else {
+                    val detail = result.statusCode?.let { "HTTP $it" }
+                        ?: result.failure?.let { failure ->
+                            "${failure.javaClass.simpleName}: ${failure.message ?: "<no message>"}"
+                        }
+                        ?: "Unknown failure"
+                    strings.text(
+                        PreferencesText.PROXY_TEST_FAILED,
+                        result.selectedProxy,
+                        result.target ?: "-",
+                        detail,
+                    )
+                }
+                busy = false
+            }
+        }, enabled = valid && !busy) { Text(strings.text(PreferencesText.TEST_PROXY)) }
+    }
+    status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
 
 internal enum class EmbeddedAssistantSection { AI_MODEL, WEB_SEARCH, VOICE_IO }

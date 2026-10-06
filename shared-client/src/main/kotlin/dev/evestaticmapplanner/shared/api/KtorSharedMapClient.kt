@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.shared.api
 
+import dev.evestaticmapplanner.core.network.NetworkProxyRuntime
+import dev.evestaticmapplanner.core.network.isLoopbackHost
 import dev.evestaticmapplanner.shared.auth.SecretValue
 import dev.evestaticmapplanner.shared.model.SharedIdentity
 import dev.evestaticmapplanner.shared.model.SharedInvite
@@ -62,14 +64,18 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.URI
 import java.util.UUID
 
 class KtorSharedMapClient(
     private val client: HttpClient = defaultHttpClient(),
     private val ownsClient: Boolean = true,
+    private val directClient: HttpClient = if (ownsClient) defaultHttpClient(proxy = Proxy.NO_PROXY) else client,
 ) : SharedMapClient {
     override suspend fun getMeta(server: SharedServerUrl): SharedServerMeta = request {
-        client.get(server.endpoint("/api/v1/meta")) { commonHeaders() }
+        clientFor(server).get(server.endpoint("/api/v1/meta")) { commonHeaders() }
     }.decode<MetaResponseDto>().toDomain()
 
     override suspend fun exchangeInvite(
@@ -78,7 +84,7 @@ class KtorSharedMapClient(
         deviceName: String,
     ): ExchangedCredential = request {
         val rawInvite = invite.useString { it }
-        client.post(server.endpoint("/api/v1/auth/exchange-invite")) {
+        clientFor(server).post(server.endpoint("/api/v1/auth/exchange-invite")) {
             commonHeaders()
             contentType(ContentType.Application.Json)
             setBody(ExchangeInviteRequestDto(rawInvite, deviceName))
@@ -86,14 +92,14 @@ class KtorSharedMapClient(
     }.decode<ExchangeInviteResponseDto>().toDomain()
 
     override suspend fun getMe(server: SharedServerUrl, token: SecretValue): SharedIdentity = request {
-        client.get(server.endpoint("/api/v1/me")) {
+        clientFor(server).get(server.endpoint("/api/v1/me")) {
             commonHeaders()
             token.useString { bearerAuth(it) }
         }
     }.decode<MeResponseDto>().toDomain()
 
     override suspend fun getWorkspaces(server: SharedServerUrl, token: SecretValue): List<SharedWorkspace> = request {
-        client.get(server.endpoint("/api/v1/workspaces")) {
+        clientFor(server).get(server.endpoint("/api/v1/workspaces")) {
             commonHeaders()
             token.useString { bearerAuth(it) }
         }
@@ -107,7 +113,7 @@ class KtorSharedMapClient(
         val canonicalWorkspaceId = UUID.fromString(workspaceId).also {
             require(it.toString() == workspaceId) { "Workspace ID must be canonical" }
         }
-        client.get(server.endpoint("/api/v1/workspaces/$canonicalWorkspaceId/markers")) {
+        clientFor(server).get(server.endpoint("/api/v1/workspaces/$canonicalWorkspaceId/markers")) {
             commonHeaders()
             token.useString { bearerAuth(it) }
         }
@@ -121,7 +127,7 @@ class KtorSharedMapClient(
         draft: SharedMarkerDraft,
         idempotencyKey: UUID,
     ): SharedMarker = mutationRequest {
-        client.post(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/markers")) {
+        clientFor(server).post(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/markers")) {
             authenticatedMutationHeaders(token, idempotencyKey)
             setBody(CreateSharedMarkerRequestDto(systemId, draft.name, draft.color.name, draft.tags, draft.notes))
         }
@@ -132,7 +138,7 @@ class KtorSharedMapClient(
         token: SecretValue,
         workspaceId: String,
     ): List<SharedRouteHandoff> = request {
-        client.get(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs")) {
+        clientFor(server).get(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs")) {
             commonHeaders()
             token.useString { bearerAuth(it) }
         }
@@ -145,7 +151,7 @@ class KtorSharedMapClient(
         draft: SharedRouteHandoffDraft,
         idempotencyKey: UUID,
     ): SharedRouteHandoff = mutationRequest {
-        client.post(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs")) {
+        clientFor(server).post(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs")) {
             authenticatedMutationHeaders(token, idempotencyKey)
             setBody(draft.toRequestDto())
         }
@@ -160,7 +166,7 @@ class KtorSharedMapClient(
         draft: SharedMarkerDraft,
         idempotencyKey: UUID,
     ): SharedMarker = mutationRequest {
-        client.patch(
+        clientFor(server).patch(
             server.endpoint(
                 "/api/v1/workspaces/${canonicalUuid(workspaceId)}/markers/${canonicalUuid(markerId)}",
             ),
@@ -179,7 +185,7 @@ class KtorSharedMapClient(
         idempotencyKey: UUID,
     ) {
         mutationRequest {
-            client.delete(
+            clientFor(server).delete(
                 server.endpoint(
                     "/api/v1/workspaces/${canonicalUuid(workspaceId)}/markers/${canonicalUuid(markerId)}" +
                         "?expectedVersion=$expectedVersion",
@@ -193,7 +199,7 @@ class KtorSharedMapClient(
         token: SecretValue,
         workspaceId: String,
     ): List<SharedMember> = request {
-        client.get(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/members")) {
+        clientFor(server).get(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/members")) {
             commonHeaders()
             token.useString { bearerAuth(it) }
         }
@@ -207,7 +213,7 @@ class KtorSharedMapClient(
         role: SharedWorkspaceRole,
         idempotencyKey: UUID,
     ): SharedMember = mutationRequest {
-        client.post(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/members")) {
+        clientFor(server).post(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/members")) {
             authenticatedMutationHeaders(token, idempotencyKey)
             setBody(CreateMemberRequestDto(displayName, role.name))
         }
@@ -223,7 +229,7 @@ class KtorSharedMapClient(
         role: SharedWorkspaceRole?,
         idempotencyKey: UUID,
     ): SharedMember = mutationRequest {
-        client.patch(
+        clientFor(server).patch(
             server.endpoint(
                 "/api/v1/workspaces/${canonicalUuid(workspaceId)}/members/${canonicalUuid(memberId)}",
             ),
@@ -242,7 +248,7 @@ class KtorSharedMapClient(
         idempotencyKey: UUID,
     ) {
         mutationRequest {
-            client.delete(
+            clientFor(server).delete(
                 server.endpoint(
                     "/api/v1/workspaces/${canonicalUuid(workspaceId)}/members/${canonicalUuid(memberId)}" +
                         "?expectedVersion=$expectedVersion",
@@ -259,7 +265,7 @@ class KtorSharedMapClient(
         expiresInHours: Long,
         idempotencyKey: UUID,
     ): Pair<SharedInvite, SecretValue> = request {
-        client.post(
+        clientFor(server).post(
             server.endpoint(
                 "/api/v1/workspaces/${canonicalUuid(workspaceId)}/members/${canonicalUuid(memberId)}/invites",
             ),
@@ -270,8 +276,14 @@ class KtorSharedMapClient(
     }.decode<InviteCreatedResponseDto>().toDomain()
 
     override fun close() {
-        if (ownsClient) client.close()
+        if (ownsClient) {
+            client.close()
+            if (directClient !== client) directClient.close()
+        }
     }
+
+    private fun clientFor(server: SharedServerUrl): HttpClient =
+        if (isLoopbackHost(URI.create(server.origin).host)) directClient else client
 
     private suspend fun request(block: suspend () -> HttpResponse): HttpResponse {
         val response = try {
@@ -389,7 +401,9 @@ class KtorSharedMapClient(
         fun defaultHttpClient(
             connectTimeoutMillis: Long = 5_000,
             requestTimeoutMillis: Long = 10_000,
+            proxy: Proxy? = currentApplicationProxy(),
         ): HttpClient = HttpClient(CIO) {
+            if (proxy != null && proxy != Proxy.NO_PROXY) this.engine { this.proxy = proxy }
             expectSuccess = false
             install(ContentNegotiation) { json(PROTOCOL_JSON) }
             install(HttpTimeout) {
@@ -398,6 +412,11 @@ class KtorSharedMapClient(
                 socketTimeoutMillis = requestTimeoutMillis
             }
         }
+
+        private fun currentApplicationProxy(): Proxy? = runCatching {
+            val selector = runCatching { NetworkProxyRuntime.selector() }.getOrElse { ProxySelector.getDefault() }
+            selector.select(URI.create("https://api.github.com")).firstOrNull()
+        }.getOrNull()
     }
 }
 
