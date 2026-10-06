@@ -1,6 +1,6 @@
 # EVE Static Map Planner 1.13.0
 
-This release adds the complete Embedded AI Assistant V1 to the Windows Desktop application. Embedded AI is
+This release adds the complete Aura V1 to the Windows Desktop application. Aura is
 Desktop-only; the Web and self-hosted server products do not gain AI features in this release.
 
 ## Highlights
@@ -33,7 +33,7 @@ Desktop-only; the Web and self-hosted server products do not gain AI features in
 
 ### Desktop Experience
 
-- Adds an AI Features area for the Embedded Assistant and the existing external MCP integration.
+- Adds an AI Features area for Aura and the existing external MCP integration.
 - Adds the final Aura shortcut, chat-sidebar controls, and compact 2D/3D toggle polish.
 - Keeps the established external MCP integration and its 34-tool catalog unchanged.
 

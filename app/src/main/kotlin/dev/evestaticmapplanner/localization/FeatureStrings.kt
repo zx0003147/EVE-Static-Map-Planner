@@ -206,7 +206,6 @@ interface SharedMapStrings {
     val invite: String
     val copied: String
     val copy: String
-    val routePublishedToWeb: String
     val operationFailed: String
 
     fun workspaceLabel(name: String): String
@@ -226,10 +225,6 @@ interface SharedMapStrings {
 
 data object SharedMapOperationFailedUiMessage : UiMessage {
     override fun resolve(strings: AppStrings): String = strings.sharedMap.operationFailed
-}
-
-data object RoutePublishedToWebUiMessage : UiMessage {
-    override fun resolve(strings: AppStrings): String = strings.sharedMap.routePublishedToWeb
 }
 
 interface WormholeStrings {

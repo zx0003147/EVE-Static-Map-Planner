@@ -237,7 +237,7 @@ class OpenAiVoiceClient(
     ): ByteArray {
         val normalized = text.trim()
         if (normalized.isEmpty() || normalized.codePointCount(0, normalized.length) > MAX_OPENAI_TTS_CHARACTERS) {
-            throw voiceError(VoiceErrorCode.SYNTHESIS_FAILED, "The assistant reply could not be read aloud.")
+            throw voiceError(VoiceErrorCode.SYNTHESIS_FAILED, "Aura's reply could not be read aloud.")
         }
         if (voice !in OPENAI_BUILT_IN_VOICES) {
             throw voiceError(VoiceErrorCode.VOICE_MODEL_UNAVAILABLE, "The selected OpenAI voice is unavailable.")
@@ -312,7 +312,7 @@ class OpenAiVoiceClient(
 
 private enum class VoiceOperation(val failureCode: VoiceErrorCode, val failureMessage: String) {
     TRANSCRIPTION(VoiceErrorCode.TRANSCRIPTION_FAILED, "The recording could not be transcribed."),
-    SPEECH(VoiceErrorCode.SYNTHESIS_FAILED, "The assistant reply could not be read aloud."),
+    SPEECH(VoiceErrorCode.SYNTHESIS_FAILED, "Aura's reply could not be read aloud."),
 }
 
 private fun multipartWav(boundary: String, wav: ByteArray, model: String): ByteArray = ByteArrayOutputStream().use { output ->

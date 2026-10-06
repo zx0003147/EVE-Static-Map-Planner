@@ -94,7 +94,7 @@ internal object EnglishPreferencesStrings : PreferencesStrings {
             VoiceErrorCode.MICROPHONE_UNAVAILABLE -> "The microphone is unavailable."
             VoiceErrorCode.RECORDING_FAILED -> "Recording failed."
             VoiceErrorCode.TRANSCRIPTION_FAILED -> "The recording could not be transcribed."
-            VoiceErrorCode.SYNTHESIS_FAILED -> "The assistant reply could not be synthesized."
+            VoiceErrorCode.SYNTHESIS_FAILED -> "Aura's reply could not be synthesized."
             VoiceErrorCode.VOICE_NETWORK_ERROR -> "The speech provider could not be reached."
             VoiceErrorCode.VOICE_RATE_LIMITED -> "The speech provider rate limit was reached."
             VoiceErrorCode.VOICE_TIMEOUT -> "The speech provider timed out."

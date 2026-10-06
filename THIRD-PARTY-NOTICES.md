@@ -66,11 +66,11 @@ The application is unofficial and is not affiliated with or endorsed by CCP hf. 
 
 ## Optional external search service
 
-The Desktop Embedded Assistant can call the Brave Search LLM Context API when the user enables Web Search and supplies a Brave Search API credential. Brave Search is an external service, not bundled software or content. Use remains subject to Brave's current Search API terms and privacy policy. The integration uses only JDK networking and the existing kotlinx serialization runtime; it adds no Brave-distributed library to the application.
+Aura can call the Brave Search LLM Context API when the user enables Web Search and supplies a Brave Search API credential. Brave Search is an external service, not bundled software or content. Use remains subject to Brave's current Search API terms and privacy policy. The integration uses only JDK networking and the existing kotlinx serialization runtime; it adds no Brave-distributed library to the application.
 
 ## Optional voice services and Speech Pack
 
-The Desktop Embedded Assistant can call the OpenAI Audio transcription and speech APIs when the user separately configures an OpenAI Voice credential. OpenAI is an external service; no OpenAI client library, voice model, or service content is bundled. Use remains subject to OpenAI's current service terms and privacy policy.
+Aura can call the OpenAI Audio transcription and speech APIs when the user separately configures an OpenAI Voice credential. OpenAI is an external service; no OpenAI client library, voice model, or service content is bundled. Use remains subject to OpenAI's current service terms and privacy policy.
 
 Local speech-to-text is an optional, user-initiated download stored outside the application under the user's LocalAppData directory. The Speech Pack downloads the pinned official whisper.cpp Windows x64 CPU runtime `v1.7.6` and the multilingual `ggml-base.bin` model from the official `ggml-org/whisper.cpp` GitHub release and `ggerganov/whisper.cpp` Hugging Face repository. Both downloads are verified against pinned SHA-256 values before atomic installation. whisper.cpp, its Java bindings, and the published model repository are MIT-licensed; the complete whisper.cpp license is at `legal/whispercpp/LICENSE.txt`. The main Portable archive contains neither the native helper nor the model.
 

@@ -72,7 +72,7 @@ class EmbeddedAiAssistantWindowTest {
                 }
             }
 
-            onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
+            onNodeWithText("Aura").assertIsDisplayed()
             onNodeWithText("Chats").assertIsDisplayed()
             onNodeWithText("+ New Chat").assertIsDisplayed()
             onNodeWithText("Message…").assertIsDisplayed()
@@ -249,7 +249,7 @@ class EmbeddedAiAssistantWindowTest {
         onAllNodesWithText("Hide Sidebar").assertCountEquals(0)
         onAllNodesWithText("Show Sidebar").assertCountEquals(0)
         val headerBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
-        val titleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
+            val titleBounds = onNodeWithText("Aura").fetchSemanticsNode().boundsInRoot
         val providerBounds = onNodeWithText("DeepSeek · deepseek-flash · Secure storage")
             .fetchSemanticsNode().boundsInRoot
         val expandedMessageBounds = onNodeWithTag(AI_CHAT_COMPOSER_TEST_TAG).fetchSemanticsNode().boundsInRoot
@@ -274,10 +274,10 @@ class EmbeddedAiAssistantWindowTest {
         onNodeWithTag(AI_HIDE_SIDEBAR_TEST_TAG).performClick()
         waitForIdle()
         onNodeWithTag(AI_SESSION_SIDEBAR_TEST_TAG).assertDoesNotExist()
-        onNodeWithText("Embedded AI Assistant").assertIsDisplayed()
+            onNodeWithText("Aura").assertIsDisplayed()
         val collapsedHandle = onNodeWithTag(AI_SHOW_SIDEBAR_TEST_TAG).assertIsDisplayed()
         val collapsedHandleBounds = collapsedHandle.fetchSemanticsNode().boundsInRoot
-        val collapsedTitleBounds = onNodeWithText("Embedded AI Assistant").fetchSemanticsNode().boundsInRoot
+            val collapsedTitleBounds = onNodeWithText("Aura").fetchSemanticsNode().boundsInRoot
         val collapsedMessageBounds = onNodeWithTag(AI_CHAT_COMPOSER_TEST_TAG).fetchSemanticsNode().boundsInRoot
         val collapsedHeaderBounds = onNodeWithTag(AI_ASSISTANT_HEADER_TEST_TAG).fetchSemanticsNode().boundsInRoot
         assertTrue(

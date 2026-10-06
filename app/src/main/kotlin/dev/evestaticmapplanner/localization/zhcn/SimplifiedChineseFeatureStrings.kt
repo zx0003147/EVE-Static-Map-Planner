@@ -252,7 +252,6 @@ internal object SimplifiedChineseSharedMapStrings : SharedMapStrings {
     override val invite = "邀请"
     override val copied = "已复制到剪贴板。"
     override val copy = "复制"
-    override val routePublishedToWeb = "路线已发布到 Web。"
     override val operationFailed = "无法完成共享地图操作。"
 
     override fun workspaceLabel(name: String) = "$workspace：$name"

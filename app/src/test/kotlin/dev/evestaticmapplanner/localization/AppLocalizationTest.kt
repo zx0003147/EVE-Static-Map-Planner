@@ -41,6 +41,22 @@ class AppLocalizationTest {
     }
 
     @Test
+    fun `Aura has one localized user visible name`() {
+        val english = AppStringsCatalog.forLocale(AppLocale.EN_US)
+        val chinese = AppStringsCatalog.forLocale(AppLocale.ZH_CN)
+
+        assertEquals("Aura", english.aiAssistant.title)
+        assertEquals("Open Aura", english.map.openEmbeddedAiAssistant)
+        assertEquals("Aura", english.preferences.text(PreferencesText.EMBEDDED_ASSISTANT))
+        assertTrue(staticStrings(english).none { it.contains("Embedded Assistant", ignoreCase = true) })
+        assertTrue(staticStrings(english).none { it.contains("Embedded AI Assistant", ignoreCase = true) })
+
+        assertEquals("奥拉", chinese.aiAssistant.title)
+        assertEquals("打开奥拉", chinese.map.openEmbeddedAiAssistant)
+        assertEquals("奥拉", chinese.preferences.text(PreferencesText.EMBEDDED_ASSISTANT))
+    }
+
+    @Test
     fun `parameterized strings preserve typed semantic parameters in both catalogs`() {
         assertEquals("Route found: 4 jumps", AppStringsCatalog.forLocale(AppLocale.EN_US).route.routeFound(4))
         assertEquals("已找到路线：4 跳", AppStringsCatalog.forLocale(AppLocale.ZH_CN).route.routeFound(4))
@@ -249,9 +265,7 @@ class AppLocalizationTest {
                 capitalLiveStateDisclaimer, phaseLabel, sameNormalSystem, normalRouteUnreachable,
                 invalidNormalEndpoints, sameCapitalSystem, capitalRouteUnreachable, invalidCapitalEndpoints,
                 draftOnly, succeeded, rejected, failed, unavailableSuffix, disconnectedUnavailable,
-                selectTarget, publishNormalRoute, publishCapitalRoute, calculateBeforePublishing,
-                connectSharedMapBeforePublishing, routeHandoffsUnsupported, publishPermissionRequired,
-                publishingRoute, unableToLoadRouteGraph, unableToLoadCapitalRouteData,
+                selectTarget, unableToLoadRouteGraph, unableToLoadCapitalRouteData,
                 unableToLoadJumpOverlayData, jumpOverlayCalculationFailed, manualMaximumLyMustBeNumber,
                 manualMaximumLyMustBePositive, addWaypointOrDestination, invalidNavigationStop,
                 ansiblexDataUnavailable,

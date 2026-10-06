@@ -126,11 +126,6 @@ Connected clients poll every 30 seconds and atomically replace the selected Work
 the last in-memory snapshot remains visible as stale in degraded mode; it is never persisted as a shared snapshot
 disk cache. Disconnecting clears Shared Marker state without affecting local markers or AI Missions.
 
-When the Server advertises the optional Protocol v1 `route-handoffs` feature, Desktop can publish the current Normal
-or Capital route from its corresponding panel. Route intent, the exact resolved snapshot, and compatibility metadata
-travel together. Viewer can read; Editor/Admin can publish. A publisher may delete their own handoff, and an Admin
-may delete any handoff in the Workspace.
-
 Local Saved Markers, AI Mission Markers, and Shared Markers remain three independent domains with distinct map
 visuals. AI/MCP can neither read nor create, edit, or delete Shared Markers in 1.4.0.
 The stable `fortizar` and `keepstar` tags replace the ordinary system node on Desktop whether they come from

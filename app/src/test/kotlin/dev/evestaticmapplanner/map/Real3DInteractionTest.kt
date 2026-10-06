@@ -87,4 +87,28 @@ class Real3DInteractionTest {
         assertNull(tracker.move(MapPoint(10.0, 10.0)))
         assertNull(tracker.release(MapPoint(10.0, 10.0)))
     }
+
+    @Test
+    fun `captured drag preserves map coordinates outside map bounds until release`() {
+        val capture = Real3DDragCaptureSession()
+        capture.start(localPosition = MapPoint(100.0, 80.0), screenPosition = MapPoint(500.0, 300.0))
+
+        assertEquals(MapPoint(-25.0, 110.0), capture.positionAt(MapPoint(375.0, 330.0)))
+        assertTrue(capture.isActive)
+        assertEquals(MapPoint(-40.0, 120.0), capture.releaseAt(MapPoint(360.0, 340.0)))
+        assertFalse(capture.isActive)
+        assertNull(capture.positionAt(MapPoint(600.0, 400.0)))
+    }
+
+    @Test
+    fun `captured drag cancel clears state for focus loss`() {
+        val capture = Real3DDragCaptureSession()
+        capture.start(localPosition = MapPoint(10.0, 20.0), screenPosition = MapPoint(100.0, 200.0))
+
+        capture.cancel()
+
+        assertFalse(capture.isActive)
+        assertNull(capture.positionAt(MapPoint(110.0, 210.0)))
+        assertNull(capture.releaseAt(MapPoint(110.0, 210.0)))
+    }
 }

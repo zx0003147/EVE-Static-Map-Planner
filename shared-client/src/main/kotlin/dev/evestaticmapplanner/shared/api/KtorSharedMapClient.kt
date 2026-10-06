@@ -12,8 +12,6 @@ import dev.evestaticmapplanner.shared.model.SharedMarkerSnapshot
 import dev.evestaticmapplanner.shared.model.SharedServerMeta
 import dev.evestaticmapplanner.shared.model.SharedWorkspace
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
-import dev.evestaticmapplanner.shared.model.SharedRouteHandoff
-import dev.evestaticmapplanner.shared.model.SharedRouteHandoffDraft
 import dev.evestaticmapplanner.shared.protocol.CreateInviteRequestDto
 import dev.evestaticmapplanner.shared.protocol.CreateMemberRequestDto
 import dev.evestaticmapplanner.shared.protocol.CreateSharedMarkerRequestDto
@@ -31,9 +29,6 @@ import dev.evestaticmapplanner.shared.protocol.SharedMarkerDto
 import dev.evestaticmapplanner.shared.protocol.UpdateMemberRequestDto
 import dev.evestaticmapplanner.shared.protocol.UpdateSharedMarkerRequestDto
 import dev.evestaticmapplanner.shared.protocol.WorkspacesResponseDto
-import dev.evestaticmapplanner.shared.protocol.RouteHandoffDto
-import dev.evestaticmapplanner.shared.protocol.RouteHandoffListResponseDto
-import dev.evestaticmapplanner.shared.protocol.toRequestDto
 import dev.evestaticmapplanner.shared.protocol.SHARED_MAP_PROTOCOL_JSON
 import dev.evestaticmapplanner.shared.protocol.toDomain
 import io.ktor.client.HttpClient
@@ -132,30 +127,6 @@ class KtorSharedMapClient(
             setBody(CreateSharedMarkerRequestDto(systemId, draft.name, draft.color.name, draft.tags, draft.notes))
         }
     }.decode<SharedMarkerDto>().toDomain()
-
-    override suspend fun getRouteHandoffs(
-        server: SharedServerUrl,
-        token: SecretValue,
-        workspaceId: String,
-    ): List<SharedRouteHandoff> = request {
-        clientFor(server).get(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs")) {
-            commonHeaders()
-            token.useString { bearerAuth(it) }
-        }
-    }.decode<RouteHandoffListResponseDto>().routeHandoffs.map(RouteHandoffDto::toDomain)
-
-    override suspend fun publishRouteHandoff(
-        server: SharedServerUrl,
-        token: SecretValue,
-        workspaceId: String,
-        draft: SharedRouteHandoffDraft,
-        idempotencyKey: UUID,
-    ): SharedRouteHandoff = mutationRequest {
-        clientFor(server).post(server.endpoint("/api/v1/workspaces/${canonicalUuid(workspaceId)}/route-handoffs")) {
-            authenticatedMutationHeaders(token, idempotencyKey)
-            setBody(draft.toRequestDto())
-        }
-    }.decode<RouteHandoffDto>().toDomain()
 
     override suspend fun updateSharedMarker(
         server: SharedServerUrl,

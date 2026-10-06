@@ -25,7 +25,7 @@ import dev.evestaticmapplanner.shared.model.SharedMarkerColor
 import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 
 internal object EnglishAiAssistantStrings : AiAssistantStrings {
-    override val title = "Embedded AI Assistant"
+    override val title = "Aura"
     override val chats = "Chats"
     override val newChat = "+ New Chat"
     override val chatLifetimeHelper = "Chats last until the Planner closes."
@@ -232,7 +232,6 @@ internal object EnglishSharedMapStrings : SharedMapStrings {
     override val invite = "Invite"
     override val copied = "Copied to clipboard."
     override val copy = "Copy"
-    override val routePublishedToWeb = "Route published to Web."
     override val operationFailed = "The Shared Map operation could not be completed."
 
     override fun workspaceLabel(name: String) = "$workspace: $name"

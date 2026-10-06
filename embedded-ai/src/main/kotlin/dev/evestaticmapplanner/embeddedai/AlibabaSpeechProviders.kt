@@ -129,7 +129,7 @@ class AlibabaSpeechClient(
         )
         if (normalized.isEmpty()) {
             secret.useString { token -> reportTtsFailure("empty input rejected", null, token, ttsContext) }
-            throw voiceError(VoiceErrorCode.SYNTHESIS_FAILED, "The assistant reply could not be synthesized.")
+            throw voiceError(VoiceErrorCode.SYNTHESIS_FAILED, "Aura's reply could not be synthesized.")
         }
         val qwenAudio = model.startsWith("qwen-audio-", ignoreCase = true) ||
             model.startsWith("cosyvoice-", ignoreCase = true)

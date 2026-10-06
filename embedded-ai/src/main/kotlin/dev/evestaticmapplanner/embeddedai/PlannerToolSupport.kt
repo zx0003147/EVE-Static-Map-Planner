@@ -57,7 +57,7 @@ internal suspend fun <T> requirePlannerValue(
 internal fun String.boundedToolResult(): String {
     if (length > MAX_TOOL_RESULT_CHARS) {
         throw EmbeddedAiToolException(
-            "RESULT_TOO_LARGE: Planner returned more data than the embedded assistant can safely process",
+            "RESULT_TOO_LARGE: Planner returned more data than Aura can safely process",
         )
     }
     return this

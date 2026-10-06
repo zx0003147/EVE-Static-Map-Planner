@@ -177,7 +177,7 @@ class FeatureSettingsWindowsTest {
     }
 
     @Test
-    fun `AI Features presents Embedded Assistant then MCP Integration as exclusive accordions`() = runComposeUiTest {
+    fun `AI Features presents Aura then MCP Integration as exclusive accordions`() = runComposeUiTest {
         setContent {
             EveTheme {
                 Column {
@@ -200,7 +200,7 @@ class FeatureSettingsWindowsTest {
             }
         }
 
-        onNodeWithText("▸ Embedded Assistant").assertIsDisplayed().performClick()
+            onNodeWithText("▸ Aura").assertIsDisplayed().performClick()
         onNodeWithText("▸ AI Model").assertIsDisplayed()
         onNodeWithText("▸ Web Search").assertIsDisplayed()
         onNodeWithText("▸ Voice I/O").assertIsDisplayed()
@@ -221,7 +221,7 @@ class FeatureSettingsWindowsTest {
     }
 
     @Test
-    fun `Embedded Assistant accordions reset after content reopens`() = runComposeUiTest {
+    fun `Aura accordions reset after content reopens`() = runComposeUiTest {
         var visible by mutableStateOf(true)
         setContent {
             EveTheme {
@@ -231,7 +231,7 @@ class FeatureSettingsWindowsTest {
             }
         }
 
-        onNodeWithText("▸ Embedded Assistant").performClick()
+            onNodeWithText("▸ Aura").performClick()
         onNodeWithText("▸ AI Model").performClick()
         onNodeWithText("AI Provider").assertIsDisplayed()
 
@@ -240,7 +240,7 @@ class FeatureSettingsWindowsTest {
         visible = true
         waitForIdle()
 
-        onNodeWithText("▸ Embedded Assistant").assertIsDisplayed().performClick()
+            onNodeWithText("▸ Aura").assertIsDisplayed().performClick()
         onNodeWithText("▸ AI Model").assertIsDisplayed()
         onNodeWithText("▸ Web Search").assertIsDisplayed()
         onNodeWithText("▸ Voice I/O").assertIsDisplayed()

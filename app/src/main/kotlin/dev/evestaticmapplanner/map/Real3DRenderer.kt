@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -454,6 +455,51 @@ internal fun Real3DMapCanvas(
     var canvasSizePx by remember { mutableStateOf(IntSize.Zero) }
     var compactCardBounds by remember { mutableStateOf<Rect?>(null) }
     var hoveredCharacterSystemMarker by remember { mutableStateOf<PresentedCharacterSystemMarker?>(null) }
+    val windowDragCapture = remember { Real3DWindowDragCapture() }
+
+    fun clearPointerPresentation() {
+        activeMarkerInteractionSystemId = null
+        hoveredSavedMarkerChild = null
+        hoveredOverlaySystemMarker = null
+        hoveredCharacterSystemMarker = null
+    }
+
+    fun handleDrag(position: MapPoint): Boolean =
+        when (val drag = gesture.move(position)) {
+            null -> false
+            else -> {
+                clearPointerPresentation()
+                when (drag.button) {
+                    MapPointerButton.PRIMARY -> onPan(drag.screenDelta)
+                    MapPointerButton.SECONDARY -> onRotate(drag.screenDelta)
+                }
+                true
+            }
+        }
+
+    fun handleRelease(position: MapPoint, clickCount: Int) {
+        gesture.release(position, clickCount)?.let { click ->
+            dispatchMapClick(
+                click = click,
+                onSelect = onSelect,
+                onFocus = onFocus,
+                onContextMenu = onContextMenu,
+            )
+        }
+    }
+
+    windowDragCapture.updateHandlers(
+        onMove = { handleDrag(it) },
+        onRelease = ::handleRelease,
+        onCancel = {
+            gesture.cancel()
+            clearPointerPresentation()
+            onHoverExit()
+        },
+    )
+    DisposableEffect(windowDragCapture) {
+        onDispose(windowDragCapture::close)
+    }
 
     LaunchedEffect(compactSystemInfo) {
         if (compactSystemInfo == null) compactCardBounds = null
@@ -482,83 +528,78 @@ internal fun Real3DMapCanvas(
                 if (state.contextMenu != null) return@onPointerEvent
                 val position = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
                 if (compactCardBounds.containsPoint(position)) {
+                    windowDragCapture.cancel()
                     gesture.cancel()
                     onHoverExit()
                     return@onPointerEvent
                 }
                 val characterMarkerHit = hitTestCharacterSystemMarker(presentedCharacterSystemMarkers, position)
                 if (characterMarkerHit != null) {
+                    windowDragCapture.cancel()
                     gesture.cancel()
                     onCharacterMarkerSelect(characterMarkerHit.marker.systemId)
                     return@onPointerEvent
                 }
                 if (hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, position) != null) {
+                    windowDragCapture.cancel()
                     gesture.cancel()
                     return@onPointerEvent
                 }
-                when (event.awtEventOrNull?.button) {
-                    java.awt.event.MouseEvent.BUTTON1 -> gesture.press(MapPointerButton.PRIMARY, position)
-                    java.awt.event.MouseEvent.BUTTON3 -> gesture.press(MapPointerButton.SECONDARY, position)
+                val awtEvent = event.awtEventOrNull ?: return@onPointerEvent
+                when (awtEvent.button) {
+                    java.awt.event.MouseEvent.BUTTON1 -> {
+                        gesture.press(MapPointerButton.PRIMARY, position)
+                        windowDragCapture.start(position, awtEvent)
+                    }
+                    java.awt.event.MouseEvent.BUTTON3 -> {
+                        gesture.press(MapPointerButton.SECONDARY, position)
+                        windowDragCapture.start(position, awtEvent)
+                    }
                 }
             }
             .onPointerEvent(PointerEventType.Move) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 val position = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
+                if (windowDragCapture.isActive) return@onPointerEvent
                 if (compactCardBounds.containsPoint(position)) {
                     gesture.cancel()
                     onHoverExit()
                     return@onPointerEvent
                 }
-                val drag = gesture.move(position)
-                when (drag?.button) {
-                    MapPointerButton.PRIMARY -> {
+                val dragged = handleDrag(position)
+                if (!dragged && !gesture.isActive) {
+                    val characterMarkerHit = hitTestCharacterSystemMarker(presentedCharacterSystemMarkers, position)
+                    if (characterMarkerHit != null) {
+                        hoveredCharacterSystemMarker = characterMarkerHit
+                        hoveredOverlaySystemMarker = null
                         activeMarkerInteractionSystemId = null
                         hoveredSavedMarkerChild = null
-                        hoveredOverlaySystemMarker = null
-                        hoveredCharacterSystemMarker = null
-                        onPan(drag.screenDelta)
+                        onHoverExit()
+                        return@onPointerEvent
                     }
-                    MapPointerButton.SECONDARY -> {
+                    hoveredCharacterSystemMarker = null
+                    val overlayMarkerHit = hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, position)
+                    if (overlayMarkerHit != null) {
+                        hoveredOverlaySystemMarker = overlayMarkerHit
                         activeMarkerInteractionSystemId = null
                         hoveredSavedMarkerChild = null
+                        onHoverExit()
+                    } else {
                         hoveredOverlaySystemMarker = null
-                        hoveredCharacterSystemMarker = null
-                        onRotate(drag.screenDelta)
-                    }
-                    null -> if (!gesture.isActive) {
-                        val characterMarkerHit = hitTestCharacterSystemMarker(presentedCharacterSystemMarkers, position)
-                        if (characterMarkerHit != null) {
-                            hoveredCharacterSystemMarker = characterMarkerHit
-                            hoveredOverlaySystemMarker = null
-                            activeMarkerInteractionSystemId = null
-                            hoveredSavedMarkerChild = null
-                            onHoverExit()
-                            return@onPointerEvent
-                        }
-                        hoveredCharacterSystemMarker = null
-                        val overlayMarkerHit = hitTestOverlaySystemMarker(presentedOverlaySystemMarkers, position)
-                        if (overlayMarkerHit != null) {
-                            hoveredOverlaySystemMarker = overlayMarkerHit
-                            activeMarkerInteractionSystemId = null
-                            hoveredSavedMarkerChild = null
+                        val markerHit = hitTestSavedMarkerInteraction(
+                            markers = presentedMarkers,
+                            point = position,
+                            badgeHitRadiusPx = childBadgeHitRadiusPx,
+                            corridorRadiusPx = childCorridorRadiusPx,
+                        )
+                        if (markerHit != null) {
+                            activeMarkerInteractionSystemId = markerHit.parentSystemId
+                            hoveredSavedMarkerChild = markerHit.child
                             onHoverExit()
                         } else {
-                            hoveredOverlaySystemMarker = null
-                            val markerHit = hitTestSavedMarkerInteraction(
-                                markers = presentedMarkers,
-                                point = position,
-                                badgeHitRadiusPx = childBadgeHitRadiusPx,
-                                corridorRadiusPx = childCorridorRadiusPx,
-                            )
-                            if (markerHit != null) {
-                                activeMarkerInteractionSystemId = markerHit.parentSystemId
-                                hoveredSavedMarkerChild = markerHit.child
-                                onHoverExit()
-                            } else {
-                                activeMarkerInteractionSystemId = null
-                                hoveredSavedMarkerChild = null
-                                onHover(position)
-                            }
+                            activeMarkerInteractionSystemId = null
+                            hoveredSavedMarkerChild = null
+                            onHover(position)
                         }
                     }
                 }
@@ -566,21 +607,11 @@ internal fun Real3DMapCanvas(
             .onPointerEvent(PointerEventType.Release) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 val position = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
-                gesture.release(position, event.awtEventOrNull?.clickCount ?: 1)?.let { click ->
-                    dispatchMapClick(
-                        click = click,
-                        onSelect = onSelect,
-                        onFocus = onFocus,
-                        onContextMenu = onContextMenu,
-                    )
-                }
+                handleRelease(position, event.awtEventOrNull?.clickCount ?: 1)
             }
             .onPointerEvent(PointerEventType.Exit) {
-                gesture.cancel()
-                activeMarkerInteractionSystemId = null
-                hoveredSavedMarkerChild = null
-                hoveredOverlaySystemMarker = null
-                hoveredCharacterSystemMarker = null
+                if (!windowDragCapture.isActive) gesture.cancel()
+                clearPointerPresentation()
                 onHoverExit()
             },
     ) {

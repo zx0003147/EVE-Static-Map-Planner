@@ -76,10 +76,6 @@ import dev.evestaticmapplanner.ui.EveDivider
 import dev.evestaticmapplanner.ui.EvePanel
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
-import dev.evestaticmapplanner.shared.RouteHandoffPublishUiState
-import dev.evestaticmapplanner.shared.model.SharedConnectionState
-import dev.evestaticmapplanner.shared.model.SharedMapState
-import dev.evestaticmapplanner.shared.model.SharedWorkspaceRole
 import dev.evestaticmapplanner.localization.AppStrings
 import dev.evestaticmapplanner.localization.AppLocale
 import dev.evestaticmapplanner.localization.AppStringsCatalog
@@ -159,10 +155,6 @@ internal fun RouteToolsPanel(
     onSwitchAnsiblexIdentity: () -> Unit,
     onOpenWormholeManager: () -> Unit,
     onFocusSystem: (Int) -> Unit,
-    sharedMapState: SharedMapState,
-    routeHandoffPublishState: RouteHandoffPublishUiState,
-    onPublishNormalRoute: () -> Unit,
-    onPublishCapitalRoute: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
@@ -238,9 +230,6 @@ internal fun RouteToolsPanel(
                                     onInvokeRouteAction,
                                     onInvokeNavigationAction,
                                     onOpenWormholeManager,
-                                    sharedMapState,
-                                    routeHandoffPublishState,
-                                    onPublishNormalRoute,
                                 )
                             }
                             ToolSidebarSection.CAPITAL_ROUTE -> CollapsibleToolSection(
@@ -258,9 +247,6 @@ internal fun RouteToolsPanel(
                                     selectedRouteActionTargets,
                                     onSelectRouteActionTarget,
                                     onInvokeRouteAction,
-                                    sharedMapState,
-                                    routeHandoffPublishState,
-                                    onPublishCapitalRoute,
                                 )
                             }
                             ToolSidebarSection.ANSIBLEX -> CollapsibleToolSection(
@@ -817,9 +803,6 @@ private fun NormalRouteSectionContent(
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
     onInvokeNavigationAction: (RouteActionKey, NavigationSnapshot, RouteActionTargetId?) -> Unit,
     onOpenWormholeManager: () -> Unit,
-    sharedMapState: SharedMapState,
-    routeHandoffPublishState: RouteHandoffPublishUiState,
-    onPublishRoute: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
@@ -867,13 +850,6 @@ private fun NormalRouteSectionContent(
             Text(it.resolve(strings), color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         RouteSummary(state)
-        RouteHandoffPublishControl(
-            hasRoute = state.activeRoute != null,
-            sharedMapState = sharedMapState,
-            publishState = routeHandoffPublishState,
-            label = strings.route.publishNormalRoute,
-            onPublish = onPublishRoute,
-        )
         if (
             state.activeRoute?.wormholeJumps?.let { it > 0 } == true &&
             routeActions.any { !it.supportsNavigationIntent }
@@ -1019,9 +995,6 @@ private fun CapitalRouteSectionContent(
     selectedRouteActionTargets: Map<String, String>,
     onSelectRouteActionTarget: (String, String?) -> Unit,
     onInvokeRouteAction: (RouteActionKey, RouteSnapshot, RouteActionTargetId?) -> Unit,
-    sharedMapState: SharedMapState,
-    routeHandoffPublishState: RouteHandoffPublishUiState,
-    onPublishRoute: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ROUTE_CONTROL_VERTICAL_SPACING)) {
@@ -1067,13 +1040,6 @@ private fun CapitalRouteSectionContent(
             Text(it.resolve(strings), color = EveColors.Warning, style = MaterialTheme.typography.bodySmall)
         }
         CapitalRouteSummary(state)
-        RouteHandoffPublishControl(
-            hasRoute = state.activeRoute != null,
-            sharedMapState = sharedMapState,
-            publishState = routeHandoffPublishState,
-            label = strings.route.publishCapitalRoute,
-            onPublish = onPublishRoute,
-        )
         RouteActionButtons(
             routeActions,
             routeSnapshot,
@@ -1214,30 +1180,6 @@ internal fun WaypointList(
             }
         }
     }
-}
-
-@Composable
-private fun RouteHandoffPublishControl(
-    hasRoute: Boolean,
-    sharedMapState: SharedMapState,
-    publishState: RouteHandoffPublishUiState,
-    label: String,
-    onPublish: () -> Unit,
-) {
-    val strings = LocalAppStrings.current
-    val role = sharedMapState.identity?.workspace?.role
-    val reason = when {
-        !hasRoute -> strings.route.calculateBeforePublishing
-        sharedMapState.connectionState != SharedConnectionState.ONLINE -> strings.route.connectSharedMapBeforePublishing
-        sharedMapState.meta?.supportsRouteHandoffs != true -> strings.route.routeHandoffsUnsupported
-        role == SharedWorkspaceRole.VIEWER -> strings.route.publishPermissionRequired
-        publishState.busy -> strings.route.publishingRoute
-        else -> null
-    }
-    Button(onClick = onPublish, enabled = reason == null) { Text(label) }
-    reason?.let { Text(it, color = EveColors.SecondaryText, style = MaterialTheme.typography.labelSmall) }
-    publishState.message?.let { Text(it.resolve(strings), color = EveColors.Success, style = MaterialTheme.typography.bodySmall) }
-    publishState.error?.let { Text(strings.sharedMap.error(it), color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
 }
 
 internal val WAYPOINT_ROW_HEIGHT = 32.dp

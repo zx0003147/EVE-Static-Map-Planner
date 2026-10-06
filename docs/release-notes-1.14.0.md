@@ -1,6 +1,6 @@
 # EVE Static Map Planner v1.14.0
 
-This release expands the Embedded AI Assistant with optional web search and configurable voice interaction, adds
+This release expands Aura with optional web search and configurable voice interaction, adds
 English and Simplified Chinese localization, and introduces a global Windows Push-to-Talk shortcut.
 
 ## Highlights
@@ -14,7 +14,7 @@ English and Simplified Chinese localization, and introduces a global Windows Pus
 
 ### Voice and Push-to-Talk
 
-- Adds configurable speech-to-text and text-to-speech for the Embedded AI Assistant.
+- Adds configurable speech-to-text and text-to-speech for Aura.
 - Adds Alibaba Cloud STT and TTS through the Workspace endpoint, including
   `qwen-audio-3.0-asr-flash` and `qwen-audio-3.0-tts-flash`.
 - Adds a configurable global Windows Push-to-Talk shortcut that works while Planner is in the background whenever
@@ -25,7 +25,7 @@ English and Simplified Chinese localization, and introduces a global Windows Pus
 
 ### Assistant web search
 
-- Adds optional Brave web search to the Embedded AI Assistant.
+- Adds optional Brave web search to Aura.
 - Keeps the web-search API key protected with the existing Windows credential-storage flow.
 
 ### Voice reliability

@@ -38,13 +38,6 @@ interface RouteStrings {
     val unavailableSuffix: String
     val disconnectedUnavailable: String
     val selectTarget: String
-    val publishNormalRoute: String
-    val publishCapitalRoute: String
-    val calculateBeforePublishing: String
-    val connectSharedMapBeforePublishing: String
-    val routeHandoffsUnsupported: String
-    val publishPermissionRequired: String
-    val publishingRoute: String
     val unableToLoadRouteGraph: String
     val unableToLoadCapitalRouteData: String
     val unableToLoadJumpOverlayData: String

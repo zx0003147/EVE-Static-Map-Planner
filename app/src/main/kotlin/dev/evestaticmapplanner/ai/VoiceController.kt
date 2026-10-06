@@ -380,7 +380,7 @@ internal class VoiceController(
             } catch (failure: Throwable) {
                 logChunk("failed", queued, "error=${safeFailure(failure)}")
                 abortSpeechRun(run)
-                publishFailure(failure, VoiceErrorCode.SYNTHESIS_FAILED, "The assistant reply could not be read aloud.")
+                publishFailure(failure, VoiceErrorCode.SYNTHESIS_FAILED, "Aura's reply could not be read aloud.")
                 return
             } finally {
                 val remaining = run.pending.decrementAndGet()

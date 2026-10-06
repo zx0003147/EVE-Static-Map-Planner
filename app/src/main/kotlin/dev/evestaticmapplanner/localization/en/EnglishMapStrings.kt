@@ -14,7 +14,7 @@ internal object EnglishMapStrings : MapStrings {
     override val viewName = "View name"
     override val viewNameValidation = "View names must be non-empty and unique."
     override val toggleProjection = "Toggle 2D/3D map mode"
-    override val openEmbeddedAiAssistant = "Open Embedded AI Assistant"
+    override val openEmbeddedAiAssistant = "Open Aura"
     override val collapseSidebar = "Collapse sidebar"
     override val expandSidebar = "Expand sidebar"
     override val official2DSelected = "Official 2D selected"
