@@ -5,6 +5,8 @@ data class JumpRangeOverlay(
     val originSystemId: Int,
     val profile: JumpProfile,
     val reachableSystemIds: Set<Int>,
+    val preset: JumpRangePreset = JumpRangePreset.CUSTOM,
+    val displayColor: JumpRangeColor = JumpRangeColor.BLUE,
     val enabled: Boolean = true,
     val label: String? = null,
 ) {

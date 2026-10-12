@@ -36,6 +36,7 @@ import dev.evestaticmapplanner.core.forceprojection.ForceProjectionZoneSnapshot
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import dev.evestaticmapplanner.core.map.ProjectedJumpRangeOverlay
 import dev.evestaticmapplanner.core.map.ProjectedCapitalRouteOverlay
+import dev.evestaticmapplanner.core.jump.JumpRangeColor
 import dev.evestaticmapplanner.preferences.MapDisplayPreferences
 import dev.evestaticmapplanner.preferences.SavedMarkerAppearancePreferences
 import dev.evestaticmapplanner.marker.markerColor
@@ -523,9 +524,9 @@ object MapRenderer {
         overlays: List<ProjectedJumpRangeOverlay>,
         intersectionSystemIds: Set<Int>,
     ) {
-        overlays.forEachIndexed { index, overlay ->
-            val color = JUMP_OVERLAY_COLORS[index % JUMP_OVERLAY_COLORS.size]
-            val radius = 5f + (index % 4) * 2.2f
+        overlays.forEach { overlay ->
+            val color = jumpRangeColor(overlay.overlay.displayColor)
+            val radius = 7.2f
             overlay.reachableNodes.forEach { node ->
                 drawCircle(
                     color = color.copy(alpha = 0.82f),
@@ -537,7 +538,7 @@ object MapRenderer {
             scene.nodesById[overlay.overlay.originSystemId]?.let { origin ->
                 val center = transform.worldToScreen(origin.position).toOffset()
                 drawCircle(color.copy(alpha = 0.2f), 11f, center)
-                drawCircle(color, 7f + (index % 3), center, style = Stroke(2f))
+                drawCircle(color, 8f, center, style = Stroke(2f))
             }
         }
         intersectionSystemIds.forEach { systemId ->
@@ -655,12 +656,12 @@ object MapRenderer {
         transform: MapTransform,
         overlays: List<ProjectedJumpRangeOverlay>,
     ) {
-        overlays.forEachIndexed { index, overlay ->
-            val color = MISSION_JUMP_COLORS[index % MISSION_JUMP_COLORS.size]
+        overlays.forEach { overlay ->
+            val color = jumpRangeColor(overlay.overlay.displayColor)
             overlay.reachableNodes.forEach { node ->
                 drawCircle(
                     color = color.copy(alpha = 0.9f),
-                    radius = 8f + (index % 3) * 2f,
+                    radius = 9f,
                     center = transform.worldToScreen(node.position).toOffset(),
                     style = Stroke(2f),
                 )
@@ -1099,14 +1100,7 @@ internal val CAPITAL_ROUTE_COLOR = Color(MapVisualSemantics.capitalRoute.argb)
 internal val CAPITAL_START_COLOR = Color(0xFFA98BFF)
 internal val CAPITAL_DESTINATION_COLOR = Color(0xFFFF7EB6)
 private val INTERSECTION_COLOR = Color(0xFFFFD166)
-internal val JUMP_OVERLAY_COLORS = listOf(
-    Color(0xFF57E389),
-    Color(0xFF42D6F5),
-    Color(0xFFFF9F43),
-    Color(0xFFA98BFF),
-    Color(0xFFFF7EB6),
-    Color(0xFFB8E986),
-)
+internal fun jumpRangeColor(color: JumpRangeColor): Color = Color(color.argb)
 internal val MISSION_ROUTE_COLORS = listOf(Color(0xFFF4E06D))
 internal val MISSION_CAPITAL_ROUTE_COLOR = Color(0xFFFF5C57)
 internal val MISSION_CAPITAL_COLORS = listOf(
@@ -1138,7 +1132,13 @@ internal fun routeLegRenderStyle(type: RouteEdgeType): RouteLegRenderStyle = whe
         null,
     )
 }
-internal val MISSION_JUMP_COLORS = listOf(Color(0xFFF4E06D), Color(0xFFFFA9E7), Color(0xFF7AE7C7), Color(0xFF9CCBFF))
+internal val MISSION_JUMP_RANGE_COLORS = listOf(
+    JumpRangeColor.MISSION_GOLD,
+    JumpRangeColor.MISSION_PINK,
+    JumpRangeColor.MISSION_TEAL,
+    JumpRangeColor.MISSION_LIGHT_BLUE,
+)
+internal val MISSION_JUMP_COLORS = MISSION_JUMP_RANGE_COLORS.map(::jumpRangeColor)
 internal fun labelColor(type: MapLabelType, preferences: MapDisplayPreferences): Color = when (type) {
     MapLabelType.SYSTEM -> LABEL_COLOR
     MapLabelType.REGION_PRIMARY -> REGION_LABEL_BASE_COLOR.copy(alpha = MapLabelStyleResolver.resolve(type, preferences).alpha)

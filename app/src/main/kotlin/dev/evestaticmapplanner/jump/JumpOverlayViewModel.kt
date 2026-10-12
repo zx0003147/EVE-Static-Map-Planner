@@ -3,7 +3,9 @@ package dev.evestaticmapplanner.jump
 import dev.evestaticmapplanner.AppDiagnostics
 import dev.evestaticmapplanner.core.jump.CapitalJumpCandidateProvider
 import dev.evestaticmapplanner.core.jump.JumpProfile
+import dev.evestaticmapplanner.core.jump.JumpRangeColor
 import dev.evestaticmapplanner.core.jump.JumpRangeOverlayCollection
+import dev.evestaticmapplanner.core.jump.JumpRangePreset
 import dev.evestaticmapplanner.core.jump.UniformGridSystemPositionIndex
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.repository.StaticMapRepository
@@ -73,6 +75,20 @@ class JumpOverlayViewModel(
         mutableState.update { it.copy(manualRangeText = text, error = null) }
     }
 
+    fun selectPreset(preset: JumpRangePreset) {
+        mutableState.update { current ->
+            current.copy(
+                selectedPreset = preset,
+                manualRangeText = preset.defaultRangeLy?.let(::formatRange).orEmpty(),
+                error = null,
+            )
+        }
+    }
+
+    fun selectColor(color: JumpRangeColor) {
+        mutableState.update { it.copy(selectedColor = color) }
+    }
+
     fun addSelectedOrigin() {
         val origin = mutableState.value.selectedOrigin ?: return
         addForSystem(origin.id)
@@ -80,12 +96,14 @@ class JumpOverlayViewModel(
 
     fun addForSystem(systemId: Int) = calculateMutation {
         val system = systemsById[systemId] ?: error("Unknown solar system: $systemId")
-        val profile = currentProfile("overlay-${nextId.get()}")
+        val configuration = currentConfiguration("overlay-${nextId.get()}")
         add(
             id = "overlay-${nextId.getAndIncrement()}",
             originSystemId = systemId,
-            profile = profile,
-            label = "${system.name} · ${profile.maxRangeLy} LY",
+            profile = configuration.profile,
+            preset = configuration.preset,
+            displayColor = configuration.color,
+            label = "${system.name} · ${formatRange(configuration.profile.maxRangeLy)} LY",
         )
     }
 
@@ -100,9 +118,15 @@ class JumpOverlayViewModel(
 
     fun updateWithCurrentRange(id: String) = calculateMutation {
         val current = all().singleOrNull { it.id == id } ?: return@calculateMutation
-        val profile = currentProfile("$id-profile")
+        val configuration = currentConfiguration("$id-profile")
         val originName = systemsById[current.originSystemId]?.name ?: current.originSystemId.toString()
-        updateProfile(id, profile, "$originName · ${profile.maxRangeLy} LY")
+        updateProfile(
+            id = id,
+            profile = configuration.profile,
+            preset = configuration.preset,
+            displayColor = configuration.color,
+            label = "$originName · ${formatRange(configuration.profile.maxRangeLy)} LY",
+        )
     }
 
     fun clear() = publishMutation { clear() }
@@ -157,11 +181,20 @@ class JumpOverlayViewModel(
         }
     }
 
-    private fun currentProfile(id: String): JumpProfile {
-        val value = mutableState.value.manualRangeText.trim().toDoubleOrNull()
+    private fun currentConfiguration(id: String): JumpRangeConfiguration {
+        val state = mutableState.value
+        val value = state.selectedPreset.defaultRangeLy ?: state.manualRangeText.trim().toDoubleOrNull()
             ?: throw InvalidManualRangeNumberException()
         if (!value.isFinite() || value <= 0.0) throw InvalidManualRangeValueException()
-        return JumpProfile.manual(value, id)
+        return JumpRangeConfiguration(
+            profile = JumpProfile(
+                id = id,
+                displayName = state.selectedPreset.name,
+                maxRangeLy = value,
+            ),
+            preset = state.selectedPreset,
+            color = state.selectedColor,
+        )
     }
 
     private fun scheduleSearch(query: String): Job = scope.launch {
@@ -171,6 +204,15 @@ class JumpOverlayViewModel(
         mutableState.update { it.copy(originResults = results) }
     }
 }
+
+private data class JumpRangeConfiguration(
+    val profile: JumpProfile,
+    val preset: JumpRangePreset,
+    val color: JumpRangeColor,
+)
+
+private fun formatRange(value: Double): String =
+    if (value % 1.0 == 0.0) value.toLong().toString() else value.toString()
 
 private class InvalidManualRangeNumberException : IllegalArgumentException()
 private class InvalidManualRangeValueException : IllegalArgumentException()

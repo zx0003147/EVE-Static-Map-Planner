@@ -30,13 +30,12 @@ class Real3DJumpSphereTest {
             1e-10,
         )
         assertEquals(MapPoint3(2.0, 3.0, 4.0), sphere.center)
-        assertTrue(sphere.shellSegments.isNotEmpty())
         assertTrue(sphere.fillTriangles.isNotEmpty())
         assertTrue(sphere.fillTriangles.flatMap { listOf(it.first, it.second, it.third) }.any { it.y != sphere.center.y })
     }
 
     @Test
-    fun `sphere shell remains projectable while camera is inside`() {
+    fun `sphere fill remains projectable while camera is inside`() {
         val geometry = geometryAt(UniversePosition(0.0, 0.0, 0.0))
         val overlay = JumpRangeOverlay(
             id = "inside",
@@ -49,7 +48,6 @@ class Real3DJumpSphereTest {
 
         val projected = Real3DJumpSphereProjector.project(listOf(sphere), camera, MapSize(800.0, 600.0)).single()
 
-        assertTrue(projected.shellSegments.isNotEmpty())
         assertTrue(projected.fillTrianglesFarToNear.isNotEmpty())
     }
 

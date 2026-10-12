@@ -250,13 +250,14 @@ internal fun StaticMapCanvas(
         missionState.capitalRoutes.map { ProjectedCapitalRouteOverlayBuilder.build(it.route, scene) }
     }
     val projectedMissionJumpRanges = remember(scene, missionState.jumpRanges) {
-        missionState.jumpRanges.map { range ->
+        missionState.jumpRanges.mapIndexed { index, range ->
             ProjectedJumpRangeOverlayBuilder.build(
                 JumpRangeOverlay(
                     id = "mission:${range.jumpRangeId.value}",
                     originSystemId = range.originSystemId,
                     profile = range.profile,
                     reachableSystemIds = range.reachableSystemIds,
+                    displayColor = MISSION_JUMP_RANGE_COLORS[index % MISSION_JUMP_RANGE_COLORS.size],
                     label = range.label,
                 ),
                 scene,

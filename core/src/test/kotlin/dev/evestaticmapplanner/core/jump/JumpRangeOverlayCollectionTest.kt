@@ -42,4 +42,30 @@ class JumpRangeOverlayCollectionTest {
         collection.setEnabled("C", false)
         assertEquals(setOf(30_000_003), collection.intersection())
     }
+
+    @Test
+    fun `overlay color remains attached across other overlay mutations`() {
+        collection.add(
+            "red",
+            30_000_001,
+            JumpProfile.manual(7.0, "red-profile"),
+            JumpRangePreset.DREADNOUGHT_CARRIER_FAX,
+            JumpRangeColor.RED,
+        )
+        collection.add(
+            "blue",
+            30_000_002,
+            JumpProfile.manual(6.0, "blue-profile"),
+            JumpRangePreset.TITAN_SUPERCARRIER,
+            JumpRangeColor.BLUE,
+        )
+
+        collection.setEnabled("red", false)
+        collection.remove("red")
+
+        val remaining = collection.all().single()
+        assertEquals(JumpRangeColor.BLUE, remaining.displayColor)
+        assertEquals(JumpRangePreset.TITAN_SUPERCARRIER, remaining.preset)
+        assertEquals(6.0, remaining.profile.maxRangeLy)
+    }
 }

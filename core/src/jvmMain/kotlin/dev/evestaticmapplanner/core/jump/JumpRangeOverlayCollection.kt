@@ -9,13 +9,28 @@ class JumpRangeOverlayCollection(
     fun all(): List<JumpRangeOverlay> = overlays.values.toList()
 
     @Synchronized
-    fun add(id: String, originSystemId: Int, profile: JumpProfile, label: String? = null): JumpRangeOverlay {
+    fun add(
+        id: String,
+        originSystemId: Int,
+        profile: JumpProfile,
+        preset: JumpRangePreset = JumpRangePreset.CUSTOM,
+        displayColor: JumpRangeColor = JumpRangeColor.BLUE,
+        label: String? = null,
+    ): JumpRangeOverlay {
         require(id !in overlays) { "Overlay ID already exists: $id" }
         val result = candidateProvider.reachableFrom(originSystemId, profile)
         require(result.originVerdict is EligibilityVerdict.Eligible) {
             "Overlay origin is not eligible: ${result.originVerdict}"
         }
-        return JumpRangeOverlay(id, originSystemId, profile, result.reachableSystemIds, label = label)
+        return JumpRangeOverlay(
+            id = id,
+            originSystemId = originSystemId,
+            profile = profile,
+            reachableSystemIds = result.reachableSystemIds,
+            preset = preset,
+            displayColor = displayColor,
+            label = label,
+        )
             .also { overlays[id] = it }
     }
 
@@ -27,13 +42,25 @@ class JumpRangeOverlayCollection(
         ?.also { overlays[id] = it }
 
     @Synchronized
-    fun updateProfile(id: String, profile: JumpProfile, label: String? = overlays[id]?.label): JumpRangeOverlay? {
+    fun updateProfile(
+        id: String,
+        profile: JumpProfile,
+        preset: JumpRangePreset = overlays[id]?.preset ?: JumpRangePreset.CUSTOM,
+        displayColor: JumpRangeColor = overlays[id]?.displayColor ?: JumpRangeColor.BLUE,
+        label: String? = overlays[id]?.label,
+    ): JumpRangeOverlay? {
         val current = overlays[id] ?: return null
         val result = candidateProvider.reachableFrom(current.originSystemId, profile)
         require(result.originVerdict is EligibilityVerdict.Eligible) {
             "Overlay origin is not eligible: ${result.originVerdict}"
         }
-        return current.copy(profile = profile, reachableSystemIds = result.reachableSystemIds, label = label)
+        return current.copy(
+            profile = profile,
+            reachableSystemIds = result.reachableSystemIds,
+            preset = preset,
+            displayColor = displayColor,
+            label = label,
+        )
             .also { overlays[id] = it }
     }
 

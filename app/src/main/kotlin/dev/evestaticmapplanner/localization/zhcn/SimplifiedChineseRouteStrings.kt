@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.localization.zhcn
 
+import dev.evestaticmapplanner.core.jump.JumpRangeColor
+import dev.evestaticmapplanner.core.jump.JumpRangePreset
 import dev.evestaticmapplanner.localization.NavigationStopUiRole
 import dev.evestaticmapplanner.localization.RouteStrings
 import java.util.Locale
@@ -9,6 +11,9 @@ internal object SimplifiedChineseRouteStrings : RouteStrings {
     override val normalRoute = "普通路线"
     override val capitalRoute = "旗舰路线"
     override val overlayOrigin = "覆盖起点"
+    override val jumpRangeType = "跳跃范围类型"
+    override val jumpRangeColor = "显示颜色"
+    override val manualRangePrompt = "请输入距离 LY"
     override val effectiveMaximumLy = "有效最大跳跃距离（LY）"
     override val intersect = "交集"
     override val start = "起点"
@@ -62,6 +67,28 @@ internal object SimplifiedChineseRouteStrings : RouteStrings {
     override fun totalDistanceLy(distance: Double) = String.format(Locale.ROOT, "总距离 %.3f LY", distance)
     override fun jumpDistanceLy(distance: Double) = String.format(Locale.ROOT, "%.3f LY", distance)
     override fun overlayIntersection(overlays: Int, systems: Int) = "$overlays 个覆盖的交集：$systems 个星系"
+    override fun jumpRangePreset(preset: JumpRangePreset) = when (preset) {
+        JumpRangePreset.DREADNOUGHT_CARRIER_FAX -> "无畏舰 / 航母 / 战力辅助舰"
+        JumpRangePreset.COMMAND_CARRIER -> "指挥航母"
+        JumpRangePreset.LANCER_DREAD -> "枪骑兵无畏舰"
+        JumpRangePreset.TITAN_SUPERCARRIER -> "泰坦 / 超级航母"
+        JumpRangePreset.BLACK_OPS -> "黑隐特勤舰"
+        JumpRangePreset.RORQUAL -> "旗舰级工业舰（长须鲸）"
+        JumpRangePreset.CUSTOM -> "手动距离"
+    }
+    override fun jumpRangeColor(color: JumpRangeColor) = when (color) {
+        JumpRangeColor.RED -> "红色"
+        JumpRangeColor.ORANGE -> "橙色"
+        JumpRangeColor.YELLOW -> "黄色"
+        JumpRangeColor.GREEN -> "绿色"
+        JumpRangeColor.BLUE -> "蓝色"
+        JumpRangeColor.PURPLE -> "紫色"
+        JumpRangeColor.WHITE -> "白色"
+        JumpRangeColor.MISSION_GOLD -> "任务金色"
+        JumpRangeColor.MISSION_PINK -> "任务粉色"
+        JumpRangeColor.MISSION_TEAL -> "任务青色"
+        JumpRangeColor.MISSION_LIGHT_BLUE -> "任务浅蓝色"
+    }
     override fun ansiblexManager(enabled: Int, total: Int) = "Ansiblex 管理器（$enabled/$total）"
     override fun wormholeManager(total: Int) = "虫洞管理器（$total）"
     override fun adjacentDuplicate(systemName: String) = "相邻导航停靠点不能同为 $systemName。"

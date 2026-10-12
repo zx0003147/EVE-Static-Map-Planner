@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.core.ansiblex.AnsiblexSource
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
 import dev.evestaticmapplanner.core.identity.EveCharacterIdentity
+import dev.evestaticmapplanner.core.jump.JumpRangeColor
 import dev.evestaticmapplanner.core.route.RouteEdgeType
 import java.time.Instant
 import kotlin.test.Test
@@ -28,6 +29,13 @@ class MapRouteStyleTest {
             listOf(Color(0xFFFF5C57), Color(0xE6FF5C57), Color(0xCCFF5C57), Color(0xB3FF5C57)),
             MISSION_CAPITAL_COLORS,
         )
+    }
+
+    @Test
+    fun `jump range instance colors map directly to renderer colors`() {
+        assertEquals(Color(0xFFFF5D73), jumpRangeColor(JumpRangeColor.RED))
+        assertEquals(Color(0xFF42BFF5), jumpRangeColor(JumpRangeColor.BLUE))
+        assertEquals(Color(0xFF57E389), jumpRangeColor(JumpRangeColor.GREEN))
     }
 
     @Test

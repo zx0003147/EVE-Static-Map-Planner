@@ -1,5 +1,7 @@
 package dev.evestaticmapplanner.localization.en
 
+import dev.evestaticmapplanner.core.jump.JumpRangeColor
+import dev.evestaticmapplanner.core.jump.JumpRangePreset
 import dev.evestaticmapplanner.localization.NavigationStopUiRole
 import dev.evestaticmapplanner.localization.RouteStrings
 import java.util.Locale
@@ -9,6 +11,9 @@ internal object EnglishRouteStrings : RouteStrings {
     override val normalRoute = "Normal Route"
     override val capitalRoute = "Capital Route"
     override val overlayOrigin = "Overlay origin"
+    override val jumpRangeType = "Jump Range Type"
+    override val jumpRangeColor = "Display Color"
+    override val manualRangePrompt = "Enter distance in LY"
     override val effectiveMaximumLy = "Effective maximum LY"
     override val intersect = "Intersect"
     override val start = "Start"
@@ -64,6 +69,16 @@ internal object EnglishRouteStrings : RouteStrings {
     override fun jumpDistanceLy(distance: Double) = String.format(Locale.ROOT, "%.3f LY", distance)
     override fun overlayIntersection(overlays: Int, systems: Int) =
         "Intersection ($overlays overlays): $systems systems"
+    override fun jumpRangePreset(preset: JumpRangePreset) = when (preset) {
+        JumpRangePreset.DREADNOUGHT_CARRIER_FAX -> "Dreadnought / Carrier / Force Auxiliary"
+        JumpRangePreset.COMMAND_CARRIER -> "Command Carrier"
+        JumpRangePreset.LANCER_DREAD -> "Lancer Dreadnought"
+        JumpRangePreset.TITAN_SUPERCARRIER -> "Titan / Supercarrier"
+        JumpRangePreset.BLACK_OPS -> "Black Ops"
+        JumpRangePreset.RORQUAL -> "Capital Industrial Ship (Rorqual)"
+        JumpRangePreset.CUSTOM -> "Manual Range"
+    }
+    override fun jumpRangeColor(color: JumpRangeColor) = color.name.lowercase().replaceFirstChar(Char::uppercase)
     override fun ansiblexManager(enabled: Int, total: Int) = "Ansiblex Manager ($enabled/$total)"
     override fun wormholeManager(total: Int) = "Wormhole Manager ($total)"
     override fun adjacentDuplicate(systemName: String) =

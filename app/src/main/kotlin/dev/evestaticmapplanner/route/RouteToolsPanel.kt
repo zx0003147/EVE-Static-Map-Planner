@@ -67,12 +67,16 @@ import dev.evestaticmapplanner.featurepack.RouteActionUiState
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
 import dev.evestaticmapplanner.core.model.SolarSystem
 import dev.evestaticmapplanner.core.jump.EligibilityVerdict
+import dev.evestaticmapplanner.core.jump.JumpRangeColor
+import dev.evestaticmapplanner.core.jump.JumpRangePreset
 import dev.evestaticmapplanner.core.identity.CurrentIdentitySource
 import dev.evestaticmapplanner.search.CompactOutlinedTextField
 import dev.evestaticmapplanner.ui.EveButton as Button
 import dev.evestaticmapplanner.ui.EveCheckbox as Checkbox
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveDivider
+import dev.evestaticmapplanner.ui.EveDropdownMenu as DropdownMenu
+import dev.evestaticmapplanner.ui.EveDropdownMenuItem as DropdownMenuItem
 import dev.evestaticmapplanner.ui.EvePanel
 import dev.evestaticmapplanner.ui.EveTextButton as TextButton
 import dev.evestaticmapplanner.ui.EveVerticalScrollColumn
@@ -736,6 +740,11 @@ private fun JumpRangeSectionContent(
     viewModel: JumpOverlayViewModel,
 ) {
     val strings = LocalAppStrings.current
+    val displayedRange = state.selectedPreset.defaultRangeLy
+        ?: state.manualRangeText.trim().toDoubleOrNull()
+    val displayedRangeLabel = displayedRange
+        ?.takeIf { it.isFinite() && it > 0.0 }
+        ?.let(::formatJumpRangeDistance)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SystemSearchField(
             value = state.originQuery,
@@ -745,11 +754,30 @@ private fun JumpRangeSectionContent(
             onSelect = viewModel::selectOrigin,
             compact = true,
         )
-        CompactOutlinedTextField(
-            value = state.manualRangeText,
-            onValueChange = viewModel::updateManualRange,
-            label = strings.route.effectiveMaximumLy,
-            modifier = Modifier.fillMaxWidth(),
+        JumpRangeOptionSelector(
+            label = strings.route.jumpRangeType,
+            value = strings.route.jumpRangePreset(state.selectedPreset),
+            options = JumpRangePreset.entries,
+            optionLabel = strings.route::jumpRangePreset,
+            onSelect = viewModel::selectPreset,
+            trailingValue = displayedRangeLabel,
+        )
+        if (state.selectedPreset == JumpRangePreset.CUSTOM) {
+            CompactOutlinedTextField(
+                value = state.manualRangeText,
+                onValueChange = viewModel::updateManualRange,
+                label = strings.route.manualRangePrompt,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        JumpRangeOptionSelector(
+            label = strings.route.jumpRangeColor,
+            value = strings.route.jumpRangeColor(state.selectedColor),
+            options = JumpRangeColor.entries.filter(JumpRangeColor::userSelectable),
+            optionLabel = strings.route::jumpRangeColor,
+            onSelect = viewModel::selectColor,
+            valueColor = Color(state.selectedColor.argb),
+            inline = true,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
@@ -765,7 +793,12 @@ private fun JumpRangeSectionContent(
                         checked = overlay.enabled,
                         onCheckedChange = { viewModel.setEnabled(overlay.id, it) },
                     )
-                    Text(overlay.label ?: overlay.id, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Text(
+                        "${overlay.label ?: overlay.id} · ${strings.route.jumpRangePreset(overlay.preset)}",
+                        color = Color(overlay.displayColor.argb),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
@@ -789,6 +822,85 @@ private fun JumpRangeSectionContent(
         state.error?.let { Text(it.resolve(strings), color = EveColors.Error, style = MaterialTheme.typography.bodySmall) }
     }
 }
+
+@Composable
+private fun <T> JumpRangeOptionSelector(
+    label: String,
+    value: String,
+    options: List<T>,
+    optionLabel: (T) -> String,
+    onSelect: (T) -> Unit,
+    valueColor: Color = Color.Unspecified,
+    trailingValue: String? = null,
+    inline: Boolean = false,
+) {
+    if (inline) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                color = EveColors.SecondaryText,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.weight(1f),
+            )
+            JumpRangeDropdown(value, options, optionLabel, onSelect, valueColor, fillWidth = false)
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    label,
+                    color = EveColors.SecondaryText,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                trailingValue?.let {
+                    Text(it, color = EveColors.SecondaryText, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            JumpRangeDropdown(value, options, optionLabel, onSelect, valueColor, fillWidth = true)
+        }
+    }
+}
+
+@Composable
+private fun <T> JumpRangeDropdown(
+    value: String,
+    options: List<T>,
+    optionLabel: (T) -> String,
+    onSelect: (T) -> Unit,
+    valueColor: Color,
+    fillWidth: Boolean,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier) {
+        TextButton(
+            onClick = { expanded = true },
+            modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier,
+        ) {
+            Text("$value ▾", color = valueColor)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(optionLabel(option)) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+internal fun formatJumpRangeDistance(distance: Double): String =
+    "${if (distance % 1.0 == 0.0) distance.toLong() else distance} LY"
 
 @Composable
 private fun NormalRouteSectionContent(

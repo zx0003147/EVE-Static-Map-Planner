@@ -72,7 +72,7 @@ fun main(args: Array<String>) {
         },
         Scenario("several-jump-spheres", fitted.dolly(0.35).rotated(42.0, 20.0), LabelCount.CONSTELLATIONS) { camera, _ ->
             Real3DJumpSphereProjector.project(spheres, camera, viewport).sumOf { sphere ->
-                sphere.shellSegments.size + sphere.fillTrianglesFarToNear.size
+                sphere.fillTrianglesFarToNear.size
             }
         },
         Scenario("common-overlays", fitted.dolly(0.24).rotated(64.0, 16.0), LabelCount.SYSTEMS) { camera, _ ->

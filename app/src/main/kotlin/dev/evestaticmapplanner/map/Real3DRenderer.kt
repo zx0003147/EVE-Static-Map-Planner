@@ -234,12 +234,13 @@ internal fun Real3DMapCanvas(
     }
     val enabledJumpOverlays = remember(jumpOverlays) { jumpOverlays.filter(JumpRangeOverlay::enabled) }
     val missionJumpOverlays = remember(missionState.jumpRanges) {
-        missionState.jumpRanges.map { range ->
+        missionState.jumpRanges.mapIndexed { index, range ->
             JumpRangeOverlay(
                 id = "mission:${range.jumpRangeId.value}",
                 originSystemId = range.originSystemId,
                 profile = range.profile,
                 reachableSystemIds = range.reachableSystemIds,
+                displayColor = MISSION_JUMP_RANGE_COLORS[index % MISSION_JUMP_RANGE_COLORS.size],
                 label = range.label,
             )
         }
@@ -628,7 +629,6 @@ internal fun Real3DMapCanvas(
             drawReal3DJumpSpheres(
                 frame = frame,
                 spheres = jumpSpheres,
-                userOverlayCount = enabledJumpOverlays.size,
             )
             if (visibleAnsiblexConnections.isNotEmpty()) {
                 drawReal3DAnsiblexLayer(
@@ -1296,15 +1296,10 @@ private fun DrawScope.drawReal3DWormholes(
 private fun DrawScope.drawReal3DJumpSpheres(
     frame: Real3DFrame,
     spheres: List<Real3DProjectedJumpSphere>,
-    userOverlayCount: Int,
 ) {
     val trianglePath = Path()
-    spheres.forEachIndexed { index, projected ->
-        val color = if (index < userOverlayCount) {
-            JUMP_OVERLAY_COLORS[index % JUMP_OVERLAY_COLORS.size]
-        } else {
-            MISSION_JUMP_COLORS[(index - userOverlayCount) % MISSION_JUMP_COLORS.size]
-        }
+    spheres.forEach { projected ->
+        val color = jumpRangeColor(projected.sphere.overlay.displayColor)
         projected.fillTrianglesFarToNear.forEach { triangle ->
             trianglePath.reset()
             trianglePath.moveTo(triangle.first.x.toFloat(), triangle.first.y.toFloat())
@@ -1313,19 +1308,11 @@ private fun DrawScope.drawReal3DJumpSpheres(
             trianglePath.close()
             drawPath(trianglePath, color.copy(alpha = REAL_3D_JUMP_FILL_ALPHA))
         }
-        projected.shellSegments.forEach { segment ->
-            drawLine(
-                color = color.copy(alpha = REAL_3D_JUMP_SHELL_ALPHA),
-                start = segment.first.screen.toOffset(),
-                end = segment.second.screen.toOffset(),
-                strokeWidth = REAL_3D_JUMP_SHELL_WIDTH_PX,
-            )
-        }
         projected.sphere.overlay.reachableSystemIds.forEach { systemId ->
             frame.projectedBySystemId[systemId]?.let { node ->
                 drawCircle(
                     color = color.copy(alpha = 0.82f),
-                    radius = 5f + (index % 4) * 2.2f,
+                    radius = 7.2f,
                     center = node.toOffset(),
                     style = Stroke(1.5f),
                 )
@@ -1334,7 +1321,7 @@ private fun DrawScope.drawReal3DJumpSpheres(
         frame.projectedBySystemId[projected.sphere.overlay.originSystemId]?.let { origin ->
             val center = origin.toOffset()
             drawCircle(color.copy(alpha = 0.2f), 11f, center)
-            drawCircle(color, 7f + (index % 3), center, style = Stroke(2f))
+            drawCircle(color, 8f, center, style = Stroke(2f))
         }
     }
 }
@@ -1609,9 +1596,7 @@ private const val REAL_3D_EDGE_WIDTH_PX = 1f
 private const val REAL_3D_SYSTEM_LABEL_OFFSET_PX = 5.0
 private const val REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f
 private const val REAL_3D_MAX_EMPHASIZED_SYSTEM_LABELS = 80
-private const val REAL_3D_JUMP_FILL_ALPHA = 0.012f
-private const val REAL_3D_JUMP_SHELL_ALPHA = 0.34f
-private const val REAL_3D_JUMP_SHELL_WIDTH_PX = 0.85f
+private const val REAL_3D_JUMP_FILL_ALPHA = 0.028f
 private const val REAL_3D_FEATURE_LINK_ALPHA = 0.22f
 private const val REAL_3D_FEATURE_LINK_WIDTH_PX = 2.4f
 private const val REAL_3D_FEATURE_NODE_FILL_ALPHA = 0.18f

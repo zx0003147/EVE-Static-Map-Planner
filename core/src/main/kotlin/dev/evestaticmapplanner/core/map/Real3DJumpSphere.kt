@@ -6,15 +6,12 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-data class Real3DWorldSegment(val first: MapPoint3, val second: MapPoint3)
-
 data class Real3DWorldTriangle(val first: MapPoint3, val second: MapPoint3, val third: MapPoint3)
 
 data class Real3DJumpSphere(
     val overlay: JumpRangeOverlay,
     val center: MapPoint3,
     val radius: Double,
-    val shellSegments: List<Real3DWorldSegment>,
     val fillTriangles: List<Real3DWorldTriangle>,
 )
 
@@ -27,12 +24,10 @@ data class Real3DProjectedTriangle(
 
 data class Real3DProjectedJumpSphere(
     val sphere: Real3DJumpSphere,
-    val shellSegments: List<Real3DProjectedSegment>,
     val fillTrianglesFarToNear: List<Real3DProjectedTriangle>,
 )
 
 object Real3DJumpSphereBuilder {
-    private val unitShellSegments = buildUnitShellSegments()
     private val unitFillTriangles = buildUnitFillTriangles()
 
     fun build(
@@ -46,12 +41,6 @@ object Real3DJumpSphereBuilder {
             overlay = overlay,
             center = center,
             radius = radius,
-            shellSegments = unitShellSegments.map { segment ->
-                Real3DWorldSegment(
-                    center + segment.first * radius,
-                    center + segment.second * radius,
-                )
-            },
             fillTriangles = unitFillTriangles.map { triangle ->
                 Real3DWorldTriangle(
                     center + triangle.first * radius,
@@ -60,25 +49,6 @@ object Real3DJumpSphereBuilder {
                 )
             },
         )
-    }
-
-    private fun buildUnitShellSegments(): List<Real3DWorldSegment> = buildList {
-        SHELL_LATITUDES_DEGREES.forEach { latitudeDegrees ->
-            val latitude = latitudeDegrees * PI / 180.0
-            for (longitudeIndex in 0 until SHELL_LONGITUDE_STEPS) {
-                val firstLongitude = 2.0 * PI * longitudeIndex / SHELL_LONGITUDE_STEPS
-                val secondLongitude = 2.0 * PI * (longitudeIndex + 1) / SHELL_LONGITUDE_STEPS
-                add(Real3DWorldSegment(unitPoint(latitude, firstLongitude), unitPoint(latitude, secondLongitude)))
-            }
-        }
-        for (meridianIndex in 0 until SHELL_MERIDIAN_COUNT) {
-            val longitude = 2.0 * PI * meridianIndex / SHELL_MERIDIAN_COUNT
-            for (latitudeIndex in 0 until SHELL_LATITUDE_STEPS) {
-                val firstLatitude = -PI / 2.0 + PI * latitudeIndex / SHELL_LATITUDE_STEPS
-                val secondLatitude = -PI / 2.0 + PI * (latitudeIndex + 1) / SHELL_LATITUDE_STEPS
-                add(Real3DWorldSegment(unitPoint(firstLatitude, longitude), unitPoint(secondLatitude, longitude)))
-            }
-        }
     }
 
     private fun buildUnitFillTriangles(): List<Real3DWorldTriangle> = buildList {
@@ -116,7 +86,6 @@ object Real3DJumpSphereProjector {
     ): List<Real3DProjectedJumpSphere> {
         val projector = Real3DProjector(camera, viewportSize)
         return spheres.map { sphere ->
-            val shell = sphere.shellSegments.mapNotNull { projector.projectSegment(it.first, it.second) }
             val fill = sphere.fillTriangles.mapNotNull { triangle ->
                 val first = projector.project(triangle.first, cullToViewport = false) ?: return@mapNotNull null
                 val second = projector.project(triangle.second, cullToViewport = false) ?: return@mapNotNull null
@@ -137,14 +106,10 @@ object Real3DJumpSphereProjector {
                     averageDepth = (first.depth + second.depth + third.depth) / 3.0,
                 )
             }.sortedByDescending(Real3DProjectedTriangle::averageDepth)
-            Real3DProjectedJumpSphere(sphere, shell, fill)
+            Real3DProjectedJumpSphere(sphere, fill)
         }
     }
 }
 
-private val SHELL_LATITUDES_DEGREES = doubleArrayOf(-60.0, -30.0, 0.0, 30.0, 60.0)
-private const val SHELL_LONGITUDE_STEPS = 24
-private const val SHELL_MERIDIAN_COUNT = 8
-private const val SHELL_LATITUDE_STEPS = 24
 private const val FILL_LATITUDE_STEPS = 10
 private const val FILL_LONGITUDE_STEPS = 20

@@ -1,10 +1,16 @@
 package dev.evestaticmapplanner.localization
 
+import dev.evestaticmapplanner.core.jump.JumpRangeColor
+import dev.evestaticmapplanner.core.jump.JumpRangePreset
+
 interface RouteStrings {
     val jumpRangeOverlays: String
     val normalRoute: String
     val capitalRoute: String
     val overlayOrigin: String
+    val jumpRangeType: String
+    val jumpRangeColor: String
+    val manualRangePrompt: String
     val effectiveMaximumLy: String
     val intersect: String
     val start: String
@@ -57,6 +63,8 @@ interface RouteStrings {
     fun totalDistanceLy(distance: Double): String
     fun jumpDistanceLy(distance: Double): String
     fun overlayIntersection(overlays: Int, systems: Int): String
+    fun jumpRangePreset(preset: JumpRangePreset): String
+    fun jumpRangeColor(color: JumpRangeColor): String
     fun ansiblexManager(enabled: Int, total: Int): String
     fun wormholeManager(total: Int): String
     fun adjacentDuplicate(systemName: String): String
