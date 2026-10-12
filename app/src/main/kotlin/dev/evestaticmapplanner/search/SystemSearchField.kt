@@ -20,6 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -57,6 +59,7 @@ fun SystemSearchField(
     modifier: Modifier = Modifier,
     suggestionsPresentation: SearchSuggestionsPresentation = SearchSuggestionsPresentation.INLINE,
     compact: Boolean = false,
+    focusRequester: FocusRequester? = null,
 ) {
     var editingValue by remember { mutableStateOf(initialSearchFieldValue(value)) }
     val synchronizedEditingValue = synchronizeSearchFieldValue(editingValue, value)
@@ -77,6 +80,7 @@ fun SystemSearchField(
             onSelect,
             modifier,
             compact,
+            focusRequester,
         )
     } else {
         InlineSystemSearchField(
@@ -87,6 +91,7 @@ fun SystemSearchField(
             onSelect,
             modifier,
             compact,
+            focusRequester,
         )
     }
 }
@@ -100,6 +105,7 @@ private fun InlineSystemSearchField(
     onSelect: (SolarSystem) -> Unit,
     modifier: Modifier,
     compact: Boolean,
+    focusRequester: FocusRequester?,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         SearchTextField(
@@ -107,6 +113,7 @@ private fun InlineSystemSearchField(
             onValueChange = onValueChange,
             label = label,
             compact = compact,
+            focusRequester = focusRequester,
             modifier = Modifier.fillMaxWidth(),
         )
         results.take(6).forEach { system ->
@@ -126,6 +133,7 @@ private fun DropdownSystemSearchField(
     onSelect: (SolarSystem) -> Unit,
     modifier: Modifier,
     compact: Boolean,
+    focusRequester: FocusRequester?,
 ) {
     var dismissed by remember { mutableStateOf(false) }
     val expanded = results.isNotEmpty() && !dismissed
@@ -138,6 +146,7 @@ private fun DropdownSystemSearchField(
             },
             label = label,
             compact = compact,
+            focusRequester = focusRequester,
             modifier = Modifier
                 .fillMaxWidth()
                 .onPreviewKeyEvent { event ->
@@ -172,14 +181,16 @@ private fun SearchTextField(
     label: String,
     compact: Boolean,
     modifier: Modifier,
+    focusRequester: FocusRequester?,
 ) {
+    val focusModifier = focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
     if (!compact) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             label = { Text(label) },
             singleLine = true,
-            modifier = modifier,
+            modifier = modifier.then(focusModifier),
         )
         return
     }
@@ -188,7 +199,7 @@ private fun SearchTextField(
         value = value,
         onValueChange = onValueChange,
         label = label,
-        modifier = modifier.testTag(COMPACT_SEARCH_FIELD_TEST_TAG),
+        modifier = modifier.then(focusModifier).testTag(COMPACT_SEARCH_FIELD_TEST_TAG),
         labelModifier = Modifier.testTag(COMPACT_SEARCH_PLACEHOLDER_TEST_TAG),
     )
 }

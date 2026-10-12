@@ -25,12 +25,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -51,6 +53,7 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.withFrameNanos
 import dev.evestaticmapplanner.core.route.RouteCalculationOutcome
 import dev.evestaticmapplanner.core.route.CapitalRouteOutcome
 import dev.evestaticmapplanner.core.map.MapProjectionId
@@ -159,9 +162,18 @@ internal fun RouteToolsPanel(
     onSwitchAnsiblexIdentity: () -> Unit,
     onOpenWormholeManager: () -> Unit,
     onFocusSystem: (Int) -> Unit,
+    searchFocusRequestToken: Int,
 ) {
     val strings = LocalAppStrings.current
     var expansionState by remember { mutableStateOf(ToolSidebarExpansionState()) }
+    val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(searchFocusRequestToken, expanded) {
+        if (searchFocusRequestToken > 0 && expanded) {
+            expansionState = expansionState.expand(ToolSidebarSection.SEARCH)
+            withFrameNanos { }
+            searchFocusRequester.requestFocus()
+        }
+    }
     EvePanel(
         modifier = Modifier
             .width(if (expanded) TOOL_SIDEBAR_WIDTH else TOOL_SIDEBAR_COLLAPSED_WIDTH)
@@ -202,6 +214,7 @@ internal fun RouteToolsPanel(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     compact = true,
+                                    focusRequester = searchFocusRequester,
                                 )
                             }
                             ToolSidebarSection.JUMP_RANGE -> CollapsibleToolSection(

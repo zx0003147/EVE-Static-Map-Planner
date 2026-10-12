@@ -227,6 +227,7 @@ fun main(arguments: Array<String>) {
         var startup by remember { mutableStateOf(initial) }
         var exitRequested by remember { mutableStateOf(false) }
         var isAlwaysOnTop by remember { mutableStateOf(false) }
+        var globalSearchRequestToken by remember { mutableStateOf(0) }
         val windowIcon = painterResource("icons/app-icon.png")
         ProvideAppLocalization(localization) {
             val strings = LocalAppStrings.current
@@ -238,6 +239,14 @@ fun main(arguments: Array<String>) {
                 state = windowState,
                 icon = windowIcon,
                 alwaysOnTop = isAlwaysOnTop,
+                onPreviewKeyEvent = { event ->
+                    if (dev.evestaticmapplanner.map.isGlobalSystemSearchShortcut(event)) {
+                        globalSearchRequestToken += 1
+                        true
+                    } else {
+                        false
+                    }
+                },
             ) {
                 EveTheme {
                     EveWindowChrome(window)
@@ -252,6 +261,7 @@ fun main(arguments: Array<String>) {
                             ::exitApplication,
                             isAlwaysOnTop,
                             { isAlwaysOnTop = !isAlwaysOnTop },
+                            globalSearchRequestToken,
                         )
                         is StartupResolution.Bootstrap -> BootstrapApplication(
                             resolution.configuration,
@@ -302,6 +312,7 @@ private fun FrameWindowScope.ReadyApplication(
     onExitApplication: () -> Unit,
     isAlwaysOnTop: Boolean,
     onToggleAlwaysOnTop: () -> Unit,
+    globalSearchRequestToken: Int,
 ) {
     val strings = LocalAppStrings.current
     configuration.notice?.let { AppDiagnostics.warning("Static data startup notice: $it") }
@@ -1041,6 +1052,7 @@ private fun FrameWindowScope.ReadyApplication(
             onOpenEmbeddedAi = { showEmbeddedAi = true },
             onFirstMapDisplayed = featurePackRuntime::onFirstMapDisplayed,
             suppressMarkerOperationErrorDialog = showMarkerManager,
+            searchFocusRequestToken = globalSearchRequestToken,
         )
     }
     if (showStaticData) {

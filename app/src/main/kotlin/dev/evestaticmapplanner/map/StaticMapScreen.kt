@@ -42,6 +42,12 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.rememberTextMeasurer
 import dev.evestaticmapplanner.charactertracking.CharacterMapCharacter
@@ -156,6 +162,7 @@ internal fun StaticMapScreen(
     onOpenEmbeddedAi: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
     suppressMarkerOperationErrorDialog: Boolean = false,
+    searchFocusRequestToken: Int = 0,
 ) {
     val strings = LocalAppStrings.current
     var showAnsiblexManager by remember { mutableStateOf(false) }
@@ -194,6 +201,9 @@ internal fun StaticMapScreen(
             markerPendingRemoval = null
             savedRemovalStarted = false
         }
+    }
+    LaunchedEffect(searchFocusRequestToken) {
+        if (searchFocusRequestToken > 0) sidebarExpanded = true
     }
     Row(modifier.fillMaxSize().background(EveColors.MapBackground)) {
         RouteToolsPanel(
@@ -234,6 +244,7 @@ internal fun StaticMapScreen(
             onSwitchAnsiblexIdentity = { showAnsiblexIdentity = true },
             onOpenWormholeManager = { showWormholeManager = true },
             onFocusSystem = viewModel::selectAndFocusSystem,
+            searchFocusRequestToken = searchFocusRequestToken,
         )
         Column(Modifier.weight(1f).fillMaxHeight()) {
             MapToolbar(
@@ -968,6 +979,12 @@ internal fun confirmGlobalSystemSearch(
     updateSearchSelection(system)
     focusSystem(system.id)
 }
+
+internal fun isGlobalSystemSearchShortcut(event: KeyEvent): Boolean =
+    isGlobalSystemSearchShortcut(event.key, event.type, event.isCtrlPressed)
+
+internal fun isGlobalSystemSearchShortcut(key: Key, type: KeyEventType, isCtrlPressed: Boolean): Boolean =
+    type == KeyEventType.KeyDown && key == Key.F && isCtrlPressed
 
 internal val MAP_TOOLBAR_VERTICAL_PADDING = 2.dp
 internal val MAP_TOOLBAR_BUTTON_HEIGHT = 36.dp

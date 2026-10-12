@@ -14,6 +14,9 @@ import dev.evestaticmapplanner.jump.JumpOverlayUiState
 import dev.evestaticmapplanner.map.MAP_TOOLBAR_VERTICAL_PADDING
 import dev.evestaticmapplanner.map.MAP_TOOLBAR_BUTTON_HEIGHT
 import dev.evestaticmapplanner.map.confirmGlobalSystemSearch
+import dev.evestaticmapplanner.map.isGlobalSystemSearchShortcut
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -125,6 +128,14 @@ class ToolSidebarLayoutTest {
         )
 
         assertEquals(listOf("search", "focus"), calls)
+    }
+
+    @Test
+    fun `ctrl f key down is the global system search shortcut`() {
+        assertTrue(isGlobalSystemSearchShortcut(Key.F, KeyEventType.KeyDown, isCtrlPressed = true))
+        assertFalse(isGlobalSystemSearchShortcut(Key.F, KeyEventType.KeyUp, isCtrlPressed = true))
+        assertFalse(isGlobalSystemSearchShortcut(Key.F, KeyEventType.KeyDown, isCtrlPressed = false))
+        assertFalse(isGlobalSystemSearchShortcut(Key.G, KeyEventType.KeyDown, isCtrlPressed = true))
     }
 
     @Test
