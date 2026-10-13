@@ -14,16 +14,18 @@ class Real3DInteractionTest {
         tracker.press(MapPointerButton.PRIMARY, MapPoint(10.0, 10.0))
 
         assertNull(tracker.move(MapPoint(12.0, 12.0)))
-        val selected = mutableListOf<MapPoint>()
+        val selected = mutableListOf<Pair<MapPoint, Boolean>>()
         val focused = mutableListOf<MapPoint>()
         dispatchMapClick(
-            click = requireNotNull(tracker.release(MapPoint(12.0, 12.0), clickCount = 1)),
-            onSelect = selected::add,
+            click = requireNotNull(
+                tracker.release(MapPoint(12.0, 12.0), clickCount = 1, ctrlPressed = true),
+            ),
+            onSelect = { point, ctrlPressed -> selected += point to ctrlPressed },
             onFocus = focused::add,
             onContextMenu = {},
         )
 
-        assertEquals(listOf(MapPoint(12.0, 12.0)), selected)
+        assertEquals(listOf(MapPoint(12.0, 12.0) to true), selected)
         assertTrue(focused.isEmpty())
         assertFalse(tracker.isActive)
     }
@@ -37,7 +39,7 @@ class Real3DInteractionTest {
 
         dispatchMapClick(
             click = requireNotNull(tracker.release(MapPoint(21.0, 21.0), clickCount = 2)),
-            onSelect = selected::add,
+            onSelect = { point, _ -> selected += point },
             onFocus = focused::add,
             onContextMenu = {},
         )
@@ -57,7 +59,7 @@ class Real3DInteractionTest {
         val focused = mutableListOf<MapPoint>()
 
         tracker.release(MapPoint(15.0, 10.0), clickCount = 2)?.let { click ->
-            dispatchMapClick(click, onSelect = {}, onFocus = focused::add, onContextMenu = {})
+            dispatchMapClick(click, onSelect = { _, _ -> }, onFocus = focused::add, onContextMenu = {})
         }
 
         assertTrue(focused.isEmpty())

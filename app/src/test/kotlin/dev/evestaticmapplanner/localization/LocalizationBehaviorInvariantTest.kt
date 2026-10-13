@@ -93,7 +93,10 @@ class LocalizationBehaviorInvariantTest {
             mapOf(
                 "official" to projectionFor(MapProjectionId.OFFICIAL_2D).project(systems[2]),
                 "real" to projectionFor(MapProjectionId.REAL_3D).project(systems[2]),
-                "selection" to MapUiState(selectedSystemId = selectedId).selectedSystemId,
+                "selection" to MapUiState(
+                    selectedSystemIds = listOf(selectedId),
+                    primarySelectedSystemId = selectedId,
+                ).selectedSystemId,
                 "focusSystemName" to FocusSwitchedToReal3DUiMessage(systems[2].name).systemName,
                 "missionId" to missionId.value,
                 "projectionIdentifier" to MapProjectionId.REAL_3D.name,

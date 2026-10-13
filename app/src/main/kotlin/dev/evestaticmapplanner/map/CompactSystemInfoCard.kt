@@ -60,7 +60,9 @@ data class CompactInfoField(
     val value: String,
 )
 
-data class CompactSystemInfoPresentation(
+sealed interface CompactSystemInfoCardContent
+
+data class SingleSystemPresentation(
     val selectedSystemId: Int,
     val title: String,
     val subtitle: String?,
@@ -73,7 +75,83 @@ data class CompactSystemInfoPresentation(
     val sharedMarker: CompactSharedMarkerPresentation? = null,
     val sovereignty: CompactSovereigntyPresentation? = null,
     val extensionSections: List<SystemInfoSection> = emptyList(),
+) : CompactSystemInfoCardContent
+
+data class MultipleSystemSummaryRow(
+    val systemId: Int,
+    val name: String,
+    val security: String,
+    val region: String,
+    val isPrimary: Boolean,
 )
+
+data class MultipleSystemsPresentation(
+    val primarySelectedSystemId: Int,
+    val title: String,
+    val nameLabel: String,
+    val securityLabel: String,
+    val regionLabel: String,
+    val systems: List<MultipleSystemSummaryRow>,
+) : CompactSystemInfoCardContent
+
+data class CompactSystemInfoPresentation(
+    val content: CompactSystemInfoCardContent,
+) {
+    constructor(
+        selectedSystemId: Int,
+        title: String,
+        subtitle: String?,
+        isLoading: Boolean,
+        fields: List<CompactInfoField>,
+        ansiblexConnections: List<String>,
+        jumpOverlayLabels: List<String>,
+        isInJumpIntersection: Boolean,
+        marker: CompactMarkerPresentation?,
+        sharedMarker: CompactSharedMarkerPresentation? = null,
+        sovereignty: CompactSovereigntyPresentation? = null,
+        extensionSections: List<SystemInfoSection> = emptyList(),
+    ) : this(
+        SingleSystemPresentation(
+            selectedSystemId = selectedSystemId,
+            title = title,
+            subtitle = subtitle,
+            isLoading = isLoading,
+            fields = fields,
+            ansiblexConnections = ansiblexConnections,
+            jumpOverlayLabels = jumpOverlayLabels,
+            isInJumpIntersection = isInJumpIntersection,
+            marker = marker,
+            sharedMarker = sharedMarker,
+            sovereignty = sovereignty,
+            extensionSections = extensionSections,
+        ),
+    )
+
+    val selectedSystemId: Int get() = when (val value = content) {
+        is SingleSystemPresentation -> value.selectedSystemId
+        is MultipleSystemsPresentation -> value.primarySelectedSystemId
+    }
+    val title: String get() = when (val value = content) {
+        is SingleSystemPresentation -> value.title
+        is MultipleSystemsPresentation -> value.title
+    }
+    val subtitle: String? get() = (content as? SingleSystemPresentation)?.subtitle
+    val isLoading: Boolean get() = (content as? SingleSystemPresentation)?.isLoading == true
+    val fields: List<CompactInfoField> get() = (content as? SingleSystemPresentation)?.fields.orEmpty()
+    val ansiblexConnections: List<String>
+        get() = (content as? SingleSystemPresentation)?.ansiblexConnections.orEmpty()
+    val jumpOverlayLabels: List<String>
+        get() = (content as? SingleSystemPresentation)?.jumpOverlayLabels.orEmpty()
+    val isInJumpIntersection: Boolean
+        get() = (content as? SingleSystemPresentation)?.isInJumpIntersection == true
+    val marker: CompactMarkerPresentation? get() = (content as? SingleSystemPresentation)?.marker
+    val sharedMarker: CompactSharedMarkerPresentation?
+        get() = (content as? SingleSystemPresentation)?.sharedMarker
+    val sovereignty: CompactSovereigntyPresentation?
+        get() = (content as? SingleSystemPresentation)?.sovereignty
+    val extensionSections: List<SystemInfoSection>
+        get() = (content as? SingleSystemPresentation)?.extensionSections.orEmpty()
+}
 
 data class CompactSovereigntyPresentation(val fields: List<CompactInfoField>)
 
@@ -110,6 +188,34 @@ object CompactSystemInfoPresentationBuilder {
         locale: AppLocale = AppLocale.EN_US,
     ): CompactSystemInfoPresentation? {
         val selectedSystemId = state.selectedSystemId ?: return null
+        if (state.selectedSystemIds.size > 1) {
+            val scene = state.scene
+            val systems = state.selectedSystemIds.map { systemId ->
+                val system = scene?.nodesById?.get(systemId)?.system
+                val region = system?.regionId?.let { scene.regionsById[it] }
+                MultipleSystemSummaryRow(
+                    systemId = systemId,
+                    name = system?.name ?: strings.fallbackSystem(systemId),
+                    security = system?.securityStatus
+                        ?.let { String.format(Locale.ROOT, "%.1f", it) }
+                        ?: strings.unknown,
+                    region = region
+                        ?.let { RegionNameResolver.resolve(it.nameEn, it.nameZh, locale) }
+                        ?: strings.unknown,
+                    isPrimary = systemId == selectedSystemId,
+                )
+            }
+            return CompactSystemInfoPresentation(
+                MultipleSystemsPresentation(
+                    primarySelectedSystemId = selectedSystemId,
+                    title = "${strings.selectedSystems} (${systems.size})",
+                    nameLabel = strings.name,
+                    securityLabel = strings.security,
+                    regionLabel = strings.region,
+                    systems = systems,
+                ),
+            )
+        }
         val sharedMarker = sharedMarkerState
             .takeIf(SharedMarkerPresentationState::isVisible)
             ?.markersBySystemId
@@ -323,82 +429,126 @@ fun CompactSystemInfoCard(
                 .verticalScroll(rememberScrollState())
                 .padding(CompactSystemInfoCardDefaults.contentPadding),
         ) {
+            when (val content = presentation.content) {
+                is SingleSystemPresentation -> SingleSystemContent(content, onEditSharedMarker, strings)
+                is MultipleSystemsPresentation -> MultipleSystemsContent(content)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SingleSystemContent(
+    presentation: SingleSystemPresentation,
+    onEditSharedMarker: (() -> Unit)?,
+    strings: SystemInfoStrings,
+) {
+    Text(
+        presentation.title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+    )
+    presentation.subtitle?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.bodyMedium,
+            color = EveColors.SecondaryText,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    if (presentation.isLoading) {
+        Text(strings.loadingSystemDetails, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
+    } else {
+        presentation.fields.forEach { field -> CompactInfoRow(field) }
+    }
+    presentation.marker?.let { marker -> CompactMarkerSection(marker) }
+    presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker, onEditSharedMarker) }
+    if (presentation.isLoading) return
+    presentation.sovereignty?.let { sovereignty ->
+        Text(strings.sovereignty, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+        sovereignty.fields.forEach { field -> CompactInfoRow(field) }
+    }
+    if (presentation.ansiblexConnections.isNotEmpty()) {
+        Text(strings.ansiblexConnections, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
+        presentation.ansiblexConnections.forEach {
+            Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    if (presentation.jumpOverlayLabels.isNotEmpty()) {
+        Text(strings.jumpOverlays, style = MaterialTheme.typography.labelMedium, color = EveColors.Important)
+        presentation.jumpOverlayLabels.forEach {
             Text(
-                presentation.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = EveColors.Important,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
-            presentation.subtitle?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = EveColors.SecondaryText,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (presentation.isLoading) {
-                Text(strings.loadingSystemDetails, style = MaterialTheme.typography.bodySmall, color = EveColors.SecondaryText)
-            } else {
-                presentation.fields.forEach { field -> CompactInfoRow(field) }
-            }
-            presentation.marker?.let { marker -> CompactMarkerSection(marker) }
-            presentation.sharedMarker?.let { marker -> CompactSharedMarkerSection(marker, onEditSharedMarker) }
-            if (presentation.isLoading) return@Column
-            presentation.sovereignty?.let { sovereignty ->
-                Text(strings.sovereignty, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
-                sovereignty.fields.forEach { field -> CompactInfoRow(field) }
-            }
-            if (presentation.ansiblexConnections.isNotEmpty()) {
-                Text(strings.ansiblexConnections, style = MaterialTheme.typography.labelMedium, color = EveColors.SecondaryText)
-                presentation.ansiblexConnections.forEach {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 3,
-                        softWrap = true,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            if (presentation.jumpOverlayLabels.isNotEmpty()) {
-                Text(strings.jumpOverlays, style = MaterialTheme.typography.labelMedium, color = EveColors.Important)
-                presentation.jumpOverlayLabels.forEach {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = EveColors.Important,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            if (presentation.isInJumpIntersection) {
-                Text(
-                    strings.inSelectedOverlayIntersection,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = EveColors.Important,
-                )
-            }
-            presentation.extensionSections.forEach { section ->
-                Text(
-                    section.title,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = EveColors.SecondaryText,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                section.fields.forEach { field ->
-                    CompactInfoRow(CompactInfoField(field.label, field.value))
-                }
-            }
         }
+    }
+    if (presentation.isInJumpIntersection) {
+        Text(strings.inSelectedOverlayIntersection, style = MaterialTheme.typography.bodySmall, color = EveColors.Important)
+    }
+    presentation.extensionSections.forEach { section ->
+        Text(
+            section.title,
+            style = MaterialTheme.typography.labelMedium,
+            color = EveColors.SecondaryText,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+        section.fields.forEach { field -> CompactInfoRow(CompactInfoField(field.label, field.value)) }
+    }
+}
+
+@Composable
+private fun MultipleSystemsContent(presentation: MultipleSystemsPresentation) {
+    Text(
+        presentation.title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+    )
+    MultipleSystemRow(
+        name = presentation.nameLabel,
+        security = presentation.securityLabel,
+        region = presentation.regionLabel,
+        isHeader = true,
+        isPrimary = false,
+    )
+    presentation.systems.forEach { system ->
+        MultipleSystemRow(system.name, system.security, system.region, isHeader = false, isPrimary = system.isPrimary)
+    }
+}
+
+@Composable
+private fun MultipleSystemRow(
+    name: String,
+    security: String,
+    region: String,
+    isHeader: Boolean,
+    isPrimary: Boolean,
+) {
+    val style = if (isHeader) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall
+    val color = when {
+        isHeader -> EveColors.SecondaryText
+        isPrimary -> EveColors.Important
+        else -> androidx.compose.ui.graphics.Color.Unspecified
+    }
+    val weight = if (isPrimary) FontWeight.SemiBold else null
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Text(name, style = style, color = color, fontWeight = weight, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1.15f))
+        Text(security, style = style, color = color, fontWeight = weight, maxLines = 1, textAlign = TextAlign.End, modifier = Modifier.weight(0.55f))
+        Text(region, style = style, color = color, fontWeight = weight, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1.3f))
     }
 }
 

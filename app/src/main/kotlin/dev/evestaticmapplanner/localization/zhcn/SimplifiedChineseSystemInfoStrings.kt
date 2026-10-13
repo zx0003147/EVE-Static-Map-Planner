@@ -7,9 +7,12 @@ import dev.evestaticmapplanner.core.sovereignty.SystemOwnerKind
 
 internal object SimplifiedChineseSystemInfoStrings : SystemInfoStrings {
     override val selectedSystem = "已选星系"
+    override val selectedSystems = "已选择星系"
     override val noSystemSelected = "未选择星系"
     override val loadingSystemDetails = "正在加载星系详情…"
     override val systemId = "星系 ID"
+    override val name = "名称"
+    override val security = "安全等级"
     override val region = "星域"
     override val constellation = "星座"
     override val securityStatus = "安全等级"

@@ -6,9 +6,12 @@ import dev.evestaticmapplanner.core.sovereignty.SystemOwnerKind
 
 interface SystemInfoStrings {
     val selectedSystem: String
+    val selectedSystems: String
     val noSystemSelected: String
     val loadingSystemDetails: String
     val systemId: String
+    val name: String
+    val security: String
     val region: String
     val constellation: String
     val securityStatus: String

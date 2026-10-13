@@ -105,7 +105,8 @@ class MapViewModel(
                         isLoading = false,
                         scene = scene,
                         appPreferences = appPreferences,
-                        selectedSystemId = focusId,
+                        selectedSystemIds = focusId?.let(::listOf) ?: emptyList(),
+                        primarySelectedSystemId = focusId,
                         performance = it.performance.copy(
                             dataLoadMillis = loadMillis,
                             sceneBuildMillis = mapOf(MapProjectionId.OFFICIAL_2D to buildMillis),
@@ -575,9 +576,9 @@ class MapViewModel(
         mutableState.update { if (it.hoveredSystemId == null) it else it.copy(hoveredSystemId = null) }
     }
 
-    fun selectAt(screenPosition: MapPoint) {
+    fun selectAt(screenPosition: MapPoint, ctrlPressed: Boolean = false) {
         val systemId = hitTest(mutableState.value, screenPosition, SELECT_RADIUS_PX)
-        selectSystem(systemId)
+        updateSelection(systemId, ctrlPressed)
     }
 
     fun selectAndFocusAt(screenPosition: MapPoint) {
@@ -710,14 +711,47 @@ class MapViewModel(
     }
 
     private fun selectSystem(systemId: Int?) {
-        mutableState.update {
-            it.copy(
-                selectedSystemId = systemId,
-                selectedSystemDetails = null,
+        updateSelection(systemId, ctrlPressed = false)
+    }
+
+    private fun updateSelection(systemId: Int?, ctrlPressed: Boolean) {
+        val previousPrimary = mutableState.value.primarySelectedSystemId
+        mutableState.update { current ->
+            if (ctrlPressed && systemId == null) {
+                return@update if (current.contextMenu == null) current else current.copy(contextMenu = null)
+            }
+            val selectedSystemIds: List<Int>
+            val primarySelectedSystemId: Int?
+            when {
+                !ctrlPressed -> {
+                    selectedSystemIds = systemId?.let(::listOf) ?: emptyList()
+                    primarySelectedSystemId = systemId
+                }
+                systemId != null && systemId in current.selectedSystemIds -> {
+                    selectedSystemIds = current.selectedSystemIds - systemId
+                    primarySelectedSystemId = if (systemId == current.primarySelectedSystemId) {
+                        selectedSystemIds.firstOrNull()
+                    } else {
+                        current.primarySelectedSystemId
+                    }
+                }
+                else -> {
+                    selectedSystemIds = current.selectedSystemIds + requireNotNull(systemId)
+                    primarySelectedSystemId = current.primarySelectedSystemId ?: systemId
+                }
+            }
+            current.copy(
+                selectedSystemIds = selectedSystemIds,
+                primarySelectedSystemId = primarySelectedSystemId,
+                selectedSystemDetails = current.selectedSystemDetails
+                    ?.takeIf { primarySelectedSystemId == current.primarySelectedSystemId },
                 contextMenu = null,
             )
         }
-        if (systemId != null) loadDetails(systemId)
+        val current = mutableState.value
+        current.primarySelectedSystemId?.let { primary ->
+            if (primary != previousPrimary || current.selectedSystemDetails == null) loadDetails(primary)
+        }
     }
 
     private fun loadDetails(systemId: Int) {

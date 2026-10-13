@@ -106,7 +106,7 @@ internal fun StaticMapCanvas(
     onRotate: (MapPoint) -> Unit,
     onHover: (MapPoint) -> Unit,
     onHoverExit: () -> Unit,
-    onSelect: (MapPoint) -> Unit,
+    onSelect: (MapPoint, Boolean) -> Unit,
     onFocus: (MapPoint) -> Unit,
     onCharacterMarkerSelect: (Int) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
@@ -194,7 +194,8 @@ internal fun StaticMapCanvas(
         capitalRoute,
         missionState.normalRoutes,
         missionState.capitalRoutes,
-        state.selectedSystemId,
+        state.selectedSystemIds,
+        state.primarySelectedSystemId,
         scene,
         usableVisibleAnsiblexConnections,
         wormholeConnections,
@@ -203,7 +204,8 @@ internal fun StaticMapCanvas(
             userNormalRoute = activeRoute,
             userCapitalRoute = capitalRoute,
             missionState = missionState,
-            selectedSystemId = state.selectedSystemId?.takeIf(scene.nodesById::containsKey),
+            selectedSystemIds = state.selectedSystemIds.filter(scene.nodesById::containsKey),
+            primarySelectedSystemId = state.primarySelectedSystemId?.takeIf(scene.nodesById::containsKey),
             stargateEdges = scene.edges,
             visibleAnsiblexConnections = usableVisibleAnsiblexConnections,
             wormholeConnections = wormholeConnections,
@@ -413,13 +415,13 @@ internal fun StaticMapCanvas(
         labelPresentation.systemLabelSystemIds,
         labelPresentation.emphasizedSystemLabelIds,
         state.hoveredSystemId,
-        state.selectedSystemId,
+        state.selectedSystemIds,
     ) {
         systemNameVisibilityIds(
             regularSystemLabelIds = labelPresentation.systemLabelSystemIds,
             emphasizedSystemLabelIds = labelPresentation.emphasizedSystemLabelIds,
             hoveredSystemId = state.hoveredSystemId,
-            selectedSystemId = state.selectedSystemId,
+            selectedSystemIds = state.selectedSystemIds,
         )
     }
     val presentedMarkers = remember(
@@ -693,7 +695,12 @@ internal fun StaticMapCanvas(
                     java.awt.event.MouseEvent.BUTTON1 -> {
                         if (pressedAt != null && !isDragging) {
                             dispatchMapClick(
-                                click = MapClick(MapPointerButton.PRIMARY, point, awtEvent.clickCount),
+                                click = MapClick(
+                                    MapPointerButton.PRIMARY,
+                                    point,
+                                    awtEvent.clickCount,
+                                    ctrlPressed = awtEvent.isControlDown,
+                                ),
                                 onSelect = onSelect,
                                 onFocus = onFocus,
                                 onContextMenu = onContextMenu,
@@ -864,7 +871,8 @@ internal fun StaticMapCanvas(
                     scene = scene,
                     transform = transform,
                     hoveredSystemId = state.hoveredSystemId,
-                    selectedSystemId = state.selectedSystemId,
+                    selectedSystemIds = state.selectedSystemIds,
+                    primarySelectedSystemId = state.primarySelectedSystemId,
                     primarySystemNodesById = primarySystemNodesById,
                     emphasis = visualEmphasis,
                     textMeasurer = textMeasurer,
@@ -1079,13 +1087,25 @@ internal fun systemNameVisibilityIds(
     regularSystemLabelIds: Collection<Int>,
     emphasizedSystemLabelIds: Collection<Int>,
     hoveredSystemId: Int?,
-    selectedSystemId: Int?,
+    selectedSystemIds: Collection<Int>,
 ): Set<Int> = buildSet {
     addAll(regularSystemLabelIds)
     addAll(emphasizedSystemLabelIds)
     hoveredSystemId?.let(::add)
-    selectedSystemId?.let(::add)
+    addAll(selectedSystemIds)
 }
+
+internal fun systemNameVisibilityIds(
+    regularSystemLabelIds: Collection<Int>,
+    emphasizedSystemLabelIds: Collection<Int>,
+    hoveredSystemId: Int?,
+    selectedSystemId: Int?,
+): Set<Int> = systemNameVisibilityIds(
+    regularSystemLabelIds,
+    emphasizedSystemLabelIds,
+    hoveredSystemId,
+    selectedSystemId?.let(::listOf).orEmpty(),
+)
 
 internal fun calculateContextMenuPosition(
     anchor: IntOffset,

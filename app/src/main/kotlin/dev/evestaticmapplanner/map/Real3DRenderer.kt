@@ -131,7 +131,7 @@ internal fun Real3DMapCanvas(
     onRotate: (MapPoint) -> Unit,
     onHover: (MapPoint) -> Unit,
     onHoverExit: () -> Unit,
-    onSelect: (MapPoint) -> Unit,
+    onSelect: (MapPoint, Boolean) -> Unit,
     onFocus: (MapPoint) -> Unit,
     onCharacterMarkerSelect: (Int) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
@@ -217,7 +217,8 @@ internal fun Real3DMapCanvas(
         capitalRoute,
         missionState.normalRoutes,
         missionState.capitalRoutes,
-        state.selectedSystemId,
+        state.selectedSystemIds,
+        state.primarySelectedSystemId,
         scene,
         usableVisibleAnsiblexConnections,
         wormholeConnections,
@@ -226,7 +227,8 @@ internal fun Real3DMapCanvas(
             userNormalRoute = activeRoute,
             userCapitalRoute = capitalRoute,
             missionState = missionState,
-            selectedSystemId = state.selectedSystemId?.takeIf(scene.nodesById::containsKey),
+            selectedSystemIds = state.selectedSystemIds.filter(scene.nodesById::containsKey),
+            primarySelectedSystemId = state.primarySelectedSystemId?.takeIf(scene.nodesById::containsKey),
             stargateEdges = scene.edges,
             visibleAnsiblexConnections = usableVisibleAnsiblexConnections,
             wormholeConnections = wormholeConnections,
@@ -478,8 +480,8 @@ internal fun Real3DMapCanvas(
             }
         }
 
-    fun handleRelease(position: MapPoint, clickCount: Int) {
-        gesture.release(position, clickCount)?.let { click ->
+    fun handleRelease(position: MapPoint, clickCount: Int, ctrlPressed: Boolean) {
+        gesture.release(position, clickCount, ctrlPressed)?.let { click ->
             dispatchMapClick(
                 click = click,
                 onSelect = onSelect,
@@ -608,7 +610,12 @@ internal fun Real3DMapCanvas(
             .onPointerEvent(PointerEventType.Release) { event ->
                 if (state.contextMenu != null) return@onPointerEvent
                 val position = event.changes.firstOrNull()?.position?.toMapPoint() ?: return@onPointerEvent
-                handleRelease(position, event.awtEventOrNull?.clickCount ?: 1)
+                val awtEvent = event.awtEventOrNull
+                handleRelease(
+                    position,
+                    awtEvent?.clickCount ?: 1,
+                    ctrlPressed = awtEvent?.isControlDown == true,
+                )
             }
             .onPointerEvent(PointerEventType.Exit) {
                 if (!windowDragCapture.isActive) gesture.cancel()
@@ -712,7 +719,8 @@ internal fun Real3DMapCanvas(
             drawReal3DInteraction(
                 frame = frame,
                 hoveredSystemId = state.hoveredSystemId,
-                selectedSystemId = state.selectedSystemId,
+                selectedSystemIds = state.selectedSystemIds,
+                primarySelectedSystemId = state.primarySelectedSystemId,
                 primarySystemNodesById = primarySystemNodesById,
                 emphasis = visualEmphasis,
                 textMeasurer = textMeasurer,
@@ -1491,32 +1499,39 @@ private fun DrawScope.drawReal3DRouteWaypoints(
 private fun DrawScope.drawReal3DInteraction(
     frame: Real3DFrame,
     hoveredSystemId: Int?,
-    selectedSystemId: Int?,
+    selectedSystemIds: Collection<Int>,
+    primarySelectedSystemId: Int?,
     primarySystemNodesById: Map<Int, PresentedPrimarySystemNode>,
     emphasis: MapVisualEmphasis,
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
 ) {
-    selectedSystemId?.let { frame.projectedBySystemId[it] }?.let { node ->
+    val selectedVisuals = selectedSystemVisuals(selectedSystemIds, primarySelectedSystemId)
+    selectedVisuals.forEach { selected ->
+        val node = frame.projectedBySystemId[selected.systemId] ?: return@forEach
         drawReal3DHighlightedNode(
             node,
             primarySystemNodesById,
             emphasis,
             isHovered = false,
             isSelected = true,
+            isPrimarySelected = selected.isPrimary,
             textMeasurer,
             cache,
             preferences,
         )
     }
-    hoveredSystemId?.takeUnless { it == selectedSystemId }?.let { frame.projectedBySystemId[it] }?.let { node ->
+    hoveredSystemId?.takeUnless { hovered -> selectedVisuals.any { it.systemId == hovered } }
+        ?.let { frame.projectedBySystemId[it] }
+        ?.let { node ->
         drawReal3DHighlightedNode(
             node,
             primarySystemNodesById,
             emphasis,
             isHovered = true,
             isSelected = false,
+            isPrimarySelected = false,
             textMeasurer,
             cache,
             preferences,
@@ -1530,6 +1545,7 @@ private fun DrawScope.drawReal3DHighlightedNode(
     emphasis: MapVisualEmphasis,
     isHovered: Boolean,
     isSelected: Boolean,
+    isPrimarySelected: Boolean,
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
@@ -1552,6 +1568,14 @@ private fun DrawScope.drawReal3DHighlightedNode(
         projected.radiusPx + if (systemId in emphasis.focusedSystemIds) REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX else 0f
     } else {
         structureSize / 2f
+    }
+    if (isPrimarySelected) {
+        drawCircle(
+            color = color.copy(alpha = REAL_3D_PRIMARY_SELECTION_HALO_ALPHA),
+            radius = visualRadius + REAL_3D_PRIMARY_SELECTION_HALO_GAP_PX,
+            center = center,
+            style = Stroke(REAL_3D_PRIMARY_SELECTION_HALO_WIDTH_PX),
+        )
     }
     if (shape == PrimarySystemNodeShape.SYSTEM) {
         drawCircle(color, visualRadius, center, style = Stroke(strokeWidth))
@@ -1595,6 +1619,9 @@ private val REAL_3D_UNCONNECTED_NODE = Color(0xFF596673)
 private const val REAL_3D_EDGE_WIDTH_PX = 1f
 private const val REAL_3D_SYSTEM_LABEL_OFFSET_PX = 5.0
 private const val REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f
+private const val REAL_3D_PRIMARY_SELECTION_HALO_GAP_PX = 4f
+private const val REAL_3D_PRIMARY_SELECTION_HALO_WIDTH_PX = 1.5f
+private const val REAL_3D_PRIMARY_SELECTION_HALO_ALPHA = 0.72f
 private const val REAL_3D_MAX_EMPHASIZED_SYSTEM_LABELS = 80
 private const val REAL_3D_JUMP_FILL_ALPHA = 0.028f
 private const val REAL_3D_FEATURE_LINK_ALPHA = 0.22f

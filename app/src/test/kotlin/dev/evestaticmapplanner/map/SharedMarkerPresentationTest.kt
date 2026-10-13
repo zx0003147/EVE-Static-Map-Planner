@@ -134,8 +134,8 @@ class SharedMarkerPresentationTest {
     @Test
     fun `normal hover selected and hover plus selected keep the marker-aware system anchor`() {
         val visibilityByState = mapOf(
-            "normal" to systemNameVisibilityIds(listOf(1), emptyList(), null, null),
-            "hover" to systemNameVisibilityIds(emptyList(), emptyList(), 1, null),
+            "normal" to systemNameVisibilityIds(listOf(1), emptyList(), null, selectedSystemId = null),
+            "hover" to systemNameVisibilityIds(emptyList(), emptyList(), 1, selectedSystemId = null),
             "selected" to systemNameVisibilityIds(emptyList(), emptyList(), null, 1),
             "hover plus selected" to systemNameVisibilityIds(emptyList(), emptyList(), 1, 1),
         )

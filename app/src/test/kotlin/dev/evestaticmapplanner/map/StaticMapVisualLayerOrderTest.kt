@@ -1,6 +1,7 @@
 package dev.evestaticmapplanner.map
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class StaticMapVisualLayerOrderTest {
@@ -25,5 +26,13 @@ class StaticMapVisualLayerOrderTest {
         assertTrue(StaticMapVisualLayerOrder.SELECTED_SYSTEM_FOCUS < FEATURE_OVERLAY_LEGEND_Z_INDEX)
         assertTrue(FEATURE_OVERLAY_LEGEND_Z_INDEX < CONTEXT_DISMISS_Z_INDEX)
         assertTrue(CONTEXT_DISMISS_Z_INDEX < CONTEXT_MENU_Z_INDEX)
+    }
+
+    @Test
+    fun `every selected system is rendered and primary is drawn last with priority`() {
+        val visuals = selectedSystemVisuals(listOf(1, 2, 3), primarySelectedSystemId = 1)
+
+        assertEquals(listOf(2, 3, 1), visuals.map(SelectedSystemVisual::systemId))
+        assertEquals(listOf(false, false, true), visuals.map(SelectedSystemVisual::isPrimary))
     }
 }

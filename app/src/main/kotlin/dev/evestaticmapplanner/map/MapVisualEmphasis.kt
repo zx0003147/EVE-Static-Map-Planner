@@ -28,13 +28,17 @@ internal data class MapSystemConnection(
 class MapVisualEmphasis private constructor(
     val prioritizedSystemIds: List<Int>,
     val focusedSystemIds: Set<Int>,
-    val selectedSystemId: Int?,
+    val selectedSystemIds: Set<Int>,
+    val primarySelectedSystemId: Int?,
     internal val selectedStargateConnections: Set<MapSystemConnection>,
     val selectedAnsiblexConnectionIds: Set<String>,
     val selectedWormholeConnectionIds: Set<String>,
     val activeRouteCount: Int,
 ) {
-    val isActive: Boolean get() = activeRouteCount > 0 || selectedSystemId != null
+    /** Compatibility alias for consumers whose detail scope is anchored to the primary selection. */
+    val selectedSystemId: Int? get() = primarySelectedSystemId
+
+    val isActive: Boolean get() = activeRouteCount > 0 || selectedSystemIds.isNotEmpty()
 
     fun systemAlphaMultiplier(systemId: Int): Float = when {
         !isActive || systemId in focusedSystemIds -> 1f
@@ -47,7 +51,7 @@ class MapVisualEmphasis private constructor(
     }
 
     fun stargateAlphaMultiplier(firstSystemId: Int, secondSystemId: Int): Float = when {
-        !isActive || selectedSystemId == firstSystemId || selectedSystemId == secondSystemId -> 1f
+        !isActive || firstSystemId in selectedSystemIds || secondSystemId in selectedSystemIds -> 1f
         else -> ROUTE_FOCUS_BACKGROUND_CONNECTION_ALPHA
     }
 
@@ -68,7 +72,8 @@ class MapVisualEmphasis private constructor(
         val None = MapVisualEmphasis(
             prioritizedSystemIds = emptyList(),
             focusedSystemIds = emptySet(),
-            selectedSystemId = null,
+            selectedSystemIds = emptySet(),
+            primarySelectedSystemId = null,
             selectedStargateConnections = emptySet(),
             selectedAnsiblexConnectionIds = emptySet(),
             selectedWormholeConnectionIds = emptySet(),
@@ -79,7 +84,8 @@ class MapVisualEmphasis private constructor(
             userNormalRoute: RouteResult?,
             userCapitalRoute: CapitalRouteResult?,
             missionState: MissionMapUiState,
-            selectedSystemId: Int?,
+            selectedSystemIds: Collection<Int>,
+            primarySelectedSystemId: Int?,
             stargateEdges: List<ProjectedStargateEdge>,
             visibleAnsiblexConnections: List<AnsiblexConnection>,
             wormholeConnections: List<WormholeConnection> = emptyList(),
@@ -99,35 +105,33 @@ class MapVisualEmphasis private constructor(
                     routeSystemIds += route.systems
                 }
 
-            val selectedStargates = selectedSystemId?.let { selected ->
-                stargateEdges.asSequence()
-                    .filter { it.firstSystemId == selected || it.secondSystemId == selected }
-                    .map { MapSystemConnection.between(it.firstSystemId, it.secondSystemId) }
-                    .toSet()
-            }.orEmpty()
-            val selectedAnsiblex = selectedSystemId?.let { selected ->
-                visibleAnsiblexConnections.asSequence()
-                    .filter(AnsiblexConnection::enabled)
-                    .filter { it.firstSystemId == selected || it.secondSystemId == selected }
-                    .toList()
-            }.orEmpty()
-            val selectedWormholes = selectedSystemId?.let { selected ->
-                wormholeConnections.filter { it.firstSystemId == selected || it.secondSystemId == selected }
-            }.orEmpty()
+            val selectedIds = selectedSystemIds.toCollection(linkedSetOf())
+            val primary = primarySelectedSystemId?.takeIf(selectedIds::contains)
+            val selectedStargates = stargateEdges.asSequence()
+                .filter { it.firstSystemId in selectedIds || it.secondSystemId in selectedIds }
+                .map { MapSystemConnection.between(it.firstSystemId, it.secondSystemId) }
+                .toSet()
+            val selectedAnsiblex = visibleAnsiblexConnections.asSequence()
+                .filter(AnsiblexConnection::enabled)
+                .filter { it.firstSystemId in selectedIds || it.secondSystemId in selectedIds }
+                .toList()
+            val selectedWormholes = wormholeConnections.filter {
+                it.firstSystemId in selectedIds || it.secondSystemId in selectedIds
+            }
 
-            if (routeCount == 0 && selectedSystemId == null) return None
+            if (routeCount == 0 && selectedIds.isEmpty()) return None
 
             val prioritizedSystemIds = linkedSetOf<Int>()
-            selectedSystemId?.let(prioritizedSystemIds::add)
+            primary?.let(prioritizedSystemIds::add)
+            prioritizedSystemIds += selectedIds
             selectedStargates.asSequence()
-                .map { if (it.firstSystemId == selectedSystemId) it.secondSystemId else it.firstSystemId }
+                .flatMap { sequenceOf(it.firstSystemId, it.secondSystemId) }
+                .filterNot(selectedIds::contains)
                 .sorted()
                 .forEach(prioritizedSystemIds::add)
-            (selectedAnsiblex.asSequence().map { connection ->
-                if (connection.firstSystemId == selectedSystemId) connection.secondSystemId else connection.firstSystemId
-            } + selectedWormholes.asSequence().map { connection ->
-                if (connection.firstSystemId == selectedSystemId) connection.secondSystemId else connection.firstSystemId
-            })
+            (selectedAnsiblex.asSequence().flatMap { sequenceOf(it.firstSystemId, it.secondSystemId) } +
+                selectedWormholes.asSequence().flatMap { sequenceOf(it.firstSystemId, it.secondSystemId) })
+                .filterNot(selectedIds::contains)
                 .sorted()
                 .forEach(prioritizedSystemIds::add)
             prioritizedSystemIds += routeSystemIds
@@ -135,7 +139,8 @@ class MapVisualEmphasis private constructor(
             return MapVisualEmphasis(
                 prioritizedSystemIds = prioritizedSystemIds.toList(),
                 focusedSystemIds = prioritizedSystemIds.toSet(),
-                selectedSystemId = selectedSystemId,
+                selectedSystemIds = selectedIds,
+                primarySelectedSystemId = primary,
                 selectedStargateConnections = selectedStargates,
                 selectedAnsiblexConnectionIds = selectedAnsiblex.mapTo(linkedSetOf(), AnsiblexConnection::id),
                 selectedWormholeConnectionIds = selectedWormholes.mapTo(linkedSetOf(), WormholeConnection::id),

@@ -7,9 +7,12 @@ import dev.evestaticmapplanner.core.sovereignty.SystemOwnerKind
 
 internal object EnglishSystemInfoStrings : SystemInfoStrings {
     override val selectedSystem = "Selected System"
+    override val selectedSystems = "Selected Systems"
     override val noSystemSelected = "No system selected"
     override val loadingSystemDetails = "Loading system details…"
     override val systemId = "System ID"
+    override val name = "Name"
+    override val security = "Security"
     override val region = "Region"
     override val constellation = "Constellation"
     override val securityStatus = "Security Status"

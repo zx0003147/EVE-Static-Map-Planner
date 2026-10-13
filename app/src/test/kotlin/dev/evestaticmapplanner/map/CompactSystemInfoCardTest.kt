@@ -55,6 +55,7 @@ import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -144,6 +145,77 @@ class CompactSystemInfoCardTest {
     }
 
     @Test
+    fun `multiple selection uses static summary rows and omits single-system sections`() {
+        val systems = listOf(
+            system(2, "Jita").copy(securityStatus = 0.9),
+            system(3, "Amarr").copy(securityStatus = 1.0),
+            system(4, "Hek").copy(securityStatus = 0.5),
+        )
+        val scene = MapSceneBuilder().build(
+            StaticMapData(systems, emptyList(), listOf(region()), listOf(constellation())),
+            OfficialPosition2DProjection,
+        )
+        val state = MapUiState(
+            scene = scene,
+            selectedSystemIds = listOf(2, 3, 4),
+            primarySelectedSystemId = 2,
+            selectedSystemDetails = SolarSystemDetails(
+                systems.first(),
+                region(),
+                constellation(),
+                emptyList(),
+            ),
+        )
+
+        val english = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state = state,
+                routeState = RoutePlannerUiState(ansiblexConnections = listOf(connection(3))),
+                jumpState = JumpOverlayUiState(overlays = listOf(overlay("range", "Range", enabled = true))),
+                marker = Marker.temporary(2),
+                systemInfoState = SystemInfoState(
+                    2,
+                    listOf(
+                        SystemInfoSection(
+                            sectionId = "feature",
+                            title = "Feature",
+                            fields = listOf(SystemInfoField("x", "X", "Y")),
+                        ),
+                    ),
+                ),
+                sovereigntySnapshot = sovereigntySnapshot(SovereigntyFreshness.AVAILABLE),
+            ),
+        )
+        val content = assertIs<MultipleSystemsPresentation>(english.content)
+
+        assertEquals("Selected Systems (3)", content.title)
+        assertEquals(listOf("Name", "Security", "Region"), listOf(content.nameLabel, content.securityLabel, content.regionLabel))
+        assertEquals(listOf("Jita", "Amarr", "Hek"), content.systems.map { it.name })
+        assertEquals(listOf("0.9", "1.0", "0.5"), content.systems.map { it.security })
+        assertEquals(listOf("Delve", "Delve", "Delve"), content.systems.map { it.region })
+        assertEquals(listOf(true, false, false), content.systems.map { it.isPrimary })
+        assertNull(english.marker)
+        assertNull(english.sovereignty)
+        assertTrue(english.ansiblexConnections.isEmpty())
+        assertTrue(english.jumpOverlayLabels.isEmpty())
+        assertTrue(english.extensionSections.isEmpty())
+
+        val chinese = assertNotNull(
+            CompactSystemInfoPresentationBuilder.build(
+                state,
+                RoutePlannerUiState(),
+                JumpOverlayUiState(),
+                strings = AppStringsCatalog.forLocale(AppLocale.ZH_CN).systemInfo,
+                locale = AppLocale.ZH_CN,
+            ),
+        )
+        val chineseContent = assertIs<MultipleSystemsPresentation>(chinese.content)
+        assertEquals("已选择星系 (3)", chineseContent.title)
+        assertEquals(listOf("名称", "安全等级", "星域"), listOf(chineseContent.nameLabel, chineseContent.securityLabel, chineseContent.regionLabel))
+        assertEquals(listOf("绝地之域", "绝地之域", "绝地之域"), chineseContent.systems.map { it.region })
+    }
+
+    @Test
     fun `selected system shows all current details in compact presentation`() {
         val state = selectedState(system(2, "1DQ1-A"), hoveredSystemId = 99)
         val routeState = RoutePlannerUiState(
@@ -163,6 +235,7 @@ class CompactSystemInfoCardTest {
             CompactSystemInfoPresentationBuilder.build(state, routeState, jumpState),
         )
 
+        assertIs<SingleSystemPresentation>(presentation.content)
         assertEquals("1DQ1-A", presentation.title)
         assertEquals("Region: Delve · Constellation: 1-A81R", presentation.subtitle)
         assertEquals(
@@ -333,7 +406,7 @@ class CompactSystemInfoCardTest {
             2,
             MarkerDraft.create(name = "Staging", notes = "Form here before moving.", color = MarkerColor.PURPLE),
         )
-        val loadingState = MapUiState(selectedSystemId = 2)
+        val loadingState = MapUiState(selectedSystemIds = listOf(2), primarySelectedSystemId = 2)
 
         val presentation = assertNotNull(
             CompactSystemInfoPresentationBuilder.build(
@@ -375,7 +448,7 @@ class CompactSystemInfoCardTest {
 
         val presentation = assertNotNull(
             CompactSystemInfoPresentationBuilder.build(
-                state = MapUiState(selectedSystemId = 2),
+                state = MapUiState(selectedSystemIds = listOf(2), primarySelectedSystemId = 2),
                 routeState = RoutePlannerUiState(),
                 jumpState = JumpOverlayUiState(),
                 sharedMarkerState = sharedState,
@@ -393,7 +466,7 @@ class CompactSystemInfoCardTest {
         assertTrue(presentation.isStale)
 
         val hidden = CompactSystemInfoPresentationBuilder.build(
-            state = MapUiState(selectedSystemId = 2),
+            state = MapUiState(selectedSystemIds = listOf(2), primarySelectedSystemId = 2),
             routeState = RoutePlannerUiState(),
             jumpState = JumpOverlayUiState(),
             sharedMarkerState = sharedState.copy(isVisible = false),
@@ -509,7 +582,8 @@ class CompactSystemInfoCardTest {
     }
 
     private fun selectedState(selectedSystem: SolarSystem, hoveredSystemId: Int? = null) = MapUiState(
-        selectedSystemId = selectedSystem.id,
+        selectedSystemIds = listOf(selectedSystem.id),
+        primarySelectedSystemId = selectedSystem.id,
         selectedSystemDetails = SolarSystemDetails(
             system = selectedSystem,
             region = region(),

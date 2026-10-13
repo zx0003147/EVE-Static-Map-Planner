@@ -202,6 +202,124 @@ class MapViewModelTest {
     }
 
     @Test
+    fun `ordinary click replaces the current multi-selection`() = runTest {
+        val viewModel = initializedViewModel()
+        val first = viewModel.screenPositionFor(1)
+        val second = viewModel.screenPositionFor(2)
+        viewModel.selectAt(first, ctrlPressed = true)
+        viewModel.selectAt(second, ctrlPressed = true)
+
+        viewModel.selectAt(first)
+
+        val state = viewModel.state.value
+        assertEquals(listOf(1), state.selectedSystemIds)
+        assertEquals(1, state.primarySelectedSystemId)
+        assertEquals(state.primarySelectedSystemId, state.selectedSystemId)
+    }
+
+    @Test
+    fun `ctrl click adds unselected systems while preserving the first primary`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+
+        viewModel.selectAt(viewModel.screenPositionFor(2), ctrlPressed = true)
+        viewModel.selectAt(viewModel.screenPositionFor(3), ctrlPressed = true)
+
+        val state = viewModel.state.value
+        assertEquals(listOf(1, 2, 3), state.selectedSystemIds)
+        assertEquals(1, state.primarySelectedSystemId)
+        assertEquals(1, state.selectedSystemId)
+    }
+
+    @Test
+    fun `ctrl click removes an already selected non-primary system`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+        viewModel.selectAt(viewModel.screenPositionFor(2), ctrlPressed = true)
+        viewModel.selectAt(viewModel.screenPositionFor(3), ctrlPressed = true)
+
+        viewModel.selectAt(viewModel.screenPositionFor(2), ctrlPressed = true)
+
+        val state = viewModel.state.value
+        assertEquals(listOf(1, 3), state.selectedSystemIds)
+        assertEquals(1, state.primarySelectedSystemId)
+    }
+
+    @Test
+    fun `removing the primary selection falls back to the first remaining system`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+        viewModel.selectAt(viewModel.screenPositionFor(2), ctrlPressed = true)
+        viewModel.selectAt(viewModel.screenPositionFor(3), ctrlPressed = true)
+
+        viewModel.selectAt(viewModel.screenPositionFor(1), ctrlPressed = true)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(listOf(2, 3), state.selectedSystemIds)
+        assertEquals(2, state.primarySelectedSystemId)
+        assertEquals("Two", state.selectedSystemDetails?.system?.name)
+    }
+
+    @Test
+    fun `ordinary click on blank space clears selection`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+
+        viewModel.selectAt(MapPoint(-10_000.0, -10_000.0))
+
+        val state = viewModel.state.value
+        assertTrue(state.selectedSystemIds.isEmpty())
+        assertNull(state.primarySelectedSystemId)
+        assertNull(state.selectedSystemId)
+        assertNull(state.selectedSystemDetails)
+    }
+
+    @Test
+    fun `ctrl click on blank space preserves selection`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+        viewModel.selectAt(viewModel.screenPositionFor(2), ctrlPressed = true)
+        val before = viewModel.state.value
+
+        viewModel.selectAt(MapPoint(-10_000.0, -10_000.0), ctrlPressed = true)
+
+        val state = viewModel.state.value
+        assertEquals(before.selectedSystemIds, state.selectedSystemIds)
+        assertEquals(before.primarySelectedSystemId, state.primarySelectedSystemId)
+    }
+
+    @Test
+    fun `double click still single-selects and focuses`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+        viewModel.selectAt(viewModel.screenPositionFor(2), ctrlPressed = true)
+        val first = viewModel.screenPositionFor(1)
+
+        viewModel.selectAndFocusAt(first)
+
+        val state = viewModel.state.value
+        assertEquals(listOf(1), state.selectedSystemIds)
+        assertEquals(1, state.primarySelectedSystemId)
+        assertEquals(state.scene?.nodesById?.getValue(1)?.position, state.viewport?.center)
+    }
+
+    private suspend fun kotlinx.coroutines.test.TestScope.initializedViewModel(): MapViewModel {
+        val fixture = Fixture(remoteVisibleInOfficial = true)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = fixture.viewModel(this, dispatcher)
+        advanceUntilIdle()
+        viewModel.onCanvasSizeChanged(MapSize(1000.0, 700.0))
+        return viewModel
+    }
+
+    private fun MapViewModel.screenPositionFor(systemId: Int): MapPoint {
+        val current = state.value
+        val node = requireNotNull(current.scene).nodesById.getValue(systemId)
+        return MapTransform(requireNotNull(current.viewport), current.canvasSize).worldToScreen(node.position)
+    }
+
+    @Test
     fun `zoom and pan preserve scene and hierarchy anchors`() = runTest {
         val fixture = Fixture()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -707,10 +825,17 @@ class MapViewModelTest {
     }
 }
 
-private class Fixture {
+private class Fixture(remoteVisibleInOfficial: Boolean = false) {
     private val one = system(1, "One", 0.0, 0.0, 0.0, 0.0)
     private val two = system(2, "Two", 10e15, 10e15, 10e15, 10e15)
-    private val remote = system(3, "Remote", 8e18, -1e19, null, null)
+    private val remote = system(
+        3,
+        "Remote",
+        8e18,
+        -1e19,
+        if (remoteVisibleInOfficial) 20e15 else null,
+        if (remoteVisibleInOfficial) 20e15 else null,
+    )
     private val connection = StargateConnection.between(1, 2)
     private val mapData = StaticMapData(
         systems = listOf(one, two, remote),

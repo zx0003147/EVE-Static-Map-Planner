@@ -17,11 +17,12 @@ internal data class MapClick(
     val button: MapPointerButton,
     val screenPosition: MapPoint,
     val clickCount: Int = 1,
+    val ctrlPressed: Boolean = false,
 )
 
 internal fun dispatchMapClick(
     click: MapClick,
-    onSelect: (MapPoint) -> Unit,
+    onSelect: (MapPoint, Boolean) -> Unit,
     onFocus: (MapPoint) -> Unit,
     onContextMenu: (MapPoint) -> Unit,
 ) {
@@ -29,7 +30,7 @@ internal fun dispatchMapClick(
         MapPointerButton.PRIMARY -> if (click.clickCount >= 2) {
             onFocus(click.screenPosition)
         } else {
-            onSelect(click.screenPosition)
+            onSelect(click.screenPosition, click.ctrlPressed)
         }
         MapPointerButton.SECONDARY -> onContextMenu(click.screenPosition)
     }
@@ -67,8 +68,8 @@ internal class Real3DPointerGestureTracker(
         }
     }
 
-    fun release(position: MapPoint, clickCount: Int = 1): MapClick? {
-        val result = button?.takeUnless { dragging }?.let { MapClick(it, position, clickCount) }
+    fun release(position: MapPoint, clickCount: Int = 1, ctrlPressed: Boolean = false): MapClick? {
+        val result = button?.takeUnless { dragging }?.let { MapClick(it, position, clickCount, ctrlPressed) }
         cancel()
         return result
     }

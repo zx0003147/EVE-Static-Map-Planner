@@ -858,7 +858,12 @@ private fun <T> JumpRangeOptionSelector(
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.weight(1f),
             )
-            JumpRangeDropdown(value, options, optionLabel, onSelect, valueColor, fillWidth = false)
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                JumpRangeDropdown(value, options, optionLabel, onSelect, valueColor, fillWidth = false)
+            }
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

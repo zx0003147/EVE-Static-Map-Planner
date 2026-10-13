@@ -52,14 +52,14 @@ internal class Real3DWindowDragCapture : AutoCloseable {
     private var capturedButton: Int = MouseEvent.NOBUTTON
     private var listenerInstalled = false
     private var onMove: (MapPoint) -> Unit = {}
-    private var onRelease: (MapPoint, Int) -> Unit = { _, _ -> }
+    private var onRelease: (MapPoint, Int, Boolean) -> Unit = { _, _, _ -> }
     private var onCancel: () -> Unit = {}
 
     val isActive: Boolean get() = session.isActive
 
     fun updateHandlers(
         onMove: (MapPoint) -> Unit,
-        onRelease: (MapPoint, Int) -> Unit,
+        onRelease: (MapPoint, Int, Boolean) -> Unit,
         onCancel: () -> Unit,
     ) {
         this.onMove = onMove
@@ -100,7 +100,7 @@ internal class Real3DWindowDragCapture : AutoCloseable {
                 uninstallListener()
                 capturedWindow = null
                 capturedButton = MouseEvent.NOBUTTON
-                onRelease(localPosition, event.clickCount)
+                onRelease(localPosition, event.clickCount, event.isControlDown)
             }
         }
     }

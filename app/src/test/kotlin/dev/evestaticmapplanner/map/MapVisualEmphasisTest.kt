@@ -88,6 +88,26 @@ class MapVisualEmphasisTest {
     }
 
     @Test
+    fun `multiple selections emphasize every selection and the union of their direct adjacency`() {
+        val emphasis = derive(
+            selectedSystemIds = listOf(1, 4, 7),
+            primarySelectedSystemId = 1,
+            stargateEdges = listOf(edge(1, 2), edge(2, 3), edge(4, 5), edge(7, 8)),
+            visibleAnsiblexConnections = listOf(ansiblex("from-four", 4, 6)),
+            wormholeConnections = listOf(WormholeConnection.between(7, 9)),
+        )
+
+        assertEquals(setOf(1, 4, 7), emphasis.selectedSystemIds)
+        assertEquals(1, emphasis.primarySelectedSystemId)
+        assertEquals(listOf(1, 4, 7, 2, 5, 8, 6, 9), emphasis.prioritizedSystemIds)
+        assertEquals(setOf(1, 2, 4, 5, 6, 7, 8, 9), emphasis.focusedSystemIds)
+        assertEquals(ROUTE_FOCUS_BACKGROUND_SYSTEM_ALPHA, emphasis.systemAlphaMultiplier(3))
+        assertEquals(1f, emphasis.stargateAlphaMultiplier(4, 5))
+        assertEquals(1f, emphasis.ansiblexAlphaMultiplier("from-four"))
+        assertEquals(1f, emphasis.wormholeAlphaMultiplier("wormhole:7:9"))
+    }
+
+    @Test
     fun `selection includes direct Wormhole neighbors without recursive expansion`() {
         val emphasis = derive(
             selectedSystemId = 1,
@@ -242,6 +262,8 @@ class MapVisualEmphasisTest {
         userCapitalRoute: CapitalRouteResult? = null,
         missionState: MissionMapUiState = MissionMapUiState(),
         selectedSystemId: Int? = null,
+        selectedSystemIds: List<Int> = selectedSystemId?.let(::listOf).orEmpty(),
+        primarySelectedSystemId: Int? = selectedSystemId,
         stargateEdges: List<ProjectedStargateEdge> = emptyList(),
         visibleAnsiblexConnections: List<AnsiblexConnection> = emptyList(),
         wormholeConnections: List<WormholeConnection> = emptyList(),
@@ -249,7 +271,8 @@ class MapVisualEmphasisTest {
         userNormalRoute = userNormalRoute,
         userCapitalRoute = userCapitalRoute,
         missionState = missionState,
-        selectedSystemId = selectedSystemId,
+        selectedSystemIds = selectedSystemIds,
+        primarySelectedSystemId = primarySelectedSystemId,
         stargateEdges = stargateEdges,
         visibleAnsiblexConnections = visibleAnsiblexConnections,
         wormholeConnections = wormholeConnections,

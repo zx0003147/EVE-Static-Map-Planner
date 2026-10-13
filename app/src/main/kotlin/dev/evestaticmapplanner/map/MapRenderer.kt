@@ -49,6 +49,25 @@ enum class MapDetailLevel {
     DETAIL,
 }
 
+internal data class SelectedSystemVisual(
+    val systemId: Int,
+    val isPrimary: Boolean,
+)
+
+/** Draws ordinary selections first and the primary selection last so its halo remains visible. */
+internal fun selectedSystemVisuals(
+    selectedSystemIds: Collection<Int>,
+    primarySelectedSystemId: Int?,
+): List<SelectedSystemVisual> {
+    val selected = selectedSystemIds.distinct()
+    val primary = primarySelectedSystemId?.takeIf(selected::contains)
+    return selected.asSequence()
+        .filterNot { it == primary }
+        .map { SelectedSystemVisual(it, isPrimary = false) }
+        .plus(primary?.let { sequenceOf(SelectedSystemVisual(it, isPrimary = true)) }.orEmpty())
+        .toList()
+}
+
 internal enum class BaseMapVisualLayer {
     BACKGROUND,
     FEATURE_TERRITORY,
@@ -311,7 +330,8 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         hoveredSystemId: Int?,
-        selectedSystemId: Int?,
+        selectedSystemIds: Collection<Int>,
+        primarySelectedSystemId: Int?,
         primarySystemNodesById: Map<Int, PresentedPrimarySystemNode>,
         emphasis: MapVisualEmphasis,
         textMeasurer: TextMeasurer,
@@ -320,17 +340,18 @@ object MapRenderer {
         systemNameVisualObstaclesBySystemId: Map<Int, SystemNameVisualObstacles> = emptyMap(),
         systemNameSafetyGapPx: Double = 0.0,
     ) {
-        if (selectedSystemId != null) {
+        val selectedVisuals = selectedSystemVisuals(selectedSystemIds, primarySelectedSystemId)
+        selectedVisuals.forEach { selected ->
             drawHighlightedNode(
-                scene, transform, selectedSystemId, primarySystemNodesById, emphasis, isHovered = false,
-                isSelected = true, textMeasurer, cache, preferences,
-                systemNameVisualObstaclesBySystemId[selectedSystemId], systemNameSafetyGapPx,
+                scene, transform, selected.systemId, primarySystemNodesById, emphasis, isHovered = false,
+                isSelected = true, isPrimarySelected = selected.isPrimary, textMeasurer, cache, preferences,
+                systemNameVisualObstaclesBySystemId[selected.systemId], systemNameSafetyGapPx,
             )
         }
-        if (hoveredSystemId != null && hoveredSystemId != selectedSystemId) {
+        if (hoveredSystemId != null && selectedVisuals.none { it.systemId == hoveredSystemId }) {
             drawHighlightedNode(
                 scene, transform, hoveredSystemId, primarySystemNodesById, emphasis, isHovered = true,
-                isSelected = false, textMeasurer, cache, preferences,
+                isSelected = false, isPrimarySelected = false, textMeasurer, cache, preferences,
                 systemNameVisualObstaclesBySystemId[hoveredSystemId], systemNameSafetyGapPx,
             )
         }
@@ -918,6 +939,7 @@ object MapRenderer {
         emphasis: MapVisualEmphasis,
         isHovered: Boolean,
         isSelected: Boolean,
+        isPrimarySelected: Boolean,
         textMeasurer: TextMeasurer,
         cache: MapRenderCache,
         preferences: MapDisplayPreferences,
@@ -946,6 +968,14 @@ object MapRenderer {
             }
         } else {
             structureSize / 2f
+        }
+        if (isPrimarySelected) {
+            drawCircle(
+                color = color.copy(alpha = PRIMARY_SELECTION_HALO_ALPHA),
+                radius = visualRadius + PRIMARY_SELECTION_HALO_GAP_PX,
+                center = screen,
+                style = Stroke(PRIMARY_SELECTION_HALO_WIDTH_PX),
+            )
         }
         if (shape == PrimarySystemNodeShape.SYSTEM) {
             drawCircle(color, visualRadius, screen, style = Stroke(strokeWidth))
@@ -1165,6 +1195,9 @@ private const val SAVED_MARKER_CHILD_BADGE_RADIUS_DP = 9f
 private val SHARED_MARKER_ARC_START_ANGLES = floatArrayOf(80f, 260f)
 private const val SHARED_MARKER_ARC_SWEEP_DEGREES = 120f
 private const val EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f
+private const val PRIMARY_SELECTION_HALO_GAP_PX = 4f
+private const val PRIMARY_SELECTION_HALO_WIDTH_PX = 1.5f
+private const val PRIMARY_SELECTION_HALO_ALPHA = 0.72f
 
 internal data class SavedMarkerGlowLayer(
     val expansionDp: Float,

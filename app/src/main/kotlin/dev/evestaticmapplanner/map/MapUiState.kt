@@ -34,12 +34,23 @@ data class MapUiState(
     val real3DReferenceDistance: Double? = null,
     val appPreferences: AppPreferences = AppPreferences.Defaults,
     val hoveredSystemId: Int? = null,
-    val selectedSystemId: Int? = null,
+    val selectedSystemIds: List<Int> = emptyList(),
+    val primarySelectedSystemId: Int? = selectedSystemIds.firstOrNull(),
     val selectedSystemDetails: SolarSystemDetails? = null,
     val contextMenu: MapContextMenuState? = null,
     val focusNotice: UiMessage? = null,
     val performance: MapPerformanceState = MapPerformanceState(),
 ) {
+    /** Compatibility alias for consumers that still render only the primary selection. */
+    val selectedSystemId: Int? get() = primarySelectedSystemId
+
+    init {
+        require(
+            (selectedSystemIds.isEmpty() && primarySelectedSystemId == null) ||
+                (selectedSystemIds.isNotEmpty() && primarySelectedSystemId in selectedSystemIds),
+        ) { "primarySelectedSystemId must be null for an empty selection or belong to selectedSystemIds" }
+    }
+
     val viewport: MapViewport? get() = viewports[projectionId]
     val semanticLabelMode: SemanticLabelMode
         get() = semanticLabelModes[projectionId] ?: if (projectionId == MapProjectionId.REAL_3D) {
