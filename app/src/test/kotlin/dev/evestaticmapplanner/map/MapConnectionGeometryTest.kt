@@ -44,13 +44,13 @@ class MapConnectionGeometryTest {
     }
 
     @Test
-    fun `active route Ansiblex reuses the exact base Jump Bridge curve`() {
+    fun `manual and AI normal routes reuse the exact base Jump Bridge curve`() {
         val first = MapPoint(13.0, -21.0)
         val second = MapPoint(177.0, 94.0)
         val base = ansiblexConnectionGeometry(30_000_100, 30_000_200, first, second)
 
         val route = assertIs<QuadraticMapConnectionGeometry>(
-            activeRouteConnectionGeometry(
+            normalRouteConnectionGeometry(
                 firstSystemId = 30_000_100,
                 secondSystemId = 30_000_200,
                 edgeType = RouteEdgeType.ANSIBLEX,
@@ -59,7 +59,7 @@ class MapConnectionGeometryTest {
             ),
         )
         val reversedRoute = assertIs<QuadraticMapConnectionGeometry>(
-            activeRouteConnectionGeometry(
+            normalRouteConnectionGeometry(
                 firstSystemId = 30_000_200,
                 secondSystemId = 30_000_100,
                 edgeType = RouteEdgeType.ANSIBLEX,
@@ -114,7 +114,7 @@ class MapConnectionGeometryTest {
         val end = MapPoint(88.0, 53.0)
 
         val stargate = stargateConnectionGeometry(start, end)
-        val route = activeRouteConnectionGeometry(1, 2, RouteEdgeType.STARGATE, start, end)
+        val route = normalRouteConnectionGeometry(1, 2, RouteEdgeType.STARGATE, start, end)
 
         assertIs<StraightMapConnectionGeometry>(stargate)
         assertEquals(start, stargate.start)
@@ -123,7 +123,7 @@ class MapConnectionGeometryTest {
         assertEquals(start, route.start)
         assertEquals(end, route.end)
 
-        val wormhole = activeRouteConnectionGeometry(1, 2, RouteEdgeType.WORMHOLE, start, end)
+        val wormhole = normalRouteConnectionGeometry(1, 2, RouteEdgeType.WORMHOLE, start, end)
         assertIs<StraightMapConnectionGeometry>(wormhole)
         assertEquals(start, wormhole.start)
         assertEquals(end, wormhole.end)
@@ -138,7 +138,7 @@ class MapConnectionGeometryTest {
         val projectedSecond = requireNotNull(projection.project(second))
         val geometry = ansiblexConnectionGeometry(first.id, second.id, projectedFirst, projectedSecond)
         val routeGeometry = assertIs<QuadraticMapConnectionGeometry>(
-            activeRouteConnectionGeometry(
+            normalRouteConnectionGeometry(
                 first.id,
                 second.id,
                 RouteEdgeType.ANSIBLEX,

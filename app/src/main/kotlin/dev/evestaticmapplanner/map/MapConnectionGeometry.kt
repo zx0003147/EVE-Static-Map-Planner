@@ -26,7 +26,7 @@ internal fun stargateConnectionGeometry(
     end: MapPoint,
 ): StraightMapConnectionGeometry = StraightMapConnectionGeometry(start, end)
 
-internal fun activeRouteConnectionGeometry(
+internal fun normalRouteConnectionGeometry(
     firstSystemId: Int,
     secondSystemId: Int,
     edgeType: RouteEdgeType,

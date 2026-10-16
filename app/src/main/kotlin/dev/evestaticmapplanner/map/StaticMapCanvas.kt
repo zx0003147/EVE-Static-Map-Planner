@@ -128,6 +128,9 @@ internal fun StaticMapCanvas(
     val scene = state.scene ?: return
     val viewport = state.viewport ?: return
     if (state.canvasSize.isEmpty) return
+    val hasNavigationRoutes = activeRoute != null || capitalRoute != null ||
+        missionState.normalRoutes.isNotEmpty() || missionState.capitalRoutes.isNotEmpty()
+    val routeAnimationPhasePx = rememberNavigationRouteAnimationPhasePx(hasNavigationRoutes)
     if (state.projectionId == MapProjectionId.REAL_3D) {
         Real3DMapCanvas(
             state = state,
@@ -162,6 +165,7 @@ internal fun StaticMapCanvas(
             sharedMarkerState = sharedMarkerState,
             wormholeConnections = wormholeConnections,
             compactSystemInfo = compactSystemInfo,
+            routeAnimationPhasePx = routeAnimationPhasePx,
             onContextRouteStart = onContextRouteStart,
             onContextRouteWaypoint = onContextRouteWaypoint,
             onContextRouteDestination = onContextRouteDestination,
@@ -777,38 +781,38 @@ internal fun StaticMapCanvas(
                 with(MapRenderer) { drawSharedMarkers(presentedSharedMarkers, sharedMarkerGeometry) }
             }
         }
-        routeOverlay?.let { overlay ->
+        if (
+            routeOverlay != null || projectedCapitalRoute != null ||
+            projectedMissionNormalRoutes.isNotEmpty() || projectedMissionCapitalRoutes.isNotEmpty()
+        ) {
             Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
+                val phasePx = routeAnimationPhasePx.value
                 with(MapRenderer) {
-                    drawRoute(
-                        scene,
-                        transform,
-                        overlay,
-                        showDestination = normalExplicitDestinationSystemId != null,
-                    )
+                    routeOverlay?.let { overlay ->
+                        drawRoute(
+                            scene,
+                            transform,
+                            overlay,
+                            routePhasePx = phasePx,
+                            showDestination = normalExplicitDestinationSystemId != null,
+                        )
+                    }
+                    projectedCapitalRoute?.let { overlay ->
+                        drawCapitalRoute(
+                            scene,
+                            transform,
+                            overlay,
+                            routePhasePx = phasePx,
+                            showDestination = capitalExplicitDestinationSystemId != null,
+                        )
+                    }
+                    projectedMissionNormalRoutes.forEachIndexed { index, overlay ->
+                        drawMissionRoute(transform, overlay, index, phasePx)
+                    }
+                    projectedMissionCapitalRoutes.forEachIndexed { index, overlay ->
+                        drawMissionCapitalRoute(transform, overlay, index, phasePx)
+                    }
                 }
-            }
-        }
-        projectedCapitalRoute?.let { overlay ->
-            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
-                with(MapRenderer) {
-                    drawCapitalRoute(
-                        scene,
-                        transform,
-                        overlay,
-                        showDestination = capitalExplicitDestinationSystemId != null,
-                    )
-                }
-            }
-        }
-        projectedMissionNormalRoutes.forEachIndexed { index, overlay ->
-            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
-                with(MapRenderer) { drawMissionRoute(transform, overlay, index) }
-            }
-        }
-        projectedMissionCapitalRoutes.forEachIndexed { index, overlay ->
-            Canvas(Modifier.fillMaxSize().zIndex(StaticMapVisualLayerOrder.ROUTE)) {
-                with(MapRenderer) { drawMissionCapitalRoute(transform, overlay, index) }
             }
         }
         if (visualEmphasis.isActive) {

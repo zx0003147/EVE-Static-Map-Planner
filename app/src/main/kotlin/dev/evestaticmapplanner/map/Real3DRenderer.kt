@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -125,6 +126,7 @@ internal fun Real3DMapCanvas(
     sharedMarkerState: SharedMarkerPresentationState,
     wormholeConnections: List<WormholeConnection>,
     compactSystemInfo: CompactSystemInfoPresentation?,
+    routeAnimationPhasePx: State<Float>,
     onCanvasSizeChanged: (MapSize) -> Unit,
     onZoom: (MapPoint, Double) -> Unit,
     onPan: (MapPoint) -> Unit,
@@ -662,29 +664,43 @@ internal fun Real3DMapCanvas(
                 emphasis = visualEmphasis,
                 locale = state.appPreferences.uiLocale,
             )
-            missionRoutes.forEachIndexed { index, missionRoute ->
-                drawReal3DMissionRoute(missionRoute, MISSION_ROUTE_COLORS[index % MISSION_ROUTE_COLORS.size])
+        }
+        if (route != null || capital != null || missionRoutes.isNotEmpty() || missionCapitalRoutes.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                val phasePx = routeAnimationPhasePx.value
+                missionRoutes.forEachIndexed { index, missionRoute ->
+                    drawReal3DMissionRoute(
+                        missionRoute,
+                        MISSION_ROUTE_COLORS[index % MISSION_ROUTE_COLORS.size],
+                        phasePx,
+                    )
+                }
+                missionCapitalRoutes.forEachIndexed { index, missionRoute ->
+                    drawReal3DMissionCapitalRoute(
+                        missionRoute,
+                        MISSION_CAPITAL_COLORS[index % MISSION_CAPITAL_COLORS.size],
+                        phasePx,
+                    )
+                }
+                route?.let {
+                    drawReal3DRoute(
+                        frame,
+                        it,
+                        phasePx,
+                        showDestination = normalExplicitDestinationSystemId != null,
+                    )
+                }
+                capital?.let {
+                    drawReal3DCapitalRoute(
+                        frame,
+                        it,
+                        phasePx,
+                        showDestination = capitalExplicitDestinationSystemId != null,
+                    )
+                }
             }
-            missionCapitalRoutes.forEachIndexed { index, missionRoute ->
-                drawReal3DMissionCapitalRoute(
-                    missionRoute,
-                    MISSION_CAPITAL_COLORS[index % MISSION_CAPITAL_COLORS.size],
-                )
-            }
-            route?.let {
-                drawReal3DRoute(
-                    frame,
-                    it,
-                    showDestination = normalExplicitDestinationSystemId != null,
-                )
-            }
-            capital?.let {
-                drawReal3DCapitalRoute(
-                    frame,
-                    it,
-                    showDestination = capitalExplicitDestinationSystemId != null,
-                )
-            }
+        }
+        Canvas(Modifier.fillMaxSize()) {
             drawReal3DEmphasizedSystems(
                 frame = frame,
                 emphasis = visualEmphasis,
@@ -1337,45 +1353,24 @@ private fun DrawScope.drawReal3DJumpSpheres(
 private fun DrawScope.drawReal3DRoute(
     frame: Real3DFrame,
     overlay: Real3DProjectedRoute,
+    routePhasePx: Float,
     showDestination: Boolean,
 ) {
-    val curvedPath = Path()
+    val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
     overlay.legs.forEach { leg ->
         val style = routeLegRenderStyle(leg.edge.type)
-        val connection = activeRouteConnectionGeometry(
+        val connection = normalRouteConnectionGeometry(
             firstSystemId = leg.edge.fromSystemId,
             secondSystemId = leg.edge.toSystemId,
             edgeType = leg.edge.type,
             start = leg.segment.first.screen,
             end = leg.segment.second.screen,
         )
-        when (connection) {
-            is StraightMapConnectionGeometry -> drawLine(
-                color = style.color,
-                start = connection.start.toOffset(),
-                end = connection.end.toOffset(),
-                strokeWidth = style.strokeWidth,
-            )
-            is QuadraticMapConnectionGeometry -> {
-                curvedPath.reset()
-                curvedPath.moveTo(connection.start.x.toFloat(), connection.start.y.toFloat())
-                curvedPath.quadraticTo(
-                    connection.control.x.toFloat(),
-                    connection.control.y.toFloat(),
-                    connection.end.x.toFloat(),
-                    connection.end.y.toFloat(),
-                )
-                drawPath(
-                    path = curvedPath,
-                    color = style.color,
-                    style = Stroke(
-                        width = style.strokeWidth,
-                        pathEffect = REAL_3D_ROUTE_ANSIBLEX_DASH_EFFECT,
-                    ),
-                )
-            }
-        }
-        drawDirectionalRouteArrows(connection, style.color, style.strokeWidth)
+        phaseCursor.advance(drawNavigationRouteGeometry(
+            geometry = connection,
+            startColor = style.color,
+            phasePx = phaseCursor.currentPhasePx,
+        ))
         if (leg.edge.type == RouteEdgeType.WORMHOLE) {
             drawCircle(
                 color = Color(0xFFF0FFFC),
@@ -1396,20 +1391,20 @@ private fun DrawScope.drawReal3DRoute(
 private fun DrawScope.drawReal3DCapitalRoute(
     frame: Real3DFrame,
     overlay: Real3DProjectedCapitalRoute,
+    routePhasePx: Float,
     showDestination: Boolean,
 ) {
+    val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
     overlay.legs.forEach { leg ->
         val geometry = StraightMapConnectionGeometry(
             start = leg.segment.first.screen,
             end = leg.segment.second.screen,
         )
-        drawLine(
-            color = CAPITAL_ROUTE_COLOR,
-            start = geometry.start.toOffset(),
-            end = geometry.end.toOffset(),
-            strokeWidth = 4f,
-        )
-        drawDirectionalRouteArrows(geometry, CAPITAL_ROUTE_COLOR, 4f)
+        phaseCursor.advance(drawNavigationRouteGeometry(
+            geometry = geometry,
+            startColor = CAPITAL_ROUTE_COLOR,
+            phasePx = phaseCursor.currentPhasePx,
+        ))
     }
     drawReal3DRouteEndpoint(frame, overlay.route.startSystemId, CAPITAL_START_COLOR, 13f, 9f)
     if (showDestination) {
@@ -1420,40 +1415,41 @@ private fun DrawScope.drawReal3DCapitalRoute(
 private fun DrawScope.drawReal3DMissionRoute(
     overlay: Real3DProjectedRoute,
     color: Color,
+    routePhasePx: Float,
 ) {
+    val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
     overlay.legs.forEach { leg ->
-        val geometry = StraightMapConnectionGeometry(
+        val geometry = normalRouteConnectionGeometry(
+            firstSystemId = leg.edge.fromSystemId,
+            secondSystemId = leg.edge.toSystemId,
+            edgeType = leg.edge.type,
             start = leg.segment.first.screen,
             end = leg.segment.second.screen,
         )
-        drawLine(
-            color = color,
-            start = geometry.start.toOffset(),
-            end = geometry.end.toOffset(),
-            strokeWidth = 5f,
-            pathEffect = REAL_3D_MISSION_ROUTE_DASH_EFFECT,
-        )
-        drawDirectionalRouteArrows(geometry, color, 5f)
+        phaseCursor.advance(drawNavigationRouteGeometry(
+            geometry = geometry,
+            startColor = color,
+            phasePx = phaseCursor.currentPhasePx,
+        ))
     }
 }
 
 private fun DrawScope.drawReal3DMissionCapitalRoute(
     overlay: Real3DProjectedCapitalRoute,
     color: Color,
+    routePhasePx: Float,
 ) {
+    val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
     overlay.legs.forEach { leg ->
         val geometry = StraightMapConnectionGeometry(
             start = leg.segment.first.screen,
             end = leg.segment.second.screen,
         )
-        drawLine(
-            color = color,
-            start = geometry.start.toOffset(),
-            end = geometry.end.toOffset(),
-            strokeWidth = 5f,
-            pathEffect = REAL_3D_MISSION_CAPITAL_DASH_EFFECT,
-        )
-        drawDirectionalRouteArrows(geometry, color, 5f)
+        phaseCursor.advance(drawNavigationRouteGeometry(
+            geometry = geometry,
+            startColor = color,
+            phasePx = phaseCursor.currentPhasePx,
+        ))
     }
 }
 
@@ -1634,6 +1630,3 @@ private const val REAL_3D_FEATURE_RING_STEP_PX = 2.5f
 private const val REAL_3D_FEATURE_EMBLEM_SIZE_PX = 34
 private const val REAL_3D_FEATURE_EMBLEM_ALPHA = 0.42f
 private val REAL_3D_ANSIBLEX_NETWORK_DASH_EFFECT = PathEffect.dashPathEffect(ANSIBLEX_NETWORK_DASH_PATTERN)
-private val REAL_3D_ROUTE_ANSIBLEX_DASH_EFFECT = PathEffect.dashPathEffect(ROUTE_ANSIBLEX_DASH_PATTERN.toFloatArray())
-private val REAL_3D_MISSION_ROUTE_DASH_EFFECT = PathEffect.dashPathEffect(floatArrayOf(14f, 5f))
-private val REAL_3D_MISSION_CAPITAL_DASH_EFFECT = PathEffect.dashPathEffect(floatArrayOf(4f, 4f))

@@ -443,56 +443,33 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         overlay: ProjectedRouteOverlay,
+        routePhasePx: Float,
         showDestination: Boolean = true,
     ) {
-        val curvedPath = Path()
+        val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
         overlay.legs.forEach { leg ->
             val style = routeLegRenderStyle(leg.edge.type)
-            val geometry = activeRouteConnectionGeometry(
+            val geometry = normalRouteConnectionGeometry(
                 firstSystemId = leg.edge.fromSystemId,
                 secondSystemId = leg.edge.toSystemId,
                 edgeType = leg.edge.type,
                 start = transform.worldToScreen(leg.from),
                 end = transform.worldToScreen(leg.to),
             )
-            when (geometry) {
-                is StraightMapConnectionGeometry -> {
-                    drawLine(
-                        color = style.color,
-                        start = geometry.start.toOffset(),
-                        end = geometry.end.toOffset(),
-                        strokeWidth = style.strokeWidth,
-                    )
-                    if (leg.edge.type == RouteEdgeType.WORMHOLE) {
-                        drawActiveWormholeRouteMarks(
-                            firstSystemId = leg.edge.fromSystemId,
-                            secondSystemId = leg.edge.toSystemId,
-                            start = geometry.start,
-                            end = geometry.end,
-                        )
-                    }
-                }
-                is QuadraticMapConnectionGeometry -> {
-                    curvedPath.reset()
-                    curvedPath.moveTo(geometry.start.x.toFloat(), geometry.start.y.toFloat())
-                    curvedPath.quadraticTo(
-                        geometry.control.x.toFloat(),
-                        geometry.control.y.toFloat(),
-                        geometry.end.x.toFloat(),
-                        geometry.end.y.toFloat(),
-                    )
-                    drawPath(
-                        path = curvedPath,
-                        color = style.color,
-                        style = Stroke(width = style.strokeWidth, pathEffect = ROUTE_ANSIBLEX_DASH_EFFECT),
-                    )
-                }
-            }
-            drawDirectionalRouteArrows(
+            val legLengthPx = drawNavigationRouteGeometry(
                 geometry = geometry,
-                color = style.color,
-                strokeWidth = style.strokeWidth,
+                startColor = style.color,
+                phasePx = phaseCursor.currentPhasePx,
             )
+            phaseCursor.advance(legLengthPx)
+            if (leg.edge.type == RouteEdgeType.WORMHOLE) {
+                drawActiveWormholeRouteMarks(
+                    firstSystemId = leg.edge.fromSystemId,
+                    secondSystemId = leg.edge.toSystemId,
+                    start = geometry.start,
+                    end = geometry.end,
+                )
+            }
         }
         scene.nodesById[overlay.route.startSystemId]?.let { node ->
             val center = transform.worldToScreen(node.position).toOffset()
@@ -575,20 +552,20 @@ object MapRenderer {
         scene: ProjectedMapScene,
         transform: MapTransform,
         overlay: ProjectedCapitalRouteOverlay,
+        routePhasePx: Float,
         showDestination: Boolean = true,
     ) {
+        val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
         overlay.legs.forEach { leg ->
             val geometry = StraightMapConnectionGeometry(
                 start = transform.worldToScreen(leg.from),
                 end = transform.worldToScreen(leg.to),
             )
-            drawLine(
-                color = CAPITAL_ROUTE_COLOR,
-                start = geometry.start.toOffset(),
-                end = geometry.end.toOffset(),
-                strokeWidth = 4f,
-            )
-            drawDirectionalRouteArrows(geometry, CAPITAL_ROUTE_COLOR, 4f)
+            phaseCursor.advance(drawNavigationRouteGeometry(
+                geometry = geometry,
+                startColor = CAPITAL_ROUTE_COLOR,
+                phasePx = phaseCursor.currentPhasePx,
+            ))
         }
         scene.nodesById[overlay.route.startSystemId]?.let { node ->
             val center = transform.worldToScreen(node.position).toOffset()
@@ -604,39 +581,48 @@ object MapRenderer {
         }
     }
 
-    fun DrawScope.drawMissionRoute(transform: MapTransform, overlay: ProjectedRouteOverlay, index: Int) {
+    fun DrawScope.drawMissionRoute(
+        transform: MapTransform,
+        overlay: ProjectedRouteOverlay,
+        index: Int,
+        routePhasePx: Float,
+    ) {
         val color = MISSION_ROUTE_COLORS[index % MISSION_ROUTE_COLORS.size]
+        val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
         overlay.legs.forEach { leg ->
-            val geometry = StraightMapConnectionGeometry(
+            val geometry = normalRouteConnectionGeometry(
+                firstSystemId = leg.edge.fromSystemId,
+                secondSystemId = leg.edge.toSystemId,
+                edgeType = leg.edge.type,
                 start = transform.worldToScreen(leg.from),
                 end = transform.worldToScreen(leg.to),
             )
-            drawLine(
-                color = color,
-                start = geometry.start.toOffset(),
-                end = geometry.end.toOffset(),
-                strokeWidth = 5f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 5f)),
-            )
-            drawDirectionalRouteArrows(geometry, color, 5f)
+            phaseCursor.advance(drawNavigationRouteGeometry(
+                geometry = geometry,
+                startColor = color,
+                phasePx = phaseCursor.currentPhasePx,
+            ))
         }
     }
 
-    fun DrawScope.drawMissionCapitalRoute(transform: MapTransform, overlay: ProjectedCapitalRouteOverlay, index: Int) {
+    fun DrawScope.drawMissionCapitalRoute(
+        transform: MapTransform,
+        overlay: ProjectedCapitalRouteOverlay,
+        index: Int,
+        routePhasePx: Float,
+    ) {
         val color = MISSION_CAPITAL_COLORS[index % MISSION_CAPITAL_COLORS.size]
+        val phaseCursor = NavigationRoutePhaseCursor(routePhasePx)
         overlay.legs.forEach { leg ->
             val geometry = StraightMapConnectionGeometry(
                 start = transform.worldToScreen(leg.from),
                 end = transform.worldToScreen(leg.to),
             )
-            drawLine(
-                color = color,
-                start = geometry.start.toOffset(),
-                end = geometry.end.toOffset(),
-                strokeWidth = 5f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)),
-            )
-            drawDirectionalRouteArrows(geometry, color, 5f)
+            phaseCursor.advance(drawNavigationRouteGeometry(
+                geometry = geometry,
+                startColor = color,
+                phasePx = phaseCursor.currentPhasePx,
+            ))
         }
     }
 
@@ -1123,7 +1109,6 @@ internal val WORMHOLE_PEACOCK_TEAL = Color(MapVisualSemantics.normalRouteByEdgeT
 internal val ROUTE_WORMHOLE_COLOR = WORMHOLE_PEACOCK_TEAL
 internal val ROUTE_ANSIBLEX_DASH_PATTERN =
     MapVisualSemantics.normalRouteByEdgeType.getValue(RouteEdgeType.ANSIBLEX).dashPatternPx.map { it.toFloat() }
-private val ROUTE_ANSIBLEX_DASH_EFFECT = PathEffect.dashPathEffect(ROUTE_ANSIBLEX_DASH_PATTERN.toFloatArray())
 internal val ROUTE_START_COLOR = Color(0xFF57E389)
 internal val ROUTE_DESTINATION_COLOR = Color(0xFFFF5D73)
 internal val CAPITAL_ROUTE_COLOR = Color(MapVisualSemantics.capitalRoute.argb)
