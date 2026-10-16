@@ -1,12 +1,27 @@
 package dev.evestaticmapplanner.embeddedai
 
 import ai.koog.agents.core.agent.AIAgent
-import ai.koog.agents.core.agent.singleRunStrategy
+import ai.koog.agents.core.agent.session.AIAgentLLMWriteSession
+import ai.koog.agents.core.dsl.builder.node
+import ai.koog.agents.core.dsl.builder.strategy
+import ai.koog.agents.core.dsl.extension.ReceivedToolResults
+import ai.koog.agents.core.dsl.extension.nodeExecuteTools
+import ai.koog.agents.core.dsl.extension.onTextMessage
+import ai.koog.agents.core.dsl.extension.onToolCalls
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.prompt.executor.model.PromptExecutor
 import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.message.Message
+import ai.koog.prompt.streaming.StreamFrame
+import ai.koog.prompt.streaming.toMessageResponse
 import dev.evestaticmapplanner.control.MapControlService
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.withContext
 
 data class EmbeddedAiRuntimeInfo(
     val providerType: AiProviderType,
@@ -18,6 +33,7 @@ interface EmbeddedAiAgent {
     val runtimeInfo: EmbeddedAiRuntimeInfo? get() = null
     val lastTurnExecution: AgentTurnExecution get() = AgentTurnExecution()
     suspend fun run(prompt: String): String
+    suspend fun run(prompt: String, observer: EmbeddedAiTurnObserver): String = run(prompt)
     suspend fun mutationExpectation(prompt: String): AgentMutationExpectation = AgentMutationExpectation.NOT_REQUIRED
     suspend fun close()
 }
@@ -109,12 +125,19 @@ private class ManagedKoogEmbeddedAiAgent(
 
     override val lastTurnExecution: AgentTurnExecution get() = execution
 
-    override suspend fun run(prompt: String): String {
-        executionTracker.reset()
+    override suspend fun run(prompt: String): String = run(prompt, NoOpEmbeddedAiTurnObserver)
+
+    override suspend fun run(prompt: String, observer: EmbeddedAiTurnObserver): String {
+        executionTracker.reset(observer)
         searchSources.reset()
         return try {
-            val answer = koogAgent.run(prompt)
+            val answer = withContext(AgentTurnContext(executionTracker, observer)) {
+                koogAgent.run(prompt)
+            }
             appendRequiredSources(answer, searchSources.snapshot())
+        } catch (cancelled: CancellationException) {
+            executionTracker.cancelActive("Cancelled with the AI request.")
+            throw cancelled
         } finally {
             execution = executionTracker.snapshot()
         }
@@ -297,11 +320,52 @@ internal fun createKoogAgent(
     },
     systemPrompt = PLANNER_SYSTEM_PROMPT,
     temperature = temperature,
-    strategy = singleRunStrategy(),
+    strategy = streamingSingleRunStrategy(),
     // A displayed route normally needs two searches plus begin/show/fit and a final answer. Every run creates an
     // isolated Koog session, so this is also the hard bound for one request's in-memory conversation history.
     maxIterations = MAX_AGENT_ITERATIONS,
 )
+
+private fun streamingSingleRunStrategy() = strategy<String, String>("streaming-single-run") {
+    val requestLlm by node<String, Message.Assistant> { userMessage ->
+        llm.writeSession {
+            appendPrompt { user(userMessage) }
+            requestStreamingResponseAndAppend()
+        }
+    }
+    val executeTools by nodeExecuteTools()
+    val sendToolResults by node<ReceivedToolResults, Message.Assistant> { results ->
+        llm.writeSession {
+            appendPrompt {
+                user {
+                    results.toolResults.forEach { result -> toolResult(result.toMessagePart()) }
+                }
+            }
+            requestStreamingResponseAndAppend()
+        }
+    }
+
+    edge(nodeStart forwardTo requestLlm)
+    edge(requestLlm forwardTo executeTools onToolCalls { true })
+    edge(requestLlm forwardTo nodeFinish onTextMessage { true })
+    edge(executeTools forwardTo sendToolResults)
+    edge(sendToolResults forwardTo executeTools onToolCalls { true })
+    edge(sendToolResults forwardTo nodeFinish onTextMessage { true })
+}
+
+private suspend fun AIAgentLLMWriteSession.requestStreamingResponseAndAppend(): Message.Assistant {
+    val response = requestLLMStreaming().collectStreamingResponse()
+    appendPrompt { message(response) }
+    return response
+}
+
+private suspend fun Flow<StreamFrame>.collectStreamingResponse() = onEach { frame ->
+    if (frame is StreamFrame.TextDelta && frame.text.isNotEmpty()) {
+        currentCoroutineContext()[AgentTurnContext]?.observer?.textDelta(frame.text)
+    }
+}.toList().toMessageResponse()
+
+private object NoOpEmbeddedAiTurnObserver : EmbeddedAiTurnObserver
 
 internal val DEFAULT_OPENROUTER_MODEL = AiProviderConfig.DefaultOpenRouter.toKoogModel()
 internal val OPENROUTER_MODEL = DEFAULT_OPENROUTER_MODEL

@@ -9,6 +9,7 @@ import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportConflictField
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.AgentToolCallStatus
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.localization.AiAssistantStrings
 import dev.evestaticmapplanner.localization.AiVoiceStatus
@@ -48,6 +49,7 @@ internal object SimplifiedChineseAiAssistantStrings : AiAssistantStrings {
     override val ai = "AI"
     override val waitingForConfirmation = "正在等待确认……"
     override val thinking = "正在思考……"
+    override val responseCancelled = "回答已取消"
     override val stopReading = "停止朗读"
     override val readAloud = "朗读"
     override val confirmAiAction = "确认 AI 操作"
@@ -56,6 +58,36 @@ internal object SimplifiedChineseAiAssistantStrings : AiAssistantStrings {
     override val risk = "风险"
     override val effect = "影响"
     override val allow = "允许"
+
+    override fun responseInterrupted(reason: String?) = buildString {
+        append("回答已中断")
+        if (!reason.isNullOrBlank()) append("：$reason")
+    }
+
+    override fun toolCallStatus(toolName: String, status: AgentToolCallStatus, errorMessage: String?): String {
+        val label = toolLabel(toolName)
+        return when (status) {
+            AgentToolCallStatus.RUNNING -> "正在执行 · $label"
+            AgentToolCallStatus.WAITING_CONFIRMATION -> "等待确认 · $label"
+            AgentToolCallStatus.SUCCESS -> "已完成 · $label"
+            AgentToolCallStatus.FAILURE -> buildString {
+                append("失败 · $label")
+                if (!errorMessage.isNullOrBlank()) append("：$errorMessage")
+            }
+            AgentToolCallStatus.CANCELLED -> "已取消 · $label"
+        }
+    }
+
+    private fun toolLabel(toolName: String): String = when (toolName) {
+        "web_search" -> "搜索网页"
+        "search_system" -> "搜索星系"
+        "get_system_info", "get_system_markers", "get_mission", "get_active_missions",
+        "list_views", "get_current_view", "list_wormholes", "list_eve_navigation_targets" -> "读取规划器数据"
+        "calculate_normal_route", "calculate_capital_route", "optimize_multi_point_route" -> "计算路线"
+        "send_mission_navigation_to_eve" -> "发送导航到 EVE"
+        "create_saved_marker" -> "创建保存标记"
+        else -> "更新地图"
+    }
 
     override fun riskLabel(risk: PlannerToolRisk) = when (risk) {
         PlannerToolRisk.READ_ONLY -> "只读"

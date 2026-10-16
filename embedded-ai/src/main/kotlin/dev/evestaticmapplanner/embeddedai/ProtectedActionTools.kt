@@ -70,7 +70,7 @@ class CreateSavedMarkerTool(
         val tags: List<Tag> = emptyList(),
     )
 
-    override suspend fun execute(args: Args): String {
+    override suspend fun execute(args: Args): String = trackWholePlannerToolCall(NAME, diagnostics) {
         val normalizedName = args.name.normalizedOptionalText()
         val normalizedNotes = args.notes.normalizedOptionalText()
         validateOptionalText("name", normalizedName, ControlLimits.MAX_LABEL_CODE_POINTS)
@@ -88,7 +88,7 @@ class CreateSavedMarkerTool(
             put("color", args.color.name)
             put("tags", buildJsonArray { normalizedTags.forEach { add(JsonPrimitive(it.name)) } })
         }.toString()
-        return confirmations.confirmAndExecute(
+        confirmations.confirmAndExecute(
             AiActionRequest(
                 toolName = NAME,
                 risk = PlannerToolRisk.PERSISTENT_WRITE,
@@ -147,13 +147,13 @@ class DeleteViewTool(
     @Serializable
     data class Args(val viewId: String)
 
-    override suspend fun execute(args: Args): String {
+    override suspend fun execute(args: Args): String = trackWholePlannerToolCall(NAME, diagnostics) {
         val view = requirePlannerValue(query = {
             mapControlService.listViews(ListViewsRequest(embeddedAiRequestId()))
         }).singleOrNull { it.viewId == args.viewId }
             ?: throw EmbeddedAiToolException("NOT_FOUND: View was not found")
         val normalizedArguments = buildJsonObject { put("viewId", args.viewId) }.toString()
-        return confirmations.confirmAndExecute(
+        confirmations.confirmAndExecute(
             AiActionRequest(
                 toolName = NAME,
                 risk = PlannerToolRisk.DESTRUCTIVE_WRITE,
@@ -236,7 +236,7 @@ class SendMissionNavigationToEveTool(
         val characterId: String,
     )
 
-    override suspend fun execute(args: Args): String {
+    override suspend fun execute(args: Args): String = trackWholePlannerToolCall(NAME, diagnostics) {
         val targets = requirePlannerValue(query = {
             mapControlService.listEveNavigationTargets(ListEveNavigationTargetsRequest(embeddedAiRequestId()))
         })
@@ -268,7 +268,7 @@ class SendMissionNavigationToEveTool(
             put("routeId", args.routeId)
             put("characterId", args.characterId)
         }.toString()
-        return confirmations.confirmAndExecute(
+        confirmations.confirmAndExecute(
             AiActionRequest(
                 toolName = NAME,
                 risk = PlannerToolRisk.EXTERNAL_ACTION,

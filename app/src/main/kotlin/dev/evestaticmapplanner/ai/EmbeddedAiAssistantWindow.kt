@@ -71,6 +71,8 @@ import androidx.compose.ui.window.rememberWindowState
 import dev.evestaticmapplanner.embeddedai.AiActionConfirmation
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.AgentToolCall
+import dev.evestaticmapplanner.embeddedai.AgentToolCallStatus
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiController
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessage
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageRole
@@ -830,12 +832,29 @@ private fun ChatMessageBubble(
                 if (user) {
                     Text(message.content)
                 } else {
+                    if (message.toolCalls.isNotEmpty()) {
+                        ToolCallStatusList(message.toolCalls, strings)
+                    }
                     val display = when {
+                        message.content.isNotBlank() -> message.content
                         message.status != EmbeddedAiMessageStatus.THINKING -> message.content
                         waitingForConfirmation -> strings.waitingForConfirmation
                         else -> strings.thinking
                     }
                     AssistantMarkdown(display)
+                    when (message.status) {
+                        EmbeddedAiMessageStatus.CANCELLED -> Text(
+                            strings.responseCancelled,
+                            color = EveColors.SecondaryText,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        EmbeddedAiMessageStatus.ERROR -> Text(
+                            strings.responseInterrupted(message.statusMessage),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        else -> Unit
+                    }
                     if (message.status == EmbeddedAiMessageStatus.COMPLETE && message.content.isNotBlank()) {
                         val isThisPlaying = voiceState.playingMessageId == message.id &&
                             voiceState.activity in setOf(VoiceActivity.SYNTHESIZING, VoiceActivity.PLAYING)
@@ -846,6 +865,31 @@ private fun ChatMessageBubble(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ToolCallStatusList(toolCalls: List<AgentToolCall>, strings: AiAssistantStrings) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(EveColors.InputSurface, RoundedCornerShape(5.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .testTag(AI_TOOL_STATUS_LIST_TEST_TAG),
+    ) {
+        toolCalls.forEach { call ->
+            Text(
+                strings.toolCallStatus(call.toolName, call.status, call.errorMessage),
+                style = MaterialTheme.typography.labelSmall,
+                color = when (call.status) {
+                    AgentToolCallStatus.FAILURE -> MaterialTheme.colorScheme.error
+                    AgentToolCallStatus.SUCCESS -> EveColors.PrimaryText
+                    else -> EveColors.SecondaryText
+                },
+                modifier = Modifier.testTag("$AI_TOOL_STATUS_TEST_TAG_PREFIX-${call.callId}"),
+            )
         }
     }
 }
@@ -927,6 +971,8 @@ internal const val AI_CHAT_EDITABLE_REGION_TEST_TAG = "embedded-ai-chat-editable
 internal const val AI_CHAT_COMPOSER_CONTROLS_TEST_TAG = "embedded-ai-chat-composer-controls"
 internal const val AI_CHAT_INPUT_TEST_TAG = "embedded-ai-chat-input"
 internal const val AI_CHAT_MESSAGE_TEST_TAG_PREFIX = "embedded-ai-chat-message"
+internal const val AI_TOOL_STATUS_LIST_TEST_TAG = "embedded-ai-tool-status-list"
+internal const val AI_TOOL_STATUS_TEST_TAG_PREFIX = "embedded-ai-tool-status"
 internal const val AI_SESSION_SIDEBAR_TEST_TAG = "embedded-ai-session-sidebar"
 internal const val AI_SESSION_ITEM_TEST_TAG_PREFIX = "embedded-ai-session-item"
 internal const val AI_HIDE_SIDEBAR_TEST_TAG = "embedded-ai-hide-sidebar"

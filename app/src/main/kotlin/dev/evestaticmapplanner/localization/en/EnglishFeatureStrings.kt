@@ -9,6 +9,7 @@ import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportConflictField
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.AgentToolCallStatus
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.localization.AiAssistantStrings
 import dev.evestaticmapplanner.localization.AiVoiceStatus
@@ -48,6 +49,7 @@ internal object EnglishAiAssistantStrings : AiAssistantStrings {
     override val ai = "AI"
     override val waitingForConfirmation = "Waiting for confirmation…"
     override val thinking = "Thinking…"
+    override val responseCancelled = "Response cancelled"
     override val stopReading = "Stop reading"
     override val readAloud = "Read aloud"
     override val confirmAiAction = "Confirm AI action"
@@ -56,6 +58,36 @@ internal object EnglishAiAssistantStrings : AiAssistantStrings {
     override val risk = "Risk"
     override val effect = "Effect"
     override val allow = "Allow"
+
+    override fun responseInterrupted(reason: String?) = buildString {
+        append("Response interrupted")
+        if (!reason.isNullOrBlank()) append(": $reason")
+    }
+
+    override fun toolCallStatus(toolName: String, status: AgentToolCallStatus, errorMessage: String?): String {
+        val label = toolLabel(toolName)
+        return when (status) {
+            AgentToolCallStatus.RUNNING -> "Running · $label"
+            AgentToolCallStatus.WAITING_CONFIRMATION -> "Waiting for confirmation · $label"
+            AgentToolCallStatus.SUCCESS -> "Completed · $label"
+            AgentToolCallStatus.FAILURE -> buildString {
+                append("Failed · $label")
+                if (!errorMessage.isNullOrBlank()) append(": $errorMessage")
+            }
+            AgentToolCallStatus.CANCELLED -> "Cancelled · $label"
+        }
+    }
+
+    private fun toolLabel(toolName: String): String = when (toolName) {
+        "web_search" -> "Search the web"
+        "search_system" -> "Search systems"
+        "get_system_info", "get_system_markers", "get_mission", "get_active_missions",
+        "list_views", "get_current_view", "list_wormholes", "list_eve_navigation_targets" -> "Read Planner data"
+        "calculate_normal_route", "calculate_capital_route", "optimize_multi_point_route" -> "Calculate route"
+        "send_mission_navigation_to_eve" -> "Send navigation to EVE"
+        "create_saved_marker" -> "Create Saved Marker"
+        else -> "Update map"
+    }
 
     override fun riskLabel(risk: PlannerToolRisk) = when (risk) {
         PlannerToolRisk.READ_ONLY -> "Read only"

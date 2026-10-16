@@ -16,6 +16,8 @@ data class EmbeddedAiMessage(
     val content: String,
     val status: EmbeddedAiMessageStatus = EmbeddedAiMessageStatus.COMPLETE,
     val timestamp: Instant = Instant.now(),
+    val toolCalls: List<AgentToolCall> = emptyList(),
+    val statusMessage: String? = null,
 )
 
 data class EmbeddedAiChatSession(

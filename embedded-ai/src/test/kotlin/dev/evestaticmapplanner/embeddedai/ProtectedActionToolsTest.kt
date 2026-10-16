@@ -40,6 +40,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -101,13 +102,19 @@ class ProtectedActionToolsTest {
         val confirmations = AiActionConfirmationService()
         confirmations.startRequest("request-1")
         val tool = CreateSavedMarkerTool(protectedService(ProtectedCalls()), confirmations)
+        val tracker = AgentTurnExecutionTracker()
+        val observer = object : EmbeddedAiTurnObserver {}
+        tracker.reset(observer)
 
-        val failure = assertFailsWith<EmbeddedAiToolException> {
-            tool.execute(CreateSavedMarkerTool.Args(JITA.systemId, name = "x".repeat(121)))
+        val failure = withContext(AgentTurnContext(tracker, observer)) {
+            assertFailsWith<EmbeddedAiToolException> {
+                tool.execute(CreateSavedMarkerTool.Args(JITA.systemId, name = "x".repeat(121)))
+            }
         }
 
         assertTrue(failure.message.orEmpty().contains("name exceeds its length limit"))
         assertNull(confirmations.pending.value)
+        assertEquals(AgentToolCallStatus.FAILURE, tracker.snapshot().toolCalls.single().status)
     }
 
     @Test

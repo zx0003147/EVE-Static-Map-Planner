@@ -8,6 +8,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -20,13 +21,133 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmbeddedAiControllerTest {
     @Test
+    fun `real deltas update the active assistant message before final completion`() = runTest {
+        val release = CompletableDeferred<Unit>()
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory {
+                object : EmbeddedAiAgent {
+                    override suspend fun run(prompt: String) = error("Streaming overload expected")
+                    override suspend fun run(prompt: String, observer: EmbeddedAiTurnObserver): String {
+                        observer.textDelta("Hello ")
+                        release.await()
+                        observer.textDelta("world")
+                        return "Hello world"
+                    }
+                    override suspend fun close() = Unit
+                }
+            },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("hello")
+        runCurrent()
+        advanceTimeBy(32)
+        runCurrent()
+        assertEquals("Hello ", controller.state.value.chatSession.messages.last().content)
+        assertEquals(EmbeddedAiMessageStatus.THINKING, controller.state.value.chatSession.messages.last().status)
+
+        release.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("Hello world", controller.state.value.chatSession.messages.last().content)
+        assertEquals(EmbeddedAiMessageStatus.COMPLETE, controller.state.value.chatSession.messages.last().status)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `cancel preserves text already received from the provider`() = runTest {
+        val release = CompletableDeferred<Unit>()
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory {
+                object : EmbeddedAiAgent {
+                    override suspend fun run(prompt: String) = error("Streaming overload expected")
+                    override suspend fun run(prompt: String, observer: EmbeddedAiTurnObserver): String {
+                        observer.textDelta("Partial answer")
+                        release.await()
+                        return "unreachable"
+                    }
+                    override suspend fun close() = Unit
+                }
+            },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("hello")
+        runCurrent()
+        controller.cancel()
+        advanceUntilIdle()
+
+        val message = controller.state.value.chatSession.messages.last()
+        assertEquals("Partial answer", message.content)
+        assertEquals(EmbeddedAiMessageStatus.CANCELLED, message.status)
+        controller.shutdown()
+    }
+
+    @Test
+    fun `provider failure preserves partial text and records a separate failure reason`() = runTest {
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory {
+                object : EmbeddedAiAgent {
+                    override suspend fun run(prompt: String) = error("Streaming overload expected")
+                    override suspend fun run(prompt: String, observer: EmbeddedAiTurnObserver): String {
+                        observer.textDelta("Partial answer")
+                        throw IOException("secret transport details")
+                    }
+                    override suspend fun close() = Unit
+                }
+            },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("hello")
+        advanceUntilIdle()
+
+        val message = controller.state.value.chatSession.messages.last()
+        assertEquals("Partial answer", message.content)
+        assertEquals(EmbeddedAiMessageStatus.ERROR, message.status)
+        assertEquals("The provider request failed.", message.statusMessage)
+        assertFalse(message.statusMessage.orEmpty().contains("secret transport details"))
+        controller.shutdown()
+    }
+
+    @Test
+    fun `one successful mutation remains authoritative when a later mutation fails`() = runTest {
+        val mixed = executionOf(
+            BeginMissionTool.NAME to AgentToolCallStatus.SUCCESS,
+            FitMissionTool.NAME to AgentToolCallStatus.FAILURE,
+        )
+        val agent = ScriptedExecutionAgent(
+            attempts = listOf(ScriptedAttempt("Mission started, but fitting failed.", mixed)),
+            expectation = AgentMutationExpectation.REQUIRED,
+        )
+        val controller = EmbeddedAiController(
+            EmbeddedAiAgentFactory { agent },
+            StandardTestDispatcher(testScheduler),
+        )
+
+        controller.send("Show this on the map")
+        advanceUntilIdle()
+
+        assertEquals(1, agent.prompts.size, "A later failure must not erase an earlier successful mutation")
+        assertEquals("Mission started, but fitting failed.", controller.state.value.response)
+        assertTrue(controller.state.value.lastTurnExecution.hasSuccessfulMutation)
+        assertEquals(
+            listOf(AgentToolCallStatus.SUCCESS, AgentToolCallStatus.FAILURE),
+            controller.state.value.chatSession.messages.last().toolCalls.map(AgentToolCall::status),
+        )
+        controller.shutdown()
+    }
+
+    @Test
     fun `explicit mutation promise receives one recovery and completes only after mutation success`() = runTest {
         val agent = ScriptedExecutionAgent(
             attempts = listOf(
                 ScriptedAttempt("好的，我马上创建。", AgentTurnExecution()),
                 ScriptedAttempt(
                     "已创建 Jita 临时标记。",
-                    AgentTurnExecution(toolCallCount = 2, mutationCallCount = 1, successfulMutationCount = 1),
+                    executionOf(
+                        SearchSystemTool.NAME to AgentToolCallStatus.SUCCESS,
+                        AddMissionMarkerTool.NAME to AgentToolCallStatus.SUCCESS,
+                    ),
                 ),
             ),
             expectation = AgentMutationExpectation.REQUIRED,
@@ -96,7 +217,14 @@ class EmbeddedAiControllerTest {
     fun `read-only route calculation remains complete without mutation`() = runTest {
         val agent = ScriptedExecutionAgent(
             attempts = listOf(
-                ScriptedAttempt("Jita 到 Amarr 共 11 跳。", AgentTurnExecution(toolCallCount = 3)),
+                ScriptedAttempt(
+                    "Jita 到 Amarr 共 11 跳。",
+                    executionOf(
+                        SearchSystemTool.NAME to AgentToolCallStatus.SUCCESS,
+                        SearchSystemTool.NAME to AgentToolCallStatus.SUCCESS,
+                        CalculateNormalRouteTool.NAME to AgentToolCallStatus.SUCCESS,
+                    ),
+                ),
             ),
             expectation = AgentMutationExpectation.NOT_REQUIRED,
         )
@@ -119,10 +247,21 @@ class EmbeddedAiControllerTest {
     fun `display route recovers after read-only first attempt and records mutation success`() = runTest {
         val agent = ScriptedExecutionAgent(
             attempts = listOf(
-                ScriptedAttempt("路线已计算，我马上显示。", AgentTurnExecution(toolCallCount = 3)),
+                ScriptedAttempt(
+                    "路线已计算，我马上显示。",
+                    executionOf(
+                        SearchSystemTool.NAME to AgentToolCallStatus.SUCCESS,
+                        SearchSystemTool.NAME to AgentToolCallStatus.SUCCESS,
+                        CalculateNormalRouteTool.NAME to AgentToolCallStatus.SUCCESS,
+                    ),
+                ),
                 ScriptedAttempt(
                     "路线已显示。",
-                    AgentTurnExecution(toolCallCount = 3, mutationCallCount = 3, successfulMutationCount = 3),
+                    executionOf(
+                        BeginMissionTool.NAME to AgentToolCallStatus.SUCCESS,
+                        ShowNormalRouteTool.NAME to AgentToolCallStatus.SUCCESS,
+                        FitMissionTool.NAME to AgentToolCallStatus.SUCCESS,
+                    ),
                 ),
             ),
             expectation = AgentMutationExpectation.REQUIRED,
@@ -144,7 +283,7 @@ class EmbeddedAiControllerTest {
 
     @Test
     fun `failed mutation recovery cannot be reported as complete`() = runTest {
-        val failed = AgentTurnExecution(toolCallCount = 1, mutationCallCount = 1, failedMutationCount = 1)
+        val failed = executionOf(AddMissionMarkerTool.NAME to AgentToolCallStatus.FAILURE)
         val agent = ScriptedExecutionAgent(
             attempts = listOf(
                 ScriptedAttempt("创建失败。", failed),
@@ -751,6 +890,12 @@ private fun testAgent(run: suspend (String) -> String) = object : EmbeddedAiAgen
 private data class ScriptedAttempt(
     val response: String,
     val execution: AgentTurnExecution,
+)
+
+private fun executionOf(vararg calls: Pair<String, AgentToolCallStatus>) = AgentTurnExecution(
+    calls.mapIndexed { index, (toolName, status) ->
+        AgentToolCall("call-$index", toolName, status)
+    },
 )
 
 private class ScriptedExecutionAgent(

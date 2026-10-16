@@ -18,28 +18,38 @@ internal suspend fun <T> executePlannerQuery(
     resultSucceeded: (T) -> Boolean = { true },
     mapErrorCode: (ControlError) -> String = { it.code.name },
 ): String {
-    diagnostics.plannerToolStarted(toolName)
+    val callId = plannerToolStarted(toolName, diagnostics)
     val result = try {
         query()
     } catch (cancelled: CancellationException) {
-        diagnostics.plannerToolFailed(toolName)
+        plannerToolCancelled(callId, diagnostics, "Cancelled with the AI request.")
         throw cancelled
     } catch (failure: Throwable) {
-        diagnostics.plannerToolFailed(toolName)
+        plannerToolFailed(callId, diagnostics, safeToolFailureMessage(failure))
         throw failure
     }
     return when (result) {
         is ControlResult.Success -> {
-            if (resultSucceeded(result.value)) {
-                diagnostics.plannerToolSucceeded(toolName)
-            } else {
-                diagnostics.plannerToolFailed(toolName)
+            val serialized = try {
+                serialize(result.value).boundedToolResult()
+            } catch (cancelled: CancellationException) {
+                plannerToolCancelled(callId, diagnostics, "Cancelled with the AI request.")
+                throw cancelled
+            } catch (failure: Throwable) {
+                plannerToolFailed(callId, diagnostics, safeToolFailureMessage(failure))
+                throw failure
             }
-            serialize(result.value).boundedToolResult()
+            if (resultSucceeded(result.value)) {
+                plannerToolSucceeded(callId, diagnostics)
+            } else {
+                plannerToolFailed(callId, diagnostics, "The Planner reported that the action was not completed.")
+            }
+            serialized
         }
         is ControlResult.Failure -> {
-            diagnostics.plannerToolFailed(toolName)
-            throw EmbeddedAiToolException("${mapErrorCode(result.error)}: ${result.error.message}")
+            val safeError = "${mapErrorCode(result.error)}: ${result.error.message}"
+            plannerToolFailed(callId, diagnostics, safeError)
+            throw EmbeddedAiToolException(safeError)
         }
     }
 }
@@ -125,6 +135,12 @@ internal fun mapMarkerToolError(error: ControlError): String = when {
 internal fun toolCallDiagnostic(toolName: String) = "Tool call: $toolName"
 internal fun toolSuccessDiagnostic() = "Tool result: success"
 internal fun toolFailureDiagnostic() = "Tool result: failure"
+internal fun toolCancellationDiagnostic() = "Tool result: cancelled"
+
+private fun safeToolFailureMessage(failure: Throwable): String = when (failure) {
+    is EmbeddedAiToolException -> failure.message ?: "The Planner tool failed."
+    else -> "The Planner tool could not complete."
+}
 
 internal class EmbeddedAiToolException(message: String) : RuntimeException(message)
 

@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,7 +86,8 @@ class EmbeddedAiController(
             content = "",
             status = EmbeddedAiMessageStatus.THINKING,
         )
-        activeTurn = ActiveTurn(userMessage, assistantMessage.id, requestHistoryRevision)
+        val turn = ActiveTurn(userMessage, assistantMessage.id, requestHistoryRevision)
+        activeTurn = turn
         publish(
             mutableState.value.withMessages(userMessage, assistantMessage).copy(
                 response = "",
@@ -111,28 +113,41 @@ class EmbeddedAiController(
                         agentRevision = currentRevision
                     }
                 }
-                var response = currentAgent.run(contextualPrompt).boundedAssistantMessage()
+                var response = currentAgent.run(
+                    contextualPrompt,
+                    turnObserver(turn, requestGeneration),
+                ).boundedAssistantMessage()
                 var execution = currentAgent.lastTurnExecution
-                val mutationExpectation = if (execution.successfulMutationCount == 0) {
+                turn.setExecution(execution)
+                val mutationExpectation = if (!execution.hasSuccessfulMutation) {
                     currentAgent.mutationExpectation(contextualPrompt)
                 } else {
                     AgentMutationExpectation.NOT_REQUIRED
                 }
                 var status = EmbeddedAiMessageStatus.COMPLETE
-                if (mutationExpectation == AgentMutationExpectation.REQUIRED && execution.successfulMutationCount == 0) {
+                if (mutationExpectation == AgentMutationExpectation.REQUIRED && !execution.hasSuccessfulMutation) {
+                    val firstAttemptExecution = execution
                     response = currentAgent.run(
                         buildMutationRecoveryPrompt(contextualPrompt, response),
+                        turnObserver(turn, requestGeneration, firstAttemptExecution),
                     ).boundedAssistantMessage()
                     execution += currentAgent.lastTurnExecution
-                    if (execution.successfulMutationCount == 0) {
+                    turn.setExecution(execution)
+                    if (!execution.hasSuccessfulMutation) {
                         response = MAP_ACTION_INCOMPLETE_MESSAGE
                         status = EmbeddedAiMessageStatus.INCOMPLETE
                     }
                 }
                 withContext(uiDispatcher) {
-                    updateIfCurrent(requestGeneration) { current ->
+                    completeIfCurrent(requestGeneration, turn) { current ->
                         recordHistoryIfCurrent(requestHistoryRevision, userMessage.content, response)
-                        current.completeAssistant(assistantMessage.id, response, status, now = now()).copy(
+                        current.completeAssistant(
+                            assistantMessage.id,
+                            response,
+                            status,
+                            execution.toolCalls,
+                            now = now(),
+                        ).copy(
                             response = response,
                             errorMessage = null,
                             isLoading = false,
@@ -145,20 +160,24 @@ class EmbeddedAiController(
                 throw cancelled
             } catch (failure: Throwable) {
                 val safeMessage = failure.safeUiMessage()
+                val snapshot = turn.snapshot()
+                val displayedResponse = snapshot.content.ifBlank { safeMessage }
                 withContext(uiDispatcher) {
-                    updateIfCurrent(requestGeneration) { current ->
-                        recordHistoryIfCurrent(requestHistoryRevision, userMessage.content, safeMessage)
+                    completeIfCurrent(requestGeneration, turn) { current ->
+                        recordHistoryIfCurrent(requestHistoryRevision, userMessage.content, displayedResponse)
                         current.completeAssistant(
                             assistantMessage.id,
-                            safeMessage,
+                            displayedResponse,
                             EmbeddedAiMessageStatus.ERROR,
+                            snapshot.execution.toolCalls,
                             now(),
+                            safeMessage,
                         ).copy(
-                            response = "",
+                            response = displayedResponse,
                             errorMessage = safeMessage,
                             isLoading = false,
                             runtimeInfo = agent?.runtimeInfo,
-                            lastTurnExecution = agent?.lastTurnExecution ?: AgentTurnExecution(),
+                            lastTurnExecution = snapshot.execution,
                         )
                     }
                 }
@@ -192,17 +211,21 @@ class EmbeddedAiController(
         activeTurn = null
         if (turn != null) {
             val cancelledMessage = "Request cancelled."
-            recordHistoryIfCurrent(turn.historyRevision, turn.userMessage.content, cancelledMessage)
+            val snapshot = turn.cancelActiveTools(cancelledMessage)
+            val displayedResponse = snapshot.content.ifBlank { cancelledMessage }
+            recordHistoryIfCurrent(turn.historyRevision, turn.userMessage.content, displayedResponse)
             publish(
                 mutableState.value.completeAssistant(
                     turn.assistantMessageId,
-                    cancelledMessage,
+                    displayedResponse,
                     EmbeddedAiMessageStatus.CANCELLED,
+                    snapshot.execution.toolCalls,
                     now(),
                 ).copy(
-                    response = cancelledMessage,
+                    response = displayedResponse,
                     errorMessage = null,
                     isLoading = false,
+                    lastTurnExecution = snapshot.execution,
                 ),
             )
         }
@@ -277,16 +300,20 @@ class EmbeddedAiController(
         val activeRequest = request
         activeTurn?.let { turn ->
             val interrupted = "The request was interrupted because the Planner closed."
+            val snapshot = turn.cancelActiveTools(interrupted)
+            val displayedResponse = snapshot.content.ifBlank { interrupted }
             publish(
                 mutableState.value.completeAssistant(
                     turn.assistantMessageId,
-                    interrupted,
+                    displayedResponse,
                     EmbeddedAiMessageStatus.CANCELLED,
+                    snapshot.execution.toolCalls,
                     now(),
                 ).copy(
-                    response = interrupted,
+                    response = displayedResponse,
                     errorMessage = null,
                     isLoading = false,
+                    lastTurnExecution = snapshot.execution,
                 ),
             )
         }
@@ -316,14 +343,56 @@ class EmbeddedAiController(
         }
     }
 
-    private inline fun updateIfCurrent(
+    private inline fun completeIfCurrent(
         requestGeneration: Long,
+        turn: ActiveTurn,
         update: (EmbeddedAiUiState) -> EmbeddedAiUiState,
     ) {
-        if (!closed.get() && generation.get() == requestGeneration) {
+        if (!closed.get() && generation.get() == requestGeneration && activeTurn === turn) {
             publish(update(mutableState.value))
             request = null
             activeTurn = null
+        }
+    }
+
+    private fun turnObserver(
+        turn: ActiveTurn,
+        requestGeneration: Long,
+        executionPrefix: AgentTurnExecution = AgentTurnExecution(),
+    ) = object : EmbeddedAiTurnObserver {
+        override fun textDelta(text: String) {
+            if (text.isEmpty()) return
+            turn.appendText(text)
+            scheduleTurnUpdate(turn, requestGeneration)
+        }
+
+        override fun toolExecutionChanged(execution: AgentTurnExecution) {
+            turn.setExecution(executionPrefix + execution)
+            scheduleTurnUpdate(turn, requestGeneration)
+        }
+    }
+
+    private fun scheduleTurnUpdate(turn: ActiveTurn, requestGeneration: Long) {
+        if (!turn.scheduleFlush()) return
+        scope.launch {
+            delay(STREAM_UPDATE_INTERVAL_MILLIS)
+            val snapshot = turn.snapshotAndFinishFlush()
+            withContext(uiDispatcher) {
+                if (!closed.get() && generation.get() == requestGeneration && activeTurn === turn) {
+                    publish(
+                        mutableState.value.updateAssistantProgress(
+                            turn.assistantMessageId,
+                            snapshot.content,
+                            snapshot.execution.toolCalls,
+                            now(),
+                        ).copy(
+                            response = snapshot.content,
+                            lastTurnExecution = snapshot.execution,
+                            scrollRequest = mutableState.value.scrollRequest + 1,
+                        ),
+                    )
+                }
+            }
         }
     }
 
@@ -383,10 +452,57 @@ class EmbeddedAiController(
         mutableState.value = state
     }
 
-    private data class ActiveTurn(
+    private class ActiveTurn(
         val userMessage: EmbeddedAiMessage,
         val assistantMessageId: String,
         val historyRevision: Long,
+    ) {
+        private val lock = Any()
+        private val content = StringBuilder()
+        private var execution = AgentTurnExecution()
+        private var flushScheduled = false
+
+        fun appendText(delta: String) = synchronized(lock) {
+            val remaining = MAX_ASSISTANT_MESSAGE_CHARACTERS - content.length
+            if (remaining > 0) content.append(delta.take(remaining))
+        }
+
+        fun setExecution(value: AgentTurnExecution) = synchronized(lock) { execution = value }
+
+        fun scheduleFlush(): Boolean = synchronized(lock) {
+            if (flushScheduled) return false
+            flushScheduled = true
+            true
+        }
+
+        fun snapshotAndFinishFlush(): TurnSnapshot = synchronized(lock) {
+            flushScheduled = false
+            snapshotLocked()
+        }
+
+        fun snapshot(): TurnSnapshot = synchronized(lock, ::snapshotLocked)
+
+        fun cancelActiveTools(message: String): TurnSnapshot = synchronized(lock) {
+            execution = AgentTurnExecution(
+                execution.toolCalls.map { call ->
+                    if (call.status == AgentToolCallStatus.RUNNING ||
+                        call.status == AgentToolCallStatus.WAITING_CONFIRMATION
+                    ) {
+                        call.copy(status = AgentToolCallStatus.CANCELLED, errorMessage = message)
+                    } else {
+                        call
+                    }
+                },
+            )
+            snapshotLocked()
+        }
+
+        private fun snapshotLocked() = TurnSnapshot(content.toString(), execution)
+    }
+
+    private data class TurnSnapshot(
+        val content: String,
+        val execution: AgentTurnExecution,
     )
 }
 
@@ -406,11 +522,46 @@ private fun EmbeddedAiUiState.completeAssistant(
     messageId: String,
     content: String,
     status: EmbeddedAiMessageStatus = EmbeddedAiMessageStatus.COMPLETE,
+    toolCalls: List<AgentToolCall> = emptyList(),
+    now: Instant,
+    statusMessage: String? = null,
+): EmbeddedAiUiState = withActiveSession(
+    chatSession.copy(
+        messages = chatSession.messages.map { message ->
+            if (message.id == messageId) {
+                message.copy(
+                    content = content,
+                    status = status,
+                    timestamp = now,
+                    toolCalls = toolCalls,
+                    statusMessage = statusMessage,
+                )
+            } else {
+                message
+            }
+        },
+        updatedAt = now,
+    ),
+)
+
+private fun EmbeddedAiUiState.updateAssistantProgress(
+    messageId: String,
+    content: String,
+    toolCalls: List<AgentToolCall>,
     now: Instant,
 ): EmbeddedAiUiState = withActiveSession(
     chatSession.copy(
         messages = chatSession.messages.map { message ->
-            if (message.id == messageId) message.copy(content = content, status = status, timestamp = now) else message
+            if (message.id == messageId) {
+                message.copy(
+                    content = content,
+                    status = EmbeddedAiMessageStatus.THINKING,
+                    timestamp = now,
+                    toolCalls = toolCalls,
+                )
+            } else {
+                message
+            }
         },
         updatedAt = now,
     ),
@@ -448,3 +599,4 @@ internal const val MAP_ACTION_INCOMPLETE_MESSAGE =
     "The requested map action was not completed because no map-modifying tool returned a successful result."
 private const val MAX_RECOVERY_ORIGINAL_PROMPT_CHARACTERS = 16_000
 private const val MAX_RECOVERY_RESPONSE_CHARACTERS = 4_000
+private const val STREAM_UPDATE_INTERVAL_MILLIS = 32L

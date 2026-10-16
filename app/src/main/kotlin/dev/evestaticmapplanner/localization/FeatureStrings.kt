@@ -8,6 +8,7 @@ import dev.evestaticmapplanner.core.marker.SavedMarkerChildType
 import dev.evestaticmapplanner.data.ansiblex.AnsiblexImportMode
 import dev.evestaticmapplanner.data.ansiblex.ImportDiagnostic
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
+import dev.evestaticmapplanner.embeddedai.AgentToolCallStatus
 import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.shared.api.SharedMapError
 import dev.evestaticmapplanner.shared.model.SharedConnectionState
@@ -38,6 +39,7 @@ interface AiAssistantStrings {
     val ai: String
     val waitingForConfirmation: String
     val thinking: String
+    val responseCancelled: String
     val stopReading: String
     val readAloud: String
     val confirmAiAction: String
@@ -48,6 +50,8 @@ interface AiAssistantStrings {
     val allow: String
 
     fun riskLabel(risk: PlannerToolRisk): String
+    fun responseInterrupted(reason: String?): String
+    fun toolCallStatus(toolName: String, status: AgentToolCallStatus, errorMessage: String?): String
     fun credentialSource(source: AiCredentialSource): String
     fun providerDescription(providerName: String?, modelId: String?, source: AiCredentialSource?): String
     fun providerAction(providerConfigured: Boolean): String

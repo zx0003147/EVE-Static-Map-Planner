@@ -5,6 +5,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -13,6 +14,67 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AiActionConfirmationServiceTest {
+    @Test
+    fun `protected call reports waiting running and success around confirmation`() = runTest {
+        val snapshots = mutableListOf<AgentTurnExecution>()
+        val tracker = AgentTurnExecutionTracker()
+        val observer = object : EmbeddedAiTurnObserver {
+            override fun toolExecutionChanged(execution: AgentTurnExecution) {
+                snapshots += execution
+            }
+        }
+        tracker.reset(observer)
+        val service = AiActionConfirmationService()
+        service.startRequest("request-1")
+
+        val result = withContext(AgentTurnContext(tracker, observer)) {
+            val pendingResult = async {
+                service.confirmAndExecute(action("{\"systemId\":30000142}")) { "{\"success\":true}" }
+            }
+            runCurrent()
+            assertEquals(AgentToolCallStatus.WAITING_CONFIRMATION, snapshots.last().toolCalls.single().status)
+            assertTrue(service.approve(service.pending.value!!.actionId))
+            pendingResult.await()
+        }
+
+        assertEquals("{\"success\":true}", result)
+        assertTrue(snapshots.any { it.toolCalls.single().status == AgentToolCallStatus.RUNNING })
+        assertEquals(AgentToolCallStatus.SUCCESS, snapshots.last().toolCalls.single().status)
+    }
+
+    @Test
+    fun `denied protected call ends cancelled and never reports success`() = runTest {
+        val snapshots = mutableListOf<AgentTurnExecution>()
+        val tracker = AgentTurnExecutionTracker()
+        val observer = object : EmbeddedAiTurnObserver {
+            override fun toolExecutionChanged(execution: AgentTurnExecution) {
+                snapshots += execution
+            }
+        }
+        tracker.reset(observer)
+        val service = AiActionConfirmationService()
+        service.startRequest("request-1")
+        var executed = false
+
+        val output = withContext(AgentTurnContext(tracker, observer)) {
+            val pendingResult = async {
+                service.confirmAndExecute(action("{\"systemId\":30000142}")) {
+                    executed = true
+                    "{\"success\":true}"
+                }
+            }
+            runCurrent()
+            assertEquals(AgentToolCallStatus.WAITING_CONFIRMATION, snapshots.last().toolCalls.single().status)
+            assertTrue(service.deny(service.pending.value!!.actionId))
+            pendingResult.await()
+        }
+
+        assertTrue(output.contains("cancelled"))
+        assertFalse(executed)
+        assertEquals(AgentToolCallStatus.CANCELLED, snapshots.last().toolCalls.single().status)
+        assertTrue(snapshots.none { it.toolCalls.single().status == AgentToolCallStatus.SUCCESS })
+    }
+
     @Test
     fun `approval is bound to one request tool and normalized argument set`() = runTest {
         val audit = mutableListOf<String>()

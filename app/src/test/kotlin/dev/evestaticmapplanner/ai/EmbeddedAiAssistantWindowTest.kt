@@ -34,6 +34,8 @@ import dev.evestaticmapplanner.embeddedai.AiActionConfirmation
 import dev.evestaticmapplanner.embeddedai.AiActionDetail
 import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderType
+import dev.evestaticmapplanner.embeddedai.AgentToolCall
+import dev.evestaticmapplanner.embeddedai.AgentToolCallStatus
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiChatSession
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessage
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageRole
@@ -53,6 +55,27 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class EmbeddedAiAssistantWindowTest {
+    @Test
+    fun `assistant bubble renders ordered real tool states beside streamed text`() = runComposeUiTest {
+        val assistant = EmbeddedAiMessage(
+            id = "tool-turn",
+            role = EmbeddedAiMessageRole.ASSISTANT,
+            content = "I found the systems and am updating the map…",
+            toolCalls = listOf(
+                AgentToolCall("search", "search_system", AgentToolCallStatus.SUCCESS),
+                AgentToolCall("route", "calculate_normal_route", AgentToolCallStatus.SUCCESS),
+                AgentToolCall("map", "show_normal_route", AgentToolCallStatus.RUNNING),
+            ),
+        )
+        setAssistantContent(chatState(assistant))
+
+        onNodeWithTag(AI_TOOL_STATUS_LIST_TEST_TAG).assertIsDisplayed()
+        onNodeWithTag("$AI_TOOL_STATUS_TEST_TAG_PREFIX-search").assertTextContains("Completed · Search systems")
+        onNodeWithTag("$AI_TOOL_STATUS_TEST_TAG_PREFIX-route").assertTextContains("Completed · Calculate route")
+        onNodeWithTag("$AI_TOOL_STATUS_TEST_TAG_PREFIX-map").assertTextContains("Running · Update map")
+        onNodeWithText("I found the systems and am updating the map…").assertIsDisplayed()
+    }
+
     @Test
     fun `assistant shell switches locale while conversation and provider identifiers remain unchanged`() =
         runComposeUiTest {

@@ -3,10 +3,16 @@ package dev.evestaticmapplanner.embeddedai
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 data class AiActionDetail(
@@ -139,20 +145,32 @@ class AiActionConfirmationService(
         request: AiActionRequest,
         execute: suspend (idempotencyKey: String) -> String,
     ): String {
+        val callId = plannerToolStarted(request.toolName, diagnostics)
         val registration = synchronized(lock) { register(request) }
         when (registration) {
-            is Registration.Rejected -> return cancelledResult(registration.reason)
+            is Registration.Rejected -> {
+                plannerToolCancelled(callId, diagnostics, registration.reason)
+                return cancelledResult(registration.reason)
+            }
             is Registration.Duplicate -> {
                 diagnostics(actionAudit(registration.execution, "deduplicated"))
-                return registration.execution.result.await()
+                plannerToolWaitingForConfirmation(callId)
+                val output = registration.execution.result.await()
+                completeProtectedToolCall(callId, diagnostics, output)
+                return output
             }
             is Registration.Owner -> Unit
         }
 
         val execution = registration.execution
         diagnostics(actionAudit(execution, "requested"))
+        plannerToolWaitingForConfirmation(callId)
         try {
-            if (!execution.decision.await()) return execution.result.await()
+            if (!execution.decision.await()) {
+                val output = execution.result.await()
+                plannerToolCancelled(callId, diagnostics, protectedCancellationMessage(output))
+                return output
+            }
             val claimed = synchronized(lock) {
                 if (
                     execution.status == ExecutionStatus.PENDING &&
@@ -165,13 +183,21 @@ class AiActionConfirmationService(
                     false
                 }
             }
-            if (!claimed) return execution.result.await()
+            if (!claimed) {
+                val output = execution.result.await()
+                completeProtectedToolCall(callId, diagnostics, output)
+                return output
+            }
 
-            val output = execute(execution.idempotencyKey)
+            plannerToolRunning(callId)
+            val output = withContext(ActivePlannerToolCall(callId, request.toolName)) {
+                execute(execution.idempotencyKey)
+            }
             synchronized(lock) {
                 execution.status = ExecutionStatus.COMPLETED
                 execution.result.complete(output)
             }
+            completeProtectedToolCall(callId, diagnostics, output)
             diagnostics(actionAudit(execution, "completed"))
             return output
         } catch (cancelled: CancellationException) {
@@ -179,6 +205,7 @@ class AiActionConfirmationService(
                 execution.status = ExecutionStatus.COMPLETED
                 execution.result.completeExceptionally(cancelled)
             }
+            plannerToolCancelled(callId, diagnostics, "Cancelled with the AI request.")
             diagnostics(actionAudit(execution, "cancelled"))
             throw cancelled
         } catch (failure: Throwable) {
@@ -186,6 +213,7 @@ class AiActionConfirmationService(
                 execution.status = ExecutionStatus.COMPLETED
                 execution.result.completeExceptionally(failure)
             }
+            plannerToolFailed(callId, diagnostics, safeProtectedToolFailure(failure))
             diagnostics(actionAudit(execution, "failed"))
             throw failure
         }
@@ -248,6 +276,47 @@ class AiActionConfirmationService(
         data class Duplicate(val execution: ActionExecution) : Registration
         data class Rejected(val reason: String) : Registration
     }
+}
+
+private suspend fun completeProtectedToolCall(
+    callId: String,
+    diagnostics: (String) -> Unit,
+    output: String,
+) {
+    val tracker = currentCoroutineContext()[AgentTurnContext]?.tracker
+    if (tracker?.status(callId) !in setOf(AgentToolCallStatus.RUNNING, AgentToolCallStatus.WAITING_CONFIRMATION)) return
+    val result = runCatching {
+        val json = Json.parseToJsonElement(output).jsonObject
+        ProtectedToolOutcome(
+            status = json["status"]?.jsonPrimitive?.content,
+            success = json["success"]?.jsonPrimitive?.booleanOrNull,
+            message = json["message"]?.jsonPrimitive?.content,
+        )
+    }.getOrNull()
+    when {
+        result?.status == "cancelled" -> plannerToolCancelled(callId, diagnostics, protectedCancellationMessage(output))
+        result?.success == false -> plannerToolFailed(
+            callId,
+            diagnostics,
+            result.message ?: "The action was not completed.",
+        )
+        else -> plannerToolSucceeded(callId, diagnostics)
+    }
+}
+
+private data class ProtectedToolOutcome(
+    val status: String?,
+    val success: Boolean?,
+    val message: String?,
+)
+
+private fun protectedCancellationMessage(output: String): String = runCatching {
+    Json.parseToJsonElement(output).jsonObject["message"]?.jsonPrimitive?.content
+}.getOrNull() ?: "The action was cancelled."
+
+private fun safeProtectedToolFailure(failure: Throwable): String = when (failure) {
+    is EmbeddedAiToolException -> failure.message ?: "The Planner tool failed."
+    else -> "The Planner tool could not complete."
 }
 
 internal fun cancelledResult(message: String): String = buildJsonObject {
