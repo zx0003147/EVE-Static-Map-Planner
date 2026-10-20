@@ -47,6 +47,7 @@ interface MapStrings {
     val setCapitalDestination: String
     val createWormholeConnection: String
     val wormholeConnections: String
+    val copySystemName: String
     val viewerAccess: String
     val authenticationRequired: String
     val readOnly: String

@@ -116,6 +116,8 @@ import dev.evestaticmapplanner.localization.LocalAppStrings
 import dev.evestaticmapplanner.preferences.AnsiblexPreferences
 import dev.evestaticmapplanner.core.identity.CurrentIdentityContext
 import dev.evestaticmapplanner.core.sovereignty.SovereigntySnapshot
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
 
 @Composable
@@ -410,6 +412,15 @@ internal fun StaticMapScreen(
                         },
                         onContextManageWormholes = { systemId ->
                             wormholeConnectionsSystemId = systemId
+                            viewModel.dismissContextMenu()
+                        },
+                        onContextCopySystemName = { systemId ->
+                            copyContextSystemName(state.scene, systemId) { systemName ->
+                                Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                                    StringSelection(systemName),
+                                    null,
+                                )
+                            }
                             viewModel.dismissContextMenu()
                         },
                         onContextDismiss = viewModel::dismissContextMenu,

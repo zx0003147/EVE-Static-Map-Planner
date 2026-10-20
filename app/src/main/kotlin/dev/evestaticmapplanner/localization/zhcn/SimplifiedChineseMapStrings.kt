@@ -47,6 +47,7 @@ internal object SimplifiedChineseMapStrings : MapStrings {
     override val setCapitalDestination = "设为旗舰路线终点"
     override val createWormholeConnection = "创建虫洞连接…"
     override val wormholeConnections = "虫洞连接…"
+    override val copySystemName = "复制星系名称"
     override val viewerAccess = "仅查看权限"
     override val authenticationRequired = "需要身份验证"
     override val readOnly = "只读"

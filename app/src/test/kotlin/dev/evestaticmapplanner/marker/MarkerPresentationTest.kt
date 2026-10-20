@@ -31,6 +31,8 @@ class MarkerPresentationTest {
         assertEquals("设为普通路线起点", chinese.first { it.action == SystemContextAction.SET_ROUTE_START }.label)
         assertEquals("Add Jump Range Overlay", english.first { it.action == SystemContextAction.ADD_JUMP_RANGE_OVERLAY }.label)
         assertEquals("添加跳跃范围覆盖", chinese.first { it.action == SystemContextAction.ADD_JUMP_RANGE_OVERLAY }.label)
+        assertEquals("Copy System Name", english.last().label)
+        assertEquals("复制星系名称", chinese.last().label)
     }
 
     @Test
@@ -61,6 +63,7 @@ class MarkerPresentationTest {
                 SystemContextAction.ADD_CAPITAL_WAYPOINT,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
                 SystemContextAction.CREATE_WORMHOLE,
+                SystemContextAction.COPY_SYSTEM_NAME,
             ),
             actions,
         )
@@ -71,6 +74,7 @@ class MarkerPresentationTest {
                 SystemContextAction.SET_ROUTE_START,
                 SystemContextAction.SET_CAPITAL_START,
                 SystemContextAction.CREATE_WORMHOLE,
+                SystemContextAction.COPY_SYSTEM_NAME,
             ),
             presented.filter(PresentedSystemContextAction::startsNewSection).map { it.action },
         )
@@ -129,6 +133,7 @@ class MarkerPresentationTest {
                 SystemContextAction.ADD_CAPITAL_WAYPOINT,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
                 SystemContextAction.CREATE_WORMHOLE,
+                SystemContextAction.COPY_SYSTEM_NAME,
             ),
             SystemContextMenuPresentationBuilder.build(temporary, readyState(temporary)).map { it.action },
         )
@@ -144,25 +149,45 @@ class MarkerPresentationTest {
                 SystemContextAction.ADD_CAPITAL_WAYPOINT,
                 SystemContextAction.SET_CAPITAL_DESTINATION,
                 SystemContextAction.CREATE_WORMHOLE,
+                SystemContextAction.COPY_SYSTEM_NAME,
             ),
             SystemContextMenuPresentationBuilder.build(saved, readyState(saved)).map { it.action },
         )
     }
 
     @Test
-    fun `Wormhole quick actions are the final section and connections appear only when present`() {
+    fun `copy is final while wormhole connections appear only when present`() {
         val none = SystemContextMenuPresentationBuilder.build(null, readyState(), wormholeConnectionCount = 0)
         val multiple = SystemContextMenuPresentationBuilder.build(null, readyState(), wormholeConnectionCount = 4)
 
-        assertEquals(SystemContextAction.CREATE_WORMHOLE, none.last().action)
+        assertEquals(SystemContextAction.COPY_SYSTEM_NAME, none.last().action)
         assertTrue(none.last().startsNewSection)
         assertTrue(none.none { it.action == SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS })
         assertEquals(
-            listOf(SystemContextAction.CREATE_WORMHOLE, SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS),
-            multiple.takeLast(2).map { it.action },
+            listOf(
+                SystemContextAction.CREATE_WORMHOLE,
+                SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS,
+                SystemContextAction.COPY_SYSTEM_NAME,
+            ),
+            multiple.takeLast(3).map { it.action },
         )
-        assertEquals("Wormhole Connections… (4)", multiple.last().label)
-        assertFalse(multiple.last().startsNewSection)
+        assertEquals("Wormhole Connections… (4)", multiple[multiple.lastIndex - 1].label)
+        assertFalse(multiple[multiple.lastIndex - 1].startsNewSection)
+    }
+
+    @Test
+    fun `copy visibility follows actual selected system count`() {
+        fun hasCopy(selectedSystemCount: Int) = SystemContextMenuPresentationBuilder.build(
+            marker = null,
+            state = readyState(),
+            selectedSystemCount = selectedSystemCount,
+        ).any { it.action == SystemContextAction.COPY_SYSTEM_NAME }
+
+        assertTrue(hasCopy(0), "direct right-click without a previous selection")
+        assertTrue(hasCopy(1), "single selection")
+        assertFalse(hasCopy(2), "two selected systems")
+        assertFalse(hasCopy(3), "three selected systems")
+        assertTrue(hasCopy(1), "copy returns after reducing selection to one")
     }
 
     @Test

@@ -121,6 +121,7 @@ internal fun StaticMapCanvas(
     onContextSharedMarkerAction: (Int, SharedMarkerContextAction) -> Unit,
     onContextCreateWormhole: (Int) -> Unit,
     onContextManageWormholes: (Int) -> Unit,
+    onContextCopySystemName: (Int) -> Unit,
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
@@ -177,6 +178,7 @@ internal fun StaticMapCanvas(
             onContextSharedMarkerAction = onContextSharedMarkerAction,
             onContextCreateWormhole = onContextCreateWormhole,
             onContextManageWormholes = onContextManageWormholes,
+            onContextCopySystemName = onContextCopySystemName,
             onContextDismiss = onContextDismiss,
         )
         return
@@ -984,7 +986,8 @@ internal fun StaticMapCanvas(
                         wormholeConnections.count {
                             it.firstSystemId == menu.systemId || it.secondSystemId == menu.systemId
                         },
-                        strings.map,
+                        selectedSystemCount = state.selectedSystemIds.size,
+                        strings = strings.map,
                     ).forEach { item ->
                         if (item.startsNewSection) {
                             HorizontalDivider(
@@ -1038,6 +1041,7 @@ internal fun StaticMapCanvas(
                                     SystemContextAction.SET_CAPITAL_DESTINATION -> onContextCapitalDestination(menu.systemId)
                                     SystemContextAction.CREATE_WORMHOLE -> onContextCreateWormhole(menu.systemId)
                                     SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS -> onContextManageWormholes(menu.systemId)
+                                    SystemContextAction.COPY_SYSTEM_NAME -> onContextCopySystemName(menu.systemId)
                                 }
                             }.padding(10.dp),
                         )

@@ -148,6 +148,7 @@ internal fun Real3DMapCanvas(
     onContextSharedMarkerAction: (Int, SharedMarkerContextAction) -> Unit,
     onContextCreateWormhole: (Int) -> Unit,
     onContextManageWormholes: (Int) -> Unit,
+    onContextCopySystemName: (Int) -> Unit,
     onContextDismiss: () -> Unit,
     onFirstMapDisplayed: () -> Unit,
 ) {
@@ -804,6 +805,7 @@ internal fun Real3DMapCanvas(
             Real3DSystemContextMenu(
                 menu = menu,
                 canvasSizePx = canvasSizePx,
+                selectedSystemCount = state.selectedSystemIds.size,
                 markerState = markerState,
                 sharedMapState = sharedMapState,
                 wormholeConnections = wormholeConnections,
@@ -818,6 +820,7 @@ internal fun Real3DMapCanvas(
                 onContextSharedMarkerAction = onContextSharedMarkerAction,
                 onContextCreateWormhole = onContextCreateWormhole,
                 onContextManageWormholes = onContextManageWormholes,
+                onContextCopySystemName = onContextCopySystemName,
                 onContextDismiss = onContextDismiss,
             )
         }
@@ -829,6 +832,7 @@ internal fun Real3DMapCanvas(
 private fun Real3DSystemContextMenu(
     menu: MapContextMenuState,
     canvasSizePx: IntSize,
+    selectedSystemCount: Int,
     markerState: MarkerUiState,
     sharedMapState: SharedMapState,
     wormholeConnections: List<WormholeConnection>,
@@ -843,6 +847,7 @@ private fun Real3DSystemContextMenu(
     onContextSharedMarkerAction: (Int, SharedMarkerContextAction) -> Unit,
     onContextCreateWormhole: (Int) -> Unit,
     onContextManageWormholes: (Int) -> Unit,
+    onContextCopySystemName: (Int) -> Unit,
     onContextDismiss: () -> Unit,
 ) {
     val strings = LocalAppStrings.current
@@ -875,7 +880,8 @@ private fun Real3DSystemContextMenu(
                 wormholeConnections.count {
                     it.firstSystemId == menu.systemId || it.secondSystemId == menu.systemId
                 },
-                strings.map,
+                selectedSystemCount = selectedSystemCount,
+                strings = strings.map,
             ).forEach { item ->
                 if (item.startsNewSection) {
                     HorizontalDivider(color = Color(0xFF314252), modifier = Modifier.padding(vertical = 4.dp))
@@ -899,6 +905,7 @@ private fun Real3DSystemContextMenu(
                             onContextSharedMarkerAction,
                             onContextCreateWormhole,
                             onContextManageWormholes,
+                            onContextCopySystemName,
                         )
                     }.padding(10.dp),
                 )
@@ -932,6 +939,7 @@ private fun dispatchReal3DContextAction(
     onContextSharedMarkerAction: (Int, SharedMarkerContextAction) -> Unit,
     onContextCreateWormhole: (Int) -> Unit,
     onContextManageWormholes: (Int) -> Unit,
+    onContextCopySystemName: (Int) -> Unit,
 ) {
     when (action) {
         SystemContextAction.ADD_TEMPORARY_MARKER -> onContextMarkerAction(systemId, MarkerContextAction.ADD_TEMPORARY)
@@ -951,6 +959,7 @@ private fun dispatchReal3DContextAction(
         SystemContextAction.SET_CAPITAL_DESTINATION -> onContextCapitalDestination(systemId)
         SystemContextAction.CREATE_WORMHOLE -> onContextCreateWormhole(systemId)
         SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS -> onContextManageWormholes(systemId)
+        SystemContextAction.COPY_SYSTEM_NAME -> onContextCopySystemName(systemId)
     }
 }
 

@@ -202,6 +202,37 @@ class MapViewModelTest {
     }
 
     @Test
+    fun `context menu targets right-clicked system without replacing primary selection`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+
+        viewModel.openContextMenuAt(viewModel.screenPositionFor(2))
+
+        val state = viewModel.state.value
+        assertEquals(listOf(1), state.selectedSystemIds)
+        assertEquals(1, state.primarySelectedSystemId)
+        assertEquals(2, state.contextMenu?.systemId)
+        assertEquals("Two", state.scene?.nodesById?.get(2)?.system?.name)
+        var clipboardText: String? = null
+        assertTrue(copyContextSystemName(state.scene!!, state.contextMenu!!.systemId) { clipboardText = it })
+        assertEquals("Two", clipboardText)
+    }
+
+    @Test
+    fun `opening context menu preserves actual multi-selection`() = runTest {
+        val viewModel = initializedViewModel()
+        viewModel.selectAt(viewModel.screenPositionFor(1))
+        viewModel.selectAt(viewModel.screenPositionFor(2), ctrlPressed = true)
+
+        viewModel.openContextMenuAt(viewModel.screenPositionFor(3))
+
+        val state = viewModel.state.value
+        assertEquals(listOf(1, 2), state.selectedSystemIds)
+        assertEquals(1, state.primarySelectedSystemId)
+        assertEquals(3, state.contextMenu?.systemId)
+    }
+
+    @Test
     fun `ordinary click replaces the current multi-selection`() = runTest {
         val viewModel = initializedViewModel()
         val first = viewModel.screenPositionFor(1)

@@ -47,6 +47,7 @@ internal object EnglishMapStrings : MapStrings {
     override val setCapitalDestination = "Set as Capital Destination"
     override val createWormholeConnection = "Create Wormhole Connection…"
     override val wormholeConnections = "Wormhole Connections…"
+    override val copySystemName = "Copy System Name"
     override val viewerAccess = "viewer access"
     override val authenticationRequired = "authentication required"
     override val readOnly = "read-only"

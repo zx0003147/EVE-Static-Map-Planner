@@ -42,6 +42,7 @@ enum class SystemContextAction {
     SET_CAPITAL_DESTINATION,
     CREATE_WORMHOLE,
     MANAGE_WORMHOLE_CONNECTIONS,
+    COPY_SYSTEM_NAME,
 }
 
 data class PresentedSystemContextAction(
@@ -57,6 +58,7 @@ object SystemContextMenuPresentationBuilder {
         state: MarkerUiState,
         sharedActions: List<PresentedSharedMarkerContextAction> = emptyList(),
         wormholeConnectionCount: Int = 0,
+        selectedSystemCount: Int = 1,
         strings: MapStrings = AppStringsCatalog.forLocale(AppLocale.EN_US).map,
     ): List<PresentedSystemContextAction> =
         MarkerContextPresentationBuilder.build(marker, state).map { item ->
@@ -125,6 +127,16 @@ object SystemContextMenuPresentationBuilder {
             )
         } else {
             emptyList()
+        } + if (selectedSystemCount <= 1) {
+            listOf(
+                PresentedSystemContextAction(
+                    action = SystemContextAction.COPY_SYSTEM_NAME,
+                    label = strings.copySystemName,
+                    startsNewSection = true,
+                ),
+            )
+        } else {
+            emptyList()
         }
 }
 
@@ -146,6 +158,7 @@ private fun MapStrings.contextActionLabel(action: SystemContextAction): String =
     SystemContextAction.SET_CAPITAL_DESTINATION -> setCapitalDestination
     SystemContextAction.CREATE_WORMHOLE -> createWormholeConnection
     SystemContextAction.MANAGE_WORMHOLE_CONNECTIONS -> wormholeConnections
+    SystemContextAction.COPY_SYSTEM_NAME -> copySystemName
 }
 
 object MarkerContextPresentationBuilder {
