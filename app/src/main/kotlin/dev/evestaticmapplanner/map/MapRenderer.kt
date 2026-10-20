@@ -169,7 +169,7 @@ object MapRenderer {
             val node = scene.nodesById.getValue(systemId)
             val screen = transform.worldToScreen(node.position).toOffset()
             drawCircle(
-                color = (if (node.isStargateConnected) CONNECTED_NODE_COLOR else UNCONNECTED_NODE_COLOR)
+                color = securityColor(node.system.securityStatus)
                     .multiplyAlpha(emphasis.systemAlphaMultiplier(systemId)),
                 radius = radius,
                 center = screen,
@@ -302,7 +302,7 @@ object MapRenderer {
             if (systemId in replacementSystemIds) return@forEach
             val node = scene.nodesById[systemId]?.takeIf { visibleBounds.contains(it.position) } ?: return@forEach
             drawCircle(
-                color = if (node.isStargateConnected) CONNECTED_NODE_COLOR else UNCONNECTED_NODE_COLOR,
+                color = securityColor(node.system.securityStatus),
                 radius = radius,
                 center = transform.worldToScreen(node.position).toOffset(),
             )
@@ -1082,8 +1082,6 @@ private fun MapPoint.toOffset() = Offset(x.toFloat(), y.toFloat())
 private val MAP_BACKGROUND = Color(0xFF09121D)
 private val TERRITORY_BOUNDARY_COLOR = Color(0xFF6F8496)
 private val EDGE_COLOR = Color(MapVisualSemantics.stargateNetwork.argb)
-private val CONNECTED_NODE_COLOR = Color(0xFF75B9E7)
-private val UNCONNECTED_NODE_COLOR = Color(0xFF596673)
 private val LABEL_COLOR = Color(0xFFD7E6F2)
 private val REGION_LABEL_BASE_COLOR = Color(0xFFE8F2FA)
 private val REGION_BACKGROUND_LABEL_BASE_COLOR = Color(0xFFD7E6F2)

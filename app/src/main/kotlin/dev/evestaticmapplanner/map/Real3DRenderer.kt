@@ -631,7 +631,6 @@ internal fun Real3DMapCanvas(
             drawReal3DBase(
                 frame = frame,
                 visibleStargateConnectionKeys = visibleStargateConnectionKeys,
-                sovereigntyColorsBySystemId = featurePresentation.sovereigntyColorsBySystemId,
                 emphasis = visualEmphasis,
                 replacementSystemIds = primarySystemNodesById.keys,
             )
@@ -704,7 +703,6 @@ internal fun Real3DMapCanvas(
             drawReal3DEmphasizedSystems(
                 frame = frame,
                 emphasis = visualEmphasis,
-                sovereigntyColorsBySystemId = featurePresentation.sovereigntyColorsBySystemId,
                 textMeasurer = textMeasurer,
                 cache = renderCache,
                 preferences = state.appPreferences.mapDisplay,
@@ -959,7 +957,6 @@ private fun dispatchReal3DContextAction(
 private fun DrawScope.drawReal3DBase(
     frame: Real3DFrame,
     visibleStargateConnectionKeys: Set<Long>?,
-    sovereigntyColorsBySystemId: Map<Int, Color>,
     emphasis: MapVisualEmphasis,
     replacementSystemIds: Set<Int>,
 ) {
@@ -981,7 +978,7 @@ private fun DrawScope.drawReal3DBase(
     frame.nodesFarToNear.forEach { projected ->
         if (projected.node.system.id in replacementSystemIds) return@forEach
         drawCircle(
-            color = real3DSystemBaseColor(projected, sovereigntyColorsBySystemId)
+            color = real3DSystemBaseColor(projected)
                 .multiplyAlpha(emphasis.systemAlphaMultiplier(projected.node.system.id)),
             radius = projected.radiusPx,
             center = projected.toOffset(),
@@ -1143,7 +1140,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCenteredReal3DL
 private fun DrawScope.drawReal3DEmphasizedSystems(
     frame: Real3DFrame,
     emphasis: MapVisualEmphasis,
-    sovereigntyColorsBySystemId: Map<Int, Color>,
     textMeasurer: TextMeasurer,
     cache: MapRenderCache,
     preferences: dev.evestaticmapplanner.preferences.MapDisplayPreferences,
@@ -1154,7 +1150,7 @@ private fun DrawScope.drawReal3DEmphasizedSystems(
         if (systemId in replacementSystemIds) return@forEach
         val projected = frame.projectedBySystemId[systemId] ?: return@forEach
         drawCircle(
-            color = real3DSystemBaseColor(projected, sovereigntyColorsBySystemId),
+            color = real3DSystemBaseColor(projected),
             radius = projected.radiusPx + REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX,
             center = projected.toOffset(),
         )
@@ -1198,9 +1194,7 @@ private fun DrawScope.drawReal3DSystemLabel(
 
 private fun real3DSystemBaseColor(
     projected: dev.evestaticmapplanner.core.map.Real3DProjectedNode,
-    sovereigntyColorsBySystemId: Map<Int, Color>,
-): Color = sovereigntyColorsBySystemId[projected.node.system.id]
-    ?: if (projected.node.isStargateConnected) REAL_3D_CONNECTED_NODE else REAL_3D_UNCONNECTED_NODE
+): Color = securityColor(projected.node.system.securityStatus)
 
 private fun DrawScope.drawReal3DAnsiblexLayer(
     geometry: Real3DStaticGeometry,
@@ -1610,8 +1604,6 @@ private fun Color.multiplyAlpha(multiplier: Float): Color = copy(alpha = alpha *
 
 private val REAL_3D_BACKGROUND = Color(0xFF09121D)
 private val REAL_3D_EDGE_COLOR = Color(0xFF5A7185)
-private val REAL_3D_CONNECTED_NODE = Color(0xFF75B9E7)
-private val REAL_3D_UNCONNECTED_NODE = Color(0xFF596673)
 private const val REAL_3D_EDGE_WIDTH_PX = 1f
 private const val REAL_3D_SYSTEM_LABEL_OFFSET_PX = 5.0
 private const val REAL_3D_EMPHASIZED_NODE_RADIUS_INCREASE_PX = 0.8f
