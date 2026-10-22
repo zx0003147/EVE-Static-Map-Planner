@@ -28,9 +28,14 @@ data class EmbeddedAiUiState(
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
     val runtimeInfo: EmbeddedAiRuntimeInfo? = null,
-    val scrollRequest: Long = 0,
+    val viewportRequest: AssistantViewportRequest? = null,
     val contextNotice: String? = null,
     val lastTurnExecution: AgentTurnExecution = AgentTurnExecution(),
+)
+
+data class AssistantViewportRequest(
+    val requestId: Long,
+    val assistantMessageId: String,
 )
 
 class EmbeddedAiController(
@@ -44,6 +49,7 @@ class EmbeddedAiController(
     private val scope = CoroutineScope(supervisor + dispatcher)
     private val agentMutation = Mutex()
     private val generation = AtomicLong()
+    private val viewportRequestSequence = AtomicLong()
     private val configurationRevision = AtomicLong()
     private val historyRevision = AtomicLong()
     private val closed = AtomicBoolean()
@@ -94,7 +100,7 @@ class EmbeddedAiController(
                 errorMessage = null,
                 isLoading = true,
                 lastTurnExecution = AgentTurnExecution(),
-                scrollRequest = mutableState.value.scrollRequest + 1,
+                viewportRequest = nextViewportRequest(assistantMessage.id),
                 contextNotice = null,
             ),
         )
@@ -248,7 +254,6 @@ class EmbeddedAiController(
             chatSession = session,
             sessions = mutableState.value.sessions.filter(EmbeddedAiChatSession::isEstablished),
             runtimeInfo = mutableState.value.runtimeInfo,
-            scrollRequest = mutableState.value.scrollRequest + 1,
         ))
         scope.launch {
             activeRequest?.join()
@@ -271,7 +276,6 @@ class EmbeddedAiController(
                 response = "",
                 errorMessage = null,
                 isLoading = false,
-                scrollRequest = mutableState.value.scrollRequest + 1,
                 contextNotice = null,
             ),
         )
@@ -332,6 +336,13 @@ class EmbeddedAiController(
 
     fun denyAction(actionId: String): Boolean = actionConfirmationService.deny(actionId)
 
+    fun acknowledgeViewportRequest(requestId: Long) {
+        val current = mutableState.value
+        if (current.viewportRequest?.requestId == requestId) {
+            publish(current.copy(viewportRequest = null))
+        }
+    }
+
     private suspend fun closeStaleAgent() {
         if (agentRevision == configurationRevision.get()) return
         agentMutation.withLock {
@@ -388,7 +399,6 @@ class EmbeddedAiController(
                         ).copy(
                             response = snapshot.content,
                             lastTurnExecution = snapshot.execution,
-                            scrollRequest = mutableState.value.scrollRequest + 1,
                         ),
                     )
                 }
@@ -408,6 +418,11 @@ class EmbeddedAiController(
         timestamp = now(),
     )
 
+    private fun nextViewportRequest(assistantMessageId: String) = AssistantViewportRequest(
+        requestId = viewportRequestSequence.incrementAndGet(),
+        assistantMessageId = assistantMessageId,
+    )
+
     private fun appendImmediateError(prompt: String, error: String) {
         val user = message(EmbeddedAiMessageRole.USER, prompt)
         val assistant = message(EmbeddedAiMessageRole.ASSISTANT, error, EmbeddedAiMessageStatus.ERROR)
@@ -416,7 +431,7 @@ class EmbeddedAiController(
                 response = "",
                 errorMessage = error,
                 isLoading = false,
-                scrollRequest = mutableState.value.scrollRequest + 1,
+                viewportRequest = nextViewportRequest(assistant.id),
             ),
         )
     }

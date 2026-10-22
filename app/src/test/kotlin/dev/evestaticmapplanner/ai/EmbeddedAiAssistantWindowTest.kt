@@ -2,10 +2,13 @@ package dev.evestaticmapplanner.ai
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,6 +39,7 @@ import dev.evestaticmapplanner.embeddedai.AiCredentialSource
 import dev.evestaticmapplanner.embeddedai.AiProviderType
 import dev.evestaticmapplanner.embeddedai.AgentToolCall
 import dev.evestaticmapplanner.embeddedai.AgentToolCallStatus
+import dev.evestaticmapplanner.embeddedai.AssistantViewportRequest
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiChatSession
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessage
 import dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageRole
@@ -47,6 +51,8 @@ import dev.evestaticmapplanner.embeddedai.PlannerToolRisk
 import dev.evestaticmapplanner.ui.EveColors
 import dev.evestaticmapplanner.ui.EveTheme
 import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -190,26 +196,118 @@ class EmbeddedAiAssistantWindowTest {
     }
 
     @Test
-    fun `new messages automatically scroll to the latest item`() = runComposeUiTest {
+    fun `new assistant answer is positioned once while streaming updates preserve user position`() = runComposeUiTest {
         var state by mutableStateOf(
             chatState(*(1..30).map { message("m$it", EmbeddedAiMessageRole.ASSISTANT, "Message $it") }.toTypedArray()),
         )
+        lateinit var listState: LazyListState
+        lateinit var composeScope: CoroutineScope
+        var handledRequests = 0
         setContent {
             MaterialTheme {
+                listState = rememberLazyListState()
+                composeScope = rememberCoroutineScope()
                 Box(Modifier.requiredSize(680.dp, 520.dp)) {
-                    TestContent(state = state)
+                    TestContent(
+                        state = state,
+                        chatListState = listState,
+                        onViewportRequestHandled = { requestId ->
+                            handledRequests++
+                            if (state.viewportRequest?.requestId == requestId) {
+                                state = state.copy(viewportRequest = null)
+                            }
+                        },
+                    )
                 }
             }
         }
+        val streamingMarkdown = buildString {
+            appendLine("Opening paragraph")
+            appendLine()
+            appendLine("- first item")
+            appendLine("- second item")
+            appendLine()
+            appendLine("```text")
+            repeat(80) { appendLine("streamed code line $it") }
+            appendLine("```")
+            appendLine("| column | value |")
+            appendLine("| --- | --- |")
+            appendLine("| route | current |")
+        }
         state = state.copy(
             chatSession = state.chatSession.copy(
-                messages = state.chatSession.messages + message("latest", EmbeddedAiMessageRole.ASSISTANT, "Latest answer"),
+                messages = state.chatSession.messages + message(
+                    "latest",
+                    EmbeddedAiMessageRole.ASSISTANT,
+                    streamingMarkdown,
+                ),
             ),
-            scrollRequest = state.scrollRequest + 1,
+            viewportRequest = AssistantViewportRequest(1, "latest"),
         )
         waitForIdle()
 
         onNodeWithTag("$AI_CHAT_MESSAGE_TEST_TAG_PREFIX-latest").assertIsDisplayed()
+        assertEquals(1, handledRequests)
+        assertEquals(30, listState.firstVisibleItemIndex)
+        assertEquals(0, listState.firstVisibleItemScrollOffset)
+
+        runOnIdle { composeScope.launch { listState.scrollToItem(30, 420) } }
+        waitForIdle()
+        val middlePosition = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        state = state.copy(
+            chatSession = state.chatSession.copy(
+                messages = state.chatSession.messages.map {
+                    if (it.id == "latest") {
+                        it.copy(
+                            content = it.content + "\nMore streamed text",
+                            toolCalls = listOf(AgentToolCall("route-read", "get_current_navigation_routes", AgentToolCallStatus.RUNNING)),
+                        )
+                    } else {
+                        it
+                    }
+                },
+            ),
+        )
+        waitForIdle()
+        assertEquals(middlePosition, listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset)
+        assertEquals(1, handledRequests)
+
+        runOnIdle { composeScope.launch { listState.scrollToItem(30, 100_000) } }
+        waitForIdle()
+        val laterPosition = listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        state = state.copy(
+            chatSession = state.chatSession.copy(
+                messages = state.chatSession.messages.map {
+                    if (it.id == "latest") {
+                        it.copy(
+                            content = it.content + "\nFinal streamed text",
+                            status = dev.evestaticmapplanner.embeddedai.EmbeddedAiMessageStatus.COMPLETE,
+                            toolCalls = it.toolCalls.map { call -> call.copy(status = AgentToolCallStatus.SUCCESS) },
+                        )
+                    } else {
+                        it
+                    }
+                },
+            ),
+        )
+        waitForIdle()
+        assertEquals(laterPosition, listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset)
+        assertEquals(1, handledRequests)
+
+        state = state.copy(
+            chatSession = state.chatSession.copy(
+                messages = state.chatSession.messages + message(
+                    "next-answer",
+                    EmbeddedAiMessageRole.ASSISTANT,
+                    streamingMarkdown,
+                ),
+            ),
+            viewportRequest = AssistantViewportRequest(2, "next-answer"),
+        )
+        waitForIdle()
+        assertEquals(2, handledRequests)
+        assertEquals(31, listState.firstVisibleItemIndex)
+        assertEquals(0, listState.firstVisibleItemScrollOffset)
     }
 
     @Test
@@ -726,6 +824,8 @@ private fun TestContent(
     onNewChat: () -> Unit = {},
     onRenameChat: (String, String) -> Boolean = { _, _ -> false },
     onDeny: (String) -> Boolean = { true },
+    chatListState: LazyListState = rememberLazyListState(),
+    onViewportRequestHandled: (Long) -> Unit = {},
 ) {
     EmbeddedAiAssistantContent(
         state = state,
@@ -739,12 +839,13 @@ private fun TestContent(
         onOpenSettings = {},
         onApprove = { true },
         onDeny = onDeny,
+        chatListState = chatListState,
+        onViewportRequestHandled = onViewportRequestHandled,
     )
 }
 
 private fun chatState(vararg messages: EmbeddedAiMessage) = EmbeddedAiUiState(
     chatSession = EmbeddedAiChatSession("session-1", Instant.EPOCH, messages.toList()),
-    scrollRequest = 1,
 )
 
 private fun message(id: String, role: EmbeddedAiMessageRole, content: String) =

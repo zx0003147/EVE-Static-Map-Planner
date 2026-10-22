@@ -29,6 +29,7 @@ class EmbeddedAiControllerTest {
                     override suspend fun run(prompt: String) = error("Streaming overload expected")
                     override suspend fun run(prompt: String, observer: EmbeddedAiTurnObserver): String {
                         observer.textDelta("Hello ")
+                        observer.toolExecutionChanged(executionOf(SearchSystemTool.NAME to AgentToolCallStatus.RUNNING))
                         release.await()
                         observer.textDelta("world")
                         return "Hello world"
@@ -41,15 +42,25 @@ class EmbeddedAiControllerTest {
 
         controller.send("hello")
         runCurrent()
+        val viewportRequest = assertNotNull(controller.state.value.viewportRequest)
+        assertEquals(
+            controller.state.value.chatSession.messages.last().id,
+            viewportRequest.assistantMessageId,
+        )
         advanceTimeBy(32)
         runCurrent()
         assertEquals("Hello ", controller.state.value.chatSession.messages.last().content)
         assertEquals(EmbeddedAiMessageStatus.THINKING, controller.state.value.chatSession.messages.last().status)
+        assertEquals(viewportRequest, controller.state.value.viewportRequest)
+
+        controller.acknowledgeViewportRequest(viewportRequest.requestId)
+        assertNull(controller.state.value.viewportRequest)
 
         release.complete(Unit)
         advanceUntilIdle()
         assertEquals("Hello world", controller.state.value.chatSession.messages.last().content)
         assertEquals(EmbeddedAiMessageStatus.COMPLETE, controller.state.value.chatSession.messages.last().status)
+        assertNull(controller.state.value.viewportRequest)
         controller.shutdown()
     }
 
@@ -73,12 +84,14 @@ class EmbeddedAiControllerTest {
 
         controller.send("hello")
         runCurrent()
+        controller.acknowledgeViewportRequest(assertNotNull(controller.state.value.viewportRequest).requestId)
         controller.cancel()
         advanceUntilIdle()
 
         val message = controller.state.value.chatSession.messages.last()
         assertEquals("Partial answer", message.content)
         assertEquals(EmbeddedAiMessageStatus.CANCELLED, message.status)
+        assertNull(controller.state.value.viewportRequest)
         controller.shutdown()
     }
 

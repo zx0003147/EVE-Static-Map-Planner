@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -191,6 +191,7 @@ internal fun EmbeddedAiAssistantWindow(
                 onCancelVoice = voiceController::cancelVoiceActivity,
                 onSpeak = voiceController::speak,
                 onStopSpeaking = voiceController::stopPlayback,
+                onViewportRequestHandled = controller::acknowledgeViewportRequest,
             )
         }
     }
@@ -216,28 +217,23 @@ internal fun EmbeddedAiAssistantContent(
     onCancelVoice: () -> Unit = {},
     onSpeak: (String, String) -> Unit = { _, _ -> },
     onStopSpeaking: () -> Unit = {},
+    chatListState: LazyListState = rememberLazyListState(),
+    onViewportRequestHandled: (Long) -> Unit = {},
 ) {
     val appStrings = LocalAppStrings.current
     val strings = appStrings.aiAssistant
     val activeComposerState = composerState ?: remember { AssistantComposerState() }
     var sidebarVisible by remember { mutableStateOf(true) }
     val inputFocusRequester = remember { FocusRequester() }
-    val listState = rememberLazyListState()
     val messages = state.chatSession.messages
-    val nearBottom by remember {
-        derivedStateOf {
-            val layout = listState.layoutInfo
-            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
-            layout.totalItemsCount == 0 || lastVisible >= layout.totalItemsCount - 2
-        }
-    }
-    val lastMessageSnapshot = messages.lastOrNull()?.let { "${it.id}:${it.status}:${it.content.length}" }
 
-    LaunchedEffect(state.scrollRequest) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
-    }
-    LaunchedEffect(lastMessageSnapshot) {
-        if (messages.isNotEmpty() && nearBottom) listState.animateScrollToItem(messages.lastIndex)
+    LaunchedEffect(state.viewportRequest?.requestId) {
+        val request = state.viewportRequest ?: return@LaunchedEffect
+        val targetIndex = messages.indexOfFirst { it.id == request.assistantMessageId }
+        if (targetIndex >= 0) {
+            chatListState.scrollToItem(targetIndex, scrollOffset = 0)
+            onViewportRequestHandled(request.requestId)
+        }
     }
     LaunchedEffect(Unit) { inputFocusRequester.requestFocus() }
 
@@ -304,7 +300,7 @@ internal fun EmbeddedAiAssistantContent(
                         )
                     } else {
                         LazyColumn(
-                            state = listState,
+                            state = chatListState,
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxSize().testTag(AI_CHAT_LIST_TEST_TAG),
                         ) {
