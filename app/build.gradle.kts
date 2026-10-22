@@ -674,7 +674,7 @@ val verifyPortableZip by tasks.registering {
                 appendLine("files=${archiveAudit.fileCount}")
                 appendLine("sha256=${archiveAudit.sha256}")
                 appendLine("launchers=${imageAudit.launcherNames.sorted().joinToString(",")}")
-                appendLine("runtimeModulesFile=${imageAudit.runtimeModuleFiles.single()}")
+                appendLine("runtimeModulesFile=runtime/lib/modules")
                 appendLine("runtimeModules=${imageAudit.runtimeModules.joinToString(",")}")
                 appendLine("mcpJars=${archiveAudit.mcpJarNames.size}")
             },
