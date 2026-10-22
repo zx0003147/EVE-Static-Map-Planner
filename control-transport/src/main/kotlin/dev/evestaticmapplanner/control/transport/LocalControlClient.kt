@@ -105,6 +105,11 @@ class LocalControlClient internal constructor(
             }
         }
 
+    suspend fun getCurrentNavigationRoutes(): LocalControlClientResult =
+        query(LocalControlOperation.CURRENT_NAVIGATION_ROUTES) { requestId ->
+            buildJsonObject { put("requestId", requestId) }
+        }
+
     suspend fun calculateNormalRoute(
         startSystemId: Int,
         destinationSystemId: Int?,

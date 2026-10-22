@@ -47,6 +47,7 @@ import dev.evestaticmapplanner.charactertracking.ForegroundCharacterState
 import dev.evestaticmapplanner.control.AppMapControlCoordinator
 import dev.evestaticmapplanner.control.FeaturePackMissionNavigationActionAdapter
 import dev.evestaticmapplanner.control.AppWormholeControlAdapter
+import dev.evestaticmapplanner.control.CurrentNavigationRoutesAdapter
 import dev.evestaticmapplanner.control.AiSavedMarkerControlAdapter
 import dev.evestaticmapplanner.control.AiMapControlLifecycleController
 import dev.evestaticmapplanner.control.AppAiControlSession
@@ -481,12 +482,20 @@ private fun FrameWindowScope.ReadyApplication(
             sovereigntySnapshotProvider = featurePackRuntime.sovereigntyHost::snapshot,
         )
     }
+    val currentNavigationRoutesPort = remember(routeViewModel, capitalViewModel, mapViewModel) {
+        CurrentNavigationRoutesAdapter(
+            normalStateProvider = { routeViewModel.state.value },
+            capitalStateProvider = { capitalViewModel.state.value },
+            systemProvider = { systemId -> mapViewModel.state.value.scene?.nodesById?.get(systemId)?.system },
+        )
+    }
     val mapControlCoordinator = remember(
         configuration,
         planningPorts,
         planningViewCoordinator,
         featurePackRuntime,
         aiSavedMarkerApplicationService,
+        currentNavigationRoutesPort,
     ) {
         AppMapControlCoordinator(
             systemReadPort = systemReadPort,
@@ -496,6 +505,7 @@ private fun FrameWindowScope.ReadyApplication(
             missionRenderStatePort = missionMapStateStore,
             savedMarkerControlPort = AiSavedMarkerControlAdapter(aiSavedMarkerApplicationService),
             wormholeControlPort = AppWormholeControlAdapter(wormholeSessionStore),
+            currentNavigationRoutesPort = currentNavigationRoutesPort,
             missionNavigationActionPort = FeaturePackMissionNavigationActionAdapter(
                 featurePackRuntime.routeActionHost,
             ),

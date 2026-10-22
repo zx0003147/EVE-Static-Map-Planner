@@ -37,6 +37,7 @@ class PlannerRouteToolsTest {
                 "calculate_normal_route",
                 "calculate_capital_route",
                 "optimize_multi_point_route",
+                "get_current_navigation_routes",
                 "focus_system",
                 "begin_mission",
                 "get_mission",
@@ -69,8 +70,8 @@ class PlannerRouteToolsTest {
         )
         // The full universe RouteGraph is deliberately MCP-only. Embedded AI has bounded route operations.
         assertFalse(tools.names.contains("get_normal_route_graph"))
-        assertEquals(33, tools.names.size)
-        assertEquals(34, EmbeddedAiToolCatalog.names(tools).size)
+        assertEquals(34, tools.names.size)
+        assertEquals(35, EmbeddedAiToolCatalog.names(tools).size)
         assertEquals(WebSearchTool.NAME, EmbeddedAiToolCatalog.names(tools).last())
         assertFalse(EmbeddedAiToolCatalog.names(tools).contains("get_normal_route_graph"))
         assertEquals(
@@ -91,6 +92,7 @@ class PlannerRouteToolsTest {
             assertEquals(PlannerToolRisk.TEMPORARY_UI, tools.permissions.single { it.name == name }.risk)
         }
         assertEquals(PlannerToolRisk.READ_ONLY, tools.permissions.single { it.name == "get_system_markers" }.risk)
+        assertEquals(PlannerToolRisk.READ_ONLY, tools.permissions.single { it.name == "get_current_navigation_routes" }.risk)
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Never calculate routes"))
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("Use search_system first"))
         assertTrue(OpenRouterKoogAgentFactory.SYSTEM_PROMPT.contains("only when the user explicitly asks"))

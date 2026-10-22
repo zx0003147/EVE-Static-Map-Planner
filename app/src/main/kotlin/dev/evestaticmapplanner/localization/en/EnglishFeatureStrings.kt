@@ -82,7 +82,8 @@ internal object EnglishAiAssistantStrings : AiAssistantStrings {
         "web_search" -> "Search the web"
         "search_system" -> "Search systems"
         "get_system_info", "get_system_markers", "get_mission", "get_active_missions",
-        "list_views", "get_current_view", "list_wormholes", "list_eve_navigation_targets" -> "Read Planner data"
+        "list_views", "get_current_view", "list_wormholes", "list_eve_navigation_targets",
+        "get_current_navigation_routes" -> "Read Planner data"
         "calculate_normal_route", "calculate_capital_route", "optimize_multi_point_route" -> "Calculate route"
         "send_mission_navigation_to_eve" -> "Send navigation to EVE"
         "create_saved_marker" -> "Create Saved Marker"

@@ -35,6 +35,7 @@ class DefaultMapControlService(
     private val planningViewControlPort: PlanningViewControlPort = SinglePlanningViewControlPort,
     private val wormholeControlPort: WormholeControlPort = UnavailableWormholeControlPort,
     private val missionNavigationActionPort: MissionNavigationActionPort = UnavailableMissionNavigationActionPort,
+    private val currentNavigationRoutesPort: CurrentNavigationRoutesPort = UnavailableCurrentNavigationRoutesPort,
     wormholeConnectionIds: Flow<Set<String>>? = null,
 ) : MapControlService, AutoCloseable {
     private val dispatcher = MapControlCommandDispatcher(scope)
@@ -98,6 +99,13 @@ class DefaultMapControlService(
                 }
             SystemMarkersDto(request.systemId, savedMarker, missionMarkers)
         }
+
+    override suspend fun getCurrentNavigationRoutes(
+        request: GetCurrentNavigationRoutesRequest,
+    ): ControlResult<CurrentNavigationRoutesDto> = query(request.requestId) {
+        validateRequestId(request.requestId)
+        currentNavigationRoutesPort.currentRoutes()
+    }
 
     override suspend fun getNormalRouteGraph(
         request: GetNormalRouteGraphRequest,

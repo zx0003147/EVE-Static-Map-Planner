@@ -6,6 +6,9 @@ interface MapControlService {
     suspend fun searchSystems(request: SearchSystemsRequest): ControlResult<List<SystemSummaryDto>>
     suspend fun getSystemInfo(request: GetSystemInfoRequest): ControlResult<SystemInfoDto>
     suspend fun getSystemMarkers(request: GetSystemMarkersRequest): ControlResult<SystemMarkersDto>
+    suspend fun getCurrentNavigationRoutes(
+        request: GetCurrentNavigationRoutesRequest,
+    ): ControlResult<CurrentNavigationRoutesDto> = unsupportedCurrentRoutes(request.requestId)
     suspend fun getNormalRouteGraph(
         request: GetNormalRouteGraphRequest,
     ): ControlResult<NormalRouteGraphSnapshotDto> = unsupportedRouteGraph(request.requestId)
@@ -63,6 +66,11 @@ private fun <T> unsupportedWormholes(requestId: String): ControlResult<T> = Cont
 private fun <T> unsupportedRouteGraph(requestId: String): ControlResult<T> = ControlResult.Failure(
     requestId,
     ControlError(ControlErrorCode.APP_NOT_READY, "Normal route graph export is unavailable"),
+)
+
+private fun <T> unsupportedCurrentRoutes(requestId: String): ControlResult<T> = ControlResult.Failure(
+    requestId,
+    ControlError(ControlErrorCode.APP_NOT_READY, "Current navigation route access is unavailable"),
 )
 
 private fun <T> unsupportedMultiPointRoute(requestId: String): ControlResult<T> = ControlResult.Failure(

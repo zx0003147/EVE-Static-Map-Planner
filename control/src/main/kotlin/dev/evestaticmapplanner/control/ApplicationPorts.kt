@@ -15,6 +15,25 @@ interface SystemReadPort {
     suspend fun getSystemInfo(systemId: Int): SystemInfoDto?
 }
 
+fun interface CurrentNavigationRoutesPort {
+    fun currentRoutes(): CurrentNavigationRoutesDto
+}
+
+object UnavailableCurrentNavigationRoutesPort : CurrentNavigationRoutesPort {
+    override fun currentRoutes() = CurrentNavigationRoutesDto(
+        normal = unavailableRoute(CurrentNavigationRouteType.NORMAL),
+        capital = unavailableRoute(CurrentNavigationRouteType.CAPITAL),
+    )
+
+    private fun unavailableRoute(routeType: CurrentNavigationRouteType) = CurrentNavigationRouteDto(
+        routeType = routeType,
+        status = CurrentNavigationRouteStatus.UNAVAILABLE,
+        valid = false,
+        stale = false,
+        unavailableReason = "CURRENT_ROUTE_ACCESS_UNAVAILABLE",
+    )
+}
+
 data class SavedMarkerCreatePortRequest(
     val systemId: Int,
     val name: String?,

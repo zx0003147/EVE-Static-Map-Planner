@@ -28,6 +28,7 @@ internal object PlannerToolPermissions {
         PlannerToolPermission(CalculateNormalRouteTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(CalculateCapitalRouteTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(OptimizeMultiPointRouteTool.NAME, PlannerToolRisk.READ_ONLY),
+        PlannerToolPermission(GetCurrentNavigationRoutesTool.NAME, PlannerToolRisk.READ_ONLY),
         PlannerToolPermission(FocusSystemTool.NAME, PlannerToolRisk.TEMPORARY_UI),
         PlannerToolPermission(BeginMissionTool.NAME, PlannerToolRisk.TEMPORARY_UI),
         PlannerToolPermission(GetMissionTool.NAME, PlannerToolRisk.READ_ONLY),

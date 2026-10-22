@@ -12,6 +12,8 @@ import dev.evestaticmapplanner.control.ClearMissionMarkersCommand
 import dev.evestaticmapplanner.control.ClearMissionRoutesCommand
 import dev.evestaticmapplanner.control.ControlErrorCode
 import dev.evestaticmapplanner.control.ControlResult
+import dev.evestaticmapplanner.control.CurrentNavigationRouteDto
+import dev.evestaticmapplanner.control.CurrentNavigationRoutesDto
 import dev.evestaticmapplanner.control.CreateSavedMarkerCommand
 import dev.evestaticmapplanner.control.CreateSavedMarkerReceipt
 import dev.evestaticmapplanner.control.CreateWormholeCommand
@@ -22,6 +24,7 @@ import dev.evestaticmapplanner.control.FitMissionCommand
 import dev.evestaticmapplanner.control.FocusSystemCommand
 import dev.evestaticmapplanner.control.GetActiveMissionsRequest
 import dev.evestaticmapplanner.control.GetCurrentViewRequest
+import dev.evestaticmapplanner.control.GetCurrentNavigationRoutesRequest
 import dev.evestaticmapplanner.control.GetMissionRequest
 import dev.evestaticmapplanner.control.GetNormalRouteGraphRequest
 import dev.evestaticmapplanner.control.ListEveNavigationTargetsRequest
@@ -147,6 +150,13 @@ internal class LocalControlJsonCodec {
             controlResponse(
                 service.getSystemMarkers(GetSystemMarkersRequest(request.requestId(), request.int("systemId"))),
                 ::systemMarkersJson,
+            )
+        }
+        LocalControlOperation.CURRENT_NAVIGATION_ROUTES -> {
+            request.requireFields(setOf("requestId"))
+            controlResponse(
+                service.getCurrentNavigationRoutes(GetCurrentNavigationRoutesRequest(request.requestId())),
+                ::currentNavigationRoutesJson,
             )
         }
         LocalControlOperation.NORMAL_ROUTE_GRAPH -> {
@@ -750,6 +760,51 @@ private fun savedMarkerJson(value: dev.evestaticmapplanner.control.SavedMarkerSu
 
 private fun createSavedMarkerReceiptJson(value: CreateSavedMarkerReceipt) = buildJsonObject {
     put("marker", savedMarkerJson(value.marker))
+}
+
+private fun currentNavigationRoutesJson(value: CurrentNavigationRoutesDto) = buildJsonObject {
+    put("normal", currentNavigationRouteJson(value.normal))
+    put("capital", currentNavigationRouteJson(value.capital))
+}
+
+private fun currentNavigationRouteJson(value: CurrentNavigationRouteDto) = buildJsonObject {
+    put("routeType", value.routeType.name)
+    put("status", value.status.name)
+    put("exists", value.exists)
+    put("valid", value.valid)
+    put("stale", value.stale)
+    value.unavailableReason?.let { put("unavailableReason", it) } ?: put("unavailableReason", JsonNull)
+    value.startSystemId?.let { put("startSystemId", it) } ?: put("startSystemId", JsonNull)
+    value.destinationSystemId?.let { put("destinationSystemId", it) } ?: put("destinationSystemId", JsonNull)
+    put("totalJumps", value.totalJumps)
+    put("waypointSystemIds", JsonArray(value.waypointSystemIds.map(::JsonPrimitive)))
+    value.explicitDestinationSystemId?.let { put("explicitDestinationSystemId", it) }
+        ?: put("explicitDestinationSystemId", JsonNull)
+    value.effectiveRangeLy?.let { put("effectiveRangeLy", it) } ?: put("effectiveRangeLy", JsonNull)
+    put("systems", buildJsonArray {
+        value.systems.forEach { system ->
+            add(buildJsonObject {
+                put("routeIndex", system.routeIndex)
+                put("systemId", system.systemId)
+                system.name?.let { put("name", it) } ?: put("name", JsonNull)
+                system.securityStatus?.let { put("securityStatus", it) } ?: put("securityStatus", JsonNull)
+                system.spaceClassification?.let { put("spaceClassification", it) }
+                    ?: put("spaceClassification", JsonNull)
+                system.securityBand?.let { put("securityBand", it.name) } ?: put("securityBand", JsonNull)
+            })
+        }
+    })
+    put("connections", buildJsonArray {
+        value.connections.forEach { connection ->
+            add(buildJsonObject {
+                put("routeIndex", connection.routeIndex)
+                put("fromSystemId", connection.fromSystemId)
+                put("toSystemId", connection.toSystemId)
+                put("type", connection.type.name)
+                connection.distanceLy?.let { put("distanceLy", it) } ?: put("distanceLy", JsonNull)
+            })
+        }
+    })
 }
 
 private fun normalRouteJson(value: NormalRouteDto) = buildJsonObject {

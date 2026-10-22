@@ -190,6 +190,7 @@ internal class PlannerToolSet(
     val calculateNormalRoute = CalculateNormalRouteTool(mapControlService, diagnostics)
     val calculateCapitalRoute = CalculateCapitalRouteTool(mapControlService, diagnostics)
     val optimizeMultiPointRoute = OptimizeMultiPointRouteTool(mapControlService, diagnostics)
+    val getCurrentNavigationRoutes = GetCurrentNavigationRoutesTool(mapControlService, diagnostics)
     val focusSystem = FocusSystemTool(mapControlService, diagnostics)
     val beginMission = BeginMissionTool(mapControlService, diagnostics)
     val getMission = GetMissionTool(mapControlService, diagnostics)
@@ -232,6 +233,7 @@ internal class PlannerToolSet(
         calculateNormalRoute.name,
         calculateCapitalRoute.name,
         optimizeMultiPointRoute.name,
+        getCurrentNavigationRoutes.name,
         focusSystem.name,
         beginMission.name,
         getMission.name,
@@ -289,6 +291,7 @@ internal fun createKoogAgent(
         tool(tools.calculateNormalRoute)
         tool(tools.calculateCapitalRoute)
         tool(tools.optimizeMultiPointRoute)
+        tool(tools.getCurrentNavigationRoutes)
         tool(tools.focusSystem)
         tool(tools.beginMission)
         tool(tools.getMission)
@@ -392,6 +395,14 @@ private val PLANNER_SYSTEM_PROMPT = """
     Use calculate_capital_route for capital navigation and pass the user's effectiveRangeLy. Never infer a missing jump range.
     Use optimize_multi_point_route when the user supplies an unordered target set and asks Planner to choose the visit order.
     Never calculate routes, distances, BFS paths, or target ordering yourself.
+    Use get_current_navigation_routes whenever the user asks about the routes currently planned in the normal or capital
+    navigation UI. Its result is a read-only snapshot taken at tool execution time; call it again for every request about
+    the current route instead of relying on an earlier answer or a static map query. Never equate a calculated tool route,
+    Mission route, or static connection query with the user's current manual route. Do not claim that this tool changes,
+    displays, or sends a route. Treat STALE and UNAVAILABLE routes as invalid current routes and explain their status.
+    For a requested current-route segment, resolve names with search_system and pass both canonical endpoint IDs to
+    get_current_navigation_routes. Preserve the returned order. If segmentQuery is AMBIGUOUS, ask which occurrences the
+    user means; never choose one candidate yourself.
 
     Map-changing tools may be used only when the user explicitly asks to display, focus, locate, mark, show, draw, visualize, or otherwise modify the temporary Mission view.
     If the user asks only for information or how to travel, use the read-only tools and do not change the map.
@@ -425,5 +436,6 @@ private val PLANNER_SYSTEM_PROMPT = """
     Respect the tool parameters and Planner defaults. If a required option is unknown, ask the user instead of guessing.
     Reply in the language used by the user's current message whenever practical.
     Keep answers concise and state only facts supported by tool results. Do not add general EVE background or map facts from model knowledge. Do not expose Mission IDs, route IDs, overlay IDs, marker IDs, or full numeric system paths unless the user explicitly asks for them or they are essential to resolve an ambiguity.
-    Do not derive labels or classifications from numeric fields; for example, report securityStatus as returned without labeling it high-sec, low-sec, or null-sec.
+    Do not derive labels or classifications from numeric fields. For current routes, report securityBand only when that
+    field is returned; if it is null, report the numeric securityStatus and spaceClassification without inventing a band.
 """.trimIndent()

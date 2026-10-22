@@ -36,7 +36,7 @@ class LocalControlEndpointContractTest {
 
         assertTrue(LocalControlOperation.allowedPaths.all { it.startsWith("/v1/") })
         assertEquals(LocalControlOperation.entries.size, LocalControlOperation.allowedPaths.size)
-        assertEquals(13, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
+        assertEquals(14, LocalControlOperation.entries.count { !it.mutation && it.serviceMethod != null })
         assertEquals(21, LocalControlOperation.entries.count(LocalControlOperation::mutation))
         val savedMarkerOperations = LocalControlOperation.entries.filter {
             it.path.contains("saved-marker") || it.serviceMethod == "getSystemMarkers"

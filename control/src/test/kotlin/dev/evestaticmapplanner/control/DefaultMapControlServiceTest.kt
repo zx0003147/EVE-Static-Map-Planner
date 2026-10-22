@@ -30,6 +30,32 @@ import kotlin.test.assertTrue
 
 class DefaultMapControlServiceTest {
     @Test
+    fun `current navigation query delegates once per request without route calculation or rendering`() = runTest {
+        var reads = 0
+        val expected = CurrentNavigationRoutesDto(
+            normal = currentRouteUnavailable(CurrentNavigationRouteType.NORMAL),
+            capital = currentRouteUnavailable(CurrentNavigationRouteType.CAPITAL),
+        )
+        val fixture = Fixture(
+            scope = this,
+            currentNavigationRoutesPort = CurrentNavigationRoutesPort { reads++; expected },
+        )
+        try {
+            val first = fixture.service.getCurrentNavigationRoutes(GetCurrentNavigationRoutesRequest("current-1")).success()
+            val second = fixture.service.getCurrentNavigationRoutes(GetCurrentNavigationRoutesRequest("current-2")).success()
+
+            assertEquals(expected, first.value)
+            assertEquals(expected, second.value)
+            assertEquals(2, reads)
+            assertEquals(0, fixture.routes.normalIntentCalls)
+            assertEquals(0, fixture.routes.capitalCalls)
+            assertTrue(fixture.rendered.isEmpty())
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun `queries are explicit read-only operations and calculate does not render`() = runTest {
         val fixture = Fixture(this)
         try {
@@ -478,6 +504,7 @@ private data class UserStateSentinel(
 private class Fixture(
     scope: kotlinx.coroutines.CoroutineScope,
     missionNavigationActionPort: MissionNavigationActionPort = UnavailableMissionNavigationActionPort,
+    currentNavigationRoutesPort: CurrentNavigationRoutesPort = UnavailableCurrentNavigationRoutesPort,
 ) {
     val routes = FakeRoutePort()
     val viewport = FakeViewportPort()
@@ -499,6 +526,7 @@ private class Fixture(
         MissionRenderStatePort { rendered = it },
         scope = scope,
         missionNavigationActionPort = missionNavigationActionPort,
+        currentNavigationRoutesPort = currentNavigationRoutesPort,
     )
 
     suspend fun begin(title: String = "Mission", key: String = "begin") =
@@ -506,6 +534,14 @@ private class Fixture(
 
     fun close() = service.close()
 }
+
+private fun currentRouteUnavailable(type: CurrentNavigationRouteType) = CurrentNavigationRouteDto(
+    routeType = type,
+    status = CurrentNavigationRouteStatus.NOT_PLANNED,
+    valid = false,
+    stale = false,
+    unavailableReason = "NO_CALCULATED_ROUTE",
+)
 
 private class FakeMissionNavigationPort : MissionNavigationActionPort {
     data class Send(val routeIdentity: String, val intent: NavigationIntent, val characterId: String)

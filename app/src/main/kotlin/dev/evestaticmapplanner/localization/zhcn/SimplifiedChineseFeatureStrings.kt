@@ -82,7 +82,8 @@ internal object SimplifiedChineseAiAssistantStrings : AiAssistantStrings {
         "web_search" -> "搜索网页"
         "search_system" -> "搜索星系"
         "get_system_info", "get_system_markers", "get_mission", "get_active_missions",
-        "list_views", "get_current_view", "list_wormholes", "list_eve_navigation_targets" -> "读取规划器数据"
+        "list_views", "get_current_view", "list_wormholes", "list_eve_navigation_targets",
+        "get_current_navigation_routes" -> "读取规划器数据"
         "calculate_normal_route", "calculate_capital_route", "optimize_multi_point_route" -> "计算路线"
         "send_mission_navigation_to_eve" -> "发送导航到 EVE"
         "create_saved_marker" -> "创建保存标记"

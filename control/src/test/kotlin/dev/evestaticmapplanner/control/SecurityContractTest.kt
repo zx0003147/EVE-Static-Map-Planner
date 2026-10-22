@@ -14,7 +14,7 @@ class SecurityContractTest {
             .map { it.name }.toSet()
         assertEquals(
             setOf(
-                "searchSystems", "getSystemInfo", "getNormalRouteGraph", "optimizeMultiPointRoute",
+                "searchSystems", "getSystemInfo", "getCurrentNavigationRoutes", "getNormalRouteGraph", "optimizeMultiPointRoute",
                 "calculateNormalRoute", "calculateCapitalRoute",
                 "getSystemMarkers", "getActiveMissions", "getMission", "beginMission", "createSavedMarker",
                 "focusSystem", "showNormalRoute",

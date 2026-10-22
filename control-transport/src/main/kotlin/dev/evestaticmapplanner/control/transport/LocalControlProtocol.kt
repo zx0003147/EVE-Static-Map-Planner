@@ -62,6 +62,12 @@ enum class LocalControlOperation(
     SEARCH_SYSTEM("/v1/query/search-system", "searchSystems", false, TimeoutKind.QUERY),
     SYSTEM_INFO("/v1/query/system-info", "getSystemInfo", false, TimeoutKind.QUERY),
     SYSTEM_MARKERS("/v1/query/system-markers", "getSystemMarkers", false, TimeoutKind.QUERY),
+    CURRENT_NAVIGATION_ROUTES(
+        "/v1/query/current-navigation-routes",
+        "getCurrentNavigationRoutes",
+        false,
+        TimeoutKind.QUERY,
+    ),
     NORMAL_ROUTE_GRAPH(
         "/v1/query/normal-route-graph",
         "getNormalRouteGraph",
